@@ -1,0 +1,18 @@
+[Unit]
+Description=Proton Mail Bridge local IMAP/SMTP service
+Documentation=https://proton.me/support/bridge-for-linux
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionPathExists=%S/protonmail-bridge/managed-service-enabled
+StartLimitIntervalSec=5min
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/protonmail-bridge --noninteractive
+Restart=on-failure
+RestartSec=20s
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target

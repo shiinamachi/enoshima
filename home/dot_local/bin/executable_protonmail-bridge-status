@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+# Report package/onboarding/service state without reading account information
+# or printing Bridge-generated IMAP/SMTP credentials.
+set -uo pipefail
+
+readonly package_name=protonmail-bridge
+readonly unit=protonmail-bridge.service
+readonly state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/protonmail-bridge
+readonly readiness_marker=$state_dir/managed-service-enabled
+
+failures=0
+
+pass() {
+  printf '[OK] %s\n' "$1"
+}
+
+warn() {
+  printf '[WARN] %s\n' "$1"
+}
+
+fail() {
+  printf '[FAIL] %s\n' "$1" >&2
+  failures=$((failures + 1))
+}
+
+if pacman -Q "$package_name" >/dev/null 2>&1; then
+  pass 'official Proton Mail Bridge package is installed'
+else
+  fail 'Proton Mail Bridge package is not installed'
+fi
+
+if [[ -f $readiness_marker ]]; then
+  pass 'interactive account onboarding was confirmed'
+else
+  warn 'account onboarding is not confirmed; run protonmail-bridge-setup'
+  ((failures == 0)) || exit 1
+  exit 2
+fi
+
+if busctl --user --quiet status org.freedesktop.secrets; then
+  pass 'Secret Service is available (it may still require keyring unlock)'
+else
+  fail 'Secret Service is unavailable; unlock GNOME Keyring after password login'
+fi
+
+if systemctl --user is-enabled --quiet "$unit"; then
+  pass 'managed user service is enabled'
+else
+  fail 'managed user service is not enabled'
+fi
+
+if systemctl --user is-active --quiet "$unit"; then
+  pass 'managed user service is active'
+else
+  fail 'managed user service is not active; inspect its journal without sharing credentials'
+fi
+
+if ((failures == 0)); then
+  printf 'Bridge is ready for Thunderbird localhost IMAP/SMTP use.\n'
+  exit 0
+fi
+
+printf 'Bridge has %d managed-state failure(s).\n' "$failures" >&2
+exit 1

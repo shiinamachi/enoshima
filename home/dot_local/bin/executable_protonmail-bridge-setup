@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+
+# Interactive account onboarding for Proton Mail Bridge. Account data,
+# generated local IMAP/SMTP credentials, and message state remain outside Git.
+set -euo pipefail
+
+readonly unit=protonmail-bridge.service
+readonly state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/protonmail-bridge
+readonly readiness_marker=$state_dir/managed-service-enabled
+
+die() {
+  printf 'protonmail-bridge-setup: %s\n' "$*" >&2
+  exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"
+}
+
+enable_managed_service() {
+  systemctl --user daemon-reload
+  systemctl --user enable "$unit"
+  systemctl --user start "$unit" 2>/dev/null &&
+    systemctl --user is-active --quiet "$unit"
+}
+
+require_command busctl
+require_command protonmail-bridge
+require_command systemctl
+
+[[ -t 0 ]] || die 'run this helper interactively from a terminal'
+[[ -n ${WAYLAND_DISPLAY:-}${DISPLAY:-} ]] ||
+  die 'run this helper inside the graphical desktop session'
+
+if ! busctl --user --quiet status org.freedesktop.secrets; then
+  die 'Secret Service is unavailable; unlock GNOME Keyring after a password login and retry'
+fi
+
+if [[ -f $readiness_marker ]]; then
+  if enable_managed_service; then
+    service_result='The managed background service is enabled and active.'
+  else
+    service_result='The service is enabled and will retry at the next graphical login.'
+  fi
+
+  cat <<EOF
+Proton Mail Bridge onboarding was already confirmed on this machine.
+No account data was inspected or changed. $service_result
+Run protonmail-bridge-status to check it, or launch Proton Mail Bridge directly
+to manage the account interactively.
+EOF
+  exit 0
+fi
+
+cat <<'EOF'
+This opens Proton Mail Bridge for interactive account onboarding.
+
+In the Bridge window:
+  1. Sign in to the paid Bridge-capable Proton account.
+  2. Let Bridge store its account secret in GNOME Keyring.
+  3. Copy the generated localhost IMAP/SMTP settings into Thunderbird.
+
+Do not paste the generated password into this terminal or store it in Git.
+The repository manages only a non-secret readiness marker and the user service.
+EOF
+
+read -r -p 'Open Proton Mail Bridge now? [y/N] ' answer
+[[ $answer =~ ^[Yy]$ ]] || exit 0
+
+# A managed noninteractive instance and the onboarding GUI must not compete for
+# Bridge's single-instance lock.
+systemctl --user stop "$unit" 2>/dev/null || true
+protonmail-bridge >/dev/null 2>&1 &
+
+cat <<'EOF'
+
+Complete sign-in in the Bridge window and copy the localhost settings into
+Thunderbird. You may leave Bridge running; the managed background service will
+take ownership automatically at the next graphical login.
+EOF
+
+read -r -p 'Has account onboarding and Thunderbird setup completed successfully? [y/N] ' answer
+if [[ ! $answer =~ ^[Yy]$ ]]; then
+  printf 'No readiness marker was created and the service remains disabled.\n'
+  exit 0
+fi
+
+install -d -m 0700 -- "$state_dir"
+printf 'interactive onboarding confirmed\n' >"$readiness_marker"
+chmod 0600 "$readiness_marker"
+
+# Starting a second instance while the GUI owns Bridge's lock may exit cleanly.
+# Enabling is sufficient in that case: the current GUI keeps mail available and
+# systemd starts the noninteractive service at the next graphical login.
+if enable_managed_service; then
+  printf 'Proton Mail Bridge onboarding is complete and the managed service is active.\n'
+else
+  cat <<'EOF'
+Proton Mail Bridge onboarding is complete and the managed service is enabled.
+The onboarding GUI still owns the running Bridge instance; systemd will start
+the noninteractive service at the next graphical login.
+EOF
+fi
+
+cat <<'EOF'
+
+Run protonmail-bridge-status for a credential-safe status summary. If this
+machine was logged in with fingerprint only, GNOME Keyring may remain locked;
+unlock it interactively before expecting Bridge or Thunderbird to connect.
+EOF
