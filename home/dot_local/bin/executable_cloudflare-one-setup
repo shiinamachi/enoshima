@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+# Enable the packaged Linux GUI and leave Zero Trust organization enrollment
+# to the user's interactive Cloudflare/identity-provider flow.
+set -euo pipefail
+
+die() {
+  printf 'cloudflare-one-setup: %s\n' "$*" >&2
+  exit 1
+}
+
+cat <<'EOF'
+Cloudflare does not support Arch Linux. This workstation uses the reviewed
+cloudflare-warp-bin AUR repackaging of Cloudflare's Ubuntu client, so updates
+can require manual compatibility review.
+EOF
+
+/usr/bin/pacman -Q cloudflare-warp-bin >/dev/null 2>&1 ||
+  die 'cloudflare-warp-bin is not installed; complete the repository AUR phase first'
+[[ -f /usr/lib/systemd/user/warp-taskbar.service ]] ||
+  die 'the packaged warp-taskbar.service user unit is missing'
+[[ -n ${WAYLAND_DISPLAY:-}${DISPLAY:-} ]] ||
+  die 'run this helper inside the graphical desktop session'
+/usr/bin/systemctl --user is-active --quiet graphical-session.target ||
+  die 'the graphical-session.target user unit is not active'
+
+if ! /usr/bin/systemctl is-enabled --quiet warp-svc.service ||
+  ! /usr/bin/systemctl is-active --quiet warp-svc.service; then
+  cat >&2 <<'EOF'
+cloudflare-one-setup: warp-svc.service is not both enabled and active.
+The system daemon is Ansible-owned. Re-run the desktop_expansion role after
+the AUR package is installed, then run this helper again.
+EOF
+  exit 1
+fi
+
+/usr/bin/systemctl --user daemon-reload
+/usr/bin/systemctl --user enable --now warp-taskbar.service
+
+taskbar_ready=false
+for _ in {1..50}; do
+  if /usr/bin/busctl --user --quiet status com.cloudflare.WarpTaskbar >/dev/null 2>&1; then
+    taskbar_ready=true
+    break
+  fi
+  /usr/bin/sleep 0.1
+done
+[[ $taskbar_ready == true ]] ||
+  die 'warp-taskbar.service started but its user D-Bus name did not appear'
+
+cat <<'EOF'
+
+The Cloudflare One tray client is running. Complete enrollment interactively:
+
+1. Open the tray client.
+2. Choose "Zero Trust security".
+3. Enter the team name and finish the identity-provider login in the browser.
+4. Return to the client and confirm that it connects.
+5. Run `cloudflare-one-status`, then re-test WWAN DNS/fallback, Bottles,
+   rclone mounts, Proton Bridge, Parsec, and browser access.
+
+The team name, login session, organization token, and daemon state stay
+outside Git. This helper never runs or uploads `warp-diag`; invoke diagnostics
+manually only when troubleshooting requires them.
+EOF

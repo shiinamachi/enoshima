@@ -1,0 +1,49 @@
+---
+# cloudflare-warp-bin is installed by the AUR phase, which intentionally runs
+# after Ansible during a first bootstrap. Keep that first pass successful and
+# converge the vendor daemon on the next Ansible run.
+- name: Check whether the Cloudflare One AUR package is installed
+  ansible.builtin.command:
+    cmd: pacman -Q cloudflare-warp-bin
+  register: cloudflare_warp_package
+  check_mode: false
+  changed_when: false
+  failed_when: false
+
+- name: Check the packaged Cloudflare One daemon unit
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system/warp-svc.service
+  register: cloudflare_warp_daemon_unit
+  when: cloudflare_warp_package.rc == 0
+
+- name: Require the vendor daemon unit when the AUR package is installed
+  ansible.builtin.assert:
+    that:
+      - cloudflare_warp_daemon_unit.stat.exists
+      - cloudflare_warp_daemon_unit.stat.isreg | default(false)
+    fail_msg: >-
+      cloudflare-warp-bin is installed but its warp-svc.service unit is
+      missing. Review the AUR package before changing the managed unit name.
+  when: cloudflare_warp_package.rc == 0
+
+- name: Report the Cloudflare One support boundary
+  ansible.builtin.debug:
+    msg: >-
+      Cloudflare does not support Arch Linux. cloudflare-warp-bin repackages
+      the vendor's Ubuntu client and must be reviewed on meaningful updates.
+  when: cloudflare_warp_package.rc == 0
+
+- name: Enable and start the Cloudflare One daemon
+  ansible.builtin.systemd_service:
+    name: warp-svc.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: cloudflare_warp_package.rc == 0
+
+- name: Defer Cloudflare One daemon activation until the package exists
+  ansible.builtin.debug:
+    msg: >-
+      cloudflare-warp-bin is installed after Ansible by the reviewed AUR
+      phase. Re-run Ansible after that phase to enable warp-svc.service.
+  when: cloudflare_warp_package.rc != 0

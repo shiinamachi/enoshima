@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+
+# Print a deliberately redacted Cloudflare One readiness summary. Never echo
+# registration details, organization identifiers, DNS server addresses, or
+# diagnostic archives.
+set -uo pipefail
+export LC_ALL=C
+
+state() {
+  printf '%-18s %s\n' "$1:" "$2"
+}
+
+normalize_unit_state() {
+  local scope=$1
+  local action=$2
+  local unit=$3
+  local result
+  local -a command=(/usr/bin/systemctl)
+
+  if [[ $scope == user ]]; then
+    command+=(--user)
+  fi
+  result=$("${command[@]}" "$action" "$unit" 2>/dev/null || true)
+  [[ -n $result ]] && printf '%s' "$result" || printf 'unknown'
+}
+
+cat <<'EOF'
+Cloudflare One Client status
+WARNING: Cloudflare does not support Arch Linux; this is an AUR-repackaged
+Ubuntu client and must not be described as vendor-supported on this host.
+EOF
+
+if /usr/bin/pacman -Q cloudflare-warp-bin >/dev/null 2>&1; then
+  package_state=installed
+else
+  package_state='not installed'
+fi
+state Package "$package_state"
+
+daemon_enabled=$(normalize_unit_state system is-enabled warp-svc.service)
+daemon_active=$(normalize_unit_state system is-active warp-svc.service)
+state 'System daemon' "$daemon_enabled / $daemon_active"
+
+taskbar_enabled=$(normalize_unit_state user is-enabled warp-taskbar.service)
+taskbar_active=$(normalize_unit_state user is-active warp-taskbar.service)
+state 'Taskbar unit' "$taskbar_enabled / $taskbar_active"
+
+if /usr/bin/busctl --user --quiet status com.cloudflare.WarpTaskbar >/dev/null 2>&1; then
+  tray_state='D-Bus service present'
+else
+  tray_state='D-Bus service absent'
+fi
+state 'Tray process' "$tray_state"
+
+registration_state=unknown
+connection_state=unknown
+client_mode=unknown
+if [[ -x /usr/bin/warp-cli && $daemon_active == active ]]; then
+  if /usr/bin/warp-cli --json --no-ansi registration show >/dev/null 2>&1; then
+    if /usr/bin/warp-cli --no-ansi registration organization >/dev/null 2>&1; then
+      registration_state='Zero Trust registered'
+    else
+      registration_state='registered outside Zero Trust'
+    fi
+  else
+    registration_state='not registered or unavailable'
+  fi
+
+  status_output=$(/usr/bin/warp-cli --no-ansi status 2>&1 || true)
+  case $status_output in
+    *FailedToConnectToDaemon* | *'Failed to connect to daemon'*)
+      connection_state='daemon unavailable'
+      ;;
+    *Disconnected* | *'Manual Disconnection'*)
+      connection_state=disconnected
+      ;;
+    *Connecting* | *'Validating network'* | *'Verifying connection'*)
+      connection_state=connecting
+      ;;
+    *Connected*)
+      connection_state=connected
+      ;;
+    *'Unable to connect'* | *Connectivity*)
+      connection_state='connection error'
+      ;;
+  esac
+  unset status_output
+
+  settings_output=$(/usr/bin/warp-cli --no-ansi settings list 2>&1 || true)
+  case $settings_output in
+    *WarpWithDnsOverHttps*) client_mode='traffic and DNS' ;;
+    *DnsOverHttps*) client_mode='DNS only' ;;
+    *TunnelOnly*) client_mode='traffic only' ;;
+    *WarpProxy*) client_mode='local proxy' ;;
+    *PostureOnly*) client_mode='posture only' ;;
+  esac
+  unset settings_output
+fi
+state Registration "$registration_state"
+state Connection "$connection_state"
+state 'Client mode' "$client_mode"
+
+case $client_mode:$connection_state in
+  'traffic and DNS:connected' | 'DNS only:connected')
+    dns_state='Cloudflare DNS proxy active'
+    ;;
+  'traffic and DNS:'* | 'DNS only:'*)
+    dns_state='Cloudflare DNS mode configured but not connected'
+    ;;
+  'traffic only:'* | 'local proxy:'* | 'posture only:'*)
+    dns_state='Cloudflare does not own DNS in this mode'
+    ;;
+  *)
+    dns_state='ownership unknown'
+    ;;
+esac
+state 'DNS proxy' "$dns_state"
+
+if [[ -L /etc/resolv.conf ]]; then
+  resolver_target=$(/usr/bin/readlink -f /etc/resolv.conf 2>/dev/null || true)
+  case $resolver_target in
+    */NetworkManager/*) resolver_owner=NetworkManager ;;
+    */systemd/resolve/*) resolver_owner=systemd-resolved ;;
+    *) resolver_owner='other symlink manager' ;;
+  esac
+  unset resolver_target
+elif [[ -f /etc/resolv.conf ]]; then
+  resolver_owner='regular file (review ownership)'
+else
+  resolver_owner=missing
+fi
+state /etc/resolv.conf "$resolver_owner"
+
+if [[ -x /usr/bin/warp-diag ]]; then
+  diagnostic_state='available; not run or uploaded'
+else
+  diagnostic_state='not installed'
+fi
+state Diagnostics "$diagnostic_state"

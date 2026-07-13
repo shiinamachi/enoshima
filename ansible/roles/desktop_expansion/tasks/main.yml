@@ -4,3 +4,6 @@
 
 - name: Install the gated cyberpunk SDDM theme
   ansible.builtin.import_tasks: sddm.yml
+
+- name: Configure Cloudflare One client integration
+  ansible.builtin.import_tasks: cloudflare.yml
