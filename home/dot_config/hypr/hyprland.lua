@@ -372,7 +372,7 @@ local applicationRoutes = {
     },
     {
         name = "route-document",
-        class = [[(?i)^(discord|slack|com\.slack\.slack|obsidian|md\.obsidian|.*notion.*|kakaotalk(\.exe)?|kakao.*)$]],
+        class = [[(?i)^(discord|slack|com\.slack\.slack|thunderbird|org\.mozilla\.thunderbird|obsidian|md\.obsidian|.*notion.*|kakaotalk(\.exe)?|kakao.*)$]],
         workspace = "3 silent",
     },
     {

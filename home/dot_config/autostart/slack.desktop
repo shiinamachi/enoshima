@@ -3,7 +3,7 @@ Type=Application
 Version=1.0
 Name=Slack (autostart)
 Comment=Start Slack quietly with the graphical session
-TryExec=slack
-Exec=/usr/bin/slack --gtk-version=3 -s --startup
+TryExec=/home/kentakang/.local/bin/slack-wayland
+Exec=/home/kentakang/.local/bin/slack-wayland --gtk-version=3 -s --startup
 Terminal=false
 X-GNOME-Autostart-enabled=true

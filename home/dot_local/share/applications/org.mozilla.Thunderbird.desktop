@@ -1,0 +1,23 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Thunderbird
+GenericName=Mail Client
+Comment=Thunderbird with native Wayland scaling
+TryExec=/home/kentakang/.local/bin/thunderbird-wayland
+Exec=/home/kentakang/.local/bin/thunderbird-wayland %u
+Icon=thunderbird
+Terminal=false
+StartupNotify=true
+StartupWMClass=thunderbird
+Categories=Network;Email;
+MimeType=message/rfc822;x-scheme-handler/mailto;
+Actions=Compose;AddressBook;
+
+[Desktop Action Compose]
+Name=Compose New Message
+Exec=/home/kentakang/.local/bin/thunderbird-wayland -compose
+
+[Desktop Action AddressBook]
+Name=Open Address Book
+Exec=/home/kentakang/.local/bin/thunderbird-wayland -addressbook

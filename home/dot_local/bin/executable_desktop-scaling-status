@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+command -v hyprctl >/dev/null 2>&1 || {
+  printf 'desktop-scaling-status: hyprctl is unavailable\n' >&2
+  exit 1
+}
+command -v jq >/dev/null 2>&1 || {
+  printf 'desktop-scaling-status: jq is unavailable\n' >&2
+  exit 1
+}
+
+clients=$(hyprctl clients -j)
+failures=0
+missing=0
+
+check_backend() {
+  local label=$1
+  local class_pattern=$2
+  local expected_xwayland=$3
+  local matches
+  matches=$(jq -c --arg pattern "$class_pattern" \
+    '[.[] | select((.class // "") | test($pattern; "i")) | {class, xwayland}]' \
+    <<<"$clients")
+
+  if [[ $(jq 'length' <<<"$matches") -eq 0 ]]; then
+    printf 'DEFER  %-12s not running\n' "$label"
+    ((missing += 1))
+    return
+  fi
+
+  if jq -e --argjson expected "$expected_xwayland" \
+    'all(.[]; .xwayland == $expected)' <<<"$matches" >/dev/null; then
+    printf 'PASS   %-12s xwayland=%s\n' "$label" "$expected_xwayland"
+  else
+    printf 'FAIL   %-12s expected xwayland=%s, observed %s\n' \
+      "$label" "$expected_xwayland" \
+      "$(jq -c '[.[] | {class, xwayland}]' <<<"$matches")"
+    ((failures += 1))
+  fi
+}
+
+check_backend Discord '^(discord)$' false
+check_backend Slack '^(slack|com\\.slack\\.Slack)$' false
+check_backend Thunderbird '^(thunderbird|org\\.mozilla\\.Thunderbird)$' false
+check_backend Parsec '^(parsec|parsecd|com\\.parsecgaming\\.parsec)$' true
+
+((failures == 0)) || exit 1
+((missing == 0)) || exit 2

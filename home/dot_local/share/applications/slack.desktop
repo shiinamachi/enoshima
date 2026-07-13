@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Slack
+GenericName=Slack Client for Linux
+Comment=Slack with native Wayland scaling and input
+TryExec=/home/kentakang/.local/bin/slack-wayland
+Exec=/home/kentakang/.local/bin/slack-wayland -s %U
+Icon=slack
+Terminal=false
+StartupNotify=true
+StartupWMClass=Slack
+Categories=Network;InstantMessaging;
+MimeType=x-scheme-handler/slack;

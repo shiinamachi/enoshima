@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Discord
+GenericName=Internet Messenger
+Comment=Discord with native Wayland scaling and input
+TryExec=/home/kentakang/.local/bin/discord-wayland
+Exec=/home/kentakang/.local/bin/discord-wayland --url -- %u
+Icon=discord
+Terminal=false
+StartupNotify=true
+StartupWMClass=discord
+Categories=Network;InstantMessaging;
+MimeType=x-scheme-handler/discord;
