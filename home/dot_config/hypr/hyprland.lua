@@ -225,6 +225,8 @@ hl.bind(mainMod .. " + Z", hl.dsp.exec_cmd(editor), { description = "Open Zed" }
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd(browser), { description = "Open Chrome" })
 hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager), { description = "Open Thunar" })
 hl.bind(mainMod .. " + C", hl.dsp.window.close(), { description = "Close active window" })
+hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("cyberdock-minimize"), { description = "Minimize active window" })
+hl.bind(mainMod .. " + SHIFT + N", hl.dsp.exec_cmd("cyberdock-recover"), { description = "Recover minimized windows" })
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }), { description = "Toggle floating" })
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo(), { description = "Toggle pseudotiling" })
 hl.bind(mainMod .. " + T", hl.dsp.layout("togglesplit"), { description = "Toggle dwindle split" })

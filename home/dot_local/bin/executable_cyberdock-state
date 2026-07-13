@@ -1,0 +1,360 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq variables are intentionally single-quoted.
+set -euo pipefail
+
+readonly hyprctl_bin=${CYBERDOCK_HYPRCTL:-hyprctl}
+readonly jq_bin=${CYBERDOCK_JQ:-jq}
+
+die() {
+  printf 'cyberdock-state: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ -n ${XDG_RUNTIME_DIR:-} ]] || die 'XDG_RUNTIME_DIR is not set'
+[[ $XDG_RUNTIME_DIR == /* ]] || die 'XDG_RUNTIME_DIR must be absolute'
+[[ -d $XDG_RUNTIME_DIR && -O $XDG_RUNTIME_DIR ]] ||
+  die 'XDG_RUNTIME_DIR must exist and be owned by the current user'
+command -v "$hyprctl_bin" >/dev/null 2>&1 || die "hyprctl command not found: $hyprctl_bin"
+command -v "$jq_bin" >/dev/null 2>&1 || die "jq command not found: $jq_bin"
+command -v flock >/dev/null 2>&1 || die 'flock is required'
+
+readonly state_dir=$XDG_RUNTIME_DIR/cyberdock
+readonly state_file=$state_dir/minimized.json
+readonly lock_file=$state_dir/state.lock
+readonly empty_state='{"version":1,"windows":{}}'
+
+if [[ -L $state_dir ]]; then
+  die "$state_dir must not be a symbolic link"
+fi
+install -d -m 0700 "$state_dir"
+chmod 0700 "$state_dir"
+
+exec 9>"$lock_file"
+chmod 0600 "$lock_file"
+flock -x 9
+
+write_state() {
+  local content=$1 temporary
+  temporary=$(mktemp "$state_dir/.minimized.XXXXXX")
+  chmod 0600 "$temporary"
+  printf '%s\n' "$content" >"$temporary"
+  mv -f -- "$temporary" "$state_file"
+}
+
+load_state() {
+  if [[ ! -f $state_file || -L $state_file ]]; then
+    state=$empty_state
+    write_state "$state"
+    return
+  fi
+
+  chmod 0600 "$state_file"
+  if ! state=$(
+    "$jq_bin" -c -e \
+      'select(.version == 1 and (.windows | type == "object"))' \
+      "$state_file" 2>/dev/null
+  ); then
+    state=$empty_state
+    write_state "$state"
+  fi
+}
+
+hypr_json() {
+  local resource=$1 output
+  output=$("$hyprctl_bin" "$resource" -j) ||
+    die "hyprctl $resource -j failed"
+  "$jq_bin" -c -e . <<<"$output" ||
+    die "hyprctl $resource returned invalid JSON"
+}
+
+dispatch() {
+  "$hyprctl_bin" dispatch "$1" "$2" >/dev/null
+}
+
+prune_state() {
+  local clients=$1 previous=$state
+  state=$(
+    "$jq_bin" -c --argjson clients "$clients" '
+      .windows |= with_entries(
+        .key as $address
+        | select(any($clients[];
+            .address == $address
+            and (.workspace.name // "") == "special:minimized"))
+      )
+    ' <<<"$state"
+  )
+  if [[ $state != "$previous" ]]; then
+    write_state "$state"
+  fi
+}
+
+valid_address() {
+  [[ $1 =~ ^0x[0-9A-Fa-f]+$ ]]
+}
+
+workspace_selector() {
+  local object=$1 id name
+  id=$("$jq_bin" -r '.workspace.id // .id // -1' <<<"$object")
+  name=$("$jq_bin" -r '.workspace.name // .name // ""' <<<"$object")
+
+  if [[ $id =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s\n' "$id"
+  elif [[ $name =~ ^(name:)?[[:alnum:]_.-]+$ && $name != special:minimized ]]; then
+    printf '%s\n' "$name"
+  else
+    return 1
+  fi
+}
+
+fallback_context() {
+  local monitors=$1
+  fallback_monitor=$(
+    "$jq_bin" -r '
+      (map(select(.focused == true))[0].name // .[0].name // "")
+    ' <<<"$monitors"
+  )
+  [[ -n $fallback_monitor ]] || die 'Hyprland reports no connected monitor'
+
+  fallback_workspace=$(
+    "$jq_bin" -r --arg monitor "$fallback_monitor" '
+      (map(select(.name == $monitor))[0].activeWorkspace.name // "")
+    ' <<<"$monitors"
+  )
+  if [[ ! $fallback_workspace =~ ^(name:)?[[:alnum:]_.-]+$ || $fallback_workspace == special:minimized ]]; then
+    fallback_workspace=1
+  fi
+}
+
+monitor_connected() {
+  local monitors=$1 monitor=$2
+  "$jq_bin" -e --arg monitor "$monitor" \
+    'any(.[]; .name == $monitor)' <<<"$monitors" >/dev/null
+}
+
+remove_record() {
+  local address=$1
+  state=$("$jq_bin" -c --arg address "$address" 'del(.windows[$address])' <<<"$state")
+  write_state "$state"
+}
+
+restore_one() {
+  local address=$1 focus_after=${2:-true}
+  local clients monitors workspaces client record target_workspace target_monitor saved_monitor
+  local current_workspace_monitor
+
+  clients=$(hypr_json clients)
+  prune_state "$clients"
+  client=$("$jq_bin" -c -e --arg address "$address" \
+    '.[] | select(.address == $address)' <<<"$clients") || {
+    remove_record "$address"
+    return 1
+  }
+
+  monitors=$(hypr_json monitors)
+  workspaces=$(hypr_json workspaces)
+  fallback_context "$monitors"
+  record=$("$jq_bin" -c --arg address "$address" '.windows[$address] // empty' <<<"$state")
+
+  target_workspace=$fallback_workspace
+  target_monitor=$fallback_monitor
+  if [[ -n $record ]]; then
+    target_workspace=$(workspace_selector "$record" || printf '%s' "$fallback_workspace")
+    saved_monitor=$("$jq_bin" -r '.monitor // ""' <<<"$record")
+    if [[ -n $saved_monitor ]] && monitor_connected "$monitors" "$saved_monitor"; then
+      target_monitor=$saved_monitor
+    fi
+
+    # Persistent workspaces normally remain attached to a valid output. Move
+    # the recorded workspace only when necessary, including monitor removal.
+    current_workspace_monitor=$(
+      "$jq_bin" -r --arg workspace "$target_workspace" '
+        map(select((.id | tostring) == $workspace or .name == $workspace))[0].monitor // ""
+      ' <<<"$workspaces"
+    )
+    if [[ $current_workspace_monitor != "$target_monitor" ]]; then
+      dispatch moveworkspacetomonitor "$target_workspace $target_monitor" || true
+    fi
+  fi
+
+  if ! dispatch movetoworkspacesilent "$target_workspace,address:$address"; then
+    return 1
+  fi
+  remove_record "$address"
+
+  if [[ $focus_after == true ]]; then
+    dispatch focusmonitor "$target_monitor" || true
+    dispatch workspace "$target_workspace" || true
+    dispatch focuswindow "address:$address" || true
+  fi
+}
+
+snapshot_command() {
+  local clients monitors active
+  clients=$(hypr_json clients)
+  monitors=$(hypr_json monitors)
+  active=$(hypr_json activewindow)
+  prune_state "$clients"
+
+  "$jq_bin" -c -n \
+    --argjson clients "$clients" \
+    --argjson monitors "$monitors" \
+    --argjson active "$active" \
+    --argjson runtimeState "$state" '
+      {
+        version: 1,
+        activeAddress: ($active.address // ""),
+        monitors: $monitors,
+        windows: [
+          $clients[]
+          | select(.mapped != false)
+          | select((.class // "") != "")
+          | select(((.class // "") | test("^(xembed-sni-proxy)$"; "i")) | not)
+          | . as $client
+          | ($runtimeState.windows[$client.address] // null) as $record
+          | $client + {
+              minimized: (
+                $record != null
+                or (($client.workspace.name // "") == "special:minimized")
+              ),
+              originalWorkspace: ($record.workspace // null),
+              originalMonitor: ($record.monitor // null)
+            }
+        ]
+      }
+    '
+}
+
+minimize_command() {
+  local address=${1:-} clients monitors client monitor_name workspace_id workspace_name recorded_at
+  clients=$(hypr_json clients)
+  prune_state "$clients"
+
+  if [[ -z $address ]]; then
+    address=$(hypr_json activewindow | "$jq_bin" -r '.address // ""')
+  fi
+  valid_address "$address" || die 'no valid window address was supplied or focused'
+
+  client=$("$jq_bin" -c -e --arg address "$address" \
+    '.[] | select(.address == $address)' <<<"$clients") ||
+    die "window does not exist: $address"
+  [[ $("$jq_bin" -r '.workspace.name // ""' <<<"$client") != special:minimized ]] || exit 0
+
+  workspace_id=$("$jq_bin" -r '.workspace.id // -1' <<<"$client")
+  workspace_name=$("$jq_bin" -r '.workspace.name // ""' <<<"$client")
+  workspace_selector "$client" >/dev/null || die 'active window is not on a restorable workspace'
+
+  monitors=$(hypr_json monitors)
+  monitor_name=$(
+    "$jq_bin" -r --argjson monitorId "$("$jq_bin" -r '.monitor // -1' <<<"$client")" '
+      map(select(.id == $monitorId))[0].name // ""
+    ' <<<"$monitors"
+  )
+  [[ -n $monitor_name ]] || die 'active window monitor is not connected'
+  recorded_at=$(date +%s)
+
+  state=$(
+    "$jq_bin" -c \
+      --arg address "$address" \
+      --arg monitor "$monitor_name" \
+      --arg workspaceName "$workspace_name" \
+      --argjson workspaceId "$workspace_id" \
+      --argjson recordedAt "$recorded_at" '
+        .windows[$address] = {
+          workspace: {id: $workspaceId, name: $workspaceName},
+          monitor: $monitor,
+          recordedAt: $recordedAt
+        }
+      ' <<<"$state"
+  )
+  write_state "$state"
+
+  if ! dispatch movetoworkspacesilent "special:minimized,address:$address"; then
+    remove_record "$address"
+    die "failed to move $address to special:minimized"
+  fi
+}
+
+activate_command() {
+  local address=$1 clients client active minimized workspace monitor_id monitor_name monitors
+  valid_address "$address" || die "invalid window address: $address"
+  clients=$(hypr_json clients)
+  prune_state "$clients"
+  client=$("$jq_bin" -c -e --arg address "$address" \
+    '.[] | select(.address == $address)' <<<"$clients") ||
+    die "window does not exist: $address"
+  active=$(hypr_json activewindow | "$jq_bin" -r '.address // ""')
+  minimized=$("$jq_bin" -r '.workspace.name == "special:minimized"' <<<"$client")
+
+  if [[ $minimized == true ]] ||
+    "$jq_bin" -e --arg address "$address" '.windows[$address] != null' <<<"$state" >/dev/null; then
+    restore_one "$address" true
+    return
+  fi
+  [[ $active != "$address" ]] || return 0
+
+  workspace=$(workspace_selector "$client") || die 'window is not on a focusable workspace'
+  monitor_id=$("$jq_bin" -r '.monitor // -1' <<<"$client")
+  monitors=$(hypr_json monitors)
+  monitor_name=$(
+    "$jq_bin" -r --argjson monitorId "$monitor_id" '
+      map(select(.id == $monitorId))[0].name // ""
+    ' <<<"$monitors"
+  )
+  [[ -n $monitor_name ]] || {
+    fallback_context "$monitors"
+    monitor_name=$fallback_monitor
+  }
+
+  dispatch focusmonitor "$monitor_name" || true
+  dispatch workspace "$workspace" || true
+  dispatch focuswindow "address:$address" || true
+}
+
+recover_command() {
+  local clients address failures=0
+  local -a minimized_addresses=()
+  clients=$(hypr_json clients)
+  prune_state "$clients"
+  mapfile -t minimized_addresses < <(
+    "$jq_bin" -r '.[] | select(.workspace.name == "special:minimized") | .address' <<<"$clients"
+  )
+
+  for address in "${minimized_addresses[@]}"; do
+    if restore_one "$address" false; then
+      printf 'restored %s\n' "$address"
+    else
+      printf 'cyberdock-state: failed to recover %s\n' "$address" >&2
+      failures=$((failures + 1))
+    fi
+  done
+  ((failures == 0))
+}
+
+load_state
+
+case ${1:-snapshot} in
+  snapshot)
+    snapshot_command
+    ;;
+  prune)
+    clients=$(hypr_json clients)
+    prune_state "$clients"
+    ;;
+  minimize)
+    minimize_command "${2:-}"
+    ;;
+  restore | activate)
+    [[ $# -eq 2 ]] || die "usage: cyberdock-state $1 ADDRESS"
+    if [[ $1 == restore ]]; then
+      restore_one "$2" true
+    else
+      activate_command "$2"
+    fi
+    ;;
+  recover)
+    recover_command
+    ;;
+  *)
+    die 'usage: cyberdock-state {snapshot|prune|minimize [ADDRESS]|restore ADDRESS|activate ADDRESS|recover}'
+    ;;
+esac

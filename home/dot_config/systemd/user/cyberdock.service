@@ -1,0 +1,19 @@
+[Unit]
+Description=Cyberdock Quickshell dock and minimized-window recovery
+PartOf=graphical-session.target
+After=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+Environment=QS_NO_RELOAD_POPUP=1
+ExecStartPre=%h/.local/bin/cyberdock-state prune
+ExecStart=/usr/bin/qs -p %h/.config/quickshell/cyberdock
+ExecStopPost=-%h/.local/bin/cyberdock-recover
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=8
+Slice=background-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target
