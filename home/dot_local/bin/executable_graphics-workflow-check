@@ -1,0 +1,315 @@
+#!/usr/bin/env bash
+
+# Validate the GIMP/PhotoGIMP split without creating, repairing, or replacing
+# either user profile. --smoke launches applications only after explicit
+# consent; PhotoGIMP's packaged wrapper remains the owner of first-run setup.
+set -uo pipefail
+
+mode=status
+failures=0
+warnings=0
+
+usage() {
+  cat <<'EOF'
+Usage: graphics-workflow-check [--status|--smoke]
+
+  --status  Inspect packages, launchers, profiles, Wayland, and Fcitx without
+            launching an application or changing profile state (default).
+  --smoke   Run the status checks, then interactively launch PhotoGIMP and raw
+            GIMP for visual/input acceptance. PhotoGIMP may initialize its
+            isolated profile through its packaged first-run wrapper.
+EOF
+}
+
+while (($# > 0)); do
+  case $1 in
+    --status)
+      mode=status
+      ;;
+    --smoke)
+      mode=smoke
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'graphics-workflow-check: unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+pass() {
+  printf '[PASS] %s\n' "$1"
+}
+
+warn() {
+  printf '[WARN] %s\n' "$1" >&2
+  warnings=$((warnings + 1))
+}
+
+fail() {
+  printf '[FAIL] %s\n' "$1" >&2
+  failures=$((failures + 1))
+}
+
+find_desktop_file() {
+  local desktop_id=$1
+  local data_dirs path
+  data_dirs=${XDG_DATA_HOME:-$HOME/.local/share}:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+
+  while IFS= read -r path; do
+    [[ -f $path ]] && {
+      printf '%s\n' "$path"
+      return 0
+    }
+  done < <(
+    tr : '\n' <<<"$data_dirs" |
+      sed "s|$|/applications/$desktop_id|"
+  )
+  return 1
+}
+
+check_packages_and_launchers() {
+  local gimp_command photogimp_command owner
+  local gimp_desktop photogimp_desktop
+
+  for package in gimp photogimp; do
+    if pacman -Q "$package" >/dev/null 2>&1; then
+      pass "package is installed: $package"
+    else
+      fail "package is not installed: $package"
+    fi
+  done
+
+  gimp_command=$(command -v gimp 2>/dev/null || true)
+  photogimp_command=$(command -v photogimp 2>/dev/null || true)
+  if [[ -n $gimp_command ]]; then
+    pass "raw GIMP launcher is available: $gimp_command"
+  else
+    fail 'raw GIMP launcher is unavailable'
+  fi
+  if [[ -n $photogimp_command ]]; then
+    pass "PhotoGIMP launcher is available: $photogimp_command"
+  else
+    fail 'PhotoGIMP launcher is unavailable'
+  fi
+
+  if [[ -n $gimp_command && -n $photogimp_command ]]; then
+    if [[ $(readlink -f -- "$gimp_command") == $(readlink -f -- "$photogimp_command") ]]; then
+      fail 'raw GIMP and PhotoGIMP resolve to the same launcher'
+    else
+      pass 'raw GIMP and PhotoGIMP use distinct launchers'
+    fi
+
+    owner=$(pacman -Qoq "$gimp_command" 2>/dev/null || true)
+    if [[ $owner == gimp ]]; then
+      pass 'raw GIMP launcher is owned by gimp'
+    else
+      fail "raw GIMP launcher has unexpected package owner: ${owner:-none}"
+    fi
+    owner=$(pacman -Qoq "$photogimp_command" 2>/dev/null || true)
+    if [[ $owner == photogimp ]]; then
+      pass 'PhotoGIMP launcher is owned by photogimp'
+    else
+      fail "PhotoGIMP launcher has unexpected package owner: ${owner:-none}"
+    fi
+
+    if grep -q 'PhotoGIMP' "$photogimp_command" &&
+      grep -q 'export GIMP3_DIRECTORY' "$photogimp_command"; then
+      pass 'PhotoGIMP wrapper isolates GIMP3_DIRECTORY'
+    else
+      fail 'PhotoGIMP wrapper does not declare its isolated profile directory'
+    fi
+  fi
+
+  photogimp_desktop=$(find_desktop_file photogimp.desktop || true)
+  if [[ -n $photogimp_desktop ]] &&
+    grep -Eq '^Exec=photogimp([[:space:]]|$)' "$photogimp_desktop" &&
+    grep -Fxq 'TryExec=photogimp' "$photogimp_desktop"; then
+    pass 'PhotoGIMP desktop entry launches the isolated wrapper'
+  else
+    fail 'PhotoGIMP desktop entry is missing or bypasses its wrapper'
+  fi
+
+  gimp_desktop=$(find_desktop_file gimp.desktop ||
+    find_desktop_file org.gimp.GIMP.desktop || true)
+  if [[ -n $gimp_desktop ]] &&
+    grep -Eq '^Exec=gimp(-[0-9]+([.][0-9]+)*)?([[:space:]]|$)' "$gimp_desktop"; then
+    pass 'raw GIMP desktop entry remains available as rollback'
+  else
+    fail 'raw GIMP desktop entry is unavailable or does not launch gimp'
+  fi
+}
+
+check_profile_isolation() {
+  local config_home raw_profile photogimp_profile
+  local raw_real photogimp_real
+  config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+  raw_profile=$config_home/GIMP
+  photogimp_profile=$config_home/PhotoGIMP
+  raw_real=$(realpath -m -- "$raw_profile")
+  photogimp_real=$(realpath -m -- "$photogimp_profile")
+
+  if [[ $raw_real == "$photogimp_real" ]]; then
+    fail 'PhotoGIMP and raw GIMP resolve to the same profile path'
+  else
+    pass 'PhotoGIMP and raw GIMP profile paths are isolated'
+  fi
+
+  if [[ -d $photogimp_profile ]]; then
+    pass 'PhotoGIMP first-run profile exists'
+    if [[ -f $photogimp_profile/shortcutsrc ]] &&
+      grep -Fxq '(action "tools-size-decrease" "bracketleft")' \
+        "$photogimp_profile/shortcutsrc" &&
+      grep -Fxq '(action "tools-size-increase" "bracketright")' \
+        "$photogimp_profile/shortcutsrc"; then
+      pass 'PhotoGIMP profile contains bracket brush-size shortcuts'
+    else
+      warn 'PhotoGIMP shortcuts require an interactive bracket-key check'
+    fi
+  else
+    warn 'PhotoGIMP profile is not initialized; first photogimp launch will create it'
+  fi
+
+  if [[ -d $raw_profile ]]; then
+    pass 'raw GIMP profile remains independently available'
+  else
+    warn 'raw GIMP profile does not exist yet; launch gimp to test the rollback path'
+  fi
+
+  if [[ -n ${GIMP3_DIRECTORY:-} ]]; then
+    fail 'GIMP3_DIRECTORY is globally set; raw GIMP rollback is not isolated'
+  else
+    pass 'GIMP3_DIRECTORY is not globally overridden'
+  fi
+}
+
+check_session_integration() {
+  local clients_json gimp_count xwayland_count mime_type default_app
+
+  if [[ -n ${WAYLAND_DISPLAY:-} ]]; then
+    pass 'a Wayland display is available'
+  else
+    warn 'no Wayland display is available; graphical scaling checks are deferred'
+  fi
+
+  case ${GDK_BACKEND:-} in
+    "" | *wayland*)
+      pass 'GDK_BACKEND does not force GIMP onto X11'
+      ;;
+    *)
+      fail "GDK_BACKEND forces a non-Wayland backend: $GDK_BACKEND"
+      ;;
+  esac
+
+  if pacman -Q fcitx5-gtk >/dev/null 2>&1; then
+    pass 'Fcitx GTK input module is installed'
+  else
+    fail 'Fcitx GTK input module is not installed'
+  fi
+
+  if fcitx5-remote >/dev/null 2>&1; then
+    pass 'Fcitx is reachable in the current session'
+  else
+    warn 'Fcitx is not reachable; Korean composition check is deferred'
+  fi
+
+  if command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 &&
+    clients_json=$(hyprctl -j clients 2>/dev/null); then
+    gimp_count=$(jq '[.[] | select(
+      ((.class // "") + " " + (.initialClass // ""))
+      | test("gimp"; "i")
+    )] | length' <<<"$clients_json")
+    xwayland_count=$(jq '[.[] | select(
+      (((.class // "") + " " + (.initialClass // ""))
+      | test("gimp"; "i")) and (.xwayland == true)
+    )] | length' <<<"$clients_json")
+    if ((gimp_count == 0)); then
+      warn 'no running GIMP client is available for a live Wayland check'
+    elif ((xwayland_count == 0)); then
+      pass "all running GIMP clients are native Wayland ($gimp_count)"
+    else
+      fail "$xwayland_count of $gimp_count running GIMP clients use XWayland"
+    fi
+  else
+    warn 'Hyprland IPC is unavailable; live GIMP backend check is deferred'
+  fi
+
+  if command -v xdg-mime >/dev/null 2>&1; then
+    for mime_type in image/png image/jpeg image/tiff image/x-xcf; do
+      default_app=$(xdg-mime query default "$mime_type" 2>/dev/null || true)
+      printf '[INFO] default for %s: %s\n' "$mime_type" "${default_app:-unassigned}"
+    done
+  else
+    warn 'xdg-mime is unavailable; image association reporting is deferred'
+  fi
+}
+
+run_smoke_test() {
+  local answer
+
+  [[ -t 0 ]] || {
+    fail '--smoke requires an interactive terminal'
+    return
+  }
+  [[ -n ${WAYLAND_DISPLAY:-}${DISPLAY:-} ]] || {
+    fail '--smoke requires a graphical session'
+    return
+  }
+  command -v uwsm >/dev/null 2>&1 || {
+    fail '--smoke requires uwsm'
+    return
+  }
+
+  cat <<'EOF'
+
+The PhotoGIMP launch below may perform the package's normal first-run copy to
+~/.config/PhotoGIMP. This helper will not edit that profile itself.
+EOF
+  read -r -p 'Launch PhotoGIMP for the interactive smoke test? [y/N] ' answer
+  [[ $answer =~ ^[Yy]$ ]] || {
+    warn 'interactive PhotoGIMP smoke test was skipped'
+    return
+  }
+
+  uwsm app -- photogimp --new-instance >/dev/null 2>&1 &
+  cat <<'EOF'
+Verify PhotoGIMP has a Photoshop-like single-window layout, bracket brush-size
+shortcuts, correct 1.5-scale sizing, and Korean text composition. Quit it
+completely before continuing.
+EOF
+  read -r -p 'Did PhotoGIMP pass those checks? [y/N] ' answer
+  if [[ $answer =~ ^[Yy]$ ]]; then
+    pass 'interactive PhotoGIMP acceptance was confirmed'
+  else
+    fail 'interactive PhotoGIMP acceptance was not confirmed'
+  fi
+
+  uwsm app -- gimp --new-instance >/dev/null 2>&1 &
+  cat <<'EOF'
+Verify raw GIMP opens without the PhotoGIMP layout and remains usable as the
+rollback path. No document needs to be opened or modified.
+EOF
+  read -r -p 'Did raw GIMP pass the rollback check? [y/N] ' answer
+  if [[ $answer =~ ^[Yy]$ ]]; then
+    pass 'interactive raw GIMP rollback was confirmed'
+  else
+    fail 'interactive raw GIMP rollback was not confirmed'
+  fi
+}
+
+check_packages_and_launchers
+check_profile_isolation
+check_session_integration
+
+if [[ $mode == smoke && $failures -eq 0 ]]; then
+  run_smoke_test
+fi
+
+printf 'Graphics workflow result: %d failure(s), %d warning(s).\n' \
+  "$failures" "$warnings"
+((failures == 0))
