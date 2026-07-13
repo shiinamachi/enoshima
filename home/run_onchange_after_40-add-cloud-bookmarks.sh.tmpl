@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+bookmarks_file=${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/bookmarks
+bookmarks_dir=$(dirname -- "$bookmarks_file")
+google_uri="file://$HOME/Cloud/GoogleDrive"
+proton_uri="file://$HOME/Cloud/ProtonDrive"
+
+install -d -m 0700 -- "$bookmarks_dir"
+touch -- "$bookmarks_file"
+chmod 0600 -- "$bookmarks_file"
+
+temporary=$(mktemp --tmpdir="$bookmarks_dir" .bookmarks.XXXXXX)
+cleanup() {
+  rm -f -- "$temporary"
+}
+trap cleanup EXIT
+
+# Preserve user bookmarks while replacing only the two repository-owned URIs.
+awk -v google="$google_uri" -v proton="$proton_uri" \
+  '$1 != google && $1 != proton' "$bookmarks_file" >"$temporary"
+printf '%s Google Drive\n%s Proton Drive\n' "$google_uri" "$proton_uri" >>"$temporary"
+chmod 0600 -- "$temporary"
+mv -- "$temporary" "$bookmarks_file"
+trap - EXIT

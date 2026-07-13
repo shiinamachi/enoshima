@@ -52,6 +52,7 @@ jq
 lib32-mesa
 lib32-vulkan-intel
 libcamera
+libsecret
 libva-utils
 linux
 linux-firmware

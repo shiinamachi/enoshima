@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+
+# Mount one of the repository-declared cloud drives. Account configuration,
+# tokens, the config password, and the decrypted VFS cache remain outside Git.
+set -euo pipefail
+umask 077
+
+# Do not permit a login shell or user-manager environment to bypass the
+# keyring password command or opt the mount into cross-user FUSE access.
+unset RCLONE_CONFIG_PASS RCLONE_PASSWORD_COMMAND RCLONE_ALLOW_OTHER
+
+die() {
+  printf 'rclone-cloud-mount: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ $# -eq 1 ]] || die 'usage: rclone-cloud-mount google|proton'
+[[ -n ${HOME:-} && $HOME == /* ]] || die 'HOME must be an absolute path'
+
+readonly config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+readonly cache_home=${XDG_CACHE_HOME:-$HOME/.cache}
+readonly config_file=$config_home/rclone/rclone.conf
+readonly password_helper=$HOME/.local/bin/rclone-cloud-password
+
+case $1 in
+  google)
+    readonly remote=GoogleDrive
+    readonly mount_point=$HOME/Cloud/GoogleDrive
+    readonly cache_dir=$cache_home/rclone/google-drive
+    readonly -a remote_options=(
+      --dir-cache-time 168h
+      --poll-interval 1m
+    )
+    ;;
+  proton)
+    readonly remote=ProtonDrive
+    readonly mount_point=$HOME/Cloud/ProtonDrive
+    readonly cache_dir=$cache_home/rclone/proton-drive
+    readonly -a remote_options=(
+      --dir-cache-time 5m
+      --poll-interval 0
+      --protondrive-enable-caching=false
+    )
+    ;;
+  *)
+    die 'usage: rclone-cloud-mount google|proton'
+    ;;
+esac
+
+for command_path in /usr/bin/rclone /usr/bin/fusermount3; do
+  [[ -x $command_path ]] || die "required command is missing: $command_path"
+done
+[[ -x $password_helper ]] || die "password helper is missing: $password_helper"
+
+# A missing config or remote means this account has not been onboarded. It is
+# intentionally not repository drift and must not leave a failed user unit.
+if [[ ! -s $config_file ]]; then
+  printf 'rclone-cloud-mount: %s is not onboarded; run rclone-cloud-setup %s\n' "$remote" "$1" >&2
+  exit 0
+fi
+
+[[ -f $config_file && ! -L $config_file ]] ||
+  die "refusing to use a non-regular config path: $config_file"
+chmod 0600 -- "$config_file"
+
+readonly -a config_options=(
+  --config "$config_file"
+  --password-command "$password_helper"
+  --ask-password=false
+)
+
+/usr/bin/rclone config encryption check "${config_options[@]}" >/dev/null ||
+  die 'the rclone config is not encrypted or GNOME Keyring could not unlock it'
+
+remotes=$(/usr/bin/rclone listremotes "${config_options[@]}") ||
+  die 'could not read remotes from the encrypted rclone config'
+if ! /usr/bin/grep -Fxq -- "$remote:" <<<"$remotes"; then
+  printf 'rclone-cloud-mount: %s is not configured; run rclone-cloud-setup %s\n' "$remote" "$1" >&2
+  exit 0
+fi
+unset remotes
+
+/usr/bin/install -d -m 0700 -- "$mount_point" "$cache_dir"
+
+exec /usr/bin/rclone mount "$remote:" "$mount_point" \
+  "${config_options[@]}" \
+  --cache-dir "$cache_dir" \
+  --vfs-cache-mode full \
+  --vfs-cache-max-size 50Gi \
+  --vfs-cache-max-age 720h \
+  --vfs-cache-min-free-space 5Gi \
+  --vfs-cache-poll-interval 1m \
+  --vfs-write-back 15m \
+  --dir-perms 0700 \
+  --file-perms 0600 \
+  --umask 077 \
+  "${remote_options[@]}"

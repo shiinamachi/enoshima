@@ -1,0 +1,23 @@
+[Unit]
+Description=Mount Google Drive with encrypted rclone configuration
+Documentation=https://rclone.org/drive/ https://rclone.org/commands/rclone_mount/
+PartOf=graphical-session.target
+After=graphical-session.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+UMask=0077
+UnsetEnvironment=RCLONE_CONFIG_PASS RCLONE_PASSWORD_COMMAND RCLONE_ALLOW_OTHER
+ExecStartPre=-/usr/bin/fusermount3 -uz %h/Cloud/GoogleDrive
+ExecStartPre=/usr/bin/install -d -m 0700 %h/Cloud/GoogleDrive %h/.cache/rclone/google-drive
+ExecStart=%h/.local/bin/rclone-cloud-mount google
+ExecStop=-/usr/bin/fusermount3 -uz %h/Cloud/GoogleDrive
+KillSignal=SIGINT
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=30
+PrivateTmp=true
+
+[Install]
+WantedBy=graphical-session.target

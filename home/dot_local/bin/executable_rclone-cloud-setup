@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+
+# Interactive account onboarding for the two repository-declared rclone
+# mounts. Remote tokens stay in an encrypted user config and its randomly
+# generated encryption password stays only in GNOME Keyring.
+set -euo pipefail
+umask 077
+
+# Always use the repository-declared GNOME Keyring password command and keep
+# accidental environment overrides from enabling cross-user FUSE access.
+unset RCLONE_CONFIG_PASS RCLONE_PASSWORD_COMMAND RCLONE_ALLOW_OTHER
+
+die() {
+  printf 'rclone-cloud-setup: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage: rclone-cloud-setup google|proton|all
+
+Create and verify the GoogleDrive and/or ProtonDrive rclone remote. Google
+authorization and Proton credentials/2FA remain interactive. No account data
+is written to this repository.
+EOF
+}
+
+[[ $# -eq 1 ]] || {
+  usage >&2
+  exit 2
+}
+case $1 in
+  google | proton | all) ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+[[ -t 0 && -t 1 ]] || die 'run this helper interactively from a terminal'
+[[ -n ${HOME:-} && $HOME == /* ]] || die 'HOME must be an absolute path'
+
+for command_path in \
+  /usr/bin/openssl \
+  /usr/bin/rclone \
+  /usr/bin/secret-tool \
+  /usr/bin/systemctl; do
+  [[ -x $command_path ]] || die "required command is missing: $command_path"
+done
+
+readonly config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+readonly config_dir=$config_home/rclone
+readonly config_file=$config_dir/rclone.conf
+readonly password_helper=$HOME/.local/bin/rclone-cloud-password
+[[ -x $password_helper ]] || die "password helper is missing: $password_helper"
+
+/usr/bin/install -d -m 0700 -- "$config_dir"
+if [[ -e $config_file ]]; then
+  [[ -f $config_file && ! -L $config_file ]] ||
+    die "refusing to use a non-regular config path: $config_file"
+  chmod 0600 -- "$config_file"
+else
+  /usr/bin/install -m 0600 /dev/null "$config_file"
+fi
+
+keyring_has_password=false
+if "$password_helper" >/dev/null 2>&1; then
+  keyring_has_password=true
+fi
+
+config_is_encrypted=false
+if /usr/bin/grep -q '^RCLONE_ENCRYPT_V[0-9]\+:' "$config_file"; then
+  config_is_encrypted=true
+fi
+
+if [[ $config_is_encrypted == true && $keyring_has_password != true ]]; then
+  die 'the config is encrypted but its GNOME Keyring password is unavailable; unlock or restore the keyring entry'
+fi
+
+if [[ $keyring_has_password != true ]]; then
+  password=$(/usr/bin/openssl rand -base64 48)
+  [[ -n $password ]] || die 'failed to generate the rclone config password'
+  if ! printf '%s' "$password" |
+    /usr/bin/secret-tool store \
+      --label='my-arch-configurations rclone config' \
+      application my-arch-configurations \
+      purpose rclone-config; then
+    unset password
+    die 'could not store the rclone config password in GNOME Keyring'
+  fi
+  unset password
+fi
+
+readonly -a config_options=(
+  --config "$config_file"
+  --password-command "$password_helper"
+  --ask-password=false
+)
+
+if ! /usr/bin/rclone config encryption check "${config_options[@]}" >/dev/null 2>&1; then
+  [[ $config_is_encrypted != true ]] ||
+    die 'GNOME Keyring did not unlock the existing encrypted rclone config'
+  /usr/bin/rclone config encryption set "${config_options[@]}"
+fi
+
+/usr/bin/rclone config encryption check "${config_options[@]}" >/dev/null ||
+  die 'rclone did not produce an encrypted, unlockable config'
+chmod 0600 -- "$config_file"
+
+remote_exists() {
+  local remote=$1
+  local remotes
+
+  remotes=$(/usr/bin/rclone listremotes "${config_options[@]}") ||
+    die 'could not read remotes from the encrypted rclone config'
+  /usr/bin/grep -Fxq -- "$remote:" <<<"$remotes"
+}
+
+configure_remote() {
+  local kind=$1
+  local remote backend unit expected_type redacted actual_type
+
+  case $kind in
+    google)
+      remote=GoogleDrive
+      backend=drive
+      unit=rclone-google-drive.service
+      ;;
+    proton)
+      remote=ProtonDrive
+      backend=protondrive
+      unit=rclone-proton-drive.service
+      ;;
+    *)
+      die "unsupported remote kind: $kind"
+      ;;
+  esac
+  expected_type=$backend
+
+  if remote_exists "$remote"; then
+    printf '%s already exists; preserving its account configuration.\n' "$remote"
+  else
+    printf '\nConfiguring %s as an rclone %s remote.\n' "$remote" "$backend"
+    if [[ $kind == proton ]]; then
+      cat <<'EOF'
+Proton Drive support is experimental. Generate the account's Drive encryption
+keys with a normal browser login first, and avoid concurrent edits of the same
+file from multiple clients.
+EOF
+    fi
+    /usr/bin/rclone config create "$remote" "$backend" --all "${config_options[@]}"
+  fi
+
+  remote_exists "$remote" || die "$remote was not created"
+  redacted=$(/usr/bin/rclone config redacted "$remote" "${config_options[@]}")
+  actual_type=$(
+    /usr/bin/awk -F '[[:space:]]*=[[:space:]]*' \
+      '$1 == "type" { print $2; exit }' <<<"$redacted"
+  )
+  unset redacted
+  [[ $actual_type == "$expected_type" ]] ||
+    die "$remote has backend type '$actual_type', expected '$expected_type'"
+
+  printf 'Checking %s connectivity...\n' "$remote"
+  /usr/bin/rclone lsd "$remote:" "${config_options[@]}" >/dev/null ||
+    die "$remote authentication or connectivity check failed"
+
+  chmod 0600 -- "$config_file"
+  /usr/bin/systemctl --user daemon-reload
+  /usr/bin/systemctl --user enable --now "$unit"
+  printf '%s is configured and %s is enabled.\n' "$remote" "$unit"
+}
+
+case $1 in
+  google)
+    configure_remote google
+    ;;
+  proton)
+    configure_remote proton
+    ;;
+  all)
+    configure_remote google
+    configure_remote proton
+    ;;
+esac
+
+cat <<'EOF'
+
+Cloud onboarding is complete. The decrypted VFS caches remain plaintext while
+the LUKS-backed laptop is unlocked. Use `systemctl --user status
+rclone-google-drive.service rclone-proton-drive.service` to inspect mounts.
+EOF
