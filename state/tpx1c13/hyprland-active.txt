@@ -1,0 +1,16 @@
+[system info]
+Tag: v0.55.4, commits: 7378
+Version: #1 SMP PREEMPT_DYNAMIC Thu, 09 Jul 2026 19:55:55 +0000
+configProvider: lua
+
+[general:gaps_out]
+css gap data: 20 20 20 20
+set: true
+
+[input:repeat_rate]
+int: 25
+set: false
+
+[misc:disable_hyprland_logo]
+bool: false
+set: true

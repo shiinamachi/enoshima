@@ -1,0 +1,2 @@
+/etc/crypttab: exists but was not readable without interactive sudo
+/etc/snapper/configs/root: exists but was not readable without interactive sudo

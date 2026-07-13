@@ -1,0 +1,6 @@
+chatgpt-desktop-bin
+google-chrome
+lenovo-wwan-unlock
+lenovo-wwan-unlock-debug
+paru
+paru-debug

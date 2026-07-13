@@ -1,0 +1,51 @@
+---
+- name: Read native package manifest
+  ansible.builtin.set_fact:
+    native_packages: >-
+      {{
+        lookup('ansible.builtin.file', playbook_dir + '/../packages/native.txt').splitlines()
+        | map('regex_replace', '#.*$', '')
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+
+- name: Read management package manifest
+  ansible.builtin.set_fact:
+    management_packages: >-
+      {{
+        lookup('ansible.builtin.file', playbook_dir + '/../packages/management.txt').splitlines()
+        | map('regex_replace', '#.*$', '')
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+
+- name: Read optional dependency manifest
+  ansible.builtin.set_fact:
+    optional_dependency_packages: >-
+      {{
+        lookup('ansible.builtin.file', playbook_dir + '/../packages/optional-deps.txt').splitlines()
+        | map('regex_replace', '#.*$', '')
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+
+- name: Perform supported full system upgrade
+  community.general.pacman:
+    update_cache: true
+    upgrade: true
+  when: perform_full_upgrade | bool
+
+- name: Install desired native and management packages
+  community.general.pacman:
+    name: "{{ (native_packages + management_packages) | unique | list }}"
+    state: present
+
+- name: Install desired optional dependencies as dependencies
+  community.general.pacman:
+    name: "{{ optional_dependency_packages }}"
+    state: present
+    extra_args: --asdeps
+  when: optional_dependency_packages | length > 0

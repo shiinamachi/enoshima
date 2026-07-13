@@ -1,0 +1,37 @@
+---
+- name: Inspect installed Rust toolchains
+  ansible.builtin.command:
+    cmd: rustup toolchain list
+  register: rustup_toolchains
+  changed_when: false
+
+- name: Install desired Rust toolchain
+  ansible.builtin.command:
+    cmd: "rustup toolchain install {{ rustup_default_toolchain }}"
+  when: rustup_default_toolchain not in rustup_toolchains.stdout
+  changed_when: true
+
+- name: Inspect active Rust toolchain
+  ansible.builtin.command:
+    cmd: rustup show active-toolchain
+  register: rustup_active_toolchain
+  changed_when: false
+
+- name: Select default Rust toolchain
+  ansible.builtin.command:
+    cmd: "rustup default {{ rustup_default_toolchain }}"
+  when: "'(default)' not in rustup_active_toolchain.stdout"
+  changed_when: true
+
+- name: Inspect installed Rust components
+  ansible.builtin.command:
+    cmd: rustup component list --installed
+  register: rustup_installed_components
+  changed_when: false
+
+- name: Install desired Rust components
+  ansible.builtin.command:
+    cmd: "rustup component add {{ item }}"
+  loop: "{{ rustup_components }}"
+  when: "(item + '-') not in rustup_installed_components.stdout"
+  changed_when: true

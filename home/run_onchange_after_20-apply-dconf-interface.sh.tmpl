@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v dconf >/dev/null 2>&1; then
+  dconf load /org/gnome/desktop/interface/ <<'DCONF'
+{{ include ".chezmoitemplates/dconf-interface.ini" }}
+DCONF
+fi

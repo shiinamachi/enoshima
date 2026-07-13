@@ -1,0 +1,12 @@
+[findmnt]
+TARGET SOURCE                    FSTYPE OPTIONS
+/      /dev/mapper/cryptroot[/@] btrfs  rw,relatime,ssd,discard=async,space_cache=v2,subvolid=256,subvol=/@
+└─/efi /dev/nvme0n1p1            vfat   rw,nosuid,nodev,noexec,relatime,nosymfollow,fmask=0177,dmask=0077,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro
+
+[lsblk]
+NAME          TYPE  FSTYPE      FSVER LABEL UUID                                 PARTUUID                             SIZE MOUNTPOINTS MODEL
+zram0         disk  swap        1     zram0 a5443549-5e51-4239-a1a0-6362097d0b7a                                      7.7G [SWAP]      
+nvme0n1       disk                                                                                                    1.9T             SKHynix_HFS002TFM9X179N
+├─nvme0n1p1   part  vfat        FAT32 EFI   364E-D75A                            ee918224-253d-4620-bddb-36fcbbcb840e   1G /efi        
+└─nvme0n1p2   part  crypto_LUKS 2           d2da290f-101d-441a-b77b-9115bf2b0e08 2dbdd5f8-b89f-4c4b-b5d1-436d41da180d 1.9T             
+  └─cryptroot crypt btrfs             ARCH  7604249b-d582-4fd9-99ab-b46d796aefc9                                      1.9T /           

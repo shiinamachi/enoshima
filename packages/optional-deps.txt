@@ -1,0 +1,2 @@
+# Installed optional dependencies intentionally preserved as dependencies.
+imagemagick

@@ -1,0 +1,8 @@
+---
+- name: Configure system service scope
+  ansible.builtin.include_tasks: system.yml
+  when: service_scope == 'system'
+
+- name: Configure user service scope
+  ansible.builtin.include_tasks: user.yml
+  when: service_scope == 'user'

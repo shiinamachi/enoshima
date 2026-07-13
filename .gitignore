@@ -1,0 +1,11 @@
+local/
+*.retry
+.ansible/
+work/
+
+# Secrets and credentials are intentionally outside this repository.
+.env
+*.key
+*.pem
+ansible/.vault_pass
+ansible/inventory/host_vars/*/secrets.yml

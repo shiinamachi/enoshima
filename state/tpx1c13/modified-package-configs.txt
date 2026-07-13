@@ -1,0 +1,12 @@
+/etc/conf.d/snapper
+/etc/group
+/etc/hosts
+/etc/locale.gen
+/etc/mkinitcpio.conf
+/etc/pacman.conf
+/etc/pacman.d/mirrorlist
+/etc/passwd
+/etc/resolv.conf
+/etc/shells
+/etc/subgid
+/etc/subuid

@@ -1,0 +1,61 @@
+---
+system_hostname: tpx1c13
+
+# Hardware-bound inventory. Replace these values after repartitioning.
+root_mapper_name: cryptroot
+root_luks_uuid: d2da290f-101d-441a-b77b-9115bf2b0e08
+root_btrfs_uuid: 7604249b-d582-4fd9-99ab-b46d796aefc9
+root_btrfs_label: ARCH
+root_btrfs_subvolume: "@"
+esp_partition_uuid: 364E-D75A
+esp_partition_partuuid: ee918224-253d-4620-bddb-36fcbbcb840e
+
+manage_boot_config: true
+manage_empty_fstab: true
+snapper_configure_root: true
+
+kernel_command_line: >-
+  root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=subvol=@ rw
+
+uki_presets:
+  - name: linux
+    kernel: /boot/vmlinuz-linux
+    output: /efi/EFI/Linux/arch-linux.efi
+  - name: linux-lts
+    kernel: /boot/vmlinuz-linux-lts
+    output: /efi/EFI/Linux/arch-linux-lts.efi
+
+zram_size_expression: min(ram / 4, 8192)
+zram_compression_algorithm: zstd
+zram_swap_priority: 100
+
+system_units_started:
+  - bluetooth.service
+  - lenovo-cfgservice.service
+  - ModemManager.service
+  - NetworkManager-dispatcher.service
+  - NetworkManager-wait-online.service
+  - NetworkManager.service
+  - power-profiles-daemon.service
+  - sddm.service
+  - systemd-timesyncd.service
+  - systemd-userdbd.socket
+  - remote-fs.target
+  - paccache.timer
+  - snapper-cleanup.timer
+  - snapper-timeline.timer
+
+system_units_enabled_only:
+  - getty@.service
+
+user_units_started:
+  - hypridle.service
+  - hyprpaper.service
+  - hyprpolkitagent.service
+  - swaync.service
+  - waybar.service
+  - wireplumber.service
+  - xdg-user-dirs.service
+  - p11-kit-server.socket
+  - pipewire-pulse.socket
+  - pipewire.socket

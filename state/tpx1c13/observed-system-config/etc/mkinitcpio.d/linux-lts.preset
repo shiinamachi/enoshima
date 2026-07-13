@@ -1,0 +1,6 @@
+ALL_kver="/boot/vmlinuz-linux-lts"
+ALL_cmdline="/etc/kernel/cmdline"
+
+PRESETS=('default')
+
+default_uki="/efi/EFI/Linux/arch-linux-lts.efi"

@@ -1,0 +1,90 @@
+[bootctl]
+Failed to read "/efi/EFI/systemd": Permission denied
+Failed to open '/efi/loader/loader.conf': Permission denied
+System:
+      Firmware: UEFI 2.70 (Lenovo 0.4448)
+ Firmware Arch: x64
+   Secure Boot: enabled (deployed)
+  TPM2 Support: yes
+  Measured UKI: yes
+   Measured OS: yes
+  Boot into FW: supported
+ Platform Lang: en_US.UTF-8
+
+Current Boot Loader:
+        Product: systemd-boot 261.1-1-arch
+       Features: ✓ Boot counting
+                 ✓ Menu timeout control
+                 ✓ One-shot menu timeout control
+                 ✓ Default entry control
+                 ✓ One-shot entry control
+                 ✓ Support for XBOOTLDR partition
+                 ✓ Support for passing random seed to OS
+                 ✓ Load drop-in drivers
+                 ✓ Support Type #1 sort-key field
+                 ✓ Support @saved pseudo-entry
+                 ✓ Support Type #1 devicetree field
+                 ✓ Enroll SecureBoot keys
+                 ✓ Retain SHIM protocols
+                 ✓ Menu can be disabled
+                 ✓ Multi-Profile UKIs are supported
+                 ✓ Loader reports network boot URL
+                 ✓ Support Type #1 uki field
+                 ✓ Support Type #1 uki-url field
+                 ✓ Loader reports active TPM2 PCR banks
+                 ✓ Loader reports firmware keyboard layout
+                 ✓ Loader measures SMBIOS information
+      Partition: /dev/disk/by-partuuid/ee918224-253d-4620-bddb-36fcbbcb840e
+         Loader: └─/efi//EFI/BOOT/BOOTX64.EFI
+Keyboard Layout: n/a (not reported by firmware)
+  Current Entry: arch-linux.efi
+
+Current Stub:
+        Product: systemd-stub 261.1-1-arch
+       Features: ✓ Stub reports loader partition information
+                 ✓ Stub reports stub partition information
+                 ✓ Stub reports network boot URL
+                 ✓ Picks up credentials from boot partition
+                 ✓ Picks up system extension images from boot partition
+                 ✓ Picks up configuration extension images from boot partition
+                 ✓ Measures kernel+command line+sysexts
+                 ✓ Support for passing random seed to OS
+                 ✓ Pick up .cmdline from addons
+                 ✓ Pick up .cmdline from SMBIOS Type 11
+                 ✓ Pick up .dtb from addons
+                 ✓ Stub understands profile selector
+                 ✓ Stub measures SMBIOS information
+      Partition: /dev/disk/by-partuuid/ee918224-253d-4620-bddb-36fcbbcb840e
+           Stub: └─/EFI/Linux/arch-linux.efi
+
+Random Seed:
+ System Token: set
+       Exists: Can't access /efi/loader/random-seed (Permission denied)
+
+Available Boot Loaders on ESP:
+          ESP: /efi (/dev/disk/by-partuuid/ee918224-253d-4620-bddb-36fcbbcb840e)
+         File: (can't access /efi: Permission denied)
+
+Boot Loaders Listed in EFI Variables:
+        Title: Windows Boot Manager
+           ID: 0x0000
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/ee918224-253d-4620-bddb-36fcbbcb840e
+         File: └─/efi//EFI/Microsoft/Boot/bootmgfw.efi
+
+        Title: Arch Linux
+           ID: 0x0001
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/956dd628-397c-4cf9-b6f4-c679f05c66a8
+         File: └─/efi//EFI/systemd/systemd-bootx64.efi
+
+
+[sbctl]
+Installed:	✓ sbctl is installed
+Owner GUID:	0520fd96-1f0c-4c8e-b39d-b30c761b4442
+Setup Mode:	✓ Disabled
+Secure Boot:	✓ Enabled
+Vendor Keys:	microsoft
+
+[kernel command line]
+root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=subvol=@ rw

@@ -1,0 +1,42 @@
+---
+- name: Configure Arch Linux system state
+  hosts: all
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    - name: Require Arch Linux
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == "Archlinux"
+        fail_msg: This playbook supports Arch Linux only.
+      tags:
+        - always
+
+  roles:
+    - role: packages
+      tags:
+        - packages
+    - role: system
+      tags:
+        - system
+    - role: services
+      vars:
+        service_scope: system
+      tags:
+        - services
+
+- name: Configure user-scoped state
+  hosts: all
+  gather_facts: false
+  become: false
+
+  roles:
+    - role: user_tools
+      tags:
+        - user-tools
+    - role: services
+      vars:
+        service_scope: user
+      tags:
+        - user-services

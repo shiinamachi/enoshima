@@ -1,0 +1,10 @@
+hypridle.service
+hyprpaper.service
+hyprpolkitagent.service
+p11-kit-server.socket
+pipewire-pulse.socket
+pipewire.socket
+swaync.service
+waybar.service
+wireplumber.service
+xdg-user-dirs.service

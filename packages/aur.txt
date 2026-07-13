@@ -1,0 +1,5 @@
+# AUR package bases. Generated -debug packages are captured only in state/.
+chatgpt-desktop-bin
+google-chrome
+lenovo-wwan-unlock
+paru

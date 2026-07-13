@@ -1,0 +1,15 @@
+ModemManager.service
+NetworkManager-dispatcher.service
+NetworkManager-wait-online.service
+NetworkManager.service
+bluetooth.service
+getty@.service
+lenovo-cfgservice.service
+paccache.timer
+power-profiles-daemon.service
+remote-fs.target
+sddm.service
+snapper-cleanup.timer
+snapper-timeline.timer
+systemd-timesyncd.service
+systemd-userdbd.socket

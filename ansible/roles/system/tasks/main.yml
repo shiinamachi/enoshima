@@ -1,0 +1,163 @@
+---
+- name: Ensure target user has the desired shell and groups
+  ansible.builtin.user:
+    name: "{{ target_user }}"
+    shell: "{{ target_user_shell }}"
+    groups: "{{ target_user_groups }}"
+    append: true
+
+- name: Configure subordinate user ID range
+  ansible.builtin.lineinfile:
+    path: /etc/subuid
+    regexp: "^{{ target_user | regex_escape }}:"
+    line: "{{ target_user }}:{{ subordinate_id_start }}:{{ subordinate_id_count }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure subordinate group ID range
+  ansible.builtin.lineinfile:
+    path: /etc/subgid
+    regexp: "^{{ target_user | regex_escape }}:"
+    line: "{{ target_user }}:{{ subordinate_id_start }}:{{ subordinate_id_count }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure hostname
+  ansible.builtin.hostname:
+    name: "{{ system_hostname }}"
+
+- name: Configure hosts file
+  ansible.builtin.template:
+    src: hosts.j2
+    dest: /etc/hosts
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure timezone
+  community.general.timezone:
+    name: "{{ system_timezone }}"
+
+- name: Generate desired locales
+  community.general.locale_gen:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ system_locales }}"
+
+- name: Configure system locale
+  ansible.builtin.template:
+    src: locale.conf.j2
+    dest: /etc/locale.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure virtual console keymap
+  ansible.builtin.template:
+    src: vconsole.conf.j2
+    dest: /etc/vconsole.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure pacman
+  ansible.builtin.template:
+    src: pacman.conf.j2
+    dest: /etc/pacman.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  when: manage_pacman_config | bool
+
+- name: Preserve empty fstab layout used by systemd GPT discovery
+  ansible.builtin.template:
+    src: fstab.j2
+    dest: /etc/fstab
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  when: manage_empty_fstab | bool
+
+- name: Configure zram generator
+  ansible.builtin.template:
+    src: zram-generator.conf.j2
+    dest: /etc/systemd/zram-generator.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Check for a Snapper root configuration
+  ansible.builtin.stat:
+    path: /etc/snapper/configs/root
+  register: snapper_root_config
+  when: snapper_configure_root | bool
+
+- name: Create default Snapper root configuration when absent
+  ansible.builtin.command:
+    cmd: snapper -c root create-config /
+  when:
+    - snapper_configure_root | bool
+    - not snapper_root_config.stat.exists
+  changed_when: true
+
+- name: Register root Snapper configuration
+  ansible.builtin.template:
+    src: snapper.conf.d.j2
+    dest: /etc/conf.d/snapper
+    owner: root
+    group: root
+    mode: "0644"
+  when: snapper_configure_root | bool
+
+- name: Configure initramfs crypttab
+  ansible.builtin.template:
+    src: crypttab.initramfs.j2
+    dest: /etc/crypttab.initramfs
+    owner: root
+    group: root
+    mode: "0644"
+  when: manage_boot_config | bool
+
+- name: Configure kernel command line
+  ansible.builtin.template:
+    src: kernel-cmdline.j2
+    dest: /etc/kernel/cmdline
+    owner: root
+    group: root
+    mode: "0644"
+  when: manage_boot_config | bool
+
+- name: Configure mkinitcpio hooks
+  ansible.builtin.template:
+    src: mkinitcpio.conf.j2
+    dest: /etc/mkinitcpio.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  when: manage_boot_config | bool
+
+- name: Configure UKI presets
+  ansible.builtin.template:
+    src: mkinitcpio-preset.j2
+    dest: "/etc/mkinitcpio.d/{{ item.name }}.preset"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ uki_presets }}"
+  when: manage_boot_config | bool
+
+- name: Rebuild boot artifacts only when explicitly requested
+  ansible.builtin.command:
+    cmd: mkinitcpio -P
+  when:
+    - manage_boot_config | bool
+    - apply_boot_artifacts | bool
+  changed_when: true

@@ -1,0 +1,1 @@
+cryptroot UUID=d2da290f-101d-441a-b77b-9115bf2b0e08 none tpm2-device=auto,x-initrd.attach,discard

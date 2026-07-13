@@ -1,0 +1,9 @@
+user=kentakang
+uid=1000
+groups=kentakang wheel
+shell=/bin/bash
+timezone=Asia/Seoul
+locale=
+keymap=
+session_type=wayland
+desktop=Hyprland

@@ -1,0 +1,36 @@
+---
+target_user: kentakang
+target_user_home: /home/kentakang
+target_user_shell: /bin/bash
+target_user_groups:
+  - wheel
+
+system_timezone: Asia/Seoul
+system_locale: en_US.UTF-8
+system_locales:
+  - en_US.UTF-8
+  - ko_KR.UTF-8
+system_keymap: us
+
+perform_full_upgrade: true
+manage_pacman_config: true
+manage_boot_config: false
+manage_empty_fstab: false
+apply_boot_artifacts: false
+snapper_configure_root: false
+
+subordinate_id_start: 100000
+subordinate_id_count: 65536
+
+system_units_started: []
+system_units_enabled_only: []
+user_units_started: []
+
+rustup_default_toolchain: stable
+rustup_components:
+  - cargo
+  - clippy
+  - rust-docs
+  - rust-std
+  - rustc
+  - rustfmt

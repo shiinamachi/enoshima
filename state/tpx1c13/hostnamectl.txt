@@ -1,0 +1,13 @@
+  Static hostname: tpx1c13
+        Icon name: computer-laptop
+          Chassis: laptop 💻
+Chassis Asset Tag: No Asset Information
+ Operating System: Arch Linux
+           Kernel: Linux 7.1.3-arch1-2
+     Architecture: x86-64
+  Hardware Vendor: Lenovo
+   Hardware Model: ThinkPad X1 Carbon Gen 13
+     Hardware SKU: LENOVO_MT_21NX_BU_Think_FM_ThinkPad X1 Carbon Gen 13
+ Firmware Version: N4MET29W (1.16 )
+    Firmware Date: Mon 2026-04-27
+     Firmware Age: 2month 2w 2d

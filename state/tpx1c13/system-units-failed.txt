@@ -1,0 +1,1 @@
+● systemd-vconsole-setup.service loaded failed failed Virtual Console Setup
