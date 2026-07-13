@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+die() {
+  printf 'rhwp-enable-defaults: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ $# -eq 2 ]] || die 'usage: rhwp-enable-defaults VALIDATED_COPY.hwp VALIDATED_COPY.hwpx'
+[[ -f $1 && ${1,,} == *.hwp ]] || die 'the first argument must be a tested HWP copy'
+[[ -f $2 && ${2,,} == *.hwpx ]] || die 'the second argument must be a tested HWPX copy'
+command -v rhwp-desktop >/dev/null 2>&1 || die 'RHWP Desktop is not installed'
+command -v xdg-mime >/dev/null 2>&1 || die 'xdg-mime is not installed'
+[[ -t 0 ]] || die 'run this acceptance gate interactively'
+
+cat <<'EOF'
+Enable RHWP Desktop as the HWP/HWPX default only after both supplied copies:
+
+  1. opened and rendered acceptably in RHWP Desktop;
+  2. were saved to new files, never over the originals;
+  3. reopened successfully; and
+  4. were compared with Hancom Docs for required complex layout.
+
+Type exactly "enable rhwp defaults" to record that acceptance locally.
+EOF
+
+read -r confirmation
+[[ $confirmation == 'enable rhwp defaults' ]] || die 'acceptance was not confirmed'
+
+for mime_type in \
+  application/haansofthwp \
+  application/vnd.hancom.hwp \
+  application/vnd.hancom.hwpx \
+  application/x-hwp \
+  application/x-hwpx; do
+  xdg-mime default rhwp-desktop.desktop "$mime_type"
+done
+
+printf 'RHWP Desktop is now the local HWP/HWPX default.\n'

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=RHWP Desktop
+Comment=Open HWP and HWPX documents through a protected rollout copy
+Exec=/usr/bin/rhwp-desktop %F
+TryExec=/usr/bin/rhwp-desktop
+Icon=rhwp-desktop
+Terminal=false
+StartupNotify=true
+StartupWMClass=rhwp-desktop
+Categories=Office;WordProcessor;
+MimeType=application/haansofthwp;application/vnd.hancom.hwp;application/vnd.hancom.hwpx;application/x-hwp;application/x-hwpx;

@@ -1,5 +1,8 @@
 [Default Applications]
 application/pdf=google-chrome.desktop
+application/vnd.openxmlformats-officedocument.presentationml.presentation=onlyoffice-desktopeditors.desktop
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=onlyoffice-desktopeditors.desktop
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=onlyoffice-desktopeditors.desktop
 application/xhtml+xml=google-chrome.desktop
 application/xml=google-chrome.desktop
 inode/directory=thunar.desktop
@@ -16,6 +19,9 @@ x-scheme-handler/slack=slack.desktop
 
 [Added Associations]
 application/pdf=google-chrome.desktop;
+application/vnd.openxmlformats-officedocument.presentationml.presentation=onlyoffice-desktopeditors.desktop;
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=onlyoffice-desktopeditors.desktop;
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=onlyoffice-desktopeditors.desktop;
 application/xhtml+xml=google-chrome.desktop;
 inode/directory=thunar.desktop;
 text/html=google-chrome.desktop;

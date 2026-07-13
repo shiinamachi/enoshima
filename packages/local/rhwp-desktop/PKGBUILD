@@ -1,0 +1,81 @@
+# Maintainer: local workstation configuration
+pkgname=rhwp-desktop
+pkgver=1.2.2
+pkgrel=1
+pkgdesc='Experimental HWP/HWPX desktop editor with a protected Chromium sandbox'
+arch=('x86_64')
+url='https://github.com/runableapp/rhwp-desktop'
+license=('MIT')
+depends=('alsa-lib' 'gtk3' 'hicolor-icon-theme' 'libnotify' 'libxss' 'nss' 'xdg-user-dirs')
+makedepends=('python')
+options=('!debug' '!strip')
+source=(
+  "rhwp-desktop-${pkgver}.AppImage::https://github.com/runableapp/rhwp-desktop/releases/download/v${pkgver}/rhwp-desktop-${pkgver}.AppImage"
+  "LICENSE-${pkgver}::https://raw.githubusercontent.com/runableapp/rhwp-desktop/v${pkgver}/LICENSE"
+  'rhwp-desktop.sh'
+  'rhwp-desktop.desktop'
+)
+noextract=("rhwp-desktop-${pkgver}.AppImage")
+sha256sums=(
+  '94295aa3fe74ee505d115936edd5b8df7e5293a205e244be4301a31725bfdeb7'
+  '875753e948dc6d97efeed236c5934a97b37f9e7f0e7295f50c6208c0c95e6497'
+  '26d154396857278b2ed6c8597cde5748f2bca1ccb6aa3ce44df06a24d57d8231'
+  '6c18160ebada49651be4ba392c9cc42867d9d66011841f9f0c8df5df8a6f22c9'
+)
+
+prepare() {
+  mkdir -p "rhwp-desktop-${pkgver}"
+  cd "rhwp-desktop-${pkgver}"
+  install -m0755 "$srcdir/rhwp-desktop-${pkgver}.AppImage" ./extract.AppImage
+  ./extract.AppImage --appimage-extract >/dev/null
+  rm extract.AppImage
+
+  # Upstream's AppImage defaults to --no-sandbox because a FUSE mount cannot
+  # provide a root-owned setuid helper. This package installs a real helper, so
+  # make sandboxing unconditional without changing the ASAR byte offsets.
+  python - <<'PY'
+from pathlib import Path
+
+path = Path("squashfs-root/resources/app.asar")
+data = path.read_bytes()
+needle = (
+    b"const CHROMIUM_SANDBOX_ENABLED = process.platform !== 'linux' || "
+    b"process.env.RHWP_ENABLE_CHROMIUM_SANDBOX === '1';"
+)
+prefix = b"const CHROMIUM_SANDBOX_ENABLED = true;"
+if data.count(needle) != 1:
+    raise SystemExit("review required: RHWP sandbox guard changed upstream")
+path.write_bytes(data.replace(needle, prefix + b" " * (len(needle) - len(prefix))))
+PY
+}
+
+check() {
+  cd "rhwp-desktop-${pkgver}/squashfs-root"
+  test -x rhwp-desktop
+  test -x chrome-sandbox
+  grep -aFq 'const CHROMIUM_SANDBOX_ENABLED = true;' resources/app.asar
+  grep -aFq 'sandbox: CHROMIUM_SANDBOX_ENABLED' resources/app.asar
+  ! grep -Fq -- '--no-sandbox' "$srcdir/rhwp-desktop.sh"
+  desktop-file-validate "$srcdir/rhwp-desktop.desktop"
+}
+
+package() {
+  cd "rhwp-desktop-${pkgver}/squashfs-root"
+  install -d "$pkgdir/opt/rhwp-desktop"
+  cp -a . "$pkgdir/opt/rhwp-desktop/"
+  rm -f \
+    "$pkgdir/opt/rhwp-desktop/AppRun" \
+    "$pkgdir/opt/rhwp-desktop/rhwp-desktop.desktop"
+  # Remove every inherited privilege bit before granting the one reviewed
+  # Chromium sandbox exception explicitly.
+  find "$pkgdir/opt/rhwp-desktop" -type f -perm /6000 -exec chmod a-s -- {} +
+  chmod 4755 "$pkgdir/opt/rhwp-desktop/chrome-sandbox"
+
+  install -Dm0755 "$srcdir/rhwp-desktop.sh" "$pkgdir/usr/bin/rhwp-desktop"
+  install -Dm0644 "$srcdir/rhwp-desktop.desktop" \
+    "$pkgdir/usr/share/applications/rhwp-desktop.desktop"
+  install -Dm0644 usr/share/icons/hicolor/256x256/apps/rhwp-desktop.png \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/rhwp-desktop.png"
+  install -Dm0644 "$srcdir/LICENSE-${pkgver}" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
