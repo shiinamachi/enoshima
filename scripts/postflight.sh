@@ -154,6 +154,14 @@ done
 check "Bottles Flatpak installed for the user" flatpak info --user com.usebottles.bottles
 
 if systemctl --user is-active --quiet graphical-session.target; then
+  hyprland_config_errors=$(hyprctl configerrors 2>/dev/null || true)
+  if [[ -z $hyprland_config_errors ]]; then
+    pass "Hyprland reports no live configuration errors"
+  else
+    fail "Hyprland reports one or more live configuration errors"
+    printf '%s\n' "$hyprland_config_errors" >&2
+  fi
+
   for unit in \
     pipewire.service \
     pipewire-pulse.service \

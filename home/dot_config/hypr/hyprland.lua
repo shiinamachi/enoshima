@@ -145,7 +145,6 @@ if hl.plugin ~= nil and hl.plugin.hyprbars ~= nil then
                 col = { text = "rgb(e9e8ff)" },
                 bar_title_enabled = true,
                 bar_text_size = 12,
-                bar_text_weight = 600,
                 bar_text_font = "Jetendard",
                 bar_text_align = "center",
                 bar_buttons_alignment = "left",
