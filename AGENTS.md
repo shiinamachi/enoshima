@@ -31,3 +31,14 @@
 - Never commit credentials, private keys, account data, Wine prefixes, cloud
   tokens, VM disk images, caches, or mutable user documents.
 - Preserve Arch Linux's full-upgrade model; never automate a partial upgrade.
+
+## Entrypoints
+
+- Extend the existing `bootstrap.sh`, `scripts/validate.sh`, and
+  `scripts/postflight.sh` entrypoints when adding managed workstation features.
+- Do not create parallel feature-specific bootstrap, validation, convergence,
+  or postflight entrypoints unless the user explicitly requests a separate
+  workflow.
+- Keep the default bootstrap path one-shot for all non-interactive desired
+  state, and reserve only credentials, account enrollment, destructive
+  approvals, and visual acceptance for documented manual gates.

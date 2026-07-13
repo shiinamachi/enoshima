@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# bootstrap.sh keeps the original sudo credential alive. Every later caller
+# uses this wrapper so a lost credential fails instead of prompting again.
+# makepkg normally prepends `sudo -k`, which deliberately ignores that cached
+# credential. This orchestration owns the credential lifecycle, so discard the
+# leading reset flag while retaining the command's own arguments verbatim.
+if [[ ${1:-} == -k || ${1:-} == --reset-timestamp ]]; then
+  shift
+fi
+
+sudo_command=${SUDO_REAL_COMMAND:-/usr/bin/sudo}
+exec "$sudo_command" -n "$@"

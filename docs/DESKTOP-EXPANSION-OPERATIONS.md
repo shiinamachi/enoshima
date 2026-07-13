@@ -24,7 +24,7 @@ Git이 소유하지 않는 계정 등록과 수동 검증을 완료하는 순서
 적용 전에 저장소와 chezmoi 변경을 확인한다.
 
 ```bash
-./scripts/validate-desktop-expansion.sh
+./scripts/validate.sh
 make chezmoi-diff
 ```
 
@@ -40,23 +40,16 @@ bootstrap 순서는 다음과 같다.
 2. 검토·고정된 로컬 PKGBUILD 설치
 3. Ansible 시스템 상태 적용
 4. 검토된 AUR allowlist 설치
-5. chezmoi 사용자 구성 적용
-6. postflight 실행
+5. AUR 패키지에 의존하는 Ansible 역할 재수렴
+6. chezmoi 사용자 구성 적용
+7. 기존 통합 postflight 실행
 
 부분 업그레이드나 별도의 `pacman -Sy`를 실행하지 않는다.
 
 `cloudflare-warp-bin`은 첫 실행에서 Ansible보다 뒤의 AUR 단계에 설치된다.
-따라서 첫 bootstrap은 `warp-svc` 활성화를 정상적으로 보류할 수 있다. AUR 설치가
-끝난 뒤 desktop expansion 역할을 한 번 더 수렴시킨다.
-
-```bash
-ANSIBLE_CONFIG="$PWD/ansible/ansible.cfg" \
-  ansible-playbook -K \
-  --inventory ansible/inventory/hosts.yml \
-  ansible/site.yml \
-  --limit tpx1c13 \
-  --tags desktop-expansion
-```
+bootstrap은 AUR 단계 직후 desktop expansion 역할을 자동으로 다시 수렴시켜
+`warp-svc.service`까지 같은 실행에서 enable/start한다. `SKIP_AUR=true`이면 새 AUR
+설치는 의도적으로 생략하지만, 이미 설치된 패키지에 대한 재수렴은 계속 수행한다.
 
 로그아웃 후 SDDM에서 `Hyprland (uwsm-managed)` 세션으로 비밀번호 로그인한다.
 chezmoi의 user-service hook은 Cyberdock과 Hyprbars ABI check를 enable하고 활성
@@ -346,8 +339,8 @@ gimp
 자동 검증을 먼저 다시 실행한다.
 
 ```bash
-./scripts/validate-desktop-expansion.sh
-./scripts/postflight-desktop-expansion.sh
+./scripts/validate.sh
+./scripts/postflight.sh
 ```
 
 그 다음 아래 항목을 실제 두 출력과 대표 앱에서 확인한다.

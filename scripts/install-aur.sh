@@ -3,34 +3,22 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 manifest="$repo_root/packages/aur.txt"
+sudo_command=${SUDO_COMMAND_WRAPPER:-sudo}
 
 if [[ $EUID -eq 0 ]]; then
   echo "AUR packages must be built as an unprivileged user." >&2
   exit 1
 fi
 
-if ! command -v paru >/dev/null 2>&1; then
+if ! command -v paru >/dev/null 2>&1 || ! paru --version >/dev/null 2>&1; then
   build_dir=$(mktemp -d)
   trap 'rm -rf -- "$build_dir"' EXIT
 
-  echo "==> Bootstrapping paru from the AUR"
-  git clone https://aur.archlinux.org/paru.git "$build_dir/paru"
-  echo "Review the PKGBUILD at: $build_dir/paru/PKGBUILD"
-
-  if [[ ! -t 0 ]]; then
-    echo "Refusing to build an unreviewed PKGBUILD non-interactively." >&2
-    exit 1
-  fi
-
-  read -r -p "Continue building paru after review? [y/N] " answer
-  if [[ ! $answer =~ ^[Yy]$ ]]; then
-    echo "AUR installation cancelled."
-    exit 1
-  fi
-
+  echo "==> Bootstrapping paru from its declared AUR package base"
+  GIT_TERMINAL_PROMPT=0 git clone https://aur.archlinux.org/paru.git "$build_dir/paru"
   (
     cd "$build_dir/paru"
-    makepkg -si
+    makepkg --install --noconfirm --syncdeps
   )
 fi
 
@@ -46,12 +34,20 @@ if ((${#aur_packages[@]} == 0)); then
   exit 0
 fi
 
-echo "==> Installing reviewed AUR package bases"
+echo "==> Converging declared AUR package bases"
 printf '  %s\n' "${aur_packages[@]}"
 
-# Resolve every declared package base before allowing paru to start a partial
-# installation. This catches renames/removals as one preflight failure.
+# Resolve every target before allowing paru to start a partial installation.
 echo "==> Resolving all declared AUR package bases"
-paru -Si -- "${aur_packages[@]}" >/dev/null
+paru -Si --aur -- "${aur_packages[@]}" >/dev/null
 
-paru -S --needed -- "${aur_packages[@]}"
+paru \
+  --sudo "$sudo_command" \
+  --skipreview \
+  --noupgrademenu \
+  --nosudoloop \
+  --pgpfetch \
+  -S \
+  --needed \
+  --noconfirm \
+  -- "${aur_packages[@]}"

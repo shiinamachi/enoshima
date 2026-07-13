@@ -189,9 +189,115 @@ if command -v desktop-file-validate >/dev/null 2>&1; then
 fi
 
 echo "==> Checking chezmoi source state"
-chezmoi --config /dev/null --config-format toml --source "$repo_root" managed >/dev/null
-chezmoi --config /dev/null --config-format toml --source "$repo_root" diff >/dev/null
-chezmoi --config /dev/null --config-format toml --source "$repo_root" --dry-run apply >/dev/null
+chezmoi_validation_home="$render_dir/chezmoi-home"
+mkdir -- "$chezmoi_validation_home"
+chezmoi_validation_args=(
+  --config /dev/null
+  --config-format toml
+  --source "$repo_root"
+  --destination "$chezmoi_validation_home"
+  --persistent-state "$render_dir/chezmoi-state.boltdb"
+  --no-tty
+)
+chezmoi "${chezmoi_validation_args[@]}" managed >/dev/null
+chezmoi "${chezmoi_validation_args[@]}" diff >/dev/null
+chezmoi "${chezmoi_validation_args[@]}" --force --dry-run apply >/dev/null
+
+echo "==> Testing dotfile conflict policies"
+"$repo_root/tests/test-apply-dotfiles.sh"
+
+echo "==> Testing single-authentication sudo wrapper"
+"$repo_root/tests/test-sudo-wrapper.sh"
+
+echo "==> Testing desktop expansion behavior"
+for test_script in \
+  tests/test-bootstrap-desktop-expansion.sh \
+  tests/test-cyberdock-state.sh \
+  tests/test-hyprbars-green.sh \
+  tests/test-desktop-scaling-status.sh \
+  tests/test-graphics-workflow.sh \
+  tests/test-kakaotalk-connectivity.sh; do
+  "$repo_root/$test_script"
+done
+
+echo "==> Checking desktop expansion QML and user units"
+if command -v qmllint >/dev/null 2>&1; then
+  qmllint home/dot_config/quickshell/cyberdock/shell.qml
+fi
+if command -v desktop-file-validate >/dev/null 2>&1; then
+  desktop-file-validate packages/local/rhwp-desktop/rhwp-desktop.desktop
+fi
+if command -v systemd-analyze >/dev/null 2>&1; then
+  unit_dir=$render_dir/desktop-expansion-units
+  mkdir -- "$unit_dir"
+  for unit in \
+    home/dot_config/systemd/user/cyberdock.service \
+    home/dot_config/systemd/user/hyprbars-check.service \
+    home/dot_config/systemd/user/protonmail-bridge.service \
+    home/dot_config/systemd/user/rclone-google-drive.service \
+    home/dot_config/systemd/user/rclone-proton-drive.service; do
+    sed -E \
+      's#^(Exec(Start|Stop)(Pre|Post)?=).*#\1/usr/bin/true#' \
+      "$unit" >"$unit_dir/$(basename -- "$unit")"
+  done
+  systemd-analyze --user verify "$unit_dir"/*.service
+fi
+
+echo "==> Checking desktop expansion security invariants"
+for package in \
+  fuse3 gimp libsecret quickshell rclone thunderbird \
+  ttf-caladea ttf-carlito ttf-liberation wev; do
+  grep -Fxq -- "$package" packages/native.txt
+done
+for package in cloudflare-warp-bin onlyoffice-bin photogimp; do
+  grep -Fxq -- "$package" packages/aur.txt
+done
+for package in protonmail-bridge rhwp-desktop ttf-jetendard; do
+  test -f "packages/local/$package/PKGBUILD"
+done
+
+wallpaper_sha=34053ea6a5b8a0b747261755a964917ffa14900ac85637bda346df5cb2bf64e6
+printf '%s  %s\n' \
+  "$wallpaper_sha" \
+  home/dot_local/share/backgrounds/cyberpunk-city.png | sha256sum --check --status
+
+grep -Fq 'sha256:94295aa3fe74ee505d115936edd5b8df7e5293a205e244be4301a31725bfdeb7' \
+  docs/DESKTOP-EXPANSION.md
+grep -Fq "'94295aa3fe74ee505d115936edd5b8df7e5293a205e244be4301a31725bfdeb7'" \
+  packages/local/rhwp-desktop/PKGBUILD
+grep -Fq 'chmod 4755 ' packages/local/rhwp-desktop/PKGBUILD
+if awk '!/^[[:space:]]*#/' packages/local/rhwp-desktop/rhwp-desktop.sh |
+  grep -Fq -- '--no-sandbox'; then
+  echo "RHWP launcher contains an unsafe sandbox bypass." >&2
+  exit 1
+fi
+
+for required_flag in \
+  '--vfs-cache-mode full' \
+  '--vfs-cache-max-size 50Gi' \
+  '--vfs-write-back 15m' \
+  '--vfs-cache-min-free-space 5Gi' \
+  '--protondrive-enable-caching=false'; do
+  grep -Fq -- "$required_flag" home/dot_local/bin/executable_rclone-cloud-mount
+done
+if grep -Fq -- '--allow-other' home/dot_local/bin/executable_rclone-cloud-mount; then
+  echo "rclone mount unexpectedly enables cross-user access." >&2
+  exit 1
+fi
+
+if rg -n \
+  '(1\.1\.1\.1|1\.0\.0\.1|2606:4700:4700|2606:4700:4700::1111)' \
+  ansible/roles/desktop_expansion/tasks/cloudflare.yml \
+  home/dot_local/bin/executable_cloudflare-one-{setup,status}; then
+  echo "Cloudflare integration hard-codes a DNS address." >&2
+  exit 1
+fi
+
+if git ls-files | rg -q \
+  '(^|/)(rclone\.conf|prefs\.js|key4\.db|logins\.json|drive_c|Cookies)(/|$)'; then
+  echo "A mutable account/profile artifact is tracked by Git." >&2
+  exit 1
+fi
 
 echo "==> Looking for accidentally committed key material"
 if rg -n --hidden --glob '!.git/**' \

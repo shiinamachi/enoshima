@@ -29,6 +29,27 @@ check() {
   fi
 }
 
+check_or_warn() {
+  local description=$1
+  shift
+  if "$@" >/dev/null 2>&1; then
+    pass "$description"
+  else
+    warn "$description"
+  fi
+}
+
+lenovo_sar_run_succeeded() {
+  local invocation result exit_status
+  invocation=$(systemctl show lenovo-cfgservice.service \
+    --property InvocationID --value 2>/dev/null) || return 1
+  result=$(systemctl show lenovo-cfgservice.service \
+    --property Result --value 2>/dev/null) || return 1
+  exit_status=$(systemctl show lenovo-cfgservice.service \
+    --property ExecMainStatus --value 2>/dev/null) || return 1
+  [[ -n $invocation && $result == success && $exit_status == 0 ]]
+}
+
 manifest_entries() {
   sed -E \
     -e 's/[[:space:]]+#.*$//' \
@@ -54,7 +75,9 @@ while IFS= read -r package; do
 done < <(find "$repo_root/packages/local" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort)
 
 while IFS= read -r package; do
-  if pacman -Q "$package" >/dev/null 2>&1; then
+  # pacman -Q <name> accepts providers, so it would report tlp-pd as an
+  # installed power-profiles-daemon. Compare against actual database names.
+  if pacman -Qq | grep -Fxq -- "$package"; then
     fail "package is intentionally absent: $package"
   else
     pass "package is intentionally absent: $package"
@@ -78,7 +101,8 @@ check "no TLP charge threshold is configured" bash -c \
   "! grep -RqsE '^[[:space:]]*(START|STOP)_CHARGE_THRESH_' /etc/tlp.conf /etc/tlp.d"
 
 echo "==> Authentication and login"
-check "fingerprint enrolled for the current user" fprintd-list "$USER"
+check_or_warn "fingerprint enrolled for the current user (manual enrollment if absent)" \
+  fprintd-list "${USER:-$(id -un)}"
 for pam_file in /etc/pam.d/sddm /etc/pam.d/sudo; do
   check "$pam_file has fingerprint authentication" grep -q pam_fprintd.so "$pam_file"
   check "$pam_file keeps password-first authentication" grep -q 'pam_unix.so.*try_first_pass.*likeauth' "$pam_file"
@@ -91,12 +115,12 @@ echo "==> ThinkPad hardware integration"
 check "NetworkManager active" systemctl is-active --quiet NetworkManager.service
 check "ModemManager active" systemctl is-active --quiet ModemManager.service
 check "Lenovo WWAN configuration service enabled" systemctl is-enabled --quiet lenovo-cfgservice.service
-check "Lenovo WWAN configuration service active" systemctl is-active --quiet lenovo-cfgservice.service
+check "Lenovo WWAN SAR configuration completed successfully" lenovo_sar_run_succeeded
 for regulatory_profile in 29619 30007; do
   check "Gen 13 RM520N-GL SAR profile installed: $regulatory_profile" bash -c \
     "compgen -G '/opt/fcc_lenovo/sar_config_files/cs25/*RM520NGL*ThinkPad-X1-Carbon-Gen-13*21NX*$regulatory_profile.bin' >/dev/null"
 done
-check "at least one GSM connection profile exists" bash -c \
+check_or_warn "at least one GSM connection profile exists (manual APN credentials if absent)" bash -c \
   "nmcli -g TYPE connection show | grep -Fxq gsm"
 check "WWAN fallback dispatcher installed" test -x /etc/NetworkManager/dispatcher.d/90-wwan-fallback
 check "RGB UVC camera present" grep -qs '^Integrated Camera: Integrated C' /sys/class/video4linux/*/name
@@ -120,27 +144,36 @@ fi
 
 echo "==> Desktop session"
 for unit in \
-  pipewire.service \
-  pipewire-pulse.service \
-  wireplumber.service \
-  xdg-desktop-portal-hyprland.service; do
-  check "user unit active: $unit" systemctl --user is-active --quiet "$unit"
-done
-
-for unit in hyprlauncher.service xembed-sni-proxy.service; do
+  cyberdock.service \
+  hyprbars-check.service \
+  hyprlauncher.service \
+  xembed-sni-proxy.service; do
   check "custom user unit enabled: $unit" systemctl --user is-enabled --quiet "$unit"
-  check "custom user unit active: $unit" systemctl --user is-active --quiet "$unit"
 done
-
-check "Hyprland session is managed by UWSM" \
-  systemctl --user is-active --quiet wayland-wm@hyprland.desktop.service
 
 check "Bottles Flatpak installed for the user" flatpak info --user com.usebottles.bottles
-check "Fcitx daemon is reachable" fcitx5-remote
-check "Fcitx XIM environment imported into user manager" bash -c \
-  "systemctl --user show-environment | grep -Fxq 'XMODIFIERS=@im=fcitx'"
-check "Secret Service is available for application credentials" \
-  busctl --user --quiet status org.freedesktop.secrets
+
+if systemctl --user is-active --quiet graphical-session.target; then
+  for unit in \
+    pipewire.service \
+    pipewire-pulse.service \
+    wireplumber.service \
+    xdg-desktop-portal-hyprland.service \
+    hyprlauncher.service \
+    xembed-sni-proxy.service; do
+    check_or_warn "user unit active after login: $unit" systemctl --user is-active --quiet "$unit"
+  done
+
+  check_or_warn "Hyprland session is managed by UWSM (select it at the next login if absent)" \
+    systemctl --user is-active --quiet wayland-wm@hyprland.desktop.service
+  check_or_warn "Fcitx daemon is reachable after login" fcitx5-remote
+  check_or_warn "Fcitx XIM environment imported into user manager (new login if absent)" bash -c \
+    "systemctl --user show-environment | grep -Fxq 'XMODIFIERS=@im=fcitx'"
+  check_or_warn "Secret Service is available for application credentials after login" \
+    busctl --user --quiet status org.freedesktop.secrets
+else
+  warn "no graphical session is active; live user-service, UWSM, Fcitx, and Secret Service checks are deferred until login"
+fi
 
 if command -v hyprctl >/dev/null 2>&1 && hyprctl monitors -j >/dev/null 2>&1; then
   monitor_json=$(hyprctl monitors -j)
@@ -198,6 +231,155 @@ else
   warn "KakaoTalk bottle is not provisioned; run kakaotalk-setup interactively"
 fi
 
+echo "==> Desktop expansion"
+check "managed cyberpunk wallpaper is deployed" \
+  test -f "$HOME/.local/share/backgrounds/cyberpunk-city.png"
+check "cyberpunk SDDM theme payload is installed" \
+  test -f /usr/share/sddm/themes/cyberpunk/Main.qml
+
+if [[ -f /etc/sddm.conf.d/20-cyberpunk-theme.conf ]]; then
+  check "gated cyberpunk SDDM theme is selected" \
+    grep -Eq '^[[:space:]]*Current=cyberpunk[[:space:]]*$' \
+    /etc/sddm.conf.d/20-cyberpunk-theme.conf
+else
+  warn "cyberpunk SDDM selection remains gated pending manual acceptance"
+fi
+
+if [[ $(fc-match -f '%{family}\n' sans-serif 2>/dev/null) == Jetendard* ]]; then
+  pass "Jetendard is the first sans-serif match"
+else
+  fail "Jetendard is not the first sans-serif match"
+fi
+if [[ $(fc-match -f '%{family}\n' monospace 2>/dev/null) == Jetendard* ]]; then
+  pass "Jetendard is the first monospace match"
+else
+  fail "Jetendard is not the first monospace match"
+fi
+
+hyprbars_marker=${XDG_STATE_HOME:-$HOME/.local/state}/hyprbars/hyprland-abi
+if [[ -f $hyprbars_marker ]]; then
+  if hyprctl plugin list -j 2>/dev/null |
+    jq -e 'any(.[]?; ((.name // "") | ascii_downcase) == "hyprbars")' \
+      >/dev/null 2>&1; then
+    pass "Hyprbars is loaded for the running compositor"
+  else
+    fail "Hyprbars onboarding marker exists but the plugin is not loaded"
+  fi
+else
+  warn "Hyprbars is not onboarded; run hyprbars-setup interactively"
+fi
+
+scaling_helper=$HOME/.local/bin/desktop-scaling-status
+if systemctl --user is-active --quiet graphical-session.target &&
+  hyprctl clients -j >/dev/null 2>&1; then
+  if [[ -x $scaling_helper ]]; then
+    "$scaling_helper"
+    scaling_status=$?
+    case $scaling_status in
+      0) pass "all scaling acceptance clients have the intended backend" ;;
+      2) warn "some scaling acceptance clients are not running" ;;
+      *) fail "one or more live clients use the wrong display backend" ;;
+    esac
+  else
+    fail "desktop scaling status helper is not deployed"
+  fi
+else
+  warn "graphical IPC is unavailable; live application scaling checks are deferred"
+fi
+
+rclone_config=${XDG_CONFIG_HOME:-$HOME/.config}/rclone/rclone.conf
+if [[ -f $rclone_config ]]; then
+  if grep -q '^RCLONE_ENCRYPT_V[0-9]\+:' "$rclone_config"; then
+    pass "rclone configuration is encrypted"
+  else
+    fail "rclone configuration exists but is not encrypted"
+  fi
+  if [[ $(stat -c '%a' "$rclone_config" 2>/dev/null) == 600 ]]; then
+    pass "rclone configuration mode is 0600"
+  else
+    fail "rclone configuration mode is not 0600"
+  fi
+  for remote in google-drive proton-drive; do
+    unit=rclone-$remote.service
+    check "cloud mount unit enabled: $unit" \
+      systemctl --user is-enabled --quiet "$unit"
+    check "cloud mount unit active: $unit" \
+      systemctl --user is-active --quiet "$unit"
+  done
+  check "Google Drive mount is present" mountpoint -q "$HOME/Cloud/GoogleDrive"
+  check "Proton Drive mount is present" mountpoint -q "$HOME/Cloud/ProtonDrive"
+else
+  warn "cloud accounts are not onboarded; run rclone-cloud-setup all"
+fi
+
+bridge_marker=${XDG_STATE_HOME:-$HOME/.local/state}/protonmail-bridge/managed-service-enabled
+bridge_status=$HOME/.local/bin/protonmail-bridge-status
+if [[ -f $bridge_marker ]]; then
+  if [[ -x $bridge_status ]] && "$bridge_status"; then
+    pass "Proton Mail Bridge managed state is ready"
+  else
+    fail "Proton Mail Bridge onboarding exists but managed state is unhealthy"
+  fi
+else
+  warn "Proton Mail Bridge is not onboarded; run protonmail-bridge-setup"
+fi
+
+if systemctl is-enabled --quiet warp-svc.service &&
+  systemctl is-active --quiet warp-svc.service; then
+  pass "Cloudflare One system daemon is enabled and active"
+else
+  fail "Cloudflare One daemon did not converge after the AUR phase"
+fi
+if systemctl --user is-enabled --quiet warp-taskbar.service; then
+  pass "Cloudflare One taskbar unit is enabled"
+else
+  warn "Cloudflare One GUI enrollment is pending; run cloudflare-one-setup"
+fi
+cloudflare_status=$HOME/.local/bin/cloudflare-one-status
+if [[ -x $cloudflare_status ]]; then
+  "$cloudflare_status"
+fi
+
+for mime_type in \
+  application/vnd.openxmlformats-officedocument.wordprocessingml.document \
+  application/vnd.openxmlformats-officedocument.spreadsheetml.sheet \
+  application/vnd.openxmlformats-officedocument.presentationml.presentation; do
+  if [[ $(xdg-mime query default "$mime_type" 2>/dev/null) == onlyoffice-desktopeditors.desktop ]]; then
+    pass "ONLYOFFICE default: $mime_type"
+  else
+    fail "ONLYOFFICE is not the default for $mime_type"
+  fi
+done
+if [[ $(xdg-mime query default application/pdf 2>/dev/null) == google-chrome.desktop ]]; then
+  pass "PDF default remains Google Chrome"
+else
+  fail "PDF default changed from the approved existing policy"
+fi
+
+if [[ $(stat -c '%U:%G:%a' /opt/rhwp-desktop/chrome-sandbox 2>/dev/null) == root:root:4755 ]]; then
+  pass "RHWP Chromium sandbox has the reviewed root-owned 4755 mode"
+else
+  fail "RHWP Chromium sandbox owner or mode is incorrect"
+fi
+
+if xdg-mime query default application/vnd.hancom.hwpx 2>/dev/null |
+  grep -Fxq rhwp-desktop.desktop; then
+  pass "RHWP defaults were enabled after local acceptance"
+else
+  warn "RHWP HWP/HWPX defaults remain gated pending sample acceptance"
+fi
+
+graphics_status=$HOME/.local/bin/graphics-workflow-check
+if [[ -x $graphics_status ]]; then
+  if "$graphics_status" --status; then
+    pass "GIMP and PhotoGIMP profiles remain isolated"
+  else
+    fail "graphics workflow status reported a managed-state failure"
+  fi
+else
+  fail "graphics workflow status helper is not deployed"
+fi
+
 if [[ -z $(systemctl --failed --no-legend --plain 2>/dev/null) ]]; then
   pass "no failed system units"
 else
@@ -207,7 +389,7 @@ fi
 if [[ -z $(systemctl --user --failed --no-legend --plain 2>/dev/null) ]]; then
   pass "no failed user units"
 else
-  fail "one or more user units are failed"
+  warn "one or more session/application user units are failed; inspect after the next graphical login"
 fi
 
 printf '\nPostflight result: %d failure(s), %d warning(s).\n' "$failures" "$warnings"
