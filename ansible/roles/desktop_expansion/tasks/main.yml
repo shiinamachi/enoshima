@@ -1,3 +1,6 @@
 ---
 - name: Configure the Jetendard font family
   ansible.builtin.import_tasks: fonts.yml
+
+- name: Install the gated cyberpunk SDDM theme
+  ansible.builtin.import_tasks: sddm.yml

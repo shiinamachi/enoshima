@@ -1,0 +1,10 @@
+[SddmGreeterTheme]
+Name=Cyberpunk City
+Description=Cyberpunk desktop expansion greeter
+Type=sddm-theme
+Author=Local workstation configuration
+License=Custom
+Version=1.0
+MainScript=Main.qml
+Theme-Id=cyberpunk
+Theme-API=2.0

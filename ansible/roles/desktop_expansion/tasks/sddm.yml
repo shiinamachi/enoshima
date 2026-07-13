@@ -1,0 +1,59 @@
+---
+- name: Ensure the cyberpunk SDDM theme directory exists
+  ansible.builtin.file:
+    path: /usr/share/sddm/themes/cyberpunk
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the cyberpunk SDDM theme files
+  ansible.builtin.copy:
+    src: sddm-cyberpunk/
+    dest: /usr/share/sddm/themes/cyberpunk/
+    owner: root
+    group: root
+    mode: preserve
+    directory_mode: "0755"
+    backup: true
+
+- name: Install the managed wallpaper for the SDDM greeter
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../home/dot_local/share/backgrounds/cyberpunk-city.png"
+    dest: /usr/share/sddm/themes/cyberpunk/background.png
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Check the known-good SDDM fallback theme
+  ansible.builtin.stat:
+    path: "/usr/share/sddm/themes/{{ desktop_expansion_sddm_fallback_theme }}/Main.qml"
+  register: sddm_fallback_theme
+
+- name: Require a known-good SDDM fallback before activation
+  ansible.builtin.assert:
+    that:
+      - sddm_fallback_theme.stat.exists
+    fail_msg: >-
+      Refusing to activate the cyberpunk theme because fallback theme
+      {{ desktop_expansion_sddm_fallback_theme }} is not installed.
+  when: desktop_expansion_sddm_theme_enabled | bool
+
+- name: Select the validated cyberpunk SDDM theme
+  ansible.builtin.copy:
+    dest: /etc/sddm.conf.d/20-cyberpunk-theme.conf
+    content: |-
+      [Theme]
+      Current=cyberpunk
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  when: desktop_expansion_sddm_theme_enabled | bool
+
+- name: Keep the unvalidated cyberpunk SDDM theme inactive
+  ansible.builtin.file:
+    path: /etc/sddm.conf.d/20-cyberpunk-theme.conf
+    state: absent
+  when: not (desktop_expansion_sddm_theme_enabled | bool)

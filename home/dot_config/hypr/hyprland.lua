@@ -57,10 +57,10 @@ hl.config({
         layout = "dwindle",
         col = {
             active_border = {
-                colors = { "rgba(89b4faff)", "rgba(94e2d5ff)" },
+                colors = { "rgba(33d6ffff)", "rgba(ff3cc7ff)" },
                 angle = 45,
             },
-            inactive_border = "rgba(585b70aa)",
+            inactive_border = "rgba(8b5cff88)",
         },
     },
 
@@ -73,7 +73,7 @@ hl.config({
             enabled = true,
             range = 8,
             render_power = 3,
-            color = "rgba(11111bdd)",
+            color = "rgba(070b2add)",
         },
         blur = {
             enabled = true,
@@ -378,4 +378,11 @@ hl.layer_rule({
     match = { namespace = "^waybar$" },
     blur = true,
     ignore_alpha = 0.2,
+})
+
+hl.layer_rule({
+    name = "swaync-blur",
+    match = { namespace = [[^(swaync-control-center|swaync-notification-window)$]] },
+    blur = true,
+    ignore_alpha = 0.15,
 })

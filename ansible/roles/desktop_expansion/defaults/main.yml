@@ -1,0 +1,6 @@
+---
+# Keep SDDM on its package-provided theme until the matching session theme has
+# passed visual and authentication acceptance. Setting this true installs only
+# a Theme selection drop-in; setting it false removes that drop-in again.
+desktop_expansion_sddm_theme_enabled: false
+desktop_expansion_sddm_fallback_theme: maya
