@@ -1,0 +1,19 @@
+---
+- name: Install the Jetendard fontconfig preference
+  ansible.builtin.template:
+    src: 60-jetendard.conf.j2
+    dest: /etc/fonts/conf.avail/60-jetendard.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Refresh fontconfig cache
+
+- name: Enable the Jetendard fontconfig preference
+  ansible.builtin.file:
+    src: ../conf.avail/60-jetendard.conf
+    dest: /etc/fonts/conf.d/60-jetendard.conf
+    state: link
+    owner: root
+    group: root
+  notify: Refresh fontconfig cache

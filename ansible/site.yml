@@ -20,6 +20,9 @@
     - role: system
       tags:
         - system
+    - role: desktop_expansion
+      tags:
+        - desktop-expansion
     - role: services
       vars:
         service_scope: system
