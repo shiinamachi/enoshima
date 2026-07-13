@@ -86,6 +86,7 @@ echo "==> Parsing YAML and checking desired-state invariants"
 python - "$repo_root" <<'PY'
 from pathlib import Path
 import sys
+import xml.etree.ElementTree as ET
 import yaml
 
 root = Path(sys.argv[1])
@@ -95,6 +96,15 @@ for path in sorted(root.rglob("*.yml")):
     with path.open("r", encoding="utf-8") as handle:
         yaml.safe_load(handle)
     print(path.relative_to(root))
+
+ET.parse(
+    root
+    / "ansible"
+    / "roles"
+    / "desktop_expansion"
+    / "templates"
+    / "60-jetendard.conf.j2"
+)
 
 
 def manifest(path: Path) -> set[str]:
@@ -273,6 +283,14 @@ for directive in \
   'SystemCallArchitectures=native'; do
   grep -Fxq "$directive" home/dot_config/systemd/user/protonmail-bridge.service
 done
+
+grep -Fq 'dest: /etc/fonts/conf.d/60-jetendard.conf' \
+  ansible/roles/desktop_expansion/tasks/fonts.yml
+if grep -Fq '/etc/fonts/conf.avail' \
+  ansible/roles/desktop_expansion/tasks/fonts.yml; then
+  echo "Desktop expansion targets a non-existent Arch fontconfig directory." >&2
+  exit 1
+fi
 
 wallpaper_sha=34053ea6a5b8a0b747261755a964917ffa14900ac85637bda346df5cb2bf64e6
 printf '%s  %s\n' \
