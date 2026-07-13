@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+# This launcher is intentionally silent until kakaotalk-setup has completed.
+set -uo pipefail
+
+readonly app_id=com.usebottles.bottles
+readonly bottle_name=KakaoTalk
+readonly program_name=KakaoTalk
+
+command -v flatpak >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
+flatpak info --user "$app_id" >/dev/null 2>&1 || exit 0
+
+readonly -a bottles_cli=(
+  flatpak run
+  --command=bottles-cli
+  "$app_id"
+)
+
+programs_json=$("${bottles_cli[@]}" --json programs -b "$bottle_name" 2>/dev/null) || exit 0
+jq -e --arg name "$program_name" \
+  '[.[] | select(.name == $name)] | length > 0' \
+  >/dev/null 2>&1 <<<"$programs_json" || exit 0
+
+# --autostart is a launcher-only marker. KakaoTalk controls whether it keeps
+# its main window visible through its own preferences.
+if [[ ${1-} == --autostart ]]; then
+  shift
+  # Give Fcitx and the XEmbed-to-SNI bridge a brief head start. Wine binds to
+  # XIM during startup, and KakaoTalk creates its legacy tray icon early.
+  systemctl --user start xembed-sni-proxy.service >/dev/null 2>&1 || true
+  for _ in {1..20}; do
+    if systemctl --user --quiet is-active xembed-sni-proxy.service &&
+      command -v fcitx5-remote >/dev/null 2>&1 &&
+      fcitx5-remote >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.25
+  done
+fi
+
+exec flatpak run \
+  --env=XMODIFIERS=@im=fcitx \
+  --command=bottles-cli \
+  "$app_id" \
+  run -b "$bottle_name" -p "$program_name"

@@ -18,7 +18,7 @@ window#waybar {
 }
 
 #workspaces button {
-    padding: 0 8px;
+    padding: 0 9px;
     margin: 4px 2px;
     color: #6c7086;
     background: transparent;
@@ -35,6 +35,15 @@ window#waybar {
     background: #89b4fa;
 }
 
+#workspaces button.visible:not(.active) {
+    color: #cdd6f4;
+    background: #45475a;
+}
+
+#workspaces button.empty:not(.persistent) {
+    color: #585b70;
+}
+
 #workspaces button.urgent {
     color: #11111b;
     background: #f38ba8;
@@ -48,8 +57,10 @@ window#waybar {
 #clock,
 #pulseaudio,
 #backlight,
+#custom-wwan,
 #network,
 #bluetooth,
+#custom-power-profile,
 #battery,
 #tray {
     padding: 0 10px;
@@ -62,12 +73,38 @@ window#waybar {
     color: #cba6f7;
 }
 
+#pulseaudio,
+#backlight {
+    color: #f5e0dc;
+}
+
 #network {
     color: #89b4fa;
 }
 
 #bluetooth {
     color: #74c7ec;
+}
+
+#custom-wwan {
+    color: #89dceb;
+}
+
+#custom-wwan.disconnected,
+#custom-wwan.unavailable {
+    color: #6c7086;
+}
+
+#custom-power-profile.ac {
+    color: #f9e2af;
+}
+
+#custom-power-profile.battery {
+    color: #a6e3a1;
+}
+
+#custom-power-profile.unknown {
+    color: #6c7086;
 }
 
 #battery {
@@ -80,6 +117,12 @@ window#waybar {
 
 #battery.critical {
     color: #f38ba8;
+    animation: battery-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes battery-pulse {
+    from { opacity: 1; }
+    to { opacity: 0.55; }
 }
 
 tooltip {

@@ -32,11 +32,51 @@
         | list
       }}
 
+- name: Read absent package manifest
+  ansible.builtin.set_fact:
+    absent_packages: >-
+      {{
+        lookup('ansible.builtin.file', playbook_dir + '/../packages/absent.txt').splitlines()
+        | map('regex_replace', '#.*$', '')
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+
+- name: Configure pacman repositories before package operations
+  ansible.builtin.template:
+    src: pacman.conf.j2
+    dest: /etc/pacman.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  when: manage_pacman_config | bool
+
 - name: Perform supported full system upgrade
   community.general.pacman:
     update_cache: true
     upgrade: true
   when: perform_full_upgrade | bool
+
+- name: Inspect installed packages before removals
+  ansible.builtin.package_facts:
+    manager: pacman
+
+- name: Stop and disable power-profiles-daemon before replacement
+  ansible.builtin.systemd_service:
+    name: power-profiles-daemon.service
+    enabled: false
+    state: stopped
+  when:
+    - "'power-profiles-daemon' in absent_packages"
+    - "'power-profiles-daemon' in ansible_facts.packages"
+
+- name: Remove packages declared absent
+  community.general.pacman:
+    name: "{{ absent_packages }}"
+    state: absent
+  when: absent_packages | length > 0
 
 - name: Install desired native and management packages
   community.general.pacman:

@@ -29,6 +29,10 @@ zram_size_expression: min(ram / 4, 8192)
 zram_compression_algorithm: zstd
 zram_swap_priority: 100
 
+sddm_scale_factor: 1.5
+sddm_font_dpi: 144
+wwan_route_metric: 700
+
 system_units_started:
   - bluetooth.service
   - lenovo-cfgservice.service
@@ -36,10 +40,12 @@ system_units_started:
   - NetworkManager-dispatcher.service
   - NetworkManager-wait-online.service
   - NetworkManager.service
-  - power-profiles-daemon.service
+  - rtkit-daemon.service
   - sddm.service
   - systemd-timesyncd.service
   - systemd-userdbd.socket
+  - tlp.service
+  - tlp-pd.service
   - remote-fs.target
   - paccache.timer
   - snapper-cleanup.timer

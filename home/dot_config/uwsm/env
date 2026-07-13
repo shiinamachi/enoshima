@@ -1,0 +1,10 @@
+# Environment shared by the UWSM-managed Hyprland session and applications.
+export PATH="$HOME/.local/bin:$PATH"
+export TERMINAL=ghostty
+export BROWSER=google-chrome-stable
+
+# Keep native Wayland text-input support as the first choice. XMODIFIERS is
+# still required by XWayland and Wine applications such as KakaoTalk.
+export XMODIFIERS=@im=fcitx
+export QT_IM_MODULES='wayland;fcitx;ibus'
+export SDL_IM_MODULE=fcitx

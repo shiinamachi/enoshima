@@ -1,0 +1,55 @@
+# Maintained locally because the AUR v3.1.0 recipe omits nested cs25 SAR files.
+pkgname=lenovo-wwan-unlock
+pkgver=3.1.0
+pkgrel=2.1
+pkgdesc="FCC and DPR unlock for Lenovo PCs, including nested 2025 SAR data"
+arch=('x86_64')
+url='https://github.com/lenovo/lenovo-wwan-unlock'
+license=('LicenseRef-lenovo-software-code-license')
+depends=(
+  'gcc-libs'
+  'modemmanager'
+  'pciutils'
+)
+options=('!strip')
+source=(
+  "$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+)
+sha256sums=(
+  'd6d0beee7303487001934a0826a8e08c99dce28d602bc9b3e510e09e86434782'
+)
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  tar -xzf fcc-unlock.d.tar.gz
+  while IFS= read -r -d '' file; do
+    install -D -m755 "$file" "$pkgdir/usr/lib/ModemManager/$file"
+  done < <(find fcc-unlock.d -type f -print0)
+
+  tar -xzf sar_config_files.tar.gz
+  while IFS= read -r -d '' file; do
+    install -D -m644 "$file" "$pkgdir/opt/fcc_lenovo/$file"
+  done < <(find sar_config_files -type f -name '*.bin' -print0)
+
+  install -D -m755 libmodemauth.so \
+    "$pkgdir/opt/fcc_lenovo/lib/libmodemauth.so"
+  install -D -m755 libconfigserviceR+.so \
+    "$pkgdir/opt/fcc_lenovo/lib/libconfigserviceR+.so"
+  install -D -m755 libconfigservice350.so \
+    "$pkgdir/opt/fcc_lenovo/lib/libconfigservice350.so"
+  install -D -m755 libmbimtools.so \
+    "$pkgdir/opt/fcc_lenovo/lib/libmbimtools.so"
+
+  install -D -m755 DPR_Fcc_unlock_service \
+    "$pkgdir/opt/fcc_lenovo/DPR_Fcc_unlock_service"
+  install -D -m755 configservice_lenovo \
+    "$pkgdir/opt/fcc_lenovo/configservice_lenovo"
+  install -D -m644 lenovo-cfgservice.service \
+    "$pkgdir/usr/lib/systemd/system/lenovo-cfgservice.service"
+
+  install -D -m644 'Lenovo Software Code License Agreement for wwan.txt' \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -D -m644 'Lenovo Licence Agreement.pdf' \
+    "$pkgdir/usr/share/licenses/$pkgname/Lenovo-Licence-Agreement.pdf"
+}

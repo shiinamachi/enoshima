@@ -48,4 +48,10 @@ fi
 
 echo "==> Installing reviewed AUR package bases"
 printf '  %s\n' "${aur_packages[@]}"
+
+# Resolve every declared package base before allowing paru to start a partial
+# installation. This catches renames/removals as one preflight failure.
+echo "==> Resolving all declared AUR package bases"
+paru -Si -- "${aur_packages[@]}" >/dev/null
+
 paru -S --needed -- "${aur_packages[@]}"

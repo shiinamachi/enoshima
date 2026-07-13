@@ -4,6 +4,10 @@ Arch Linux desired-state monorepo for the `tpx1c13` laptop. It combines
 Ansible for system state, chezmoi for user configuration, and package/state
 inventories for auditing and rebuilding the machine.
 
+The complete ThinkPad, Hyprland, workspace, power, fingerprint, WWAN, Korean
+input, and application decisions are documented in
+[docs/WORKSTATION.md](docs/WORKSTATION.md).
+
 The initial inventory was captured on 2026-07-13 from Arch Linux on
 `tpx1c13`:
 
@@ -53,14 +57,16 @@ cd ~/src/my-arch-configurations
 ```
 
 The bootstrap performs a full Arch upgrade, installs the management tools,
-offers to build/install the reviewed AUR package list, runs Ansible, shows the
-chezmoi diff, and asks before applying dotfiles.
+offers to build the reviewed pinned local packages, runs Ansible, offers to
+build the reviewed AUR package list, shows the chezmoi diff, and asks before
+applying dotfiles.
 
 Useful maintenance commands:
 
 ```bash
 make audit PROFILE=tpx1c13
 make validate
+make postflight
 make chezmoi-diff
 make ansible-check PROFILE=tpx1c13
 ```
@@ -73,6 +79,10 @@ make ansible-check PROFILE=tpx1c13
   dependencies with dependency install reason.
 - `packages/management.txt` contains tooling needed to reproduce the system
   but not explicitly installed at the time of the initial capture.
+- `packages/absent.txt` declares packages deliberately removed from the
+  workstation profile.
+- `packages/local/` contains reviewable PKGBUILDs for pinned fixes that are not
+  correctly represented by an official or current AUR package.
 - `state/tpx1c13/packages.lock` records every installed package and version,
   including dependencies and generated `-debug` AUR packages.
 

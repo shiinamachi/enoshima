@@ -19,15 +19,17 @@ without treating Git as a filesystem backup.
 ### Bootstrap
 
 `bootstrap.sh` installs only the tools needed to continue: `base-devel`, Git,
-`ansible-core`, and chezmoi. It then installs the pinned Ansible collection and
-invokes the remaining layers.
+`ansible-core`, chezmoi, Rustup, and the small jq/Lua/ripgrep validation set. It
+then installs the pinned Ansible collection, renders and validates the
+repository through Ansible's real template engine, and invokes the remaining
+layers.
 
 ### Package desired state
 
 Line-oriented manifests remain easy to diff and can be consumed by both shell
-and Ansible. Native and optional dependency packages are installed by Ansible.
-AUR packages remain an interactive, user-context operation because their
-PKGBUILDs must be reviewed.
+and Ansible. Native, absent, and optional dependency packages are managed by
+Ansible. Pinned local and AUR packages remain interactive, user-context
+operations because their PKGBUILDs and sources must be reviewed.
 
 ### System desired state
 
@@ -42,6 +44,8 @@ available.
 chezmoi owns only selected configuration beneath the user's home directory.
 The `.chezmoiroot` file isolates it to `home/`, allowing the rest of the Git
 repository to coexist without ignore rules for every top-level directory.
+Custom user units shipped through chezmoi are enabled after their files have
+been applied, rather than from the earlier Ansible phase.
 
 ### Observed state
 
@@ -57,3 +61,12 @@ the current laptop live in `ansible/inventory/host_vars/tpx1c13.yml`, including
 LUKS UUID, ESP partition UUID, UKI names, Btrfs identity and enabled hardware
 services. A second machine should receive its own host file instead of copying
 these identifiers.
+
+## Workstation policy
+
+The concrete ThinkPad hardware paths, SDDM/Hyprlock boundary, monitor geometry,
+workspace routing, TLP profiles, fingerprint scope, Fcitx mapping, WWAN
+fallback, Bottles isolation and proprietary application limits are recorded in
+`docs/WORKSTATION.md`. Those decisions are desired state; `state/tpx1c13/`
+remains the immutable observation made before this workstation profile was
+designed.

@@ -1,0 +1,10 @@
+# 11 pt remains comfortable at the 1.5 fractional scale used on both displays.
+font-family = JetBrainsMono Nerd Font
+font-family = Noto Sans Mono CJK KR
+font-size = 11
+
+# Hyprland owns the window border and title-free tiling presentation.
+window-decoration = none
+# Preserve blocking `ghostty -e ...` CLI launches while reusing the graphical
+# instance for ordinary desktop launches.
+gtk-single-instance = detect

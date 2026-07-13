@@ -35,3 +35,18 @@
   loop: "{{ rustup_components }}"
   when: "(item + '-') not in rustup_installed_components.stdout"
   changed_when: true
+
+- name: Configure user-scoped Flatpak remotes
+  community.general.flatpak_remote:
+    name: "{{ item.name }}"
+    flatpakrepo_url: "{{ item.url }}"
+    method: user
+    state: present
+  loop: "{{ flatpak_user_remotes }}"
+
+- name: Install user-scoped Flatpak applications
+  community.general.flatpak:
+    name: "{{ flatpak_user_applications }}"
+    method: user
+    remote: flathub
+    state: present

@@ -10,6 +10,10 @@
 - pacman, mkinitcpio, systemd zram, kernel command line and UKI presets
 - LUKS initramfs mapping metadata and Btrfs/ESP hardware facts
 - Hyprland, Hypridle, Hyprlock, Hyprpaper, Waybar and Fcitx5 settings
+- SDDM and sudo service-specific fingerprint PAM policy
+- TLP profile policy, s2idle selection and NetworkManager WWAN fallback logic
+- User-scoped Flathub/Bottles installation and KakaoTalk launch helpers
+- Pinned local PKGBUILDs for the Lenovo Gen 13 SAR omission and Wine tray bridge
 - XDG default applications and user-directory settings
 - Git identity
 - Rustup default toolchain and installed components
@@ -22,7 +26,10 @@
 - `/etc/NetworkManager/system-connections` and Wi-Fi credentials
 - SSH host keys and user private keys
 - Browser profiles, cookies, extensions, history and logins
+- KakaoTalk bottles, Wine prefixes, KakaoTalk login state and downloaded installer
+- Flatpak application data and proprietary application update payloads
 - Codex/ChatGPT application profiles, sessions and authentication
+- GNOME Keyring contents and Secret Service credentials
 - Shell/editor histories, caches and recently used files
 - Documents, source repositories, downloads, media and project data
 - Podman images/containers and other reproducible runtime artifacts

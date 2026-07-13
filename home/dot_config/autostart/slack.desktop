@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Slack (autostart)
+Comment=Start Slack quietly with the graphical session
+TryExec=slack
+Exec=/usr/bin/slack --gtk-version=3 -s --startup
+Terminal=false
+X-GNOME-Autostart-enabled=true

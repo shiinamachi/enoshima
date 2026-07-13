@@ -1,0 +1,45 @@
+---
+- name: Ensure local system helper directory exists
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure NetworkManager dispatcher directory exists
+  ansible.builtin.file:
+    path: /etc/NetworkManager/dispatcher.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the WWAN fallback helper
+  ansible.builtin.template:
+    src: wwan-fallback.sh.j2
+    dest: /usr/local/libexec/wwan-fallback
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Run WWAN fallback policy
+
+- name: Install the WWAN fallback service
+  ansible.builtin.template:
+    src: wwan-fallback.service.j2
+    dest: /etc/systemd/system/wwan-fallback.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Run WWAN fallback policy
+
+- name: Install the nonblocking NetworkManager dispatcher
+  ansible.builtin.template:
+    src: networkmanager-wwan-dispatcher.j2
+    dest: /etc/NetworkManager/dispatcher.d/90-wwan-fallback
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Run WWAN fallback policy

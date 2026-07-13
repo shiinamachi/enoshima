@@ -2,3 +2,13 @@
 - name: Reload systemd
   ansible.builtin.systemd_service:
     daemon_reload: true
+
+- name: Reload TLP power policy
+  ansible.builtin.systemd_service:
+    name: tlp.service
+    state: reloaded
+
+- name: Run WWAN fallback policy
+  ansible.builtin.systemd_service:
+    name: wwan-fallback.service
+    state: started

@@ -1,0 +1,10 @@
+#!/bin/sh
+
+case "${2:-}" in
+  up | down | connectivity-change)
+    /usr/bin/systemctl --no-block start wwan-fallback.service \
+      >/dev/null 2>&1 || :
+    ;;
+esac
+
+exit 0

@@ -4,13 +4,16 @@ PROFILE ?= tpx1c13
 ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 export ANSIBLE_CONFIG
 
-.PHONY: audit validate chezmoi-diff ansible-check apply bootstrap
+.PHONY: audit validate postflight chezmoi-diff ansible-check apply bootstrap
 
 audit:
 	./scripts/capture-state.sh "$(PROFILE)"
 
 validate:
 	./scripts/validate.sh
+
+postflight:
+	./scripts/postflight.sh
 
 chezmoi-diff:
 	chezmoi --source "$(CURDIR)" diff

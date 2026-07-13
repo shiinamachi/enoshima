@@ -37,6 +37,17 @@ Then run:
 ./bootstrap.sh <host>
 ```
 
+The local and AUR package phases are deliberately interactive so their
+PKGBUILDs can be reviewed. `SKIP_LOCAL=true` and `SKIP_AUR=true` are available
+for a partial recovery, but the complete `tpx1c13` profile requires both
+phases. Local packages are built before Ansible so their systemd units exist
+when service desired state is applied. AUR applications are installed after
+Ansible enables multilib and installs their native prerequisites.
+
+Before accepting the chezmoi apply, inspect the diff. The next graphical login
+is required for UWSM to import the new input-method environment and for the XDG
+autostart entries to take effect.
+
 ## Secure Boot and TPM2
 
 Secure Boot keys are not stored in Git. After creating or restoring keys with
@@ -74,12 +85,49 @@ If `/etc/snapper/configs/root` does not exist, Ansible runs the normal
 subvolume/layout before relying on snapshots. The exact old root configuration
 was not readable during the initial capture.
 
+## PAM safety
+
+The host profile changes only `/etc/pam.d/sddm` and `/etc/pam.d/sudo`. Ansible
+creates backups, but a malformed PAM stack can still prevent authentication.
+Keep an authenticated root shell open during the first apply. Before rebooting,
+test both paths:
+
+```bash
+fprintd-verify
+sudo -k
+sudo -v
+hyprlock
+```
+
+At the SDDM and sudo prompts, a normal password is checked first. Submit an
+empty field to start fingerprint authentication. See
+[WORKSTATION.md](WORKSTATION.md) for the accepted sudo fingerprint security
+tradeoff and the reason SDDM is not replaced by Hyprlock.
+
+## Interactive workstation completion
+
+After a reboot and password login:
+
+1. In SDDM, select **Hyprland (uwsm-managed)** rather than plain Hyprland. The
+   UWSM session is required for the managed environment, graphical user units,
+   and XDG autostart applications.
+2. Connect the Dell U2725QE and verify its EDID selector, scale, geometry and
+   120 Hz mode with `make postflight`.
+3. Inspect and enroll the intended Thunderbolt/USB4 device with `boltctl`.
+4. Run `kakaotalk-setup`, complete the official KakaoTalk installer and login,
+   then create a Bottles snapshot.
+5. Test Wi-Fi to WWAN handoff locally. Do not disconnect the link carrying a
+   remote session.
+6. Launch Notion, Parsec and KakaoTalk once and confirm their runtime classes
+   with the command in `WORKSTATION.md`.
+
 ## Verification
 
 Before rebooting:
 
 ```bash
 make validate
+make postflight
 make audit PROFILE=<host>
 systemctl --failed
 systemctl --user --failed

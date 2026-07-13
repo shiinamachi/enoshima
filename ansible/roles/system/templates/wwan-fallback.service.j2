@@ -1,0 +1,9 @@
+[Unit]
+Description=Prefer Wi-Fi and activate WWAN only as fallback
+After=NetworkManager.service ModemManager.service
+Wants=NetworkManager.service ModemManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/wwan-fallback
+TimeoutStartSec=30

@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=KakaoTalk
+Name[ko]=카카오톡
+GenericName=Instant Messenger
+GenericName[ko]=메신저
+Comment=Run KakaoTalk in its dedicated Bottles environment
+Comment[ko]=전용 Bottles 환경에서 카카오톡 실행
+TryExec=/home/kentakang/.local/bin/kakaotalk
+Exec=/home/kentakang/.local/bin/kakaotalk
+Icon=com.usebottles.bottles
+Terminal=false
+Categories=Network;InstantMessaging;
+StartupNotify=true
+StartupWMClass=KakaoTalk.exe
+X-GNOME-UsesNotifications=true

@@ -64,16 +64,6 @@
     group: root
     mode: "0644"
 
-- name: Configure pacman
-  ansible.builtin.template:
-    src: pacman.conf.j2
-    dest: /etc/pacman.conf
-    owner: root
-    group: root
-    mode: "0644"
-    backup: true
-  when: manage_pacman_config | bool
-
 - name: Preserve empty fstab layout used by systemd GPT discovery
   ansible.builtin.template:
     src: fstab.j2
@@ -92,6 +82,18 @@
     group: root
     mode: "0644"
   notify: Reload systemd
+
+- name: Configure laptop power policy
+  ansible.builtin.import_tasks: power.yml
+
+- name: Configure service-specific authentication
+  ansible.builtin.import_tasks: authentication.yml
+
+- name: Configure local desktop integration
+  ansible.builtin.import_tasks: desktop.yml
+
+- name: Configure WWAN fallback policy
+  ansible.builtin.import_tasks: network.yml
 
 - name: Check for a Snapper root configuration
   ansible.builtin.stat:

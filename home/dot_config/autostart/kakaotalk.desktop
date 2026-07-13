@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=KakaoTalk (autostart)
+Comment=Start KakaoTalk only after its Bottles environment has been configured
+TryExec=/home/kentakang/.local/bin/kakaotalk
+Exec=/home/kentakang/.local/bin/kakaotalk --autostart
+Terminal=false
+X-GNOME-Autostart-enabled=true

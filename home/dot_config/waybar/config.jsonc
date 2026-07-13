@@ -1,14 +1,14 @@
 {
     "layer": "top",
     "position": "top",
-    "height": 36,
+    "height": 38,
     "spacing": 8,
     "margin-top": 8,
     "margin-left": 12,
     "margin-right": 12,
 
     "modules-left": [
-        "hyprland/workspaces",
+        "ext/workspaces",
         "hyprland/window"
     ],
 
@@ -20,24 +20,46 @@
         "tray",
         "pulseaudio",
         "backlight",
+        "custom/wwan",
         "network",
         "bluetooth",
+        "custom/power-profile",
         "battery"
     ],
 
-    "hyprland/workspaces": {
-        "format": "{name}",
-        "on-click": "activate",
-        "sort-by-number": true
+    "ext/workspaces": {
+        "format": "{icon}",
+        "format-icons": {
+            "1": "1  DEV",
+            "2": "2  WEB",
+            "3": "3  DOCUMENT",
+            "4": "4  REMOTE",
+            "5": "5  MISC",
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "10": "10",
+            "default": "{name}"
+        },
+        "sort-by-id": true,
+        "all-outputs": false,
+        "on-click": "activate"
     },
 
     "hyprland/window": {
         "format": "{}",
-        "max-length": 50
+        "separate-outputs": true,
+        "max-length": 56,
+        "rewrite": {
+            "^(.*) — Zed$": "Zed · $1",
+            "^(.*) - Google Chrome$": "Chrome · $1"
+        }
     },
 
     "clock": {
         "format": "  {:%a %m-%d  %H:%M}",
+        "format-alt": "  {:%Y-%m-%d}",
         "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"
     },
 
@@ -47,18 +69,31 @@
         "format-icons": {
             "default": ["", "", ""]
         },
-        "on-click": "pavucontrol"
+        "on-click": "pavucontrol",
+        "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
     },
 
     "backlight": {
-        "format": "󰃠  {percent}%"
+        "format": "󰃠  {percent}%",
+        "on-scroll-up": "brightnessctl -e4 -n2 set 5%+",
+        "on-scroll-down": "brightnessctl -e4 -n2 set 5%-"
+    },
+
+    "custom/wwan": {
+        "exec": "$HOME/.local/bin/waybar-wwan-status",
+        "return-type": "json",
+        "interval": 15,
+        "tooltip": true,
+        "on-click": "nm-connection-editor"
     },
 
     "network": {
         "format-wifi": "  {signalStrength}%",
         "format-ethernet": "󰈀  Ethernet",
         "format-disconnected": "󰖪  Offline",
-        "tooltip-format-wifi": "{essid}\n{ipaddr}",
+        "tooltip-format-wifi": "Wi-Fi · {signalStrength}%",
+        "tooltip-format-ethernet": "Wired network",
+        "tooltip-format-disconnected": "No Wi-Fi or Ethernet connection",
         "on-click": "nm-connection-editor"
     },
 
@@ -66,7 +101,15 @@
         "format": "",
         "format-connected": "  {num_connections}",
         "format-disabled": "󰂲",
+        "tooltip-format": "Bluetooth · {status}",
         "on-click": "blueman-manager"
+    },
+
+    "custom/power-profile": {
+        "exec": "$HOME/.local/bin/waybar-power-profile",
+        "return-type": "json",
+        "interval": 15,
+        "tooltip": true
     },
 
     "battery": {
@@ -78,7 +121,8 @@
         "format": "{icon}  {capacity}%",
         "format-charging": "  {capacity}%",
         "format-plugged": "  {capacity}%",
-        "format-icons": ["", "", "", "", ""]
+        "format-icons": ["", "", "", "", ""],
+        "tooltip-format": "Battery · {capacity}%\n{timeTo}"
     },
 
     "tray": {

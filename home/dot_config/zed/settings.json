@@ -1,0 +1,13 @@
+{
+  "vim_mode": false,
+  "ui_font_family": "Noto Sans",
+  "ui_font_fallbacks": ["Noto Sans CJK KR"],
+  "ui_font_size": 15,
+  "buffer_font_family": "JetBrainsMono Nerd Font",
+  "buffer_font_fallbacks": ["Noto Sans Mono CJK KR"],
+  "buffer_font_size": 14,
+  "terminal": {
+    "font_family": "JetBrainsMono Nerd Font",
+    "font_size": 13
+  }
+}

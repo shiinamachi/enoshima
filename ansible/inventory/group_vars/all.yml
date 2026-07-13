@@ -34,3 +34,10 @@ rustup_components:
   - rust-std
   - rustc
   - rustfmt
+
+flatpak_user_remotes:
+  - name: flathub
+    url: https://dl.flathub.org/repo/flathub.flatpakrepo
+
+flatpak_user_applications:
+  - com.usebottles.bottles

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Discord (autostart)
+Comment=Start Discord minimized with the graphical session
+TryExec=discord
+Exec=/usr/bin/discord --start-minimized
+Terminal=false
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+
+# Explicit, interactive one-time setup for KakaoTalk. The Wine prefix, login,
+# downloaded installer, and Bottles state remain outside this repository.
+set -euo pipefail
+
+readonly app_id=com.usebottles.bottles
+readonly bottle_name=KakaoTalk
+readonly program_name=KakaoTalk
+readonly installer_url=https://app-pc.kakaocdn.net/talk/win32/x64/KakaoTalk_Setup.exe
+readonly flathub_url=https://dl.flathub.org/repo/flathub.flatpakrepo
+
+die() {
+  printf 'kakaotalk-setup: %s\n' "$*" >&2
+  exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"
+}
+
+require_command flatpak
+require_command curl
+require_command jq
+require_command xdg-user-dir
+
+[[ -t 0 ]] || die 'run this helper interactively from a terminal'
+[[ -n ${WAYLAND_DISPLAY:-}${DISPLAY:-} ]] ||
+  die 'run this helper inside the graphical Hyprland session'
+
+cat <<'EOF'
+This will create a user-scoped Bottles installation and a dedicated
+64-bit "KakaoTalk" application bottle. It grants Bottles read/write access
+only to Downloads, Documents, and Pictures, downloads KakaoTalk from Kakao's
+official CDN, and opens the Windows installer.
+
+No Kakao account credentials or Wine prefix data are written to this Git
+repository.
+EOF
+
+read -r -p 'Continue with KakaoTalk setup? [y/N] ' answer
+[[ $answer =~ ^[Yy]$ ]] || exit 0
+
+flatpak remote-add --user --if-not-exists flathub "$flathub_url"
+flatpak install --user --noninteractive flathub "$app_id"
+flatpak override --user \
+  --env=XMODIFIERS=@im=fcitx \
+  --filesystem=xdg-download:rw \
+  --filesystem=xdg-documents:rw \
+  --filesystem=xdg-pictures:rw \
+  "$app_id"
+
+readonly -a bottles_cli=(
+  flatpak run
+  --command=bottles-cli
+  "$app_id"
+)
+
+bottles_json=$("${bottles_cli[@]}" --json list bottles)
+if jq -e --arg name "$bottle_name" 'has($name)' >/dev/null <<<"$bottles_json"; then
+  existing_arch=$(
+    jq -r --arg name "$bottle_name" \
+      '.[$name] as $b | if ($b | type) == "object" then ($b.Arch // $b.arch // "") else "" end' \
+      <<<"$bottles_json"
+  )
+  existing_environment=$(
+    jq -r --arg name "$bottle_name" \
+      '.[$name] as $b | if ($b | type) == "object" then ($b.Environment // $b.environment // "") else "" end' \
+      <<<"$bottles_json"
+  )
+
+  [[ -z $existing_arch || ${existing_arch,,} == win64 ]] ||
+    die 'an existing KakaoTalk bottle is not win64; remove or rename it manually first'
+  [[ -z $existing_environment || ${existing_environment,,} == application ]] ||
+    die 'an existing KakaoTalk bottle is not an application bottle; remove or rename it manually first'
+
+  printf 'Reusing the existing KakaoTalk bottle.\n'
+else
+  printf 'Creating the dedicated KakaoTalk bottle. This may download a Wine runner.\n'
+  "${bottles_cli[@]}" new \
+    --bottle-name "$bottle_name" \
+    --environment application \
+    --arch win64
+
+  bottles_json=$("${bottles_cli[@]}" --json list bottles)
+  jq -e --arg name "$bottle_name" 'has($name)' >/dev/null <<<"$bottles_json" ||
+    die 'Bottles did not report the newly created KakaoTalk bottle'
+fi
+
+# XIM is required for Hangul composition in Wine/XWayland. A 144-DPI Wine
+# desktop matches the 1.5 compositor scale (96 * 1.5).
+"${bottles_cli[@]}" edit \
+  -b "$bottle_name" \
+  --params wayland:false,custom_dpi:144 \
+  --env-var XMODIFIERS=@im=fcitx
+"${bottles_cli[@]}" reg add \
+  -b "$bottle_name" \
+  -k 'HKEY_CURRENT_USER\Control Panel\Desktop' \
+  -v LogPixels \
+  -d 144 \
+  -t REG_DWORD
+"${bottles_cli[@]}" reg add \
+  -b "$bottle_name" \
+  -k 'HKEY_CURRENT_USER\Control Panel\Desktop' \
+  -v Win8DpiScaling \
+  -d 1 \
+  -t REG_DWORD
+
+programs_json=$("${bottles_cli[@]}" --json programs -b "$bottle_name")
+if ! jq -e --arg name "$program_name" \
+  '[.[] | select(.name == $name)] | length > 0' \
+  >/dev/null <<<"$programs_json"; then
+  downloads_dir=$(xdg-user-dir DOWNLOAD 2>/dev/null || true)
+  [[ -n $downloads_dir ]] || downloads_dir=$HOME/Downloads
+  mkdir -p -- "$downloads_dir"
+  installer_path=$downloads_dir/KakaoTalk_Setup_x64.exe
+
+  printf 'Downloading the official KakaoTalk installer from:\n  %s\n' "$installer_url"
+  curl \
+    --fail \
+    --location \
+    --proto '=https' \
+    --tlsv1.2 \
+    --output "$installer_path" \
+    "$installer_url"
+
+  [[ $(LC_ALL=C head -c 2 -- "$installer_path") == MZ ]] || {
+    rm -f -- "$installer_path"
+    die 'the downloaded file is not a Windows executable'
+  }
+
+  printf 'Launching the installer. Complete it in the Wine window.\n'
+  "${bottles_cli[@]}" run \
+    -b "$bottle_name" \
+    -e "$installer_path"
+
+  read -r -p 'After the KakaoTalk installer has completely closed, press Enter to continue. '
+
+  programs_json=$("${bottles_cli[@]}" --json programs -b "$bottle_name")
+  candidate_path=$(
+    jq -r '
+      [
+        .[]
+        | select(
+            (((.executable // "") | ascii_downcase) == "kakaotalk.exe")
+            or (((.path // "") | ascii_downcase) | endswith("\\kakaotalk.exe"))
+          )
+      ][0].path // ""
+    ' <<<"$programs_json"
+  )
+
+  if [[ -z $candidate_path ]]; then
+    bottles_path=$("${bottles_cli[@]}" info bottles-path)
+    candidate_path=$(find "$bottles_path/$bottle_name/drive_c" \
+      -type f -ipath '*/Kakao/KakaoTalk/KakaoTalk.exe' -print -quit 2>/dev/null || true)
+  fi
+  if [[ -z $candidate_path ]]; then
+    bottles_path=${bottles_path:-$("${bottles_cli[@]}" info bottles-path)}
+    candidate_path=$(find "$bottles_path/$bottle_name/drive_c" \
+      -type f -iname 'KakaoTalk.exe' -print -quit 2>/dev/null || true)
+  fi
+
+  [[ -n $candidate_path ]] ||
+    die 'KakaoTalk.exe was not found; finish the installation, then rerun this helper'
+
+  if ! jq -e --arg name "$program_name" \
+    '[.[] | select(.name == $name)] | length > 0' \
+    >/dev/null <<<"$programs_json"; then
+    "${bottles_cli[@]}" add \
+      -b "$bottle_name" \
+      -n "$program_name" \
+      -p "$candidate_path"
+  fi
+fi
+
+programs_json=$("${bottles_cli[@]}" --json programs -b "$bottle_name")
+jq -e --arg name "$program_name" \
+  '[.[] | select(.name == $name)] | length > 0' \
+  >/dev/null <<<"$programs_json" ||
+  die 'KakaoTalk was installed but could not be registered as a Bottles program'
+
+cat <<'EOF'
+
+KakaoTalk setup is complete. Launch it from the app launcher with "KakaoTalk".
+
+Before accepting a KakaoTalk update, open Bottles, select the KakaoTalk bottle,
+and create a version/snapshot. Keep the bottle's working runner selected; do not
+change it merely because a newer runner appears.
+EOF

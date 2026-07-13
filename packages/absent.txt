@@ -1,0 +1,4 @@
+# Packages intentionally removed from the desired desktop state.
+firefox
+kitty
+power-profiles-daemon

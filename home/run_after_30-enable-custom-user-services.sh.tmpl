@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+units=(
+  hyprlauncher.service
+  xembed-sni-proxy.service
+)
+
+configuration_consumers=(
+  hypridle.service
+  waybar.service
+)
+
+systemctl --user daemon-reload
+systemctl --user enable "${units[@]}"
+
+if systemctl --user --quiet is-active graphical-session.target; then
+  # Chezmoi runs after Ansible has started the existing user units. Refresh
+  # every long-running consumer whose configuration was just deployed.
+  systemctl --user restart "${units[@]}" "${configuration_consumers[@]}"
+fi

@@ -1,0 +1,33 @@
+---
+- name: Ensure the SDDM configuration directory exists
+  ansible.builtin.file:
+    path: /etc/sddm.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure the SDDM greeter for 1.5x scaling
+  ansible.builtin.template:
+    src: sddm-hidpi.conf.j2
+    dest: /etc/sddm.conf.d/10-hidpi.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure the local executable directory exists
+  ansible.builtin.file:
+    path: /usr/local/bin
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Provide vi as Vim
+  ansible.builtin.file:
+    src: /usr/bin/vim
+    dest: /usr/local/bin/vi
+    state: link
+    owner: root
+    group: root
+    force: true

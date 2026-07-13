@@ -1,7 +1,26 @@
-
 [Default Applications]
+application/pdf=google-chrome.desktop
+application/xhtml+xml=google-chrome.desktop
+application/xml=google-chrome.desktop
+inode/directory=thunar.desktop
+text/plain=dev.zed.Zed.desktop
 text/html=google-chrome.desktop
 x-scheme-handler/http=google-chrome.desktop
 x-scheme-handler/https=google-chrome.desktop
 x-scheme-handler/about=google-chrome.desktop
 x-scheme-handler/unknown=google-chrome.desktop
+x-scheme-handler/discord=discord.desktop
+x-scheme-handler/notion=notion.desktop
+x-scheme-handler/obsidian=obsidian.desktop
+x-scheme-handler/slack=slack.desktop
+
+[Added Associations]
+application/pdf=google-chrome.desktop;
+application/xhtml+xml=google-chrome.desktop;
+inode/directory=thunar.desktop;
+text/html=google-chrome.desktop;
+text/plain=dev.zed.Zed.desktop;
+x-scheme-handler/http=google-chrome.desktop;
+x-scheme-handler/https=google-chrome.desktop;
+x-scheme-handler/notion=notion.desktop;
+x-scheme-handler/obsidian=obsidian.desktop;

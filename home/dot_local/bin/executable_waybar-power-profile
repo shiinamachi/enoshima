@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -u
+
+emit() {
+  local text_value=$1
+  local tooltip_value=$2
+  local class_value=$3
+
+  if command -v jq >/dev/null 2>&1; then
+    jq -cn \
+      --arg text "$text_value" \
+      --arg tooltip "$tooltip_value" \
+      --arg class "$class_value" \
+      '{text: $text, tooltip: $tooltip, class: $class}'
+  else
+    printf '{"text":"Power","tooltip":"Power status unavailable","class":"unknown"}\n'
+  fi
+}
+
+power_source=unknown
+if [[ -x /usr/bin/systemd-ac-power ]]; then
+  if /usr/bin/systemd-ac-power; then
+    power_source=ac
+  else
+    power_source=battery
+  fi
+fi
+
+platform_profile=unknown
+if [[ -r /sys/firmware/acpi/platform_profile ]]; then
+  IFS= read -r platform_profile </sys/firmware/acpi/platform_profile || true
+fi
+
+case "$platform_profile" in
+  performance | balanced | low-power)
+    ;;
+  *)
+    platform_profile=unknown
+    ;;
+esac
+
+if /usr/bin/systemctl is-active --quiet tlp.service 2>/dev/null; then
+  tlp_state=active
+else
+  tlp_state=inactive
+fi
+
+case "$power_source" in
+  ac)
+    text="󰚥  AC"
+    class=ac
+    source_label="External power"
+    ;;
+  battery)
+    text="󰁹  BAT"
+    class=battery
+    source_label="Battery"
+    ;;
+  *)
+    text="󰂑  Power"
+    class=unknown
+    source_label="Unknown"
+    ;;
+esac
+
+tooltip=$(printf 'Power source: %s\nPlatform profile: %s\nTLP service: %s' \
+  "$source_label" "$platform_profile" "$tlp_state")
+emit "$text" "$tooltip" "$class"

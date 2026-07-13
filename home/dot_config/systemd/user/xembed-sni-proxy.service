@@ -1,0 +1,17 @@
+[Unit]
+Description=Expose legacy XEmbed tray icons as StatusNotifierItems
+PartOf=graphical-session.target waybar.service
+Wants=waybar.service
+After=graphical-session.target waybar.service
+ConditionEnvironment=DISPLAY
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/bash -c 'for _ in {1..50}; do /usr/bin/busctl --user --quiet status org.kde.StatusNotifierWatcher >/dev/null 2>&1 && exit 0; /usr/bin/sleep 0.1; done; exit 1'
+ExecStart=/usr/bin/xembed-sni-proxy
+Restart=on-failure
+RestartSec=2
+Slice=background-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

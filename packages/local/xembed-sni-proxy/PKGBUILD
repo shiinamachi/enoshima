@@ -1,0 +1,48 @@
+pkgname=xembed-sni-proxy
+pkgver=0.1.0
+pkgrel=1
+_commit=dcb8facf1105d2085fa391821501205492abdd83
+pkgdesc='Lightweight XEmbed-to-SNI proxy for Wayland compositors'
+arch=('x86_64')
+url='https://somegit.dev/vikingowl/xembed-sni-proxy'
+license=('GPL-3.0-or-later')
+depends=(
+  'gcc-libs'
+  'glibc'
+)
+makedepends=('rust')
+options=('!debug')
+source=(
+  "$pkgname-$_commit.tar.gz::$url/archive/$_commit.tar.gz"
+)
+sha256sums=(
+  'bc88449bf03be7950d34746d84de1ba2c4370d18168a8381e3a82bd430394149'
+)
+
+prepare() {
+  cd "$srcdir/$pkgname"
+  export CARGO_HOME="$srcdir/cargo-home"
+  cargo fetch --locked
+}
+
+build() {
+  cd "$srcdir/$pkgname"
+  export CARGO_HOME="$srcdir/cargo-home"
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/usr/src/debug/$pkgname-$pkgver"
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$srcdir/$pkgname"
+  export CARGO_HOME="$srcdir/cargo-home"
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/usr/src/debug/$pkgname-$pkgver"
+  cargo test --frozen --release
+}
+
+package() {
+  cd "$srcdir/$pkgname"
+  install -D -m755 target/release/xembed-sni-proxy \
+    "$pkgdir/usr/bin/xembed-sni-proxy"
+  install -D -m644 LICENSE \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

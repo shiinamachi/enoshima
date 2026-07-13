@@ -1,4 +1,6 @@
 local/
+!packages/local/
+!packages/local/**
 *.retry
 .ansible/
 work/

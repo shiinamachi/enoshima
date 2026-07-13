@@ -1,0 +1,25 @@
+---
+- name: Configure explicit TLP profiles
+  ansible.builtin.template:
+    src: tlp-thinkpad.conf.j2
+    dest: /etc/tlp.d/10-thinkpad.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload TLP power policy
+
+- name: Ensure systemd sleep configuration directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/sleep.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep suspend on s2idle
+  ansible.builtin.template:
+    src: sleep-thinkpad.conf.j2
+    dest: /etc/systemd/sleep.conf.d/10-thinkpad.conf
+    owner: root
+    group: root
+    mode: "0644"

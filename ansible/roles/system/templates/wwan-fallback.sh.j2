@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export LC_ALL=C
+
+exec 9>/run/wwan-fallback.lock
+flock -n 9 || exit 0
+
+if ! saved_connections=$(nmcli --terse --fields UUID,TYPE connection show 2>/dev/null); then
+  logger --tag wwan-fallback "NetworkManager is not ready"
+  exit 0
+fi
+
+mapfile -t gsm_profiles < <(
+  awk -F: '$2 == "gsm" { print $1 }' <<<"$saved_connections"
+)
+
+# Avoid Bash array-length expansion here because its delimiter bytes collide
+# with Jinja comment syntax inside templates.
+if [[ ! -v 'gsm_profiles[0]' ]]; then
+  logger --tag wwan-fallback "No mobile broadband profile is provisioned"
+  exit 0
+fi
+
+profile_configuration_failed=false
+for profile_uuid in "${gsm_profiles[@]}"; do
+  if ! nmcli connection modify uuid "$profile_uuid" \
+    connection.autoconnect yes \
+    connection.autoconnect-retries 0 \
+    connection.metered yes \
+    ipv4.route-metric {{ wwan_route_metric }} \
+    ipv6.route-metric {{ wwan_route_metric }} \
+    >/dev/null 2>&1; then
+    profile_configuration_failed=true
+  fi
+done
+
+if [[ $profile_configuration_failed == true ]]; then
+  logger --tag wwan-fallback "A mobile broadband profile could not be configured"
+fi
+
+device_states=$(nmcli --terse --fields TYPE,STATE device status 2>/dev/null || true)
+if grep -qx 'wifi:connected' <<<"$device_states"; then
+  active_connections=$(
+    nmcli --terse --fields UUID,TYPE connection show --active 2>/dev/null || true
+  )
+  while IFS= read -r profile_uuid; do
+    [[ -n $profile_uuid ]] || continue
+    nmcli --wait 10 connection down uuid "$profile_uuid" >/dev/null 2>&1 || true
+  done < <(awk -F: '$2 == "gsm" { print $1 }' <<<"$active_connections")
+  nmcli radio wwan off >/dev/null 2>&1 || true
+  exit 0
+fi
+
+nmcli radio wwan on >/dev/null 2>&1 || true
+active_connections=$(
+  nmcli --terse --fields UUID,TYPE connection show --active 2>/dev/null || true
+)
+if ! awk -F: '$2 == "gsm" { found = 1 } END { exit !found }' \
+  <<<"$active_connections"; then
+  if ! nmcli --wait 20 connection up uuid "${gsm_profiles[0]}" >/dev/null 2>&1; then
+    logger --tag wwan-fallback "Mobile broadband fallback could not be activated"
+  fi
+fi

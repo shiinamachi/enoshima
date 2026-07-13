@@ -1,4 +1,4 @@
-# Explicit native packages observed on tpx1c13 on 2026-07-13.
+# Desired native packages for tpx1c13.
 alsa-ucm-conf
 alsa-utils
 base
@@ -6,6 +6,7 @@ base-devel
 blueman
 bluez
 bluez-utils
+bolt
 brightnessctl
 btrfs-progs
 buildah
@@ -13,6 +14,7 @@ chezmoi
 cliphist
 cryptsetup
 direnv
+discord
 dmidecode
 dosfstools
 efibootmgr
@@ -23,12 +25,14 @@ fcitx5-hangul
 fcitx5-qt
 fd
 file-roller
-firefox
+flatpak
 fprintd
 fuse-overlayfs
 fwupd
 fzf
+ghostty
 git
+gnome-keyring
 gptfdisk
 grim
 gvfs
@@ -43,7 +47,8 @@ hyprsunset
 intel-media-driver
 intel-ucode
 jq
-kitty
+lib32-mesa
+lib32-vulkan-intel
 libcamera
 libva-utils
 linux
@@ -64,6 +69,7 @@ noto-fonts-cjk
 noto-fonts-emoji
 nvme-cli
 nwg-look
+obsidian
 pacman-contrib
 papirus-icon-theme
 pavucontrol
@@ -73,11 +79,11 @@ pipewire-jack
 pipewire-pulse
 playerctl
 podman
-power-profiles-daemon
 powertop
 qt5-wayland
 qt6-wayland
 ripgrep
+rtkit
 s-tui
 sbctl
 sddm
@@ -98,6 +104,8 @@ systemd-ukify
 texinfo
 thunar
 thunar-archive-plugin
+tlp
+tlp-pd
 ttf-jetbrains-mono-nerd
 tumbler
 turbostat
@@ -120,4 +128,5 @@ xdg-user-dirs
 xdg-utils
 xorg-xwayland
 yq
+zed
 zram-generator
