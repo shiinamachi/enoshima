@@ -29,6 +29,14 @@ apply_line=$(line_number "$bootstrap" "\"\$repo_root/scripts/apply-dotfiles.sh\"
 grep -Fq -- '--tags desktop-expansion' "$bootstrap"
 grep -Fq 'perform_full_upgrade=false' "$bootstrap"
 grep -Fq "ansible_become_exe=\$SUDO_COMMAND_WRAPPER" "$bootstrap"
+if [[ $(grep -Fc 'ANSIBLE_WORKER_SESSION_ISOLATION=false' "$bootstrap") -ne 2 ]]; then
+  printf 'Every Ansible convergence must retain the bootstrap TTY session.\n' >&2
+  exit 1
+fi
+if [[ $(grep -Fc 'refresh_sudo_credentials' "$bootstrap") -ne 3 ]]; then
+  printf 'Every Ansible convergence must refresh the sudo credential first.\n' >&2
+  exit 1
+fi
 grep -Fq 'tests/test-cyberdock-state.sh' "$validate"
 grep -Fq 'Checking desktop expansion security invariants' "$validate"
 grep -Fq 'Cloudflare One daemon did not converge after the AUR phase' "$postflight"

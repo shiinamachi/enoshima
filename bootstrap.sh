@@ -34,6 +34,15 @@ die() {
   exit 1
 }
 
+refresh_sudo_credentials() {
+  if /usr/bin/sudo -n -v >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "==> Refreshing sudo authentication for the next privileged phase"
+  /usr/bin/sudo -v
+}
+
 cleanup() {
   local status=$?
   trap - EXIT
@@ -220,7 +229,11 @@ else
 fi
 
 echo "==> Applying Ansible desired state for $profile"
+refresh_sudo_credentials
+# Ansible Core 2.21 isolates workers with setsid() by default. Keep workers in
+# this terminal session so sudo's TTY-scoped timestamp remains available.
 ANSIBLE_BECOME_ASK_PASS=false \
+  ANSIBLE_WORKER_SESSION_ISOLATION=false \
   ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" \
   ansible-playbook \
   --inventory "$inventory" \
@@ -238,7 +251,10 @@ else
 fi
 
 echo "==> Converging desktop expansion after the AUR phase"
+refresh_sudo_credentials
+# This second convergence needs the same TTY-scoped sudo credential behavior.
 ANSIBLE_BECOME_ASK_PASS=false \
+  ANSIBLE_WORKER_SESSION_ISOLATION=false \
   ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" \
   ansible-playbook \
   --inventory "$inventory" \
