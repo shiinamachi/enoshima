@@ -2,10 +2,11 @@
 
 ## Status
 
-Approved on 2026-07-13 after user Q&A. Implementation is intentionally
-pending. This document is the contract for the next implementation phase; it
-does not claim that the described packages, services, account onboarding, or
-UI changes have already been applied.
+Approved and implemented in the repository on 2026-07-13. Declarative package,
+service, desktop, and validation state is complete. Account enrollment, SDDM
+theme activation, and the visual/interactive acceptance items remain explicit
+manual gates documented in `DESKTOP-EXPANSION-OPERATIONS.md`; their mutable
+results are intentionally not committed.
 
 ## Goals
 
