@@ -272,13 +272,13 @@ account tokens as repository drift.
 
 ## Mail design
 
-Install official Arch Thunderbird and an audited local package made from
-Proton's official `https://proton.me/download/bridge/PKGBUILD`. Do not install
-the AUR `protonmail-bridge-free` variant: it carries third-party patches meant
-to bypass plan checks, while this user has a paid Bridge-capable plan.
-
-The local Proton package pins the reviewed upstream version, official package
-URL, and SHA-256. GNOME Keyring remains its Secret Service provider.
+Install the official Arch `thunderbird` and `protonmail-bridge` packages. The
+latter depends on the split `protonmail-bridge-core` daemon package, so the
+managed background unit starts `/usr/bin/protonmail-bridge-core` while account
+onboarding uses the GUI launcher. Do not install the AUR
+`protonmail-bridge-free` variant: it carries third-party patches meant to
+bypass plan checks, while this user has a paid Bridge-capable plan. GNOME
+Keyring remains the Bridge Secret Service provider.
 
 Bridge starts with the graphical session after account onboarding. Thunderbird
 is routed to DOCUMENT workspace 3 and configured interactively using the
@@ -363,9 +363,9 @@ a vault, choose a sync provider, or commit application state.
 
 | Owner | Additions |
 | --- | --- |
-| Official Arch manifests | Quickshell, GIMP, Thunderbird, rclone, FUSE support, office-compatible fonts, required validation utilities |
+| Official Arch manifests | Quickshell, GIMP, Thunderbird, Proton Mail Bridge, rclone, FUSE support, office-compatible fonts, required validation utilities |
 | Reviewed AUR allowlist | `cloudflare-warp-bin`, `onlyoffice-bin`, `photogimp` |
-| Pinned local packages | Jetendard, official Proton Mail Bridge PKGBUILD, sandboxed RHWP Desktop |
+| Pinned local packages | Jetendard and sandboxed RHWP Desktop |
 | User-scoped Flatpak | Existing Bottles |
 | chezmoi | Wallpaper, UI configuration, launch wrappers, user services, setup helpers, MIME/bookmark declarations |
 | Ansible | System packages, SDDM theme/config, Cloudflare daemon enablement, root-owned package/runtime configuration |
@@ -434,7 +434,7 @@ validation, user/system unit checks, and manual visual/interactive acceptance.
 - [Hyprland official plugins](https://github.com/hyprwm/hyprland-plugins)
 - [rclone Google Drive](https://rclone.org/drive/)
 - [rclone Proton Drive](https://rclone.org/protondrive/)
-- [Proton Mail Bridge PKGBUILD instructions](https://proton.me/support/install-bridge-linux-pkgbuild-file)
+- [Arch Linux Proton Mail Bridge](https://archlinux.org/packages/extra/x86_64/protonmail-bridge/)
 - [Cloudflare One Linux client](https://developers.cloudflare.com/cloudflare-one/team-and-resources/devices/cloudflare-one-client/)
 - [RHWP Desktop](https://github.com/runableapp/rhwp-desktop)
 - [rhwp](https://github.com/edwardkim/rhwp)

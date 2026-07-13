@@ -221,8 +221,9 @@ mountpoint "$HOME/Cloud/ProtonDrive"
 
 ## Proton Mail Bridge와 Thunderbird
 
-Bridge는 Proton의 공식 패키지를 고정한 로컬 PKGBUILD로 설치된다. 계정 등록과
-localhost IMAP/SMTP 설정은 다음 helper 안에서만 대화식으로 수행한다.
+Bridge GUI와 분리된 core daemon은 공식 Arch `protonmail-bridge` 패키지로
+설치된다. 계정 등록과 localhost IMAP/SMTP 설정은 다음 helper 안에서만
+대화식으로 수행한다.
 
 ```bash
 protonmail-bridge-setup

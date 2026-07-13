@@ -9,10 +9,19 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/protonmail-bridge --noninteractive
+ExecStart=/usr/bin/protonmail-bridge-core --noninteractive
 Restart=on-failure
 RestartSec=20s
+KillMode=process
 UMask=0077
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=graphical-session.target

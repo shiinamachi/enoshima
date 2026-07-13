@@ -126,6 +126,10 @@ local_package_names = {
     path.parent.name
     for path in (root / "packages" / "local").glob("*/PKGBUILD")
 }
+assert not (present & local_package_names), (
+    "packages cannot be managed by both native manifests and local PKGBUILD: "
+    + ", ".join(sorted(present & local_package_names))
+)
 assert not (aur & local_package_names), (
     "packages cannot be managed by both AUR and local PKGBUILD: "
     + ", ".join(sorted(aur & local_package_names))
@@ -245,15 +249,29 @@ fi
 
 echo "==> Checking desktop expansion security invariants"
 for package in \
-  fuse3 gimp libsecret quickshell rclone thunderbird \
+  fuse3 gimp libsecret protonmail-bridge quickshell rclone thunderbird \
   ttf-caladea ttf-carlito ttf-liberation wev; do
   grep -Fxq -- "$package" packages/native.txt
 done
 for package in cloudflare-warp-bin onlyoffice-bin photogimp; do
   grep -Fxq -- "$package" packages/aur.txt
 done
-for package in protonmail-bridge rhwp-desktop ttf-jetendard; do
+for package in rhwp-desktop ttf-jetendard; do
   test -f "packages/local/$package/PKGBUILD"
+done
+test ! -e packages/local/protonmail-bridge
+for directive in \
+  'ExecStart=/usr/bin/protonmail-bridge-core --noninteractive' \
+  'KillMode=process' \
+  'PrivateTmp=true' \
+  'ProtectSystem=full' \
+  'NoNewPrivileges=true' \
+  'ProtectControlGroups=true' \
+  'ProtectKernelTunables=true' \
+  'RestrictNamespaces=true' \
+  'RestrictRealtime=true' \
+  'SystemCallArchitectures=native'; do
+  grep -Fxq "$directive" home/dot_config/systemd/user/protonmail-bridge.service
 done
 
 wallpaper_sha=34053ea6a5b8a0b747261755a964917ffa14900ac85637bda346df5cb2bf64e6

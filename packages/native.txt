@@ -83,6 +83,7 @@ pipewire-pulse
 playerctl
 podman
 powertop
+protonmail-bridge
 quickshell
 qt5-wayland
 qt6-wayland
