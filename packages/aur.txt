@@ -1,7 +1,10 @@
 # AUR package bases. Generated -debug packages are captured only in state/.
 chatgpt-desktop-bin
+cloudflare-warp-bin
 google-chrome
 notion-app-electron
+onlyoffice-bin
 parsec-bin
 paru
+photogimp
 slack-desktop

@@ -27,9 +27,11 @@ fd
 file-roller
 flatpak
 fprintd
+fuse3
 fuse-overlayfs
 fwupd
 fzf
+gimp
 ghostty
 git
 gnome-keyring
@@ -80,8 +82,10 @@ pipewire-pulse
 playerctl
 podman
 powertop
+quickshell
 qt5-wayland
 qt6-wayland
+rclone
 ripgrep
 rtkit
 s-tui
@@ -102,11 +106,15 @@ swappy
 swaync
 systemd-ukify
 texinfo
+thunderbird
 thunar
 thunar-archive-plugin
 tlp
 tlp-pd
+ttf-caladea
+ttf-carlito
 ttf-jetbrains-mono-nerd
+ttf-liberation
 tumbler
 turbostat
 udiskie
@@ -119,6 +127,7 @@ vim
 vulkan-intel
 vulkan-tools
 waybar
+wev
 wireless-regdb
 wireplumber
 wl-clipboard
