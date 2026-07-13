@@ -1,8 +1,14 @@
 ---
-- name: Install the Jetendard fontconfig preference
+- name: Remove the legacy Jetendard-only fontconfig preference
+  ansible.builtin.file:
+    path: /etc/fonts/conf.d/60-jetendard.conf
+    state: absent
+  notify: Refresh fontconfig cache
+
+- name: Install the desktop fontconfig preference
   ansible.builtin.template:
-    src: 60-jetendard.conf.j2
-    dest: /etc/fonts/conf.d/60-jetendard.conf
+    src: 60-desktop-fonts.conf.j2
+    dest: /etc/fonts/conf.d/60-desktop-fonts.conf
     owner: root
     group: root
     mode: "0644"

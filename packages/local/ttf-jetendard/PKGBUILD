@@ -1,14 +1,14 @@
 # Maintainer: local workstation configuration
 pkgname=ttf-jetendard
 pkgver=0.1.0.r0.g4b018fc
-pkgrel=1
-pkgdesc='JetBrains Mono Nerd Font and Pretendard Korean monospace family'
+pkgrel=2
+pkgdesc='Pretendard UI fonts and Jetendard Korean monospace fonts'
 arch=('any')
 url='https://github.com/kuskhan/jetendard'
 license=('OFL-1.1')
 depends=('fontconfig')
 makedepends=('python-brotli' 'python-fonttools' 'python-pytest')
-provides=('jetendard-font')
+provides=('jetendard-font' 'pretendard-font')
 _commit=4b018fcb9c6cc87fdb788aa27fe22b89f4110d7d
 _nerd_fonts_version=3.4.0
 _pretendard_version=1.3.9
@@ -31,6 +31,8 @@ prepare() {
   bsdtar -xf "$srcdir/Pretendard-${_pretendard_version}.zip" \
     -C upstream/pretendard --strip-components 3 \
     'public/static/alternative/Pretendard-*.ttf'
+  bsdtar -xf "$srcdir/Pretendard-${_pretendard_version}.zip" \
+    -C upstream/pretendard 'LICENSE.txt'
 }
 
 build() {
@@ -43,13 +45,21 @@ check() {
   PYTHONPATH=src python -m pytest
 
   local -a built_fonts=(fonts/ttf/Jetendard-*.ttf)
+  local -a pretendard_fonts=(upstream/pretendard/Pretendard-*.ttf)
   (( ${#built_fonts[@]} == 16 )) || {
     printf 'expected 16 TTF variants, found %d\n' "${#built_fonts[@]}" >&2
+    return 1
+  }
+  (( ${#pretendard_fonts[@]} == 9 )) || {
+    printf 'expected 9 Pretendard TTF variants, found %d\n' "${#pretendard_fonts[@]}" >&2
     return 1
   }
   local font
   for font in "${built_fonts[@]}"; do
     fc-scan --format '%{family}\n' "$font" | grep -Fxq Jetendard
+  done
+  for font in "${pretendard_fonts[@]}"; do
+    fc-scan --format '%{family}\n' "$font" | grep -Fxq Pretendard
   done
 }
 
@@ -57,5 +67,8 @@ package() {
   cd "jetendard-${_commit}"
   install -d "$pkgdir/usr/share/fonts/TTF"
   install -m 0644 fonts/ttf/Jetendard-*.ttf "$pkgdir/usr/share/fonts/TTF/"
+  install -m 0644 upstream/pretendard/Pretendard-*.ttf "$pkgdir/usr/share/fonts/TTF/"
   install -Dm0644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm0644 upstream/pretendard/LICENSE.txt \
+    "$pkgdir/usr/share/licenses/$pkgname/PRETENDARD-LICENSE"
 }

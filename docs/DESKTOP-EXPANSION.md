@@ -75,24 +75,25 @@ Hyprbars, SwayNC, Hyprlauncher, tooltips, and session controls.
 
 ## Font architecture
 
-Jetendard is approved as the global sans-serif and monospace default. Serif
-documents continue to use the existing serif fallback because Jetendard is
-not a serif family.
+Pretendard is the global proportional UI and `sans-serif` default. Jetendard
+remains the `monospace` default for terminals and code editors, where fixed
+glyph widths and Nerd Font symbols are required. Serif documents continue to
+use the existing serif fallback.
 
-Jetendard has no maintained Arch binary package. A reproducible local package
-will therefore:
+A reproducible local package combines the two reviewed families:
 
 1. pin a reviewed `kuskhan/jetendard` commit and every upstream font input;
-2. build and test the complete 16-variant TTF family;
-3. install it below `/usr/share/fonts/TTF` through pacman; and
-4. refresh fontconfig through the normal package hook.
+2. build and test the complete 16-variant Jetendard TTF family;
+3. validate and install the nine pinned Pretendard 1.3.9 static TTF variants;
+4. install both families below `/usr/share/fonts/TTF` through pacman; and
+5. refresh fontconfig through the normal package hook.
 
-A managed fontconfig rule puts `Jetendard` first for `sans-serif` and
-`monospace`. GTK/dconf, Qt-facing UI, Waybar, Hyprlock, Hyprbars, Quickshell,
-Ghostty, Zed, and SDDM explicitly request the family as well. Noto CJK and
-emoji remain fallbacks. Carlito, Caladea, and Liberation remain installed for
-metric-compatible Microsoft Office document rendering even though Jetendard
-is the desktop default.
+A managed fontconfig rule puts `Pretendard` first for `sans-serif` and
+`Jetendard` first for `monospace`. GTK/dconf, Qt-facing UI, Waybar, Hyprlock,
+Hyprbars, Quickshell, Zed UI, and SDDM explicitly request Pretendard. Ghostty,
+Zed buffers/terminal, and other code surfaces explicitly retain Jetendard.
+Noto CJK and emoji remain fallbacks. Carlito, Caladea, and Liberation remain
+installed for metric-compatible Microsoft Office document rendering.
 
 Acceptance checks include `fc-match sans-serif`, `fc-match monospace`, Korean
 glyph width in terminal/editor output, Nerd Font icons, emoji fallback, and an
@@ -365,7 +366,7 @@ a vault, choose a sync provider, or commit application state.
 | --- | --- |
 | Official Arch manifests | Quickshell, GIMP, Thunderbird, Proton Mail Bridge, rclone, FUSE support, office-compatible fonts, required validation utilities |
 | Reviewed AUR allowlist | `cloudflare-warp-bin`, `onlyoffice-bin`, `photogimp` |
-| Pinned local packages | Jetendard and sandboxed RHWP Desktop |
+| Pinned local packages | Pretendard/Jetendard desktop fonts and sandboxed RHWP Desktop |
 | User-scoped Flatpak | Existing Bottles |
 | chezmoi | Wallpaper, UI configuration, launch wrappers, user services, setup helpers, MIME/bookmark declarations |
 | Ansible | System packages, SDDM theme/config, Cloudflare daemon enablement, root-owned package/runtime configuration |
@@ -389,7 +390,7 @@ Each numbered item is an independently recoverable Conventional Commit. Do
 not combine all work at the end of a session.
 
 1. `feat(packages): add desktop expansion dependencies`
-2. `feat(fonts): package and apply Jetendard globally`
+2. `feat(fonts): package and apply desktop font roles`
 3. `feat(theme): add cyberpunk wallpaper and desktop surfaces`
 4. `feat(dock): add Quickshell dock and minimized window state`
 5. `feat(hyprland): add titlebar window controls`
@@ -412,7 +413,7 @@ resulting account state.
 | Theme | Same managed wallpaper on both outputs; coherent bar, lock, launcher, notifications, Dock, titlebar, and login palette |
 | Dock | Hidden by default on both outputs; bottom-edge reveal; leave-to-hide; approved click behavior; crash recovery for minimized clients |
 | Window controls | Close, minimize, maximize/restore, and true fullscreen work for tiled and floating clients without duplicate titlebars |
-| Fonts | Jetendard wins global sans/mono matching; Korean, Nerd Font, emoji, and office fallbacks render correctly |
+| Fonts | Pretendard wins global sans matching, Jetendard wins mono matching, and Korean, Nerd Font, emoji, and office fallbacks render correctly |
 | Electron HiDPI | Discord and Slack report `xwayland=false` and match Chrome/Obsidian sizing at scale 1.5 |
 | Parsec | Remains XWayland, sharp, functional, and intentionally small in its management UI |
 | Fcitx | Physical Right Alt immediately toggles Korean/English in native Wayland, Electron, and KakaoTalk |
@@ -431,6 +432,7 @@ validation, user/system unit checks, and manual visual/interactive acceptance.
 ## Upstream references
 
 - [Jetendard](https://github.com/kuskhan/jetendard)
+- [Pretendard](https://github.com/orioncactus/pretendard)
 - [Hyprland official plugins](https://github.com/hyprwm/hyprland-plugins)
 - [rclone Google Drive](https://rclone.org/drive/)
 - [rclone Proton Drive](https://rclone.org/protondrive/)

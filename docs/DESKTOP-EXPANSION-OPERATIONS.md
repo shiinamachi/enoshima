@@ -350,7 +350,8 @@ gimp
 
 - 두 출력이 scale 1.5이고 wallpaper, lock, bar, launcher, notification, Dock과
   titlebar palette가 일치한다.
-- `fc-match sans-serif`와 `fc-match monospace`에서 Jetendard가 우선한다.
+- `fc-match sans-serif`에서는 Pretendard가, `fc-match monospace`에서는
+  Jetendard가 우선한다.
 - Ghostty와 Zed에서 한글 폭, Nerd Font icon과 emoji fallback을 확인한다.
 - Calibri/Cambria 호환 글꼴을 명시한 office 문서가 Carlito/Caladea로 적절히
   렌더링된다.

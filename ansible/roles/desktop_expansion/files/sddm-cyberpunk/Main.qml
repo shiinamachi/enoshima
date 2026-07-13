@@ -39,7 +39,7 @@ Rectangle {
         Text {
             text: "SHIINAMACHI // ACCESS NODE"
             color: "#33d6ff"
-            font.family: "Jetendard"
+            font.family: "Pretendard"
             font.pixelSize: 17
             font.bold: true
         }
@@ -48,7 +48,7 @@ Rectangle {
             id: clock
             text: Qt.formatTime(new Date(), "HH:mm")
             color: "#e9e8ff"
-            font.family: "Jetendard"
+            font.family: "Pretendard"
             font.pixelSize: 76
             font.bold: true
 
@@ -63,7 +63,7 @@ Rectangle {
         Text {
             text: Qt.formatDate(new Date(), "dddd, dd MMMM yyyy")
             color: "#c6c4e8"
-            font.family: "Jetendard"
+            font.family: "Pretendard"
             font.pixelSize: 19
         }
 
@@ -91,7 +91,7 @@ Rectangle {
                     focusColor: "#33d6ff"
                     hoverColor: "#ff3cc7"
                     radius: 10
-                    font.family: "Jetendard"
+                    font.family: "Pretendard"
                     font.pixelSize: 16
                     KeyNavigation.tab: password
                 }
@@ -106,7 +106,7 @@ Rectangle {
                     focusColor: "#33d6ff"
                     hoverColor: "#ff3cc7"
                     radius: 10
-                    font.family: "Jetendard"
+                    font.family: "Pretendard"
                     font.pixelSize: 16
                     KeyNavigation.backtab: username
                     KeyNavigation.tab: login
@@ -134,7 +134,7 @@ Rectangle {
                         focusColor: "#33d6ff"
                         hoverColor: "#ff3cc7"
                         arrowColor: "#33d6ff"
-                        font.family: "Jetendard"
+                        font.family: "Pretendard"
                         font.pixelSize: 14
                     }
 
@@ -147,7 +147,7 @@ Rectangle {
                         activeColor: "#33d6ff"
                         pressedColor: "#ff3cc7"
                         textColor: "#070b2a"
-                        font.family: "Jetendard"
+                        font.family: "Pretendard"
                         font.pixelSize: 15
                         onClicked: sddm.login(username.text, password.text, sessionIndex)
                     }
@@ -157,7 +157,7 @@ Rectangle {
                     id: status
                     text: "PASSWORD OR FINGERPRINT"
                     color: "#ffb84d"
-                    font.family: "Jetendard"
+                    font.family: "Pretendard"
                     font.pixelSize: 12
                 }
             }
@@ -170,7 +170,7 @@ Rectangle {
                 text: "SUSPEND"
                 color: "#33d6ff"
                 visible: sddm.canSuspend
-                font.family: "Jetendard"
+                font.family: "Pretendard"
                 font.pixelSize: 13
                 MouseArea {
                     anchors.fill: parent
@@ -182,7 +182,7 @@ Rectangle {
             Text {
                 text: "REBOOT"
                 color: "#ffb84d"
-                font.family: "Jetendard"
+                font.family: "Pretendard"
                 font.pixelSize: 13
                 MouseArea {
                     anchors.fill: parent
@@ -194,7 +194,7 @@ Rectangle {
             Text {
                 text: "POWER OFF"
                 color: "#ff426d"
-                font.family: "Jetendard"
+                font.family: "Pretendard"
                 font.pixelSize: 13
                 MouseArea {
                     anchors.fill: parent

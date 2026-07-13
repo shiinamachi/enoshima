@@ -253,10 +253,10 @@ else
   warn "cyberpunk SDDM selection remains gated pending manual acceptance"
 fi
 
-if [[ $(fc-match -f '%{family}\n' sans-serif 2>/dev/null) == Jetendard* ]]; then
-  pass "Jetendard is the first sans-serif match"
+if [[ $(fc-match -f '%{family}\n' sans-serif 2>/dev/null) == Pretendard* ]]; then
+  pass "Pretendard is the first sans-serif match"
 else
-  fail "Jetendard is not the first sans-serif match"
+  fail "Pretendard is not the first sans-serif match"
 fi
 if [[ $(fc-match -f '%{family}\n' monospace 2>/dev/null) == Jetendard* ]]; then
   pass "Jetendard is the first monospace match"

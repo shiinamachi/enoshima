@@ -1,6 +1,6 @@
 {
   "vim_mode": false,
-  "ui_font_family": "Jetendard",
+  "ui_font_family": "Pretendard",
   "ui_font_fallbacks": ["Noto Sans CJK KR"],
   "ui_font_size": 15,
   "buffer_font_family": "Jetendard",

@@ -412,7 +412,7 @@ ShellRoot {
                                             anchors.centerIn: parent
                                             text: appItem.app.windows.length
                                             color: "#e9e8ff"
-                                            font.family: "Jetendard"
+                                            font.family: "Pretendard"
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
@@ -471,7 +471,7 @@ ShellRoot {
                         anchors.margins: 12
                         text: dockWindow.chooserTitle
                         color: "#33d6ff"
-                        font.family: "Jetendard"
+                        font.family: "Pretendard"
                         font.pixelSize: 14
                         font.bold: true
                         elide: Text.ElideRight
@@ -503,7 +503,7 @@ ShellRoot {
                                 anchors.rightMargin: 8
                                 text: root.windowTitle(modelData)
                                 color: "#e9e8ff"
-                                font.family: "Jetendard"
+                                font.family: "Pretendard"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
                             }
@@ -517,7 +517,7 @@ ShellRoot {
                                     ? "MINIMIZED"
                                     : String(modelData.workspace && modelData.workspace.name || "")
                                 color: modelData.minimized ? "#ff3cc7" : "#8b5cff"
-                                font.family: "Jetendard"
+                                font.family: "Pretendard"
                                 font.pixelSize: 10
                                 font.bold: true
                             }

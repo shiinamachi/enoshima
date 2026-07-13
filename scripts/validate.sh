@@ -103,7 +103,7 @@ ET.parse(
     / "roles"
     / "desktop_expansion"
     / "templates"
-    / "60-jetendard.conf.j2"
+    / "60-desktop-fonts.conf.j2"
 )
 
 
@@ -289,13 +289,36 @@ for directive in \
   grep -Fxq "$directive" home/dot_config/systemd/user/protonmail-bridge.service
 done
 
-grep -Fq 'dest: /etc/fonts/conf.d/60-jetendard.conf' \
+grep -Fq 'dest: /etc/fonts/conf.d/60-desktop-fonts.conf' \
+  ansible/roles/desktop_expansion/tasks/fonts.yml
+grep -Fq 'path: /etc/fonts/conf.d/60-jetendard.conf' \
   ansible/roles/desktop_expansion/tasks/fonts.yml
 if grep -Fq '/etc/fonts/conf.avail' \
   ansible/roles/desktop_expansion/tasks/fonts.yml; then
   echo "Desktop expansion targets a non-existent Arch fontconfig directory." >&2
   exit 1
 fi
+
+desktop_fontconfig=ansible/roles/desktop_expansion/templates/60-desktop-fonts.conf.j2
+grep -Fq '<family>Pretendard</family>' "$desktop_fontconfig"
+grep -Fq '<family>Jetendard</family>' "$desktop_fontconfig"
+grep -Fq 'upstream/pretendard/Pretendard-*.ttf' \
+  packages/local/ttf-jetendard/PKGBUILD
+grep -Fq 'PRETENDARD-LICENSE' packages/local/ttf-jetendard/PKGBUILD
+
+for ui_font_config in \
+  home/.chezmoitemplates/dconf-interface.ini \
+  home/dot_config/hypr/hyprland.lua \
+  home/dot_config/hypr/hyprlock.conf \
+  home/dot_config/hypr/hyprtoolkit.conf \
+  home/dot_config/quickshell/cyberdock/shell.qml \
+  home/dot_config/swaync/style.css \
+  home/dot_config/waybar/style.css \
+  home/dot_config/zed/settings.json; do
+  grep -Fq 'Pretendard' "$ui_font_config"
+done
+grep -Fq 'font-family = Jetendard' home/dot_config/ghostty/config.ghostty
+grep -Fq '"buffer_font_family": "Jetendard"' home/dot_config/zed/settings.json
 
 wallpaper_sha=34053ea6a5b8a0b747261755a964917ffa14900ac85637bda346df5cb2bf64e6
 printf '%s  %s\n' \
