@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+
+# Verify the exact HTTPS path used by Bottles before creating or updating the
+# KakaoTalk bottle. This command is safe to rerun after Cloudflare One/WARP
+# enrollment because it does not change Flatpak, Bottles, or account state.
+set -uo pipefail
+
+readonly app_id=com.usebottles.bottles
+readonly probe_host=ping.usebottles.com
+readonly probe_url=https://ping.usebottles.com
+
+pass() {
+  printf '[PASS] %s\n' "$1"
+}
+
+warn() {
+  printf '[WARN] %s\n' "$1" >&2
+}
+
+fail() {
+  printf '[FAIL] %s\n' "$1" >&2
+}
+
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    fail "required command is missing: $1"
+    exit 1
+  fi
+}
+
+require_command curl
+require_command flatpak
+require_command getent
+
+if ! flatpak info --user "$app_id" >/dev/null 2>&1; then
+  fail 'the user-scoped Bottles Flatpak is not installed'
+  printf 'Install Bottles first, then rerun kakaotalk-connectivity-check.\n' >&2
+  exit 2
+fi
+
+host_dns_ok=false
+host_https_ok=false
+sandbox_dns_ok=false
+sandbox_https_ok=false
+
+if getent ahosts "$probe_host" >/dev/null 2>&1; then
+  host_dns_ok=true
+  pass 'host DNS resolves ping.usebottles.com'
+else
+  warn 'host DNS cannot resolve ping.usebottles.com'
+fi
+
+if curl \
+  --fail \
+  --silent \
+  --show-error \
+  --location \
+  --connect-timeout 10 \
+  --max-time 20 \
+  --output /dev/null \
+  "$probe_url"; then
+  host_https_ok=true
+  pass 'host HTTPS reaches the Bottles connectivity endpoint'
+else
+  warn 'host HTTPS cannot reach the Bottles connectivity endpoint'
+fi
+
+if flatpak run --user --command=getent "$app_id" \
+  ahosts "$probe_host" >/dev/null 2>&1; then
+  sandbox_dns_ok=true
+  pass 'Bottles sandbox DNS resolves ping.usebottles.com'
+else
+  warn 'Bottles sandbox DNS cannot resolve ping.usebottles.com'
+fi
+
+pycurl_probe=$(
+  cat <<'PYTHON'
+import sys
+
+import pycurl
+
+handle = pycurl.Curl()
+handle.setopt(pycurl.URL, "https://ping.usebottles.com")
+handle.setopt(pycurl.CONNECTTIMEOUT, 10)
+handle.setopt(pycurl.TIMEOUT, 20)
+handle.setopt(pycurl.FOLLOWLOCATION, True)
+handle.setopt(pycurl.FAILONERROR, True)
+handle.setopt(pycurl.WRITEFUNCTION, lambda data: len(data))
+
+try:
+    handle.perform()
+    status = handle.getinfo(pycurl.RESPONSE_CODE)
+except pycurl.error as error:
+    code, message = error.args
+    print(f"pycurl error {code}: {message}", file=sys.stderr)
+    raise SystemExit(1)
+finally:
+    handle.close()
+
+if not 200 <= status < 400:
+    print(f"unexpected HTTP status: {status}", file=sys.stderr)
+    raise SystemExit(1)
+
+print(f"HTTP {status}")
+PYTHON
+)
+
+sandbox_probe_output=$(
+  flatpak run --user --command=python3 "$app_id" \
+    -c "$pycurl_probe" 2>&1
+)
+sandbox_probe_status=$?
+if ((sandbox_probe_status == 0)); then
+  sandbox_https_ok=true
+  pass "Bottles sandbox pycurl reaches the endpoint ($sandbox_probe_output)"
+else
+  warn "Bottles sandbox pycurl probe failed: $sandbox_probe_output"
+fi
+
+if [[ $sandbox_dns_ok == true && $sandbox_https_ok == true ]]; then
+  printf 'Bottles connectivity preflight passed.\n'
+  exit 0
+fi
+
+fail 'Bottles cannot complete its sandboxed connectivity probe'
+
+if [[ $host_dns_ok != true ]]; then
+  cat >&2 <<'EOF'
+Diagnosis: the host DNS path is failing before Flatpak isolation is involved.
+Check the active NetworkManager connection and WARP registration/connection,
+then retry without hard-coding a DNS server.
+EOF
+elif [[ $host_https_ok != true ]]; then
+  cat >&2 <<'EOF'
+Diagnosis: DNS resolves on the host, but host HTTPS is blocked or timing out.
+Check the active network, captive portal, proxy, and WARP connection state.
+EOF
+elif [[ $sandbox_dns_ok != true ]]; then
+  cat >&2 <<'EOF'
+Diagnosis: the host can reach Bottles, but DNS fails only inside the Flatpak
+sandbox. Restart Bottles after network/WARP changes and inspect the user
+Flatpak runtime before retrying.
+EOF
+else
+  cat >&2 <<'EOF'
+Diagnosis: DNS works inside Flatpak, but Bottles' own pycurl HTTPS path fails.
+This usually indicates a sandbox TLS, proxy, or transient network problem.
+Restart Bottles and retry after confirming the active WARP connection state.
+EOF
+fi
+
+cat >&2 <<'EOF'
+This check is non-destructive. Rerun `kakaotalk-connectivity-check` after
+Cloudflare One enrollment or any Wi-Fi/WWAN/WARP change.
+EOF
+exit 1

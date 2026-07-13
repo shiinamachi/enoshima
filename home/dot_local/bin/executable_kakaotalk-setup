@@ -22,6 +22,7 @@ require_command() {
 require_command flatpak
 require_command curl
 require_command jq
+require_command kakaotalk-connectivity-check
 require_command xdg-user-dir
 
 [[ -t 0 ]] || die 'run this helper interactively from a terminal'
@@ -49,6 +50,22 @@ flatpak override --user \
   --filesystem=xdg-documents:rw \
   --filesystem=xdg-pictures:rw \
   "$app_id"
+
+printf 'Checking the Bottles network path before creating the bottle.\n'
+while true; do
+  if kakaotalk-connectivity-check; then
+    break
+  fi
+
+  cat >&2 <<'EOF'
+KakaoTalk setup cannot continue until Bottles reaches its connectivity
+endpoint from inside the Flatpak sandbox. Fix the reported DNS/network/WARP
+condition, then retry this preflight. No bottle has been created or changed.
+EOF
+  read -r -p 'Retry Bottles connectivity now? [r/N] ' answer
+  [[ $answer =~ ^[Rr]$ ]] ||
+    die 'Bottles connectivity preflight did not pass; rerun kakaotalk-setup later'
+done
 
 readonly -a bottles_cli=(
   flatpak run
