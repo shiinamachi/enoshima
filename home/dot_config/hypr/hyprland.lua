@@ -132,6 +132,57 @@ hl.config({
     },
 })
 
+-- Hyprbars is optional and ABI-coupled to Hyprland. Keep the base config
+-- usable until the interactive hyprbars-setup helper has loaded the plugin.
+if hl.plugin ~= nil and hl.plugin.hyprbars ~= nil then
+    hl.config({
+        plugin = {
+            hyprbars = {
+                enabled = true,
+                bar_color = "rgba(111447e6)",
+                bar_height = 30,
+                bar_blur = true,
+                col = { text = "rgb(e9e8ff)" },
+                bar_title_enabled = true,
+                bar_text_size = 12,
+                bar_text_weight = 600,
+                bar_text_font = "Jetendard",
+                bar_text_align = "center",
+                bar_buttons_alignment = "left",
+                bar_part_of_window = true,
+                bar_precedence_over_border = true,
+                bar_padding = 8,
+                bar_button_padding = 6,
+                icon_on_hover = false,
+            },
+        },
+    })
+
+    -- Buttons are registered from right to left. With left alignment this
+    -- declaration order renders the familiar red, yellow, green sequence.
+    hl.plugin.hyprbars.add_button({
+        bg_color = "rgb(33d6a6)",
+        fg_color = "rgb(070b2a)",
+        size = 14,
+        icon = "□",
+        action = "hyprbars-green",
+    })
+    hl.plugin.hyprbars.add_button({
+        bg_color = "rgb(ffb84d)",
+        fg_color = "rgb(070b2a)",
+        size = 14,
+        icon = "−",
+        action = "cyberdock-minimize",
+    })
+    hl.plugin.hyprbars.add_button({
+        bg_color = "rgb(ff426d)",
+        fg_color = "rgb(070b2a)",
+        size = 14,
+        icon = "×",
+        action = "hyprctl dispatch killactive",
+    })
+end
+
 hl.curve("easeOutQuint", {
     type = "bezier",
     points = { { 0.23, 1 }, { 0.32, 1 } },
@@ -225,6 +276,7 @@ hl.bind(mainMod .. " + Z", hl.dsp.exec_cmd(editor), { description = "Open Zed" }
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd(browser), { description = "Open Chrome" })
 hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager), { description = "Open Thunar" })
 hl.bind(mainMod .. " + C", hl.dsp.window.close(), { description = "Close active window" })
+hl.bind(mainMod .. " + F", hl.dsp.exec_cmd("hyprctl dispatch fullscreen 0"), { description = "Toggle true fullscreen" })
 hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("cyberdock-minimize"), { description = "Minimize active window" })
 hl.bind(mainMod .. " + SHIFT + N", hl.dsp.exec_cmd("cyberdock-recover"), { description = "Recover minimized windows" })
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }), { description = "Toggle floating" })
@@ -340,6 +392,18 @@ for _, route in ipairs(applicationRoutes) do
         name = route.name,
         match = { class = route.class },
         workspace = route.workspace,
+    })
+end
+
+if hl.plugin ~= nil and hl.plugin.hyprbars ~= nil then
+    -- These clients already draw their own decorations. Exempting them avoids
+    -- duplicate titlebars while compositor bars remain available elsewhere.
+    hl.window_rule({
+        name = "hyprbars-exempt-native-csd",
+        match = {
+            class = [[(?i)^(google-chrome(-stable)?|com\.google\.chrome|discord|slack|com\.slack\.slack|obsidian|md\.obsidian|thunderbird|org\.mozilla\.thunderbird|dev\.zed\.zed|zed|thunar|org\.gnome\..*|gimp(-[0-9.]+)?|photogimp|onlyoffice.*|desktopeditors|rhwp(-desktop)?|.*rhwp.*)$]],
+        },
+        ["hyprbars:no_bar"] = true,
     })
 end
 

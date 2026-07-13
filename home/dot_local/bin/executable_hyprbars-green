@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+command -v hyprctl >/dev/null 2>&1 || exit 1
+command -v jq >/dev/null 2>&1 || exit 1
+[[ -n ${XDG_RUNTIME_DIR:-} ]] || exit 1
+
+runtime_dir=$XDG_RUNTIME_DIR/hyprbars
+state_file=$runtime_dir/green-click
+mkdir -p -- "$runtime_dir"
+chmod 0700 -- "$runtime_dir"
+exec 9>"$runtime_dir/green-click.lock"
+flock 9
+
+address=$(hyprctl activewindow -j | jq -er '.address | select(length > 0)')
+now=$(date +%s%3N)
+last_address=
+last_time=0
+if [[ -r $state_file ]]; then
+  read -r last_address last_time <"$state_file" || true
+fi
+
+if [[ $last_address == "$address" ]] && ((now - last_time <= 450)); then
+  rm -f -- "$state_file"
+  exec hyprctl dispatch fullscreen 0
+fi
+
+tmp_file=$state_file.tmp.$$
+printf '%s %s\n' "$address" "$now" >"$tmp_file"
+chmod 0600 -- "$tmp_file"
+mv -f -- "$tmp_file" "$state_file"
+exec hyprctl dispatch fullscreen 1

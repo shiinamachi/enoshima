@@ -1,0 +1,12 @@
+[Unit]
+Description=Check the Hyprbars plugin against the running Hyprland ABI
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hyprbars-setup --check
+
+[Install]
+WantedBy=graphical-session.target
