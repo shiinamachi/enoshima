@@ -25,7 +25,7 @@ case ${1:-} in
     ;;
   getoption)
     if [[ ${FAKE_PLUGIN_AVAILABLE:-true} == true ]]; then
-      printf '{"option":"plugin:hyprfocus:enable","bool":true}\n'
+      printf '{"option":"plugin:hyprfocus:mode","str":"flash"}\n'
     else
       printf 'no such option\n'
     fi
@@ -59,9 +59,9 @@ assert_not_logged() {
 : >"$log"
 [[ $(run_helper reduced-motion) == reduced-motion ]] || fail 'reduced-motion failed'
 assert_logged reload
-assert_logged 'keyword animations:enabled false'
-assert_logged 'keyword plugin:hyprfocus:enable false'
-assert_not_logged 'keyword decoration:blur:enabled false'
+assert_logged 'eval hl.config({ animations = { enabled = false } })'
+assert_logged 'eval hl.config({ plugin = { hyprfocus = { fade_opacity = 1.0 } } })'
+assert_not_logged 'eval hl.config({ decoration = { blur = { enabled = false } } })'
 [[ $(stat -c %a "$test_root/state/desktop-appearance/mode") == 600 ]] ||
   fail 'stored mode is not private'
 
@@ -69,31 +69,31 @@ assert_not_logged 'keyword decoration:blur:enabled false'
 [[ $(run_helper reduced-transparency) == reduced-transparency ]] ||
   fail 'reduced-transparency failed'
 assert_logged reload
-assert_logged 'keyword decoration:blur:enabled false'
-assert_not_logged 'keyword animations:enabled false'
+assert_logged 'eval hl.config({ decoration = { blur = { enabled = false } } })'
+assert_not_logged 'eval hl.config({ animations = { enabled = false } })'
 
 : >"$log"
 [[ $(run_helper accessible) == accessible ]] || fail 'accessible mode failed'
 assert_logged reload
-assert_logged 'keyword animations:enabled false'
-assert_logged 'keyword plugin:hyprfocus:enable false'
-assert_logged 'keyword decoration:blur:enabled false'
+assert_logged 'eval hl.config({ animations = { enabled = false } })'
+assert_logged 'eval hl.config({ plugin = { hyprfocus = { fade_opacity = 1.0 } } })'
+assert_logged 'eval hl.config({ decoration = { blur = { enabled = false } } })'
 
 : >"$log"
 run_helper default >/dev/null
 assert_logged reload
-assert_not_logged 'keyword animations:enabled false'
-assert_not_logged 'keyword decoration:blur:enabled false'
+assert_not_logged 'eval hl.config({ animations = { enabled = false } })'
+assert_not_logged 'eval hl.config({ decoration = { blur = { enabled = false } } })'
 
 : >"$log"
 FAKE_PLUGIN_AVAILABLE=false run_helper reduced-motion >/dev/null
-assert_logged 'keyword animations:enabled false'
-assert_not_logged 'keyword plugin:hyprfocus:enable false'
+assert_logged 'eval hl.config({ animations = { enabled = false } })'
+assert_not_logged 'eval hl.config({ plugin = { hyprfocus = { fade_opacity = 1.0 } } })'
 
 : >"$log"
 FAKE_PLUGIN_AVAILABLE=false run_helper apply
 assert_not_logged reload
-assert_logged 'keyword animations:enabled false'
+assert_logged 'eval hl.config({ animations = { enabled = false } })'
 
 if run_helper unsupported >/dev/null 2>&1; then
   fail 'unsupported mode unexpectedly succeeded'

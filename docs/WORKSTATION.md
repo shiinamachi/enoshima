@@ -154,10 +154,11 @@ Tiled split boundaries can also be dragged directly with the pointer. Waybar's
 workspace labels use the compositor's ext-workspace protocol, so they can be
 clicked without relying on Hyprland's removed legacy dispatcher syntax.
 
-The official `hyprfocus` plugin adds a deliberately subtle keyboard-only focus
-shrink. The native cyan-violet border remains the complete fallback when the
-plugin cannot load. Motion and transparency preferences persist across session
-reloads through the same helper used by the Hyprland start event:
+The official `hyprfocus` plugin adds a deliberately subtle six-percent opacity
+flash when window focus changes. It never moves window geometry, and the native
+cyan-violet border remains the complete fallback when the plugin cannot load.
+Motion and transparency preferences persist across session reloads through the
+same helper used by the Hyprland start event:
 
 ```bash
 desktop-appearance status

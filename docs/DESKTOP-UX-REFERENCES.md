@@ -358,18 +358,21 @@ Hyprland 플러그인은 compositor 프로세스 안에서 실행되는 C++ shar
 
 ### 7.2 채택: hyprfocus
 
-`hyprfocus`는 키보드로 focus가 바뀔 때 사용자가 새 focus 위치를 놓치지 않도록
-돕는 제한적인 용도로 적합하다.
+`hyprfocus`는 focus가 바뀔 때 사용자가 새 focus 위치를 놓치지 않도록 돕는
+제한적인 용도로 적합하다. Hyprland 0.55.4에 대해 `hyprpm`이 고정하는 버전은
+입력 원인별 효과를 구분하지 않고 `flash`, `bounce`, `slide` mode를 제공한다.
+따라서 현재 ABI에서 지원하지 않는 keyboard/mouse 전용 옵션을 가정하지 않는다.
 
 출처: [hyprfocus configuration](https://github.com/hyprwm/hyprland-plugins/tree/main/hyprfocus)
 
+현재 ABI 구현: [Hyprland 0.55 호환 hyprfocus source](https://github.com/hyprwm/hyprland-plugins/blob/3aa21f2e0ca72412f1b434c3126f8f1fec3c716c/hyprfocus/main.cpp)
+
 권장 설정 방향은 다음과 같다.
 
-- keyboard focus는 매우 약한 `shrink` 또는 짧은 `flash`
-- mouse focus animation은 `none`
-- floating window animation은 기본적으로 끔
-- shrink 비율은 1에 가깝게 설정
-- reduced-motion profile에서는 비활성화
+- geometry를 움직이는 `bounce`, `slide` 대신 짧은 `flash` 사용
+- `fade_opacity = 0.94`로 변화량을 6%로 제한
+- native cyan-violet active border를 완전한 fallback으로 유지
+- reduced-motion profile에서는 flash opacity를 1.0으로 만들어 시각 효과 제거
 
 이 효과는 테마 장식이 아니라 focus 접근성을 위한 보조 단서여야 한다.
 
@@ -522,7 +525,7 @@ state에 대한 방어적 구성이다.
 | 즐겨찾기·실행 상태·multi-window chooser | Quickshell Cyberdock |
 | 알림 가치·DND·critical 표현 | SwayNC config/style |
 | wallpaper 중심의 안전한 인증 UI | Hyprlock/Hyprpaper |
-| subtle keyboard focus cue | 선택적 `hyprfocus` 관리 |
+| subtle window focus cue | 선택적 `hyprfocus` 관리 |
 | stale title-bar plugin 제거 | `hyprpm` convergence 및 postflight |
 | reduced motion/transparency | desktop appearance helper와 문서 |
 | 회귀 방지 | `scripts/validate.sh`, `scripts/postflight.sh`, 관련 tests |

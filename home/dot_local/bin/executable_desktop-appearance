@@ -61,7 +61,7 @@ persist_mode() {
 
 hyprfocus_available() {
   local option
-  option=$(hyprctl getoption plugin:hyprfocus:enable -j 2>/dev/null || true)
+  option=$(hyprctl getoption plugin:hyprfocus:mode -j 2>/dev/null || true)
   [[ -n $option && $option != 'no such option' ]]
 }
 
@@ -70,18 +70,20 @@ apply_mode() {
   command -v hyprctl >/dev/null 2>&1 || die 'hyprctl is not installed'
   hyprctl monitors -j >/dev/null 2>&1 || die 'no active Hyprland session'
 
+  # This workstation uses Hyprland's Lua configuration parser, which rejects
+  # the legacy `hyprctl keyword` path. Apply partial Lua config tables instead.
   case $mode in
     reduced-motion | accessible)
-      hyprctl keyword animations:enabled false >/dev/null
+      hyprctl eval 'hl.config({ animations = { enabled = false } })' >/dev/null
       if hyprfocus_available; then
-        hyprctl keyword plugin:hyprfocus:enable false >/dev/null
+        hyprctl eval 'hl.config({ plugin = { hyprfocus = { fade_opacity = 1.0 } } })' >/dev/null
       fi
       ;;
   esac
 
   case $mode in
     reduced-transparency | accessible)
-      hyprctl keyword decoration:blur:enabled false >/dev/null
+      hyprctl eval 'hl.config({ decoration = { blur = { enabled = false } } })' >/dev/null
       ;;
   esac
 }

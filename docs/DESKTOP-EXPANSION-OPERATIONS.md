@@ -93,6 +93,10 @@ hyprctl configerrors
 그대로 동작한다. 즉시 plugin을 분리해 진단하려면 다음 명령을 사용하고, 다음
 bootstrap에서 원하는 상태로 다시 수렴시킨다.
 
+Hyprland 0.55.4의 ABI pin에서는 `mode = flash`, `fade_opacity = 0.94`만 사용해
+window geometry를 움직이지 않는다. reduced-motion과 accessible profile은
+지원되는 `fade_opacity`를 1.0으로 덮어써 focus flash를 시각적으로 제거한다.
+
 ```bash
 hyprpm disable hyprfocus
 hyprpm reload
