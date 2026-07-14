@@ -249,7 +249,7 @@ ShellRoot {
                 property real tooltipCenterX: width / 2
                 property var menuApp: null
                 property real menuCenterX: width / 2
-                readonly property int dockBottomMargin: 6
+                readonly property int dockBottomMargin: 9
 
                 screen: modelData
                 color: "transparent"
@@ -266,7 +266,7 @@ ShellRoot {
 
                 mask: Region {
                     Region { item: hotspot }
-                    Region { item: dockHitArea; radius: 11 }
+                    Region { item: dockHitArea; radius: 17 }
                     Region { item: contextMenu; radius: 16 }
                     Region { item: chooser; radius: 16 }
                 }
@@ -420,9 +420,9 @@ ShellRoot {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: dockWindow.dockBottomMargin
-                    width: Math.min(parent.width - 15, Math.max(60, dockRow.implicitWidth + 15))
-                    height: 45
-                    radius: 11
+                    width: Math.min(parent.width - 23, Math.max(90, dockRow.implicitWidth + 23))
+                    height: 68
+                    radius: 17
                     color: "#ee111447"
                     border.width: 1
                     border.color: "#cc33d6ff"
@@ -430,7 +430,7 @@ ShellRoot {
                     scale: dockWindow.revealed ? 1 : 0.985
 
                     transform: Translate {
-                        y: dockWindow.revealed ? 0 : 11
+                        y: dockWindow.revealed ? 0 : 17
                         Behavior on y {
                             NumberAnimation {
                                 duration: dockWindow.revealed ? 190 : 145
@@ -451,7 +451,7 @@ ShellRoot {
 
                     Flickable {
                         anchors.fill: parent
-                        anchors.margins: 5
+                        anchors.margins: 8
                         contentWidth: dockRow.implicitWidth
                         contentHeight: height
                         boundsBehavior: Flickable.StopAtBounds
@@ -461,7 +461,7 @@ ShellRoot {
                         Row {
                             id: dockRow
                             height: parent.height
-                            spacing: 4
+                            spacing: 6
 
                             Repeater {
                                 model: dockWindow.dockApps
@@ -475,12 +475,12 @@ ShellRoot {
                                     readonly property bool active: app.windows.some(window =>
                                         window.address === root.snapshot.activeAddress)
 
-                                    width: 30
-                                    height: 35
+                                    width: 45
+                                    height: 53
 
                                     Rectangle {
                                         anchors.fill: parent
-                                        radius: 9
+                                        radius: 14
                                         color: appMouse.containsMouse
                                             ? "#448b5cff"
                                             : (appItem.active ? "#338b5cff" : "transparent")
@@ -491,9 +491,9 @@ ShellRoot {
                                     IconImage {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.top: parent.top
-                                        anchors.topMargin: 3
-                                        implicitWidth: 23
-                                        implicitHeight: 23
+                                        anchors.topMargin: 5
+                                        implicitWidth: 35
+                                        implicitHeight: 35
                                         source: Quickshell.iconPath(appItem.app.icon,
                                             "application-x-executable")
                                         opacity: appItem.minimized ? 0.62 : 1
@@ -504,10 +504,10 @@ ShellRoot {
                                     Rectangle {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.bottom: parent.bottom
-                                        anchors.bottomMargin: 1
-                                        width: appItem.running ? (appItem.active ? 11 : 5) : 0
-                                        height: 2
-                                        radius: 1
+                                        anchors.bottomMargin: 2
+                                        width: appItem.running ? (appItem.active ? 17 : 8) : 0
+                                        height: 3
+                                        radius: 1.5
                                         color: appItem.minimized ? "#ff3cc7" : "#33d6ff"
                                         Behavior on width { NumberAnimation { duration: 120 } }
                                     }
@@ -516,9 +516,9 @@ ShellRoot {
                                         visible: appItem.app.windows.length > 1
                                         anchors.right: parent.right
                                         anchors.top: parent.top
-                                        width: 13
-                                        height: 13
-                                        radius: 6.5
+                                        width: 20
+                                        height: 20
+                                        radius: 10
                                         color: "#ff8b5cff"
 
                                         Text {
@@ -526,7 +526,7 @@ ShellRoot {
                                             text: appItem.app.windows.length
                                             color: "#e9e8ff"
                                             font.family: "Pretendard"
-                                            font.pixelSize: 9
+                                            font.pixelSize: 14
                                             font.bold: true
                                         }
                                     }
