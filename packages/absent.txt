@@ -2,3 +2,4 @@
 firefox
 kitty
 power-profiles-daemon
+slack-electron
