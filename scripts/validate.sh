@@ -270,6 +270,12 @@ for package in rhwp-desktop ttf-jetendard; do
   test -f "packages/local/$package/PKGBUILD"
 done
 test ! -e packages/local/protonmail-bridge
+grep -Fq 'ansible.builtin.import_tasks: rhwp.yml' \
+  ansible/roles/desktop_expansion/tasks/main.yml
+grep -Fq "['/opt/rhwp-desktop']" \
+  ansible/roles/desktop_expansion/tasks/rhwp.yml
+grep -Fq 'mode: "0755"' \
+  ansible/roles/desktop_expansion/tasks/rhwp.yml
 for directive in \
   'ExecStart=/usr/bin/protonmail-bridge-core --noninteractive' \
   'KillMode=process' \

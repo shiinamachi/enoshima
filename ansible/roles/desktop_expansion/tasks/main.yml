@@ -2,6 +2,9 @@
 - name: Configure desktop font families
   ansible.builtin.import_tasks: fonts.yml
 
+- name: Normalize RHWP application directory modes
+  ansible.builtin.import_tasks: rhwp.yml
+
 - name: Install the gated cyberpunk SDDM theme
   ansible.builtin.import_tasks: sddm.yml
 

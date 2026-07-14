@@ -1,0 +1,31 @@
+---
+- name: Check whether the RHWP application payload is installed
+  ansible.builtin.stat:
+    path: /opt/rhwp-desktop
+  register: rhwp_application_root
+
+- name: Discover installed RHWP application directories
+  ansible.builtin.find:
+    paths: /opt/rhwp-desktop
+    file_type: directory
+    recurse: true
+  register: rhwp_application_directories
+  when: rhwp_application_root.stat.isdir | default(false)
+
+- name: Keep installed RHWP application directories traversable
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: >-
+    {{
+      ['/opt/rhwp-desktop']
+      + (
+        (rhwp_application_directories.files | default([]))
+        | map(attribute='path')
+        | list
+      )
+    }}
+  when: rhwp_application_root.stat.isdir | default(false)
