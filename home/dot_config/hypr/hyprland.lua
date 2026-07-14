@@ -61,11 +61,10 @@ hl.config({
                 colors = {
                     "rgba(62d8ffff)",
                     "rgba(9a5cffff)",
-                    "rgba(e56bffff)",
                 },
                 angle = 45,
             },
-            inactive_border = "rgba(6d8cff66)",
+            inactive_border = "rgba(6d8cff44)",
         },
     },
 
@@ -392,13 +391,6 @@ hl.layer_rule({
     dim_around = true,
     ignore_alpha = 0.2,
     no_screen_share = true,
-})
-
-hl.layer_rule({
-    name = "waybar-blur",
-    match = { namespace = "^waybar$" },
-    blur = true,
-    ignore_alpha = 0.2,
 })
 
 hl.layer_rule({

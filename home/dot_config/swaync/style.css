@@ -1,19 +1,20 @@
+@import url("../cyberpunk-library/palette.css");
+
 :root {
-    --cc-bg: rgba(10, 12, 62, 0.95);
-    --noti-border-color: rgba(98, 216, 255, 0.72);
-    --noti-bg: 22, 17, 81;
-    --noti-bg-alpha: 0.90;
-    --noti-bg-darker: rgb(5, 6, 35);
-    --noti-bg-hover: rgba(154, 92, 255, 0.28);
-    --noti-bg-focus: rgba(109, 140, 255, 0.22);
-    --noti-close-bg: rgba(229, 107, 255, 0.18);
-    --noti-close-bg-hover: rgba(229, 107, 255, 0.38);
-    --text-color: rgb(242, 236, 255);
-    --text-color-disabled: rgba(201, 191, 232, 0.52);
-    --bg-selected: rgb(154, 92, 255);
+    --cc-bg: alpha(@cyber_surface, 0.97);
+    --noti-border-color: alpha(@cyber_focus, 0.62);
+    --noti-bg: alpha(@cyber_raised, 0.94);
+    --noti-bg-darker: @cyber_canvas;
+    --noti-bg-hover: alpha(@cyber_selection, 0.28);
+    --noti-bg-focus: alpha(@cyber_info, 0.22);
+    --noti-close-bg: alpha(@cyber_accent, 0.18);
+    --noti-close-bg-hover: alpha(@cyber_accent, 0.38);
+    --text-color: @cyber_text;
+    --text-color-disabled: alpha(@cyber_text_muted, 0.52);
+    --bg-selected: @cyber_selection;
     --border: 1px solid var(--noti-border-color);
     --border-radius: 14px;
-    --notification-shadow: 0 8px 28px rgba(5, 6, 35, 0.76);
+    --notification-shadow: 0 8px 28px alpha(@cyber_canvas, 0.76);
     --font-size-body: 14px;
     --font-size-summary: 15px;
 }
@@ -31,12 +32,9 @@ blankwindow,
 .control-center {
     background: var(--cc-bg);
     color: var(--text-color);
-    border-top: 1px solid rgba(98, 216, 255, 0.90);
-    border-right: 1px solid rgba(154, 92, 255, 0.65);
-    border-bottom: 1px solid rgba(229, 107, 255, 0.90);
-    border-left: 1px solid rgba(154, 92, 255, 0.65);
+    border: 1px solid alpha(@cyber_selection, 0.62);
     border-radius: 18px;
-    box-shadow: 0 12px 36px rgba(5, 6, 35, 0.80);
+    box-shadow: 0 12px 36px alpha(@cyber_canvas, 0.80);
 }
 
 .notification-row .notification-background {
@@ -44,18 +42,18 @@ blankwindow,
 }
 
 .notification-row .notification-background .notification {
-    background: rgba(var(--noti-bg), var(--noti-bg-alpha));
+    background: var(--noti-bg);
     border: var(--border);
     border-radius: var(--border-radius);
     box-shadow: var(--notification-shadow);
 }
 
 .notification-row .notification-background .notification.low {
-    border-color: rgba(109, 140, 255, 0.68);
+    border-color: alpha(@cyber_info, 0.68);
 }
 
 .notification-row .notification-background .notification.critical {
-    border: 2px solid #ff72bd;
+    border: 2px solid @cyber_critical;
 }
 
 .notification-row .notification-background .notification .notification-default-action,
@@ -63,19 +61,31 @@ blankwindow,
     color: var(--text-color);
 }
 
+.notification-row .notification-background .notification .notification-action > button {
+    min-height: 40px;
+    border-radius: 10px;
+}
+
 .notification-row .notification-background .notification .notification-default-action:hover,
 .notification-row .notification-background .notification .notification-action > button:hover {
     background: var(--noti-bg-hover);
 }
 
+.notification-row .notification-background .notification .notification-default-action:focus,
+.notification-row .notification-background .notification .notification-action > button:focus {
+    box-shadow: inset 0 0 0 1px @cyber_focus;
+}
+
 .notification-row .notification-background .notification.critical .summary,
 .notification-row .notification-background .notification.critical .time {
-    color: #ff72bd;
+    color: @cyber_critical;
 }
 
 .close-button {
     background: var(--noti-close-bg);
     color: var(--text-color);
+    min-width: 40px;
+    min-height: 40px;
 }
 
 .close-button:hover {
@@ -89,22 +99,23 @@ blankwindow,
 }
 
 .widget-title > label {
-    color: #62d8ff;
-    font-size: 20px;
+    color: @cyber_focus;
+    font-size: 18px;
     font-weight: 700;
 }
 
 .widget-title > button,
 .widget-dnd switch {
-    background: rgba(154, 92, 255, 0.22);
+    min-height: 40px;
+    background: alpha(@cyber_selection, 0.22);
     color: var(--text-color);
-    border: 1px solid rgba(109, 140, 255, 0.68);
+    border: 1px solid alpha(@cyber_info, 0.68);
     border-radius: 10px;
 }
 
 .widget-title > button:hover {
-    background: rgba(229, 107, 255, 0.28);
-    border-color: #e56bff;
+    background: alpha(@cyber_accent, 0.28);
+    border-color: @cyber_accent;
 }
 
 .widget-dnd label {
@@ -112,14 +123,71 @@ blankwindow,
 }
 
 .widget-dnd switch:checked {
-    background-image: linear-gradient(110deg, #62d8ff, #9a5cff 54%, #e56bff);
-    border-color: #62d8ff;
+    background-image: linear-gradient(110deg, @cyber_focus, @cyber_selection);
+    border-color: @cyber_focus;
 }
 
 .widget-dnd switch slider {
-    background: #f2ecff;
+    background: @cyber_text;
 }
 
 .control-center .control-center-list-placeholder {
-    color: rgba(201, 191, 232, 0.62);
+    color: alpha(@cyber_text_muted, 0.62);
+}
+
+.widget-buttons-grid flowboxchild {
+    padding: 4px;
+}
+
+.widget-buttons-grid flowboxchild > button {
+    min-height: 64px;
+    padding: 10px;
+    color: @cyber_text;
+    background: alpha(@cyber_canvas, 0.62);
+    border: 1px solid alpha(@cyber_info, 0.52);
+    border-radius: 12px;
+}
+
+.widget-buttons-grid flowboxchild > button:hover {
+    background: alpha(@cyber_selection, 0.24);
+    border-color: @cyber_selection;
+}
+
+.widget-buttons-grid flowboxchild > button:focus {
+    box-shadow: inset 0 0 0 1px @cyber_focus;
+}
+
+.widget-buttons-grid flowboxchild > button.toggle:checked {
+    color: @cyber_canvas;
+    background-image: linear-gradient(110deg, @cyber_focus, @cyber_selection);
+    border-color: @cyber_focus;
+}
+
+.widget-volume,
+.widget-backlight {
+    background: alpha(@cyber_canvas, 0.46);
+    border: 1px solid alpha(@cyber_info, 0.42);
+    border-radius: 12px;
+}
+
+.widget-volume scale trough,
+.widget-backlight scale trough {
+    min-height: 6px;
+    background: alpha(@cyber_text_muted, 0.22);
+    border-radius: 6px;
+}
+
+.widget-volume scale highlight,
+.widget-backlight scale highlight {
+    background: @cyber_focus;
+    border-radius: 6px;
+}
+
+.widget-volume scale slider,
+.widget-backlight scale slider {
+    min-width: 18px;
+    min-height: 18px;
+    background: @cyber_text;
+    border: 2px solid @cyber_selection;
+    border-radius: 10px;
 }

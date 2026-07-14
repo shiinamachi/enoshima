@@ -321,14 +321,23 @@ check "Hyprpaper routes the 16:10 composition to eDP-1" \
   grep -Fq 'cyberpunk-library-16x10.jpg' "$HOME/.config/hypr/hyprpaper.conf"
 check "Hyprlock keeps password and fingerprint authentication" \
   grep -Fq 'fingerprint {' "$HOME/.config/hypr/hyprlock.conf"
-check "Waybar uses the expanded 42-pixel interaction surface" \
-  jq -e '.height == 42 and ."margin-top" == 14' \
+check "Waybar uses 40-pixel targets and the connectivity drawer" \
+  jq -e '
+    .height == 48 and
+    ."margin-top" == 14 and
+    (."modules-right" | index("group/connectivity") != null)
+  ' \
   "$HOME/.config/waybar/config.jsonc"
-check "Cyberdock uses the accessible reveal and hide timing" \
-  grep -Fq 'interval: 420' "$HOME/.config/quickshell/cyberdock/shell.qml"
-check "SwayNC exposes the themed notification stream" \
-  jq -e '."widget-config".title.text == "NOTIFICATION // STREAM"' \
+check "Cyberdock exposes a six-pixel reveal target" \
+  grep -Fq 'height: 6' "$HOME/.config/quickshell/cyberdock/shell.qml"
+check "SwayNC exposes notifications and functional quick settings" \
+  jq -e '
+    ."widget-config".title.text == "Notifications" and
+    (.widgets | index("buttons-grid#quick-settings") != null)
+  ' \
   "$HOME/.config/swaync/config.json"
+check "desktop GTK surfaces share the semantic palette" \
+  test -f "$HOME/.config/cyberpunk-library/palette.css"
 check "Ghostty enforces WCAG contrast" \
   grep -Fq 'minimum-contrast = 4.5' "$HOME/.config/ghostty/config.ghostty"
 check "Zed applies the One Dark wallpaper-derived override" \

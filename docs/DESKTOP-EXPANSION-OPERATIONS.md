@@ -62,9 +62,9 @@ systemctl --user status cyberdock.service --no-pager
 
 `cyberdock.service`는 Quickshell Dock을 실행하며 비정상 종료나 stop 뒤에
 `cyberdock-recover`를 호출한다. Dock 설정은
-`~/.config/quickshell/cyberdock/shell.qml`이고, 모든 출력에 3픽셀 하단 hotspot과
-작업 영역을 예약하지 않는 Dock을 만든다. Dock은 58픽셀 높이, 40x46 앱 표적,
-420ms 숨김 지연을 사용한다.
+`~/.config/quickshell/cyberdock/shell.qml`이고, 모든 출력에 6픽셀 하단 hotspot과
+숨김 상태의 짧은 reveal indicator, 작업 영역을 예약하지 않는 Dock을 만든다.
+Dock은 58픽셀 높이, 44x46 앱 표적, 420ms 숨김 지연을 사용한다.
 
 bootstrap이 적용하는 테마 자산은 다음과 같다.
 
@@ -74,7 +74,10 @@ bootstrap이 적용하는 테마 자산은 다음과 같다.
   (2880x1800)
 
 Hyprpaper와 Hyprlock은 두 자산을 같은 모니터 규칙으로 사용한다. Waybar는 상단
-14픽셀 여백과 42픽셀 높이를 사용하므로 SwayNC는 상단 64픽셀에서 시작한다.
+14픽셀 여백과 48픽셀 높이를 사용하고, 8픽셀 간격 뒤인 상단 70픽셀에서
+SwayNC가 시작한다. Waybar의 network leader에 pointer를 올리면 WWAN과 Bluetooth
+상태가 drawer로 나타나며, SwayNC에는 Wi-Fi, Bluetooth, Night Light, volume,
+brightness의 실제 제어만 표시된다.
 
 ## 권장 대화식 온보딩 순서
 
@@ -373,8 +376,8 @@ gimp
 - 두 출력이 scale 1.5이고 `eDP-1`에는 16:10, 외부 출력에는 16:9 wallpaper가
   표시되며 lock, bar, launcher, notification, Dock과 titlebar palette가
   일치한다.
-- OLED의 암부 뭉개짐, 120Hz에서 blur size 7/pass 2의 프레임 안정성, 42픽셀
-  Waybar 모듈의 포인터 표적과 3픽셀 Dock hotspot을 확인한다.
+- OLED의 암부 뭉개짐, 120Hz에서 blur size 7/pass 2의 프레임 안정성, 40픽셀
+  Waybar 모듈의 포인터 표적과 6픽셀 Dock hotspot을 확인한다.
 - `fc-match sans-serif`에서는 Pretendard가, `fc-match monospace`에서는
   Jetendard가 우선한다.
 - Ghostty의 최소 대비 4.5와 Zed One Dark override를 포함해 한글 폭, Nerd Font

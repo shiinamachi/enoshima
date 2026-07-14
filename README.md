@@ -8,6 +8,11 @@ The complete ThinkPad, Hyprland, workspace, power, fingerprint, WWAN, Korean
 input, and application decisions are documented in
 [docs/WORKSTATION.md](docs/WORKSTATION.md).
 
+The desktop's Windows/macOS usability research and the reviewed Cyberpunk
+Library interface studies are kept in
+[docs/DESKTOP-UX-REFERENCES.md](docs/DESKTOP-UX-REFERENCES.md) and
+[docs/DESKTOP-UI-CONCEPT.md](docs/DESKTOP-UI-CONCEPT.md).
+
 The initial inventory was captured on 2026-07-13 from Arch Linux on
 `tpx1c13`:
 

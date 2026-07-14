@@ -14,6 +14,23 @@ ShellRoot {
         "windows": []
     })
 
+    // Semantic colors mirror the shared GTK palette while keeping QML free
+    // from a runtime file parser. Tests guard these values against drift.
+    readonly property color colorCanvasOverlay: "#f2050623"
+    readonly property color colorSurfaceOverlay: "#f20a0c3e"
+    readonly property color colorRaisedOverlay: "#cc161151"
+    readonly property color colorFocus: "#62d8ff"
+    readonly property color colorFocusBorder: "#cc62d8ff"
+    readonly property color colorFocusHover: "#4462d8ff"
+    readonly property color colorFocusSelected: "#3362d8ff"
+    readonly property color colorSelection: "#9a5cff"
+    readonly property color colorSelectionBorder: "#cc9a5cff"
+    readonly property color colorSelectionStrong: "#ff9a5cff"
+    readonly property color colorAccent: "#e56bff"
+    readonly property color colorText: "#f2ecff"
+    readonly property color colorInfo: "#6d8cff"
+    readonly property color colorCritical: "#ff5d8f"
+
     readonly property var pinnedApps: [
         {
             "id": "thunar",
@@ -402,13 +419,26 @@ ShellRoot {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     width: dockSurface.width
-                    height: 3
+                    height: 6
                     color: "transparent"
 
                     HoverHandler {
                         id: hotspotHover
                         blocking: false
                     }
+                }
+
+                Rectangle {
+                    id: revealIndicator
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    width: 42
+                    height: 3
+                    radius: 1.5
+                    color: root.colorSelection
+                    opacity: dockWindow.revealed ? 0 : 0.72
+
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
                 }
 
                 Item {
@@ -432,9 +462,9 @@ ShellRoot {
                     width: Math.min(parent.width - 17, Math.max(68, dockRow.implicitWidth + 17))
                     height: 58
                     radius: 15
-                    color: "#ed161151"
+                    color: root.colorSurfaceOverlay
                     border.width: 1
-                    border.color: "#cc62d8ff"
+                    border.color: root.colorFocusBorder
                     opacity: dockWindow.revealed ? 1 : 0
                     scale: dockWindow.revealed ? 1 : 0.985
 
@@ -484,17 +514,17 @@ ShellRoot {
                                     readonly property bool active: app.windows.some(window =>
                                         window.address === root.snapshot.activeAddress)
 
-                                    width: 40
+                                    width: 44
                                     height: 46
 
                                     Rectangle {
                                         anchors.fill: parent
                                         radius: 11
                                         color: appMouse.containsMouse
-                                            ? "#449a5cff"
-                                            : (appItem.active ? "#3362d8ff" : "transparent")
+                                            ? root.colorFocusHover
+                                            : (appItem.active ? root.colorFocusSelected : "transparent")
                                         border.width: appItem.active ? 1 : 0
-                                        border.color: "#ff9a5cff"
+                                        border.color: root.colorSelectionStrong
                                     }
 
                                     IconImage {
@@ -517,7 +547,7 @@ ShellRoot {
                                         width: appItem.running ? (appItem.active ? 16 : 7) : 0
                                         height: 3
                                         radius: 1.5
-                                        color: appItem.minimized ? "#e56bff" : "#62d8ff"
+                                        color: appItem.minimized ? root.colorAccent : root.colorFocus
                                         Behavior on width { NumberAnimation { duration: 120 } }
                                     }
 
@@ -528,12 +558,12 @@ ShellRoot {
                                         width: 15
                                         height: 15
                                         radius: 7.5
-                                        color: "#ff9a5cff"
+                                        color: root.colorSelectionStrong
 
                                         Text {
                                             anchors.centerIn: parent
                                             text: appItem.app.windows.length
-                                            color: "#f2ecff"
+                                            color: root.colorText
                                             font.family: "Pretendard"
                                             font.pixelSize: 11
                                             font.bold: true
@@ -578,9 +608,9 @@ ShellRoot {
                     width: Math.min(parent.width - 16, tooltipLabel.implicitWidth + 22)
                     height: 32
                     radius: 9
-                    color: "#f2050623"
+                    color: root.colorCanvasOverlay
                     border.width: 1
-                    border.color: "#aa62d8ff"
+                    border.color: root.colorFocusBorder
                     opacity: visible ? 1 : 0
                     z: 12
 
@@ -590,7 +620,7 @@ ShellRoot {
                         id: tooltipLabel
                         anchors.centerIn: parent
                         text: dockWindow.tooltipText
-                        color: "#f2ecff"
+                        color: root.colorText
                         font.family: "Pretendard"
                         font.pixelSize: 12
                         font.bold: true
@@ -608,9 +638,9 @@ ShellRoot {
                     width: 244
                     height: contextColumn.implicitHeight + 16
                     radius: 14
-                    color: "#f2050623"
+                    color: root.colorCanvasOverlay
                     border.width: 1
-                    border.color: "#cc9a5cff"
+                    border.color: root.colorSelectionBorder
                     z: 14
 
                     HoverHandler {
@@ -632,7 +662,7 @@ ShellRoot {
                             leftPadding: 8
                             rightPadding: 8
                             text: dockWindow.menuApp ? dockWindow.menuApp.name : ""
-                            color: "#62d8ff"
+                            color: root.colorFocus
                             font.family: "Pretendard"
                             font.pixelSize: 13
                             font.bold: true
@@ -642,7 +672,7 @@ ShellRoot {
                         Rectangle {
                             width: parent.width
                             height: 1
-                            color: "#559a5cff"
+                            color: root.colorSelectionBorder
                         }
 
                         Repeater {
@@ -651,9 +681,9 @@ ShellRoot {
                             delegate: Rectangle {
                                 required property var modelData
                                 width: contextColumn.width
-                                height: 36
+                                height: 40
                                 radius: 9
-                                color: contextActionMouse.containsMouse ? "#449a5cff" : "transparent"
+                                color: contextActionMouse.containsMouse ? root.colorFocusHover : "transparent"
 
                                 Text {
                                     anchors.fill: parent
@@ -661,7 +691,7 @@ ShellRoot {
                                     anchors.rightMargin: 9
                                     verticalAlignment: Text.AlignVCenter
                                     text: modelData.label
-                                    color: modelData.destructive ? "#ff72bd" : "#f2ecff"
+                                    color: modelData.destructive ? root.colorCritical : root.colorText
                                     font.family: "Pretendard"
                                     font.pixelSize: 12
                                     elide: Text.ElideRight
@@ -687,9 +717,9 @@ ShellRoot {
                     width: visible ? Math.min(parent.width - 32, 420) : 0
                     height: visible ? Math.min(258, chooserList.contentHeight + 48) : 0
                     radius: 16
-                    color: "#f2050623"
+                    color: root.colorCanvasOverlay
                     border.width: 1
-                    border.color: "#cce56bff"
+                    border.color: root.colorSelectionBorder
                     clip: true
 
                     HoverHandler {
@@ -704,7 +734,7 @@ ShellRoot {
                         anchors.top: parent.top
                         anchors.margins: 12
                         text: dockWindow.chooserTitle
-                        color: "#62d8ff"
+                        color: root.colorFocus
                         font.family: "Pretendard"
                         font.pixelSize: 14
                         font.bold: true
@@ -727,7 +757,8 @@ ShellRoot {
                             width: ListView.view.width
                             height: 42
                             radius: 10
-                            color: chooserItemMouse.containsMouse ? "#449a5cff" : "#cc161151"
+                            color: chooserItemMouse.containsMouse
+                                ? root.colorFocusHover : root.colorRaisedOverlay
 
                             Text {
                                 anchors.left: parent.left
@@ -736,7 +767,7 @@ ShellRoot {
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 8
                                 text: root.windowTitle(modelData)
-                                color: "#f2ecff"
+                                color: root.colorText
                                 font.family: "Pretendard"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
@@ -750,7 +781,7 @@ ShellRoot {
                                 text: modelData.minimized
                                     ? "MINIMIZED"
                                     : String(modelData.workspace && modelData.workspace.name || "")
-                                color: modelData.minimized ? "#e56bff" : "#6d8cff"
+                                color: modelData.minimized ? root.colorAccent : root.colorInfo
                                 font.family: "Pretendard"
                                 font.pixelSize: 10
                                 font.bold: true

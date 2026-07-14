@@ -1,3 +1,5 @@
+@import url("../cyberpunk-library/palette.css");
+
 * {
     border: none;
     border-radius: 0;
@@ -7,13 +9,11 @@
 }
 
 window#waybar {
-    background: rgba(10, 12, 62, 0.90);
-    color: #f2ecff;
-    border-top: 1px solid rgba(98, 216, 255, 0.88);
-    border-right: 1px solid rgba(154, 92, 255, 0.66);
-    border-bottom: 1px solid rgba(229, 107, 255, 0.88);
-    border-left: 1px solid rgba(154, 92, 255, 0.66);
+    background: alpha(@cyber_surface, 0.94);
+    color: @cyber_text;
+    border: 1px solid alpha(@cyber_selection, 0.52);
     border-radius: 16px;
+    box-shadow: 0 8px 24px alpha(@cyber_canvas, 0.46);
 }
 
 #workspaces {
@@ -21,40 +21,41 @@ window#waybar {
 }
 
 #workspaces button {
+    min-height: 40px;
     padding: 0 9px;
-    margin: 4px 2px;
-    color: rgba(201, 191, 232, 0.68);
+    margin: 3px 2px;
+    color: alpha(@cyber_text_muted, 0.68);
     background: transparent;
     border-radius: 9px;
 }
 
 #workspaces button:hover {
-    color: #f2ecff;
-    background: rgba(98, 216, 255, 0.18);
+    color: @cyber_text;
+    background: alpha(@cyber_focus, 0.18);
 }
 
 #workspaces button.active {
-    color: #050623;
-    background-image: linear-gradient(110deg, #62d8ff, #9a5cff 54%, #e56bff);
+    color: @cyber_canvas;
+    background-image: linear-gradient(110deg, @cyber_focus, @cyber_selection);
 }
 
 #workspaces button.visible:not(.active) {
-    color: #f2ecff;
-    background: rgba(109, 140, 255, 0.22);
+    color: @cyber_text;
+    background: alpha(@cyber_info, 0.22);
 }
 
 #workspaces button.empty:not(.persistent) {
-    color: rgba(201, 191, 232, 0.42);
+    color: alpha(@cyber_text_muted, 0.42);
 }
 
 #workspaces button.urgent {
-    color: #050623;
-    background: #ff5d8f;
+    color: @cyber_canvas;
+    background: @cyber_critical;
 }
 
 #window {
     padding: 0 10px;
-    color: rgba(242, 236, 255, 0.86);
+    color: alpha(@cyber_text, 0.86);
 }
 
 #clock,
@@ -67,94 +68,103 @@ window#waybar {
 #custom-power-profile,
 #battery,
 #tray {
-    min-height: 30px;
-    padding: 0 11px;
-    margin: 4px 1px;
-    background: rgba(5, 6, 35, 0.74);
+    min-height: 40px;
+    padding: 0 10px;
+    margin: 3px 1px;
+    background: transparent;
     border-radius: 10px;
 }
 
+#custom-notification:hover,
+#pulseaudio:hover,
+#backlight:hover,
+#custom-wwan:hover,
+#network:hover,
+#bluetooth:hover,
+#custom-power-profile:hover,
+#battery:hover {
+    background: alpha(@cyber_focus, 0.14);
+}
+
+.connectivity-secondary {
+    background: alpha(@cyber_canvas, 0.46);
+}
+
 #clock {
-    color: #9a5cff;
+    color: @cyber_text;
 }
 
 #custom-notification {
-    color: #e56bff;
+    color: @cyber_accent;
 }
 
 #pulseaudio,
 #backlight {
-    color: #f2ecff;
+    color: @cyber_text;
 }
 
 #network {
-    color: #62d8ff;
+    color: @cyber_focus;
 }
 
 #network.disconnected,
 #bluetooth.disabled,
 #bluetooth.off {
-    color: #ff72bd;
+    color: @cyber_critical;
 }
 
 #bluetooth {
-    color: #9a5cff;
+    color: @cyber_selection;
 }
 
 #custom-wwan {
-    color: #62d8ff;
+    color: @cyber_focus;
 }
 
 #custom-wwan.disconnected,
 #custom-wwan.unavailable {
-    color: #ff72bd;
+    color: @cyber_critical;
 }
 
 #custom-wwan.connecting {
-    color: #6d8cff;
+    color: @cyber_info;
 }
 
 #custom-power-profile.ac {
-    color: #ffb86b;
+    color: @cyber_warning;
 }
 
 #custom-power-profile.battery {
-    color: #62d8ff;
+    color: @cyber_focus;
 }
 
 #custom-power-profile.unknown {
-    color: #ff72bd;
+    color: @cyber_critical;
 }
 
 #battery {
-    color: #77e0c6;
+    color: @cyber_success;
 }
 
 #battery.charging,
 #battery.plugged {
-    color: #ffb86b;
+    color: @cyber_warning;
 }
 
 #battery.warning {
-    color: #ffb86b;
+    color: @cyber_warning;
 }
 
 #battery.critical {
-    color: #ff5d8f;
-    background: rgba(255, 93, 143, 0.14);
-    border: 1px solid rgba(255, 93, 143, 0.78);
-    animation: battery-pulse 1s ease-in-out infinite alternate;
-}
-
-@keyframes battery-pulse {
-    from { opacity: 1; }
-    to { opacity: 0.55; }
+    color: @cyber_critical;
+    background: alpha(@cyber_critical, 0.14);
+    border: 2px solid alpha(@cyber_critical, 0.86);
 }
 
 tooltip {
-    background: #161151;
-    color: #f2ecff;
-    border: 1px solid #9a5cff;
+    background: @cyber_raised;
+    color: @cyber_text;
+    border: 1px solid @cyber_selection;
     border-radius: 10px;
 }
 

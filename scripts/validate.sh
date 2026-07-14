@@ -258,6 +258,7 @@ if command -v systemd-analyze >/dev/null 2>&1; then
   mkdir -- "$unit_dir"
   for unit in \
     home/dot_config/systemd/user/cyberdock.service \
+    home/dot_config/systemd/user/hyprsunset-quick.service \
     home/dot_config/systemd/user/protonmail-bridge.service \
     home/dot_config/systemd/user/rclone-google-drive.service \
     home/dot_config/systemd/user/rclone-proton-drive.service; do

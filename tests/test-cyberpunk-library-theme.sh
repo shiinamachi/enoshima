@@ -16,6 +16,14 @@ assert_contains() {
     fail "$path does not contain: $expected"
 }
 
+assert_not_contains() {
+  local path=$1
+  local unexpected=$2
+  if grep -Fq -- "$unexpected" "$path"; then
+    fail "$path unexpectedly contains: $unexpected"
+  fi
+}
+
 assert_count() {
   local expected_count=$1
   local path=$2
@@ -49,6 +57,17 @@ printf '%s  %s\n' \
 [[ $(asset_dimensions "$internal_asset") == 2880x1800 ]] ||
   fail 'the internal wallpaper is not 2880x1800'
 
+for concept_asset in \
+  docs/assets/concepts/cyberpunk-desktop-shell.png \
+  docs/assets/concepts/cyberpunk-launcher.png \
+  docs/assets/concepts/cyberpunk-notification-center.png; do
+  dimensions=$(asset_dimensions "$concept_asset")
+  width=${dimensions%x*}
+  height=${dimensions#*x}
+  ((width >= 1500 && height >= 900)) ||
+    fail "$concept_asset is smaller than the reviewed concept-art baseline"
+done
+
 hyprland=home/dot_config/hypr/hyprland.lua
 for expected in \
   'gaps_in = 7' \
@@ -62,10 +81,10 @@ for expected in \
   'input_methods = false' \
   '"rgba(62d8ffff)"' \
   '"rgba(9a5cffff)"' \
-  '"rgba(e56bffff)"' \
-  'inactive_border = "rgba(6d8cff66)"'; do
+  'inactive_border = "rgba(6d8cff44)"'; do
   assert_contains "$hyprland" "$expected"
 done
+assert_not_contains "$hyprland" 'name = "waybar-blur"'
 for binding in \
   'hl.bind(mainMod .. " + C"' \
   'hl.bind(mainMod .. " + F"' \
@@ -93,32 +112,47 @@ assert_contains "$hyprlock" 'fingerprint {'
 
 waybar_config=home/dot_config/waybar/config.jsonc
 jq -e '
-  .height == 42 and
+  .height == 48 and
   ."margin-top" == 14 and
   ."margin-left" == 14 and
   ."margin-right" == 14 and
   ."ext/workspaces"."all-outputs" == false and
-  (."modules-right" | index("custom/wwan") != null) and
-  (."modules-right" | index("network") != null) and
-  (."modules-right" | index("bluetooth") != null) and
-  (."modules-right" | index("battery") != null)
+  (."modules-right" | index("group/connectivity") != null) and
+  ."group/connectivity".drawer."transition-duration" == 180 and
+  ."group/connectivity".modules == ["network", "custom/wwan", "bluetooth"] and
+  ."custom/notification".tooltip == true and
+  ."ext/workspaces"."format-icons"."3" == "3  DOCS"
 ' "$waybar_config" >/dev/null
 waybar_style=home/dot_config/waybar/style.css
-assert_contains "$waybar_style" 'min-height: 30px;'
-assert_contains "$waybar_style" 'linear-gradient(110deg, #62d8ff, #9a5cff 54%, #e56bff)'
+assert_contains "$waybar_style" '@import url("../cyberpunk-library/palette.css");'
+assert_contains "$waybar_style" 'min-height: 40px;'
+assert_contains "$waybar_style" 'linear-gradient(110deg, @cyber_focus, @cyber_selection)'
 assert_contains "$waybar_style" '#battery.charging,'
 assert_contains "$waybar_style" '#battery.critical {'
-assert_contains "$waybar_style" 'border: 1px solid rgba(255, 93, 143, 0.78);'
+assert_contains "$waybar_style" 'border: 2px solid alpha(@cyber_critical, 0.86);'
+assert_not_contains "$waybar_style" 'battery-pulse'
+
+palette=home/dot_config/cyberpunk-library/palette.css
+for token in \
+  '@define-color cyber_canvas #050623;' \
+  '@define-color cyber_surface #0a0c3e;' \
+  '@define-color cyber_focus #62d8ff;' \
+  '@define-color cyber_selection #9a5cff;' \
+  '@define-color cyber_critical #ff5d8f;'; do
+  assert_contains "$palette" "$token"
+done
 
 dock=home/dot_config/quickshell/cyberdock/shell.qml
 assert_contains "$dock" '//@ pragma IconTheme Papirus-Dark'
 assert_contains "$dock" 'interval: 420'
-assert_contains "$dock" 'height: 3'
+assert_contains "$dock" 'height: 6'
 assert_contains "$dock" 'height: 58'
-assert_contains "$dock" 'width: 40'
+assert_contains "$dock" 'width: 44'
 assert_contains "$dock" 'height: 46'
+assert_contains "$dock" 'height: 40'
 assert_contains "$dock" 'appItem.active ? 16 : 7'
 assert_contains "$dock" 'height: 3'
+assert_contains "$dock" 'readonly property color colorFocus: "#62d8ff"'
 assert_contains "$dock" 'exclusiveZone: 0'
 assert_contains "$dock" 'aboveWindows: true'
 assert_contains "$dock" 'focusable: false'
@@ -127,15 +161,63 @@ swaync_config=home/dot_config/swaync/config.json
 jq -e '
   .positionX == "right" and
   .positionY == "top" and
-  ."control-center-margin-top" == 64 and
-  ."control-center-height" == 660 and
+  ."control-center-margin-top" == 70 and
+  ."control-center-width" == 460 and
+  ."control-center-height" == 780 and
+  ."notification-inline-replies" == true and
   ."notification-grouping" == true and
   ."image-visibility" == "when-available" and
-  ."widget-config".title.text == "NOTIFICATION // STREAM"
+  ."widget-config".title.text == "Notifications" and
+  (.widgets | index("buttons-grid#quick-settings") != null) and
+  (.widgets | index("volume") != null) and
+  (.widgets | index("backlight") != null) and
+  ."widget-config"."buttons-grid#quick-settings"."buttons-per-row" == 3
 ' "$swaync_config" >/dev/null
-assert_contains home/dot_config/swaync/style.css 'border: 2px solid #ff72bd;'
+while IFS= read -r quick_setting_command; do
+  bash -n -c "$quick_setting_command"
+done < <(
+  jq -r '
+    ."widget-config"."buttons-grid#quick-settings".actions[]
+    | .command, ."update-command"
+  ' "$swaync_config"
+)
 assert_contains home/dot_config/swaync/style.css \
-  'linear-gradient(110deg, #62d8ff, #9a5cff 54%, #e56bff)'
+  '@import url("../cyberpunk-library/palette.css");'
+assert_contains home/dot_config/swaync/style.css 'border: 2px solid @cyber_critical;'
+assert_contains home/dot_config/swaync/style.css \
+  'linear-gradient(110deg, @cyber_focus, @cyber_selection)'
+assert_contains home/dot_config/swaync/style.css 'min-height: 64px;'
+assert_contains home/dot_config/systemd/user/hyprsunset-quick.service \
+  'ExecStart=/usr/bin/hyprsunset --temperature 4500'
+
+if /usr/bin/python -c 'import gi' >/dev/null 2>&1; then
+  /usr/bin/python - <<'PY'
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk
+
+provider = Gtk.CssProvider()
+provider.load_from_path("home/dot_config/waybar/style.css")
+PY
+  /usr/bin/python - <<'PY'
+import gi
+
+gi.require_version("Gtk", "4.0")
+from gi.repository import Gtk
+
+provider = Gtk.CssProvider()
+provider.load_from_path("home/dot_config/swaync/style.css")
+PY
+fi
+
+hyprlauncher=home/dot_config/hypr/hyprlauncher.conf
+assert_contains "$hyprlauncher" 'unicode_prefix = .'
+assert_contains "$hyprlauncher" 'math_prefix = ='
+assert_contains "$hyprlauncher" "font_prefix = '"
+assert_contains "$hyprlauncher" 'window_size = 760 480'
+assert_contains home/dot_config/hypr/hyprtoolkit.conf 'base = rgba(0a0c3ef2)'
+assert_contains home/dot_config/hypr/hyprtoolkit.conf 'rounding_large = 18'
 
 ghostty=home/dot_config/ghostty/config.ghostty
 for expected in \

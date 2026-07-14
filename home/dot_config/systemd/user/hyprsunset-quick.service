@@ -1,0 +1,11 @@
+[Unit]
+Description=Cyberpunk Library night-light toggle
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/hyprsunset --temperature 4500
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=5s

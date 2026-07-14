@@ -1,0 +1,13 @@
+/* Shared semantic palette for GTK CSS consumers. */
+@define-color cyber_canvas #050623;
+@define-color cyber_surface #0a0c3e;
+@define-color cyber_raised #161151;
+@define-color cyber_focus #62d8ff;
+@define-color cyber_selection #9a5cff;
+@define-color cyber_accent #e56bff;
+@define-color cyber_text #f2ecff;
+@define-color cyber_text_muted #c9bfe8;
+@define-color cyber_info #6d8cff;
+@define-color cyber_success #77e0c6;
+@define-color cyber_warning #ffb86b;
+@define-color cyber_critical #ff5d8f;

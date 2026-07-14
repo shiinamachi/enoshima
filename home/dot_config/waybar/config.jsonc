@@ -1,8 +1,8 @@
 {
     "layer": "top",
     "position": "top",
-    "height": 42,
-    "spacing": 8,
+    "height": 48,
+    "spacing": 6,
     "margin-top": 14,
     "margin-left": 14,
     "margin-right": 14,
@@ -20,10 +20,8 @@
         "custom/notification",
         "tray",
         "pulseaudio",
+        "group/connectivity",
         "backlight",
-        "custom/wwan",
-        "network",
-        "bluetooth",
         "custom/power-profile",
         "battery"
     ],
@@ -33,7 +31,7 @@
         "format-icons": {
             "1": "1  DEV",
             "2": "2  WEB",
-            "3": "3  DOCUMENT",
+            "3": "3  DOCS",
             "4": "4  REMOTE",
             "5": "5  MISC",
             "default": "{name}"
@@ -46,7 +44,7 @@
     "hyprland/window": {
         "format": "{}",
         "separate-outputs": true,
-        "max-length": 56,
+        "max-length": 48,
         "rewrite": {
             "^(.*) — Zed$": "Zed · $1",
             "^(.*) - Google Chrome$": "Chrome · $1"
@@ -89,10 +87,24 @@
         "format-wifi": "  {signalStrength}%",
         "format-ethernet": "󰈀  Ethernet",
         "format-disconnected": "󰖪  Offline",
-        "tooltip-format-wifi": "Wi-Fi · {signalStrength}%",
+        "tooltip-format-wifi": "Wi-Fi · {signalStrength}%\nHover for WWAN and Bluetooth",
         "tooltip-format-ethernet": "Wired network",
         "tooltip-format-disconnected": "No Wi-Fi or Ethernet connection",
         "on-click": "nm-connection-editor"
+    },
+
+    "group/connectivity": {
+        "orientation": "inherit",
+        "drawer": {
+            "transition-duration": 180,
+            "transition-left-to-right": false,
+            "children-class": "connectivity-secondary"
+        },
+        "modules": [
+            "network",
+            "custom/wwan",
+            "bluetooth"
+        ]
     },
 
     "bluetooth": {
@@ -124,11 +136,11 @@
     },
 
     "tray": {
-        "spacing": 8
+        "spacing": 6
     },
 
     "custom/notification": {
-        "tooltip": false,
+        "tooltip": true,
         "format": "{icon}",
         "format-icons": {
             "notification": "<span foreground='#e56bff'><sup></sup></span>",

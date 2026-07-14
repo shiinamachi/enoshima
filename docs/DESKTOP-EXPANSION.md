@@ -84,25 +84,31 @@ SwayNC, Hyprlauncher, tooltips, and session controls.
 - SDDM receives a matching theme only after the session theme is validated.
   The theme must not alter the existing PAM and fingerprint authentication
   policy, and SDDM must retain a known-good fallback theme.
-- Hyprland uses 7/14 pixel gaps, 12 pixel rounding, a cyan-violet-magenta active
+- Hyprland uses 7/14 pixel gaps, 12 pixel rounding, a calm cyan-violet active
   border, and an Intel iGPU-conscious blur ceiling of size 7 and two passes.
 - Waybar remains at the top with the five purpose-led workspaces and hardware
   modules; unused reserve workspaces are neither persistent nor displayed.
-  It uses a 42 pixel surface, 14 pixel edge margins, 30 pixel module targets,
-  a gradient active workspace, text-backed disconnected states, and redundant
-  color/border/pulse feedback for a critical battery.
+  It uses a 48 pixel surface, 14 pixel edge margins, 40 pixel module targets,
+  a gradient active workspace, a connectivity drawer for secondary radios,
+  text-backed disconnected states, and static color plus a two-pixel border for
+  a critical battery. Persistent chrome is opaque enough to remain readable
+  without compositor blur.
 
 ### Shell and application surfaces
 
 - Cyberdock retains per-monitor rendering, `exclusiveZone: 0`, pinned and
   running applications, minimized workspace recovery, the multi-window chooser,
-  and context menus. Its reveal hotspot is 3 pixels, surface height is 58
-  pixels, application target is 40x46, hide delay is 420 ms, and the active
-  indicator is 16x3.
+  and context menus. Its reveal hotspot is 6 pixels with a visible resting
+  indicator, surface height is 58 pixels, application target is 44x46, hide
+  delay is 420 ms, and the active indicator is 16x3.
 - SwayNC remains aligned below the upper-right Waybar edge. The control center
-  is 660 pixels high, preserves grouping and images, labels its stream
-  `NOTIFICATION // STREAM`, uses a two-pixel pink critical border, and renders
-  DND with the shared gradient.
+  is 460x780 pixels, preserves grouping and images, uses the direct
+  `Notifications` label, exposes functional Wi-Fi, Bluetooth, Night Light,
+  volume, and brightness controls, uses a two-pixel critical border, and
+  renders DND with the shared gradient.
+- Hyprlauncher uses the same Hyprtoolkit semantic palette in a 760x480 search
+  surface, opens with keyboard focus, and exposes desktop, Unicode, calculator,
+  and font finders without replacing the launcher with a non-functional mockup.
 - Ghostty uses the shared 16-color ANSI palette, `minimum-contrast = 4.5`, 94%
   opacity, and balanced 12x10 padding. Compositor blur remains authoritative.
 - Zed retains its built-in One Dark syntax and Command Palette behavior while
