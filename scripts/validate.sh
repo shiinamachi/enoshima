@@ -302,7 +302,6 @@ grep -Fq 'PRETENDARD-LICENSE' packages/local/ttf-jetendard/PKGBUILD
 
 for ui_font_config in \
   home/.chezmoitemplates/dconf-interface.ini \
-  home/dot_config/hypr/hyprland.lua \
   home/dot_config/hypr/hyprlock.conf \
   home/dot_config/hypr/hyprtoolkit.conf \
   home/dot_config/quickshell/cyberdock/shell.qml \
