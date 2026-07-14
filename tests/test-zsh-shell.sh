@@ -71,6 +71,12 @@ mapfile -t actual_plugins < <(
 )
 [[ ${actual_plugins[*]} == "${expected_plugins[*]}" ]]
 [[ ${actual_plugins[${#actual_plugins[@]} - 1]} == zsh-syntax-highlighting ]]
+grep -Fq 'plugins=(${plugins:#fzf-tab})' "$zshrc"
+grep -Fq 'plugins=(${plugins:#zoxide})' "$zshrc"
+grep -Fq 'plugins=(${plugins:#eza})' "$zshrc"
+grep -Fq 'plugins=(${plugins:#starship})' "$zshrc"
+grep -Fq 'plugins=(${plugins:#zsh-autosuggestions})' "$zshrc"
+grep -Fq 'plugins=(${plugins:#zsh-syntax-highlighting})' "$zshrc"
 if printf '%s\n' "${actual_plugins[@]}" | grep -Fxq zsh-completions; then
   echo 'zsh-completions must use the packaged site-functions directory' >&2
   exit 1

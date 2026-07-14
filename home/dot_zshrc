@@ -88,6 +88,21 @@ plugins=(
   zsh-syntax-highlighting
 )
 
+# Package convergence happens through the repository's complete Arch upgrade.
+# Keep the currently applied shell quiet and usable before that run, then let
+# the full reviewed plugin set activate automatically as each dependency lands.
+_managed_zsh_plugin_root=${ZSH_PLUGIN_ROOT:-/usr/share/zsh/plugins}
+[[ -r $_managed_zsh_plugin_root/fzf-tab/fzf-tab.plugin.zsh ]] ||
+  plugins=(${plugins:#fzf-tab})
+(( $+commands[zoxide] )) || plugins=(${plugins:#zoxide})
+(( $+commands[eza] )) || plugins=(${plugins:#eza})
+(( $+commands[starship] )) || plugins=(${plugins:#starship})
+[[ -r $_managed_zsh_plugin_root/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh ]] ||
+  plugins=(${plugins:#zsh-autosuggestions})
+[[ -r $_managed_zsh_plugin_root/zsh-syntax-highlighting/zsh-syntax-highlighting.plugin.zsh ]] ||
+  plugins=(${plugins:#zsh-syntax-highlighting})
+unset _managed_zsh_plugin_root
+
 command mkdir -p -- \
   "$ZSH_CACHE_DIR" \
   "${XDG_STATE_HOME:-$HOME/.local/state}/zsh"
