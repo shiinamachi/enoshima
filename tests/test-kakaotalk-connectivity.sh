@@ -185,6 +185,12 @@ assert_contains "$setup_output" 'No bottle has been created or changed.'
 assert_contains "$setup_output" 'KakaoTalk setup is complete.'
 assert_contains "$test_root/setup-calls.log" \
   'override --user --env=XMODIFIERS=@im=fcitx --env=RES_OPTIONS=single-request-reopen'
+assert_contains "$setup_output" \
+  'Configuring the KakaoTalk bottle for Korean text and locale.'
+assert_contains "$test_root/setup-calls.log" 'config.Language = "ko_KR"'
+assert_contains "$test_root/setup-calls.log" 'Pretendard-Regular.ttf'
+assert_contains "$test_root/setup-calls.log" '00000412'
+assert_contains "$test_root/setup-calls.log" '"ACP", "949"'
 
 new_setup_output=$test_root/new-setup.out
 new_connectivity_count=$test_root/new-connectivity-count
@@ -208,6 +214,8 @@ printf 'y\n' | script --quiet --return --command "$new_setup_command" /dev/null 
   exit 1
 }
 assert_contains "$new_setup_output" 'Creating the dedicated KakaoTalk bottle.'
+assert_contains "$new_setup_output" \
+  'Configuring the KakaoTalk bottle for Korean text and locale.'
 assert_contains "$new_setup_output" 'KakaoTalk setup is complete.'
 if grep -Fq -- '--environment application --arch win64' \
   "$test_root/new-setup-calls.log"; then

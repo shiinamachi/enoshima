@@ -174,6 +174,141 @@ PYTHON
     "$bottle_name" application win64
 }
 
+configure_korean_bottle() {
+  local python_source
+
+  python_source=$(
+    cat <<'PYTHON'
+# Configure the dedicated KakaoTalk bottle for Korean UI. Keep the locale,
+# font, and Windows registry state together so rerunning setup converges it.
+import os
+import shutil
+import sys
+
+sys.path.insert(1, "/app/share/bottles")
+
+import gi
+
+gi.require_version("Xdp", "1.0")
+
+from bottles.backend.globals import Paths
+from bottles.backend.models.config import BottleConfig
+from bottles.backend.wine.reg import Reg, RegItem
+
+
+def fail(message):
+    print(f"kakaotalk-setup: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+name = sys.argv[1]
+bottle_path = os.path.join(Paths.bottles, name)
+config_path = os.path.join(bottle_path, "bottle.yml")
+font_source = "/run/host/fonts/TTF/Pretendard-Regular.ttf"
+font_name = "Pretendard-Regular.ttf"
+font_destination = os.path.join(bottle_path, "drive_c", "windows", "Fonts", font_name)
+
+loaded = BottleConfig.load(config_path)
+if not loaded.ok:
+    fail("the KakaoTalk bottle configuration could not be loaded")
+
+config = loaded.data
+config.Language = "ko_KR"
+environment = dict(config.Environment_Variables or {})
+environment.update(
+    {
+        "LANG": "ko_KR.UTF-8",
+        "LC_ALL": "ko_KR.UTF-8",
+        "LC_CTYPE": "ko_KR.UTF-8",
+    }
+)
+config.Environment_Variables = environment
+
+saved = config.dump(config_path)
+if not saved.ok:
+    fail("the Korean language setting could not be saved")
+
+if not os.path.isfile(font_source):
+    fail("the managed Pretendard Korean font is unavailable inside Bottles")
+os.makedirs(os.path.dirname(font_destination), exist_ok=True)
+shutil.copyfile(font_source, font_destination)
+os.chmod(font_destination, 0o644)
+
+registry = []
+
+
+def add(key, value, data):
+    registry.append(RegItem(key=key, value=value, value_type="", data=data))
+
+
+international = r"HKEY_CURRENT_USER\Control Panel\International"
+add(international, "Locale", "00000412")
+add(international, "LocaleName", "ko-KR")
+add(international, "sLanguage", "KOR")
+add(international, "sCountry", "Korea")
+add(international, "iCountry", "82")
+add(international, "iDate", "2")
+add(international, "iMeasure", "0")
+add(international, "iPaperSize", "9")
+add(international, "sDate", "-")
+add(international, "sShortDate", "yyyy-MM-dd")
+add(international, "sLongDate", "yyyy'년' M'월' d'일' dddd")
+add(international, "sTimeFormat", "tt h:mm:ss")
+add(international, "sShortTime", "tt h:mm")
+
+geo = international + r"\Geo"
+add(geo, "Name", "KR")
+add(geo, "Nation", "134")
+add(r"HKEY_CURRENT_USER\Keyboard Layout\Preload", "1", "00000412")
+add(r"HKEY_CURRENT_USER\Software\Wine\Fonts", "Codepages", "949,949")
+
+nls_language = r"HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Nls\Language"
+add(nls_language, "Default", "0412")
+add(nls_language, "InstallLanguage", "0412")
+nls_codepage = r"HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Nls\CodePage"
+add(nls_codepage, "ACP", "949")
+add(nls_codepage, "OEMCP", "949")
+add(nls_codepage, "MACCP", "10003")
+
+windows_fonts = (
+    r"HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
+)
+add(windows_fonts, "Pretendard (TrueType)", font_name)
+
+font_faces = (
+    "Segoe UI",
+    "Tahoma",
+    "Malgun Gothic",
+    "Malgun Gothic Semilight",
+    "맑은 고딕",
+    "Gulim",
+    "GulimChe",
+    "굴림",
+    "굴림체",
+    "Dotum",
+    "DotumChe",
+    "돋움",
+    "돋움체",
+)
+wine_replacements = r"HKEY_CURRENT_USER\Software\Wine\Fonts\Replacements"
+for face in font_faces:
+    add(wine_replacements, face, "Pretendard")
+
+font_substitutes = (
+    r"HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\FontSubstitutes"
+)
+for face in ("MS Shell Dlg", "MS Shell Dlg 2", *font_faces):
+    add(font_substitutes, face, "Pretendard")
+
+Reg(config).bulk_add(registry)
+PYTHON
+  )
+
+  flatpak run --user --command=python3 "$app_id" \
+    -c "$python_source" \
+    "$bottle_name"
+}
+
 bottles_json=$("${bottles_cli[@]}" --json list bottles)
 if jq -e --arg name "$bottle_name" 'has($name)' >/dev/null <<<"$bottles_json"; then
   existing_arch=$(
@@ -209,6 +344,9 @@ else
   jq -e --arg name "$bottle_name" 'has($name)' >/dev/null <<<"$bottles_json" ||
     die 'Bottles did not report the newly created KakaoTalk bottle'
 fi
+
+printf 'Configuring the KakaoTalk bottle for Korean text and locale.\n'
+configure_korean_bottle
 
 # XIM is required for Hangul composition in Wine/XWayland. A 144-DPI Wine
 # desktop matches the 1.5 compositor scale (96 * 1.5).

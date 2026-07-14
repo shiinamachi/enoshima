@@ -276,6 +276,9 @@ Documents, Pictures로 제한된다. installer 동의, 로그인과 snapshot 생
 Bottles 64.1은 GUI main loop가 없는 `bottles-cli`에서 component catalog callback을
 완료하지 못하므로, setup helper가 해당 버전에서만 callback을 worker thread로
 전달하고 runner·DXVK·VKD3D를 준비한 뒤 동일한 Bottles bottle builder를 호출한다.
+KakaoTalk bottle은 `ko_KR.UTF-8`, Windows Korean locale/CP949와 한국 키보드를
+사용한다. 관리되는 Pretendard를 bottle에 복사하고 Segoe UI, Tahoma, 맑은 고딕,
+굴림과 돋움의 fallback으로 등록하므로 installer부터 한글 glyph를 표시할 수 있다.
 
 채팅, 한글 조합, clipboard, 파일 송수신, tray 복원과 notification을 검증한다.
 voice/video call과 screen sharing은 acceptance 대상이 아니다.
