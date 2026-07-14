@@ -7,13 +7,13 @@
 }
 
 window#waybar {
-    background: rgba(17, 20, 71, 0.88);
-    color: #e9e8ff;
-    border-top: 1px solid rgba(51, 214, 255, 0.85);
-    border-right: 1px solid rgba(139, 92, 255, 0.60);
-    border-bottom: 1px solid rgba(255, 60, 199, 0.85);
-    border-left: 1px solid rgba(139, 92, 255, 0.60);
-    border-radius: 14px;
+    background: rgba(10, 12, 62, 0.90);
+    color: #f2ecff;
+    border-top: 1px solid rgba(98, 216, 255, 0.88);
+    border-right: 1px solid rgba(154, 92, 255, 0.66);
+    border-bottom: 1px solid rgba(229, 107, 255, 0.88);
+    border-left: 1px solid rgba(154, 92, 255, 0.66);
+    border-radius: 16px;
 }
 
 #workspaces {
@@ -23,38 +23,38 @@ window#waybar {
 #workspaces button {
     padding: 0 9px;
     margin: 4px 2px;
-    color: rgba(233, 232, 255, 0.52);
+    color: rgba(201, 191, 232, 0.68);
     background: transparent;
     border-radius: 9px;
 }
 
 #workspaces button:hover {
-    color: #e9e8ff;
-    background: rgba(51, 214, 255, 0.16);
+    color: #f2ecff;
+    background: rgba(98, 216, 255, 0.18);
 }
 
 #workspaces button.active {
-    color: #e9e8ff;
-    background: #8b5cff;
+    color: #050623;
+    background-image: linear-gradient(110deg, #62d8ff, #9a5cff 54%, #e56bff);
 }
 
 #workspaces button.visible:not(.active) {
-    color: #e9e8ff;
-    background: rgba(255, 60, 199, 0.18);
+    color: #f2ecff;
+    background: rgba(109, 140, 255, 0.22);
 }
 
 #workspaces button.empty:not(.persistent) {
-    color: rgba(233, 232, 255, 0.36);
+    color: rgba(201, 191, 232, 0.42);
 }
 
 #workspaces button.urgent {
-    color: #070b2a;
-    background: #ff426d;
+    color: #050623;
+    background: #ff5d8f;
 }
 
 #window {
     padding: 0 10px;
-    color: rgba(233, 232, 255, 0.82);
+    color: rgba(242, 236, 255, 0.86);
 }
 
 #clock,
@@ -67,64 +67,82 @@ window#waybar {
 #custom-power-profile,
 #battery,
 #tray {
-    padding: 0 10px;
-    margin: 4px 2px;
-    background: rgba(7, 11, 42, 0.72);
-    border-radius: 9px;
+    min-height: 30px;
+    padding: 0 11px;
+    margin: 4px 1px;
+    background: rgba(5, 6, 35, 0.74);
+    border-radius: 10px;
 }
 
 #clock {
-    color: #8b5cff;
+    color: #9a5cff;
 }
 
 #custom-notification {
-    color: #ff3cc7;
+    color: #e56bff;
 }
 
 #pulseaudio,
 #backlight {
-    color: #e9e8ff;
+    color: #f2ecff;
 }
 
 #network {
-    color: #33d6ff;
+    color: #62d8ff;
+}
+
+#network.disconnected,
+#bluetooth.disabled,
+#bluetooth.off {
+    color: #ff72bd;
 }
 
 #bluetooth {
-    color: #8b5cff;
+    color: #9a5cff;
 }
 
 #custom-wwan {
-    color: #33d6ff;
+    color: #62d8ff;
 }
 
 #custom-wwan.disconnected,
 #custom-wwan.unavailable {
-    color: rgba(233, 232, 255, 0.45);
+    color: #ff72bd;
+}
+
+#custom-wwan.connecting {
+    color: #6d8cff;
 }
 
 #custom-power-profile.ac {
-    color: #ffb84d;
+    color: #ffb86b;
 }
 
 #custom-power-profile.battery {
-    color: #33d6ff;
+    color: #62d8ff;
 }
 
 #custom-power-profile.unknown {
-    color: rgba(233, 232, 255, 0.45);
+    color: #ff72bd;
 }
 
 #battery {
-    color: #33d6ff;
+    color: #77e0c6;
+}
+
+#battery.charging,
+#battery.plugged {
+    color: #ffb86b;
 }
 
 #battery.warning {
-    color: #ffb84d;
+    color: #ffb86b;
 }
 
 #battery.critical {
-    color: #ff426d;
+    color: #ff5d8f;
+    background: rgba(255, 93, 143, 0.14);
+    border: 1px solid rgba(255, 93, 143, 0.78);
     animation: battery-pulse 1s ease-in-out infinite alternate;
 }
 
@@ -134,9 +152,9 @@ window#waybar {
 }
 
 tooltip {
-    background: #111447;
-    color: #e9e8ff;
-    border: 1px solid #8b5cff;
+    background: #161151;
+    color: #f2ecff;
+    border: 1px solid #9a5cff;
     border-radius: 10px;
 }
 

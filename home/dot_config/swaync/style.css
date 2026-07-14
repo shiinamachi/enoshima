@@ -1,19 +1,19 @@
 :root {
-    --cc-bg: rgba(7, 11, 42, 0.94);
-    --noti-border-color: rgba(51, 214, 255, 0.72);
-    --noti-bg: 17, 20, 71;
+    --cc-bg: rgba(10, 12, 62, 0.95);
+    --noti-border-color: rgba(98, 216, 255, 0.72);
+    --noti-bg: 22, 17, 81;
     --noti-bg-alpha: 0.90;
-    --noti-bg-darker: rgb(7, 11, 42);
-    --noti-bg-hover: rgba(139, 92, 255, 0.28);
-    --noti-bg-focus: rgba(139, 92, 255, 0.22);
-    --noti-close-bg: rgba(255, 60, 199, 0.18);
-    --noti-close-bg-hover: rgba(255, 60, 199, 0.38);
-    --text-color: rgb(233, 232, 255);
-    --text-color-disabled: rgba(233, 232, 255, 0.48);
-    --bg-selected: rgb(139, 92, 255);
+    --noti-bg-darker: rgb(5, 6, 35);
+    --noti-bg-hover: rgba(154, 92, 255, 0.28);
+    --noti-bg-focus: rgba(109, 140, 255, 0.22);
+    --noti-close-bg: rgba(229, 107, 255, 0.18);
+    --noti-close-bg-hover: rgba(229, 107, 255, 0.38);
+    --text-color: rgb(242, 236, 255);
+    --text-color-disabled: rgba(201, 191, 232, 0.52);
+    --bg-selected: rgb(154, 92, 255);
     --border: 1px solid var(--noti-border-color);
     --border-radius: 14px;
-    --notification-shadow: 0 8px 28px rgba(7, 11, 42, 0.72);
+    --notification-shadow: 0 8px 28px rgba(5, 6, 35, 0.76);
     --font-size-body: 14px;
     --font-size-summary: 15px;
 }
@@ -31,12 +31,12 @@ blankwindow,
 .control-center {
     background: var(--cc-bg);
     color: var(--text-color);
-    border-top: 1px solid rgba(51, 214, 255, 0.90);
-    border-right: 1px solid rgba(139, 92, 255, 0.65);
-    border-bottom: 1px solid rgba(255, 60, 199, 0.90);
-    border-left: 1px solid rgba(139, 92, 255, 0.65);
+    border-top: 1px solid rgba(98, 216, 255, 0.90);
+    border-right: 1px solid rgba(154, 92, 255, 0.65);
+    border-bottom: 1px solid rgba(229, 107, 255, 0.90);
+    border-left: 1px solid rgba(154, 92, 255, 0.65);
     border-radius: 18px;
-    box-shadow: 0 12px 36px rgba(7, 11, 42, 0.78);
+    box-shadow: 0 12px 36px rgba(5, 6, 35, 0.80);
 }
 
 .notification-row .notification-background {
@@ -51,11 +51,11 @@ blankwindow,
 }
 
 .notification-row .notification-background .notification.low {
-    border-color: rgba(139, 92, 255, 0.68);
+    border-color: rgba(109, 140, 255, 0.68);
 }
 
 .notification-row .notification-background .notification.critical {
-    border-color: #ff426d;
+    border: 2px solid #ff72bd;
 }
 
 .notification-row .notification-background .notification .notification-default-action,
@@ -70,7 +70,7 @@ blankwindow,
 
 .notification-row .notification-background .notification.critical .summary,
 .notification-row .notification-background .notification.critical .time {
-    color: #ff426d;
+    color: #ff72bd;
 }
 
 .close-button {
@@ -89,22 +89,22 @@ blankwindow,
 }
 
 .widget-title > label {
-    color: #33d6ff;
+    color: #62d8ff;
     font-size: 20px;
     font-weight: 700;
 }
 
 .widget-title > button,
 .widget-dnd switch {
-    background: rgba(139, 92, 255, 0.22);
+    background: rgba(154, 92, 255, 0.22);
     color: var(--text-color);
-    border: 1px solid rgba(139, 92, 255, 0.68);
+    border: 1px solid rgba(109, 140, 255, 0.68);
     border-radius: 10px;
 }
 
 .widget-title > button:hover {
-    background: rgba(255, 60, 199, 0.28);
-    border-color: #ff3cc7;
+    background: rgba(229, 107, 255, 0.28);
+    border-color: #e56bff;
 }
 
 .widget-dnd label {
@@ -112,14 +112,14 @@ blankwindow,
 }
 
 .widget-dnd switch:checked {
-    background: #8b5cff;
-    border-color: #33d6ff;
+    background-image: linear-gradient(110deg, #62d8ff, #9a5cff 54%, #e56bff);
+    border-color: #62d8ff;
 }
 
 .widget-dnd switch slider {
-    background: #e9e8ff;
+    background: #f2ecff;
 }
 
 .control-center .control-center-list-placeholder {
-    color: rgba(233, 232, 255, 0.58);
+    color: rgba(201, 191, 232, 0.62);
 }

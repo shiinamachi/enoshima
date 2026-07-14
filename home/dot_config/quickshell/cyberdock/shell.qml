@@ -385,7 +385,7 @@ ShellRoot {
 
                 Timer {
                     id: hideTimer
-                    interval: 280
+                    interval: 420
                     repeat: false
                     onTriggered: {
                         if (!dockWindow.pointerInInteractiveArea) {
@@ -402,7 +402,7 @@ ShellRoot {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     width: dockSurface.width
-                    height: 1
+                    height: 3
                     color: "transparent"
 
                     HoverHandler {
@@ -430,11 +430,11 @@ ShellRoot {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: dockWindow.dockBottomMargin
                     width: Math.min(parent.width - 17, Math.max(68, dockRow.implicitWidth + 17))
-                    height: 51
-                    radius: 13
-                    color: "#ee111447"
+                    height: 58
+                    radius: 15
+                    color: "#ed161151"
                     border.width: 1
-                    border.color: "#cc33d6ff"
+                    border.color: "#cc62d8ff"
                     opacity: dockWindow.revealed ? 1 : 0
                     scale: dockWindow.revealed ? 1 : 0.985
 
@@ -484,25 +484,25 @@ ShellRoot {
                                     readonly property bool active: app.windows.some(window =>
                                         window.address === root.snapshot.activeAddress)
 
-                                    width: 34
-                                    height: 40
+                                    width: 40
+                                    height: 46
 
                                     Rectangle {
                                         anchors.fill: parent
                                         radius: 11
                                         color: appMouse.containsMouse
-                                            ? "#448b5cff"
-                                            : (appItem.active ? "#338b5cff" : "transparent")
+                                            ? "#449a5cff"
+                                            : (appItem.active ? "#3362d8ff" : "transparent")
                                         border.width: appItem.active ? 1 : 0
-                                        border.color: "#ff8b5cff"
+                                        border.color: "#ff9a5cff"
                                     }
 
                                     IconImage {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.top: parent.top
                                         anchors.topMargin: 4
-                                        implicitWidth: 26
-                                        implicitHeight: 26
+                                        implicitWidth: 29
+                                        implicitHeight: 29
                                         source: Quickshell.iconPath(appItem.app.icon,
                                             "application-x-executable")
                                         opacity: appItem.minimized ? 0.62 : 1
@@ -514,10 +514,10 @@ ShellRoot {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.bottom: parent.bottom
                                         anchors.bottomMargin: 1.5
-                                        width: appItem.running ? (appItem.active ? 13 : 6) : 0
-                                        height: 2
-                                        radius: 1
-                                        color: appItem.minimized ? "#ff3cc7" : "#33d6ff"
+                                        width: appItem.running ? (appItem.active ? 16 : 7) : 0
+                                        height: 3
+                                        radius: 1.5
+                                        color: appItem.minimized ? "#e56bff" : "#62d8ff"
                                         Behavior on width { NumberAnimation { duration: 120 } }
                                     }
 
@@ -528,12 +528,12 @@ ShellRoot {
                                         width: 15
                                         height: 15
                                         radius: 7.5
-                                        color: "#ff8b5cff"
+                                        color: "#ff9a5cff"
 
                                         Text {
                                             anchors.centerIn: parent
                                             text: appItem.app.windows.length
-                                            color: "#e9e8ff"
+                                            color: "#f2ecff"
                                             font.family: "Pretendard"
                                             font.pixelSize: 11
                                             font.bold: true
@@ -578,9 +578,9 @@ ShellRoot {
                     width: Math.min(parent.width - 16, tooltipLabel.implicitWidth + 22)
                     height: 32
                     radius: 9
-                    color: "#f2070b2a"
+                    color: "#f2050623"
                     border.width: 1
-                    border.color: "#aa33d6ff"
+                    border.color: "#aa62d8ff"
                     opacity: visible ? 1 : 0
                     z: 12
 
@@ -590,7 +590,7 @@ ShellRoot {
                         id: tooltipLabel
                         anchors.centerIn: parent
                         text: dockWindow.tooltipText
-                        color: "#e9e8ff"
+                        color: "#f2ecff"
                         font.family: "Pretendard"
                         font.pixelSize: 12
                         font.bold: true
@@ -608,9 +608,9 @@ ShellRoot {
                     width: 244
                     height: contextColumn.implicitHeight + 16
                     radius: 14
-                    color: "#f2070b2a"
+                    color: "#f2050623"
                     border.width: 1
-                    border.color: "#cc8b5cff"
+                    border.color: "#cc9a5cff"
                     z: 14
 
                     HoverHandler {
@@ -632,7 +632,7 @@ ShellRoot {
                             leftPadding: 8
                             rightPadding: 8
                             text: dockWindow.menuApp ? dockWindow.menuApp.name : ""
-                            color: "#33d6ff"
+                            color: "#62d8ff"
                             font.family: "Pretendard"
                             font.pixelSize: 13
                             font.bold: true
@@ -642,7 +642,7 @@ ShellRoot {
                         Rectangle {
                             width: parent.width
                             height: 1
-                            color: "#558b5cff"
+                            color: "#559a5cff"
                         }
 
                         Repeater {
@@ -653,7 +653,7 @@ ShellRoot {
                                 width: contextColumn.width
                                 height: 36
                                 radius: 9
-                                color: contextActionMouse.containsMouse ? "#448b5cff" : "transparent"
+                                color: contextActionMouse.containsMouse ? "#449a5cff" : "transparent"
 
                                 Text {
                                     anchors.fill: parent
@@ -661,7 +661,7 @@ ShellRoot {
                                     anchors.rightMargin: 9
                                     verticalAlignment: Text.AlignVCenter
                                     text: modelData.label
-                                    color: modelData.destructive ? "#ff7abf" : "#e9e8ff"
+                                    color: modelData.destructive ? "#ff72bd" : "#f2ecff"
                                     font.family: "Pretendard"
                                     font.pixelSize: 12
                                     elide: Text.ElideRight
@@ -687,9 +687,9 @@ ShellRoot {
                     width: visible ? Math.min(parent.width - 32, 420) : 0
                     height: visible ? Math.min(258, chooserList.contentHeight + 48) : 0
                     radius: 16
-                    color: "#f2070b2a"
+                    color: "#f2050623"
                     border.width: 1
-                    border.color: "#ccff3cc7"
+                    border.color: "#cce56bff"
                     clip: true
 
                     HoverHandler {
@@ -704,7 +704,7 @@ ShellRoot {
                         anchors.top: parent.top
                         anchors.margins: 12
                         text: dockWindow.chooserTitle
-                        color: "#33d6ff"
+                        color: "#62d8ff"
                         font.family: "Pretendard"
                         font.pixelSize: 14
                         font.bold: true
@@ -727,7 +727,7 @@ ShellRoot {
                             width: ListView.view.width
                             height: 42
                             radius: 10
-                            color: chooserItemMouse.containsMouse ? "#448b5cff" : "#cc111447"
+                            color: chooserItemMouse.containsMouse ? "#449a5cff" : "#cc161151"
 
                             Text {
                                 anchors.left: parent.left
@@ -736,7 +736,7 @@ ShellRoot {
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 8
                                 text: root.windowTitle(modelData)
-                                color: "#e9e8ff"
+                                color: "#f2ecff"
                                 font.family: "Pretendard"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
@@ -750,7 +750,7 @@ ShellRoot {
                                 text: modelData.minimized
                                     ? "MINIMIZED"
                                     : String(modelData.workspace && modelData.workspace.name || "")
-                                color: modelData.minimized ? "#ff3cc7" : "#8b5cff"
+                                color: modelData.minimized ? "#e56bff" : "#6d8cff"
                                 font.family: "Pretendard"
                                 font.pixelSize: 10
                                 font.bold: true

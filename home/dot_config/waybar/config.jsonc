@@ -1,11 +1,11 @@
 {
     "layer": "top",
     "position": "top",
-    "height": 38,
+    "height": 42,
     "spacing": 8,
-    "margin-top": 8,
-    "margin-left": 12,
-    "margin-right": 12,
+    "margin-top": 14,
+    "margin-left": 14,
+    "margin-right": 14,
 
     "modules-left": [
         "ext/workspaces",
@@ -136,13 +136,13 @@
         "tooltip": false,
         "format": "{icon}",
         "format-icons": {
-            "notification": "<span foreground='#ff3cc7'><sup></sup></span>",
+            "notification": "<span foreground='#e56bff'><sup></sup></span>",
             "none": "",
-            "dnd-notification": "<span foreground='#ff3cc7'><sup></sup></span>",
+            "dnd-notification": "<span foreground='#e56bff'><sup></sup></span>",
             "dnd-none": "",
-            "inhibited-notification": "<span foreground='#ffb84d'><sup></sup></span>",
+            "inhibited-notification": "<span foreground='#ffb86b'><sup></sup></span>",
             "inhibited-none": "",
-            "dnd-inhibited-notification": "<span foreground='#ffb84d'><sup></sup></span>",
+            "dnd-inhibited-notification": "<span foreground='#ffb86b'><sup></sup></span>",
             "dnd-inhibited-none": ""
         },
         "return-type": "json",
