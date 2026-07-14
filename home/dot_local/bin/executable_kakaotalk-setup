@@ -74,6 +74,106 @@ readonly -a bottles_cli=(
   "$app_id"
 )
 
+create_bottle_with_bottles_64_1() {
+  local python_source
+
+  python_source=$(
+    cat <<'PYTHON'
+# Bottles 64.1 dispatches repository callbacks through the GTK main loop even
+# in bottles-cli, where no main loop runs. Deliver callbacks in their worker
+# threads for this CLI-only process, then install each actually required
+# component before calling Bottles' normal synchronous bottle builder.
+import sys
+
+sys.path.insert(1, "/app/share/bottles")
+
+import gi
+
+gi.require_version("Xdp", "1.0")
+
+from gi.repository import Gio
+
+from bottles.backend.state import EventManager, Events
+from bottles.backend.utils.threading import RunAsync
+
+
+original_run_async_init = RunAsync.__init__
+
+
+def cli_run_async_init(self, *args, **kwargs):
+    kwargs["callback_in_main_loop"] = False
+    original_run_async_init(self, *args, **kwargs)
+
+
+RunAsync.__init__ = cli_run_async_init
+
+from bottles.backend.managers.manager import Manager
+from bottles.frontend.params import APP_ID
+
+
+def fail(message):
+    print(f"kakaotalk-setup: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+name, environment, arch = sys.argv[1:4]
+manager = Manager(g_settings=Gio.Settings.new(APP_ID), is_cli=True)
+
+print("Loading the Bottles component catalogs.", flush=True)
+manager.organize_components()
+EventManager.wait(Events.ComponentsOrganizing)
+manager.organize_dependencies()
+EventManager.wait(Events.DependenciesOrganizing)
+
+if not manager.supported_wine_runners:
+    fail("Bottles returned an empty Wine runner catalog")
+if not manager.supported_dxvk:
+    fail("Bottles returned an empty DXVK catalog")
+if not manager.supported_vkd3d:
+    fail("Bottles returned an empty VKD3D catalog")
+if not manager.supported_dependencies:
+    fail("Bottles returned an empty dependency catalog")
+
+print("Installing a managed Wine runner if needed.", flush=True)
+manager.check_runners()
+print("Installing DXVK if needed.", flush=True)
+manager.check_dxvk()
+print("Installing VKD3D if needed.", flush=True)
+manager.check_vkd3d()
+
+manager.check_runners(False)
+manager.check_dxvk(False)
+manager.check_vkd3d(False)
+
+managed_runners = [
+    runner for runner in manager.runners_available if not runner.startswith("sys-")
+]
+if not managed_runners:
+    fail("Bottles could not install a managed Wine runner")
+if not manager.dxvk_available:
+    fail("Bottles could not install DXVK")
+if not manager.vkd3d_available:
+    fail("Bottles could not install VKD3D")
+
+result = manager.create_bottle(
+    name=name,
+    environment=environment,
+    arch=arch,
+    runner=managed_runners[0],
+    dxvk=manager.dxvk_available[0],
+    vkd3d=manager.vkd3d_available[0],
+    fn_logger=lambda message: print(message, flush=True),
+)
+if not result.ok:
+    fail("Bottles failed while building the KakaoTalk bottle")
+PYTHON
+  )
+
+  flatpak run --user --command=python3 "$app_id" \
+    -c "$python_source" \
+    "$bottle_name" application win64
+}
+
 bottles_json=$("${bottles_cli[@]}" --json list bottles)
 if jq -e --arg name "$bottle_name" 'has($name)' >/dev/null <<<"$bottles_json"; then
   existing_arch=$(
@@ -95,10 +195,15 @@ if jq -e --arg name "$bottle_name" 'has($name)' >/dev/null <<<"$bottles_json"; t
   printf 'Reusing the existing KakaoTalk bottle.\n'
 else
   printf 'Creating the dedicated KakaoTalk bottle. This may download a Wine runner.\n'
-  "${bottles_cli[@]}" new \
-    --bottle-name "$bottle_name" \
-    --environment application \
-    --arch win64
+  bottles_version=$("${bottles_cli[@]}" --version)
+  if [[ $bottles_version == 'Bottles 64.1' ]]; then
+    create_bottle_with_bottles_64_1
+  else
+    "${bottles_cli[@]}" new \
+      --bottle-name "$bottle_name" \
+      --environment application \
+      --arch win64
+  fi
 
   bottles_json=$("${bottles_cli[@]}" --json list bottles)
   jq -e --arg name "$bottle_name" 'has($name)' >/dev/null <<<"$bottles_json" ||

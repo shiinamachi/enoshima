@@ -37,6 +37,11 @@ if [[ ${1:-} == run && $* == *--command=getent* ]]; then
 fi
 
 if [[ ${1:-} == run && $* == *--command=python3* ]]; then
+  if [[ $* == *'Bottles 64.1 dispatches repository callbacks'* ]]; then
+    : >"${FAKE_BOTTLE_CREATED:?}"
+    exit 0
+  fi
+
   if [[ $* == *--env=RES_OPTIONS=single-request-reopen* ]]; then
     probe_state=${FAKE_RESOLVER_COMPAT_HTTPS:-${FAKE_SANDBOX_HTTPS:-ok}}
   else
@@ -52,10 +57,19 @@ if [[ ${1:-} == run && $* == *--command=python3* ]]; then
 fi
 
 if [[ ${1:-} == run && $* == *--command=bottles-cli* ]]; then
-  if [[ $* == *'--json list bottles'* ]]; then
+  if [[ $* == *'--version'* ]]; then
+    printf 'Bottles %s\n' "${FAKE_BOTTLES_VERSION:-64.1}"
+  elif [[ $* == *'--json list bottles'* ]]; then
+    if [[ ${FAKE_BOTTLE_STATE:-installed} == missing &&
+      ! -e ${FAKE_BOTTLE_CREATED:-} ]]; then
+      printf '{}\n'
+      exit 0
+    fi
     printf '{"KakaoTalk":{"Arch":"win64","Environment":"application"}}\n'
   elif [[ $* == *'--json programs'* ]]; then
     printf '[{"name":"KakaoTalk","path":"C:\\\\KakaoTalk.exe"}]\n'
+  elif [[ $* == *' new '* ]]; then
+    : >"${FAKE_BOTTLE_CREATED:?}"
   fi
 fi
 EOF
@@ -171,5 +185,59 @@ assert_contains "$setup_output" 'No bottle has been created or changed.'
 assert_contains "$setup_output" 'KakaoTalk setup is complete.'
 assert_contains "$test_root/setup-calls.log" \
   'override --user --env=XMODIFIERS=@im=fcitx --env=RES_OPTIONS=single-request-reopen'
+
+new_setup_output=$test_root/new-setup.out
+new_connectivity_count=$test_root/new-connectivity-count
+bottle_created=$test_root/bottle-created
+printf '1\n' >"$new_connectivity_count"
+printf -v new_setup_command \
+  'env PATH=%q HOME=%q WAYLAND_DISPLAY=%q FAKE_CALL_LOG=%q FAKE_CONNECTIVITY_COUNT=%q FAKE_BOTTLE_STATE=missing FAKE_BOTTLE_CREATED=%q bash %q' \
+  "$fake_bin:/usr/bin" \
+  "$test_root/new-home" \
+  wayland-test \
+  "$test_root/new-setup-calls.log" \
+  "$new_connectivity_count" \
+  "$bottle_created" \
+  "$setup_helper"
+printf 'y\n' | script --quiet --return --command "$new_setup_command" /dev/null \
+  >"$new_setup_output" 2>&1
+
+[[ -e $bottle_created ]] || {
+  printf 'Bottles 64.1 compatibility creator was not invoked.\n' >&2
+  sed -n '1,240p' "$new_setup_output" >&2
+  exit 1
+}
+assert_contains "$new_setup_output" 'Creating the dedicated KakaoTalk bottle.'
+assert_contains "$new_setup_output" 'KakaoTalk setup is complete.'
+if grep -Fq -- '--environment application --arch win64' \
+  "$test_root/new-setup-calls.log"; then
+  printf 'Setup used the broken Bottles 64.1 new command.\n' >&2
+  exit 1
+fi
+
+future_setup_output=$test_root/future-setup.out
+future_connectivity_count=$test_root/future-connectivity-count
+future_bottle_created=$test_root/future-bottle-created
+printf '1\n' >"$future_connectivity_count"
+printf -v future_setup_command \
+  'env PATH=%q HOME=%q WAYLAND_DISPLAY=%q FAKE_CALL_LOG=%q FAKE_CONNECTIVITY_COUNT=%q FAKE_BOTTLE_STATE=missing FAKE_BOTTLE_CREATED=%q FAKE_BOTTLES_VERSION=64.2 bash %q' \
+  "$fake_bin:/usr/bin" \
+  "$test_root/future-home" \
+  wayland-test \
+  "$test_root/future-setup-calls.log" \
+  "$future_connectivity_count" \
+  "$future_bottle_created" \
+  "$setup_helper"
+printf 'y\n' | script --quiet --return --command "$future_setup_command" /dev/null \
+  >"$future_setup_output" 2>&1
+
+[[ -e $future_bottle_created ]] || {
+  printf 'Future Bottles CLI creator was not invoked.\n' >&2
+  sed -n '1,240p' "$future_setup_output" >&2
+  exit 1
+}
+assert_contains "$test_root/future-setup-calls.log" \
+  '--bottle-name KakaoTalk --environment application --arch win64'
+assert_contains "$future_setup_output" 'KakaoTalk setup is complete.'
 
 printf 'KakaoTalk connectivity tests passed.\n'
