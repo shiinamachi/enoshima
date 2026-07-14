@@ -163,7 +163,9 @@ maps the physical Right Alt key directly to `Hangul`, and Fcitx listens for
 - F9: Hanja conversion.
 - Right Ctrl remains Ctrl.
 - Native Wayland GTK applications use the text-input protocol.
-- `XMODIFIERS=@im=fcitx` is exported for Wine/XWayland.
+- `XMODIFIERS=@im=fcitx` is exported for Wine/XWayland. The KakaoTalk launcher
+  also reapplies `korean:ralt_hangul` to XWayland's separate keymap before Wine
+  starts.
 
 A logout/login is required after applying the UWSM environment.
 
@@ -204,7 +206,9 @@ The helper creates a dedicated 64-bit application bottle, grants only
 Downloads/Documents/Pictures, exports Fcitx XIM, applies 144 DPI, launches the
 official Kakao installer, and registers the installed executable. The
 `kakaotalk` wrapper and login autostart remain silent until provisioning is
-complete.
+complete. Wine's `InputStyle=root` is scoped to `kakaotalk.exe`, so Fcitx owns
+the visible preedit and KakaoTalk receives committed Hangul without the
+one-composition cursor lag. Other applications retain their normal preedit.
 
 After the first successful login, create a Bottles snapshot and keep the known
 working runner instead of changing it during an urgent KakaoTalk update. Verify

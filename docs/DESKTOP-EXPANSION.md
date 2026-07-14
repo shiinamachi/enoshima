@@ -196,13 +196,20 @@ XWayland/Wine content.
   build fails the 1.5-scale smoke test. A global Qt/GDK scale override is not
   allowed.
 
-Right Alt handling is already correct in desired and running state:
+Right Alt handling is converged in both native Wayland and XWayland state:
 
 - XKB option `korean:ralt_hangul` maps physical Right Alt directly to
   `Hangul`;
+- the KakaoTalk launcher reapplies that option to XWayland's independent
+  keymap immediately before Wine starts;
 - Fcitx5 listens for `Hangul` and `Ctrl+Space`;
 - Right Alt is no longer available as an Alt modifier; and
 - F9 remains the Hanja key.
+
+KakaoTalk receives an app-specific Wine XIM `InputStyle=root`. Fcitx therefore
+renders the in-progress composition and commits completed Hangul to KakaoTalk,
+avoiding its delayed handling of Wine's callback preedit without changing the
+preedit behavior of native applications.
 
 Implementation still performs a physical-key acceptance test with `wev`,
 Fcitx state inspection, a native Wayland editor, Electron, and KakaoTalk.
@@ -222,7 +229,8 @@ clear connectivity preflight and retry path:
 2. run the check again after Cloudflare One enrollment because WARP replaces
    the active DNS path;
 3. create a dedicated 64-bit application bottle;
-4. retain X11/Wine, 144 DPI, and `XMODIFIERS=@im=fcitx`;
+4. retain X11/Wine, 144 DPI, `XMODIFIERS=@im=fcitx`, and the KakaoTalk-only
+   root XIM input style;
 5. allow only Downloads, Documents, and Pictures;
 6. download the installer from Kakao's official CDN;
 7. leave installer acceptance, login, and snapshot creation interactive; and

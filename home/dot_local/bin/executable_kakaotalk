@@ -39,6 +39,13 @@ if [[ ${1-} == --autostart ]]; then
   done
 fi
 
+# Hyprland applies korean:ralt_hangul to native Wayland keyboards, but the
+# rootless XWayland server can retain a separate plain-US keymap. Wine receives
+# keys from XWayland, so converge its map immediately before each launch.
+if [[ -n ${DISPLAY-} ]] && command -v setxkbmap >/dev/null 2>&1; then
+  setxkbmap -option korean:ralt_hangul >/dev/null 2>&1 || true
+fi
+
 exec flatpak run \
   --env=XMODIFIERS=@im=fcitx \
   --command=bottles-cli \

@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/home/dot_local/bin/executable_kakaotalk-connectivity-check
 setup_helper=$repo_root/home/dot_local/bin/executable_kakaotalk-setup
+launcher=$repo_root/home/dot_local/bin/executable_kakaotalk
 test_root=$(mktemp -d)
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -79,7 +80,17 @@ cat >"$fake_bin/xdg-user-dir" <<'EOF'
 printf '%s/Downloads\n' "${HOME:?}"
 EOF
 
-chmod +x "$fake_bin/getent" "$fake_bin/curl" "$fake_bin/flatpak" "$fake_bin/xdg-user-dir"
+cat >"$fake_bin/setxkbmap" <<'EOF'
+#!/usr/bin/env bash
+printf 'setxkbmap %s\n' "$*" >>"${FAKE_CALL_LOG:?}"
+EOF
+
+chmod +x \
+  "$fake_bin/getent" \
+  "$fake_bin/curl" \
+  "$fake_bin/flatpak" \
+  "$fake_bin/setxkbmap" \
+  "$fake_bin/xdg-user-dir"
 
 run_probe() {
   local output_file=$1
@@ -199,6 +210,8 @@ assert_contains "$test_root/setup-calls.log" 'Pretendard-Regular.ttf'
 assert_contains "$test_root/setup-calls.log" '00000412'
 assert_contains "$test_root/setup-calls.log" '"ACP", "949"'
 assert_contains "$test_root/setup-calls.log" '"Graphics", "x11"'
+assert_contains "$test_root/setup-calls.log" 'AppDefaults\kakaotalk.exe\X11 Driver'
+assert_contains "$test_root/setup-calls.log" '"InputStyle", "root"'
 
 new_setup_output=$test_root/new-setup.out
 new_connectivity_count=$test_root/new-connectivity-count
@@ -255,5 +268,21 @@ printf 'y\n' | script --quiet --return --command "$future_setup_command" /dev/nu
 assert_contains "$test_root/future-setup-calls.log" \
   '--bottle-name KakaoTalk --environment application --arch win64'
 assert_contains "$future_setup_output" 'KakaoTalk setup is complete.'
+
+launcher_call_log=$test_root/launcher-calls.log
+env \
+  PATH="$fake_bin:/usr/bin" \
+  DISPLAY=:99 \
+  FAKE_CALL_LOG="$launcher_call_log" \
+  bash "$launcher"
+
+assert_contains "$launcher_call_log" 'setxkbmap -option korean:ralt_hangul'
+keymap_line=$(grep -n '^setxkbmap ' "$launcher_call_log" | cut -d: -f1)
+launch_line=$(grep -n -- 'run -b KakaoTalk -p KakaoTalk' "$launcher_call_log" | tail -n1 | cut -d: -f1)
+[[ -n $keymap_line && -n $launch_line && $keymap_line -lt $launch_line ]] || {
+  printf 'XWayland keymap was not synchronized before KakaoTalk launched.\n' >&2
+  sed -n '1,160p' "$launcher_call_log" >&2
+  exit 1
+}
 
 printf 'KakaoTalk connectivity tests passed.\n'

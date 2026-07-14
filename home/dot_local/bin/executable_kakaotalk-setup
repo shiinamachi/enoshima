@@ -348,6 +348,14 @@ def add(key, value, data):
 # Hangul composition, clipboard integration, and stable popup placement.
 add(r"HKEY_CURRENT_USER\Software\Wine\Drivers", "Graphics", "x11")
 
+# KakaoTalk mishandles Wine's default XIM callback preedit and can display
+# composed Hangul one step behind the cursor. Wine's per-process root style
+# leaves preedit rendering to Fcitx and sends only committed text to the app.
+kakaotalk_x11 = (
+    r"HKEY_CURRENT_USER\Software\Wine\AppDefaults\kakaotalk.exe\X11 Driver"
+)
+add(kakaotalk_x11, "InputStyle", "root")
+
 international = r"HKEY_CURRENT_USER\Control Panel\International"
 add(international, "Locale", "00000412")
 add(international, "LocaleName", "ko-KR")
