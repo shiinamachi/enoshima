@@ -155,13 +155,17 @@ minutes only when on battery.
 `~/.config/mise/config.toml` selects the supported Node.js 24, Python 3.14,
 Go 1.26, and Rust 1.97 release lanes. Rust uses mise's default profile so
 `cargo`, `clippy`, `rustfmt`, and the standard documentation remain available;
-the Arch `rustup` package is retained only as the backend that mise drives.
+the Arch `rustup` package remains a pacman build-dependency provider and
+bootstrap-compatible backend, while mise alone selects the development
+toolchain exposed to the user.
 
-The bootstrap installs these runtimes before local package builds and executes
-those builds through `mise exec`. Project repositories may declare narrower
-versions in a nearer `mise.toml`, `.node-version`, `.python-version`, `go.mod`,
-or `rust-toolchain.toml`; the project definition takes precedence through
-mise's normal configuration hierarchy.
+The bootstrap installs these runtimes before local package builds. It selects
+the mise-resolved Rust version for Cargo without placing the global mise PATH
+ahead of `/usr/bin`: local PKGBUILDs must continue to see pacman's Python and
+its packaged build modules. Project repositories may declare narrower versions
+in a nearer `mise.toml`, `.node-version`, `.python-version`, `go.mod`, or
+`rust-toolchain.toml`; the project definition takes precedence through mise's
+normal configuration hierarchy.
 
 ```bash
 mise ls --current

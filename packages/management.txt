@@ -1,6 +1,7 @@
 # Reprovisioning additions not explicit in the original native package list.
 ansible-core
 
-# rustup was installed as an orphaned dependency, but its active stable
-# toolchain is meaningful desired state, so it is normalized to explicit.
+# Local PKGBUILDs declare the `rust` provider as a build dependency. Keep the
+# Arch rustup package explicit for bootstrap compatibility while mise remains
+# authoritative for the user-facing development toolchain selection.
 rustup

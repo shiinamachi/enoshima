@@ -31,13 +31,25 @@ PY
 grep -Fq 'MISE_CONFIG_FILE="$mise_config_source" mise install --yes' \
   "$repo_root/bootstrap.sh"
 # shellcheck disable=SC2016
-grep -Fq 'mise exec -- "$repo_root/scripts/install-local-packages.sh"' \
+grep -Fq 'RUSTUP_TOOLCHAIN="$rust_toolchain"' \
   "$repo_root/bootstrap.sh"
+# shellcheck disable=SC2016
+if grep -Fq 'mise exec -- "$repo_root/scripts/install-local-packages.sh"' \
+  "$repo_root/bootstrap.sh"; then
+  printf 'FAIL: global mise PATH shadows pacman Python during local builds\n' >&2
+  exit 1
+fi
 
 if rg -n 'rustup (toolchain|default|component)' \
   "$repo_root/ansible/roles/user_tools"; then
   printf 'FAIL: Ansible still selects a Rust runtime outside mise\n' >&2
   exit 1
 fi
+
+grep -Fq 'runtime_bins=(node python go rustc)' \
+  "$repo_root/scripts/postflight.sh" || {
+  printf 'FAIL: postflight does not verify the mise-managed Rust compiler\n' >&2
+  exit 1
+}
 
 printf 'PASS: mise owns the workstation development runtime definitions\n'

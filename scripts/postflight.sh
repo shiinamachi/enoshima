@@ -122,9 +122,11 @@ check "vi resolves to Vim" bash -c \
 echo "==> Development runtimes"
 mise_config=$HOME/.config/mise/config.toml
 check "mise global runtime configuration deployed" test -f "$mise_config"
-for runtime in node python go rust; do
-  check "mise runtime active: $runtime" env \
-    MISE_CONFIG_FILE="$mise_config" mise which "$runtime"
+runtime_names=(Node.js Python Go Rust)
+runtime_bins=(node python go rustc)
+for index in "${!runtime_names[@]}"; do
+  check "mise runtime active: ${runtime_names[$index]}" env \
+    MISE_CONFIG_FILE="$mise_config" mise which "${runtime_bins[$index]}"
 done
 
 echo "==> ThinkPad hardware integration"

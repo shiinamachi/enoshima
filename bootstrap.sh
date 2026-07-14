@@ -226,8 +226,17 @@ MISE_CONFIG_FILE="$mise_config_source" mise install --yes
 
 if [[ $skip_local != true ]]; then
   echo "==> Building local packages with the mise-managed Rust toolchain"
-  MISE_CONFIG_FILE="$mise_config_source" \
-    mise exec -- "$repo_root/scripts/install-local-packages.sh"
+  rust_toolchain=$(
+    MISE_CONFIG_FILE="$mise_config_source" mise ls --current --json |
+      jq -r '.rust[0].version // empty'
+  )
+  [[ $rust_toolchain =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+    die "mise did not resolve the managed Rust toolchain"
+  # Keep Arch's /usr/bin/python ahead of the global mise Python here: local
+  # PKGBUILDs consume pacman-provided Python build modules. Select only the
+  # Rust toolchain through rustup's standard environment contract.
+  RUSTUP_TOOLCHAIN="$rust_toolchain" \
+    "$repo_root/scripts/install-local-packages.sh"
 else
   echo "==> Skipping local packages because SKIP_LOCAL=true"
 fi

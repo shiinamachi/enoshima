@@ -16,7 +16,7 @@
 - Pinned local PKGBUILDs for the Lenovo Gen 13 SAR omission and Wine tray bridge
 - XDG default applications and user-directory settings
 - Git identity
-- Rustup default toolchain and installed components
+- Global mise runtime definitions and their one-shot installation workflow
 - Dconf GNOME interface cursor settings
 
 ## Excluded
