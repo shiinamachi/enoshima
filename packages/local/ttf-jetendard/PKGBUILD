@@ -54,12 +54,20 @@ check() {
     printf 'expected 9 Pretendard TTF variants, found %d\n' "${#pretendard_fonts[@]}" >&2
     return 1
   }
-  local font
+  local family font
   for font in "${built_fonts[@]}"; do
-    fc-scan --format '%{family}\n' "$font" | grep -Fxq Jetendard
+    family=$(fc-scan --format '%{family[0]}' "$font")
+    [[ $family == Jetendard ]] || {
+      printf 'expected Jetendard family for %s, found %s\n' "$font" "$family" >&2
+      return 1
+    }
   done
   for font in "${pretendard_fonts[@]}"; do
-    fc-scan --format '%{family}\n' "$font" | grep -Fxq Pretendard
+    family=$(fc-scan --format '%{family[0]}' "$font")
+    [[ $family == Pretendard ]] || {
+      printf 'expected Pretendard family for %s, found %s\n' "$font" "$family" >&2
+      return 1
+    }
   done
 }
 
