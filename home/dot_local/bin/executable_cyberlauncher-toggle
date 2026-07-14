@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly config_path=${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/cyberdock
+readonly qs_bin=${CYBERLAUNCHER_QS:-qs}
+
+if "$qs_bin" -p "$config_path" ipc call -- launcher toggle >/dev/null 2>&1; then
+  exit 0
+fi
+
+# Recover the single managed shell if it was updated or not yet running.
+systemctl --user restart cyberdock.service >/dev/null 2>&1 || true
+for _ in {1..20}; do
+  if "$qs_bin" -p "$config_path" ipc call -- launcher toggle >/dev/null 2>&1; then
+    exit 0
+  fi
+  sleep 0.1
+done
+
+printf 'cyberlauncher-toggle: the managed desktop shell is unavailable\n' >&2
+exit 1

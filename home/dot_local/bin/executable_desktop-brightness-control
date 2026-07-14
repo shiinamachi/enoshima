@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly brightnessctl_bin=${DESKTOP_BRIGHTNESSCTL:-brightnessctl}
+readonly osd_bin=${DESKTOP_BRIGHTNESS_OSD:-cyberosd-show}
+
+case ${1:-} in
+  raise)
+    "$brightnessctl_bin" -e4 -n2 set 5%+
+    ;;
+  lower)
+    "$brightnessctl_bin" -e4 -n2 set 5%-
+    ;;
+  *)
+    printf 'desktop-brightness-control: usage: desktop-brightness-control {raise|lower}\n' >&2
+    exit 2
+    ;;
+esac
+
+"$osd_bin" brightness >/dev/null 2>&1 || true

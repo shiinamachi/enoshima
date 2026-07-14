@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly kind=${1:-}
+readonly qs_bin=${CYBEROSD_QS:-qs}
+readonly wpctl_bin=${CYBEROSD_WPCTL:-wpctl}
+readonly brightnessctl_bin=${CYBEROSD_BRIGHTNESSCTL:-brightnessctl}
+readonly config_path=${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/cyberdock
+
+value=0
+muted=false
+
+case $kind in
+  volume)
+    output=$("$wpctl_bin" get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null) || exit 0
+    value=$(awk '{ printf "%.0f", $2 * 100 }' <<<"$output")
+    [[ $output == *'[MUTED]'* ]] && muted=true
+    ;;
+  brightness)
+    output=$("$brightnessctl_bin" -m info 2>/dev/null) || exit 0
+    value=$(awk -F, '{ value=$4; gsub(/[^0-9]/, "", value); print value }' <<<"$output")
+    ;;
+  *)
+    printf 'cyberosd-show: usage: cyberosd-show {volume|brightness}\n' >&2
+    exit 2
+    ;;
+esac
+
+[[ $value =~ ^[0-9]+$ ]] || exit 0
+((value > 100)) && value=100
+"$qs_bin" -p "$config_path" ipc call -- osd show "$kind" "$value" "$muted" \
+  >/dev/null 2>&1 || true

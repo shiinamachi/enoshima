@@ -31,6 +31,7 @@ zram_swap_priority: 100
 
 sddm_scale_factor: 1.5
 sddm_font_dpi: 144
+desktop_expansion_sddm_theme_enabled: true
 wwan_route_metric: 700
 
 system_units_started:

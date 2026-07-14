@@ -260,6 +260,7 @@ snapshot_command() {
           $clients[]
           | select(.mapped != false)
           | select((.class // "") != "")
+          | select((.workspace.name // "") != "special:tray")
           | select(((.class // "") | test("^(xembed-sni-proxy)$"; "i")) | not)
           | . as $client
           | ($runtimeState.windows[$client.address] // null) as $record

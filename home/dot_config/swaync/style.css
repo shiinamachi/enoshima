@@ -20,7 +20,7 @@
 }
 
 * {
-    font-family: "Pretendard", "Noto Sans CJK KR", sans-serif;
+    font-family: "Pretendard", "JetBrainsMono Nerd Font", "Noto Sans CJK KR", sans-serif;
 }
 
 notificationwindow,
@@ -140,12 +140,14 @@ blankwindow,
 }
 
 .widget-buttons-grid flowboxchild > button {
-    min-height: 64px;
-    padding: 10px;
+    min-height: 82px;
+    padding: 12px 8px;
     color: @cyber_text;
     background: alpha(@cyber_canvas, 0.62);
     border: 1px solid alpha(@cyber_info, 0.52);
     border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
 }
 
 .widget-buttons-grid flowboxchild > button:hover {
@@ -158,9 +160,21 @@ blankwindow,
 }
 
 .widget-buttons-grid flowboxchild > button.toggle:checked {
-    color: @cyber_canvas;
+    color: @cyber_text;
     background-image: linear-gradient(110deg, @cyber_focus, @cyber_selection);
     border-color: @cyber_focus;
+}
+
+.widget-mpris {
+    background: alpha(@cyber_canvas, 0.46);
+    border: 1px solid alpha(@cyber_info, 0.42);
+    border-radius: 12px;
+}
+
+.widget-mpris-player {
+    color: @cyber_text;
+    background: alpha(@cyber_raised, 0.76);
+    border-radius: 10px;
 }
 
 .widget-volume,

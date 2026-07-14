@@ -19,10 +19,10 @@
   "timeout": 10,
   "timeout-low": 5,
   "timeout-critical": 0,
-  "fit-to-screen": false,
+  "fit-to-screen": true,
   "relative-timestamps": true,
   "control-center-width": 460,
-  "control-center-height": 780,
+  "control-center-height": 850,
   "notification-window-width": 440,
   "keyboard-shortcuts": true,
   "notification-grouping": true,
@@ -38,6 +38,7 @@
     "buttons-grid#quick-settings",
     "volume",
     "backlight",
+    "mpris",
     "notifications"
   ],
   "widget-config": {
@@ -56,22 +57,37 @@
       "buttons-per-row": 3,
       "actions": [
         {
-          "label": "  Wi-Fi",
+          "label": "󰤨\nWi-Fi",
           "type": "toggle",
           "command": "sh -c 'if [ \"$SWAYNC_TOGGLE_STATE\" = true ]; then nmcli radio wifi on; else nmcli radio wifi off; fi'",
           "update-command": "sh -c 'LC_ALL=C nmcli radio wifi | grep -Fxq enabled && echo true || echo false'"
         },
         {
-          "label": "  Bluetooth",
+          "label": "󰂯\nBluetooth",
           "type": "toggle",
           "command": "sh -c 'if [ \"$SWAYNC_TOGGLE_STATE\" = true ]; then bluetoothctl power on; else bluetoothctl power off; fi'",
           "update-command": "sh -c 'LC_ALL=C bluetoothctl show | grep -Fq \"Powered: yes\" && echo true || echo false'"
         },
         {
-          "label": "󰖔  Night Light",
+          "label": "󰖔\nNight Light",
           "type": "toggle",
           "command": "sh -c 'if [ \"$SWAYNC_TOGGLE_STATE\" = true ]; then systemctl --user start hyprsunset-quick.service; else systemctl --user stop hyprsunset-quick.service; fi'",
           "update-command": "sh -c 'systemctl --user is-active --quiet hyprsunset-quick.service && echo true || echo false'"
+        },
+        {
+          "label": "󰐥\nPower",
+          "type": "normal",
+          "command": "hyprshutdown"
+        },
+        {
+          "label": "󰕾\nAudio",
+          "type": "normal",
+          "command": "hyprpwcenter"
+        },
+        {
+          "label": "󰍹\nDisplay",
+          "type": "normal",
+          "command": "nwg-displays"
         }
       ]
     },
@@ -84,6 +100,11 @@
       "device": "intel_backlight",
       "subsystem": "backlight",
       "min": 1
+    },
+    "mpris": {
+      "autohide": true,
+      "show-album-art": "when-available",
+      "loop-carousel": false
     }
   }
 }

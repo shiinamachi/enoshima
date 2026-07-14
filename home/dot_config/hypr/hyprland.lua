@@ -8,7 +8,7 @@ local terminal = "ghostty"
 local editor = "zeditor"
 local browser = "google-chrome-stable"
 local fileManager = "thunar"
-local launcher = "hyprlauncher --toggle"
+local launcher = "cyberlauncher-toggle"
 
 -- Monitor coordinates are logical pixels after applying the 1.5 scale.
 -- The Dell is physically to the upper-right of the laptop panel.
@@ -46,6 +46,7 @@ hl.monitor({
 
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
+hl.env("XCURSOR_THEME", "capitaine-cursors")
 
 hl.config({
     general = {
@@ -272,6 +273,14 @@ local launcherOptions = {
 
 hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd(launcher), launcherOptions)
 hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(launcher), launcherOptions)
+hl.bind(mainMod .. " + A", hl.dsp.exec_cmd("swaync-client -t -sw"), {
+    dont_inhibit = true,
+    description = "Open notification and control center",
+})
+hl.bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd("swaync-client -d -sw"), {
+    dont_inhibit = true,
+    description = "Toggle do not disturb",
+})
 
 local function cycleWindow(nextWindow)
     hl.dispatch(hl.dsp.window.cycle_next({ next = nextWindow }))
@@ -371,10 +380,10 @@ hl.bind("XF86AudioMicMute",
     hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),
     { locked = true })
 hl.bind("XF86MonBrightnessUp",
-    hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%+"),
+    hl.dsp.exec_cmd("desktop-brightness-control raise"),
     { locked = true, repeating = true })
 hl.bind("XF86MonBrightnessDown",
-    hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%-"),
+    hl.dsp.exec_cmd("desktop-brightness-control lower"),
     { locked = true, repeating = true })
 hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), { locked = true })
 hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
@@ -415,6 +424,32 @@ for _, route in ipairs(applicationRoutes) do
         name = route.name,
         match = { class = route.class },
         workspace = route.workspace,
+    })
+end
+
+-- Legacy tray bridges use tiny X11 helper windows. Keep those implementation
+-- surfaces mapped for icon forwarding without exposing them on the desktop.
+for _, traySurface in ipairs({
+    {
+        name = "hide-xembed-tray-host",
+        class = [[(?i)^xembed-sni-proxy$]],
+        title = nil,
+    },
+    {
+        name = "hide-wine-shell-surface",
+        class = [[(?i)^explorer\.exe$]],
+        title = "^$",
+    },
+}) do
+    local match = { class = traySurface.class }
+    if traySurface.title ~= nil then
+        match.title = traySurface.title
+    end
+    hl.window_rule({
+        name = traySurface.name,
+        match = match,
+        workspace = "special:tray silent",
+        no_focus = true,
     })
 end
 
@@ -469,17 +504,30 @@ hl.window_rule({
 })
 
 hl.layer_rule({
-    name = "hyprlauncher-style",
-    match = { namespace = "^hyprlauncher$" },
+    name = "cyberlauncher-style",
+    match = { namespace = "^cyberlauncher$" },
     blur = true,
-    dim_around = true,
-    ignore_alpha = 0.2,
-    no_screen_share = true,
+    ignore_alpha = 0.12,
 })
 
 hl.layer_rule({
-    name = "swaync-blur",
-    match = { namespace = [[^(swaync-control-center|swaync-notification-window)$]] },
+    name = "cyberosd-style",
+    match = { namespace = "^cyberosd$" },
+    blur = true,
+    ignore_alpha = 0.12,
+})
+
+hl.layer_rule({
+    name = "swaync-control-center-style",
+    match = { namespace = "^swaync-control-center$" },
+    blur = true,
+    dim_around = true,
+    ignore_alpha = 0.15,
+})
+
+hl.layer_rule({
+    name = "swaync-notification-style",
+    match = { namespace = "^swaync-notification-window$" },
     blur = true,
     ignore_alpha = 0.15,
 })

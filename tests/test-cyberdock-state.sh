@@ -183,7 +183,9 @@ JSON
   cat >"$CYBERDOCK_FAKE_ROOT/clients.json" <<'JSON'
 [
   {"address":"0xaaa","mapped":true,"class":"dev.zed.Zed","initialClass":"dev.zed.Zed","title":"Notes","workspace":{"id":3,"name":"3"},"monitor":0,"focusHistoryID":0},
-  {"address":"0xbbb","mapped":true,"class":"google-chrome","initialClass":"google-chrome","title":"Browser","workspace":{"id":2,"name":"2"},"monitor":1,"focusHistoryID":1}
+  {"address":"0xbbb","mapped":true,"class":"google-chrome","initialClass":"google-chrome","title":"Browser","workspace":{"id":2,"name":"2"},"monitor":1,"focusHistoryID":1},
+  {"address":"0xccc","mapped":true,"class":"xembed-sni-proxy","initialClass":"xembed-sni-proxy","title":"","workspace":{"id":3,"name":"3"},"monitor":0,"focusHistoryID":2},
+  {"address":"0xddd","mapped":true,"class":"explorer.exe","initialClass":"explorer.exe","title":"","workspace":{"id":-98,"name":"special:tray"},"monitor":0,"focusHistoryID":3}
 ]
 JSON
   jq -c '.[] | select(.address == "0xaaa")' \
@@ -195,6 +197,8 @@ reset_fixture
 snapshot=$(run_state snapshot)
 jq -e '.version == 1 and (.windows | length == 2) and (.windows | all(.minimized == false))' \
   <<<"$snapshot" >/dev/null || fail 'unexpected initial snapshot'
+jq -e 'all(.windows[]; .workspace.name != "special:tray" and .class != "xembed-sni-proxy")' \
+  <<<"$snapshot" >/dev/null || fail 'tray bridge surface leaked into the dock snapshot'
 [[ $(stat -c %a "$XDG_RUNTIME_DIR/cyberdock") == 700 ]] || fail 'runtime directory mode is not 0700'
 [[ $(stat -c %a "$XDG_RUNTIME_DIR/cyberdock/minimized.json") == 600 ]] ||
   fail 'state file mode is not 0600'

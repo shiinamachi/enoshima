@@ -4,10 +4,11 @@
 
 Approved and implemented in the repository, with the Cyberpunk Library visual
 refinement completed on 2026-07-14. Declarative package, service, desktop, and
-validation state is complete. Account enrollment, SDDM theme activation, and
-the visual/interactive acceptance items remain explicit manual gates documented
-in `DESKTOP-EXPANSION-OPERATIONS.md`; their mutable results are intentionally
-not committed.
+validation state is complete. This host opts into the managed SDDM theme, which
+is installed by the complete bootstrap rather than by a preview-time partial
+upgrade. Account enrollment and the visual/interactive acceptance items remain
+explicit manual gates documented in `DESKTOP-EXPANSION-OPERATIONS.md`; their
+mutable results are intentionally not committed.
 
 ## Goals
 
@@ -69,46 +70,56 @@ The visual palette is sampled conceptually from the asset:
 | Success | `#77e0c6` |
 
 The following surfaces share these tokens instead of defining unrelated
-themes: Hyprland borders, Hyprpaper, Hyprlock, SDDM, Waybar, Quickshell dock,
-SwayNC, Hyprlauncher, tooltips, and session controls.
+themes: Hyprland borders, Hyprpaper, Hyprlock, SDDM, Waybar, the Quickshell
+Cyberdock/CyberLauncher/CyberOSD shell, SwayNC, GTK 3/4 application surfaces,
+Fcitx5 Classic UI, tooltips, and session controls.
 
 ### Wallpaper and lock/login screens
 
 - Hyprpaper routes the 2880x1800 composition explicitly to `eDP-1` and uses the
   3840x2160 composition as the fallback for external and newly attached
   outputs. Both use `cover` behavior.
-- Hyprlock mirrors that routing, applies brightness `0.47` with two blur passes,
-  and places the time, date, password/fingerprint status, and input field in a
-  translucent lower-left authentication card. Success, failure, and lock-key
-  states use distinct success, critical, and warning colors.
+- Hyprlock mirrors that routing, applies brightness `0.62` with one restrained
+  blur pass, and places the time, date, password/fingerprint status, and input
+  field in a 600x360 lower-left authentication card. Success, failure, and
+  lock-key states use distinct success, critical, and warning colors.
 - SDDM receives a matching theme only after the session theme is validated.
   The theme must not alter the existing PAM and fingerprint authentication
   policy, and SDDM must retain a known-good fallback theme.
 - Hyprland uses 7/14 pixel gaps, 12 pixel rounding, a calm cyan-violet active
   border, and an Intel iGPU-conscious blur ceiling of size 7 and two passes.
-- Waybar remains at the top with the five purpose-led workspaces and hardware
-  modules; unused reserve workspaces are neither persistent nor displayed.
-  It uses a 48 pixel surface, 14 pixel edge margins, 40 pixel module targets,
-  a gradient active workspace, a connectivity drawer for secondary radios,
-  text-backed disconnected states, and static color plus a two-pixel border for
-  a critical battery. Persistent chrome is opaque enough to remain readable
-  without compositor blur.
+- Waybar remains at the top with the five purpose-led `DEV`, `WEB`, `DOCS`,
+  `REMOTE`, and `MISC` workspaces; unused reserve workspaces are neither
+  persistent nor displayed. It uses a 48 pixel surface, 14 pixel edge margins,
+  a quiet centered date/time, and only notification, audio, network, Bluetooth,
+  battery, and system-drawer entries on the right. Tray, backlight, power
+  profile, WWAN, and the full date live in the drawer. Persistent chrome is
+  opaque enough to remain readable without compositor blur.
 
 ### Shell and application surfaces
 
-- Cyberdock retains per-monitor rendering, `exclusiveZone: 0`, pinned and
-  running applications, minimized workspace recovery, the multi-window chooser,
-  and context menus. Its reveal hotspot is 6 pixels with a visible resting
-  indicator, surface height is 58 pixels, application target is 44x46, hide
-  delay is 420 ms, and the active indicator is 16x3.
+- Cyberdock renders on every monitor and remains visible during ordinary work,
+  reserving a 74 pixel bottom work area so tiled clients never sit beneath it.
+  It hides only for a true fullscreen client or while CyberLauncher is open;
+  fullscreen keeps a 6 pixel reveal target and a visible resting indicator.
+  The 58 pixel surface retains minimized-workspace recovery, a multi-window
+  chooser, context menus, core pins, and dynamically discovered running apps.
+- The repository-owned CyberLauncher replaces stock Hyprlauncher. `Super+Space`
+  opens a fullscreen dim layer with a centered two-column surface: at most seven
+  searchable desktop entries on the left, selected-app details and a real Open
+  action on the right, and up to four quick apps. Search has immediate keyboard
+  focus; Up/Down, Enter, and Escape work without a pointer; launches pass
+  through `uwsm app`. The stock package is declared absent and convergence
+  disables its stale user unit.
+- CyberOSD is part of the same Quickshell process and semantic palette. Audio
+  and brightness helpers send a short-lived, non-focusable bottom-center
+  percentage display through Quickshell IPC instead of starting another daemon.
 - SwayNC remains aligned below the upper-right Waybar edge. The control center
-  is 460x780 pixels, preserves grouping and images, uses the direct
-  `Notifications` label, exposes functional Wi-Fi, Bluetooth, Night Light,
-  volume, and brightness controls, uses a two-pixel critical border, and
-  renders DND with the shared gradient.
-- Hyprlauncher uses the same Hyprtoolkit semantic palette in a 760x480 search
-  surface, opens with keyboard focus, and exposes desktop, Unicode, calculator,
-  and font finders without replacing the launcher with a non-functional mockup.
+  is 460x850 pixels, preserves notification grouping and images, and uses a
+  functional 3-by-2 quick-settings grid: Wi-Fi, Bluetooth, and Night Light are
+  stateful toggles; Power opens Hyprshutdown, Audio opens Hyprpwcenter, and
+  Display opens nwg-displays. Volume, brightness, DND, and an auto-hiding MPRIS
+  widget remain below the grid.
 - Hyprpm manages only the official `hyprfocus` plugin. Its brief six-percent
   focus flash supplements the native focus border without moving window
   geometry. The configuration detects both the Hyprland 0.55 schema and the
@@ -120,9 +131,13 @@ SwayNC, Hyprlauncher, tooltips, and session controls.
   opacity, and balanced 12x10 padding. Compositor blur remains authoritative.
 - Zed retains its built-in One Dark syntax and Command Palette behavior while
   overriding only the editor background and seven accents.
-- GTK 3, GTK 4, and dconf converge on Adwaita-dark, Papirus-Dark, Pretendard,
-  Jetendard, and `prefer-dark`; Hyprland Toolkit and Cyberdock use the same icon
-  and color choices.
+- GTK 3, GTK 4, and dconf converge on `adw-gtk3-dark`, Papirus-Dark,
+  Pretendard, `prefer-dark`, and managed semantic CSS for the shared navy,
+  cyan, violet, and critical roles. UWSM and Hyprland export the
+  `capitaine-cursors` cursor; the portal preference keeps the Hyprland backend
+  with the GTK file chooser; and Fcitx5 Classic UI uses Pretendard, the
+  Material DeepPurple theme, and fractional scaling. Quickshell uses
+  Papirus-Dark and the same semantic colors.
 
 ## Font architecture
 
@@ -160,31 +175,29 @@ allows minimized-state behavior to be integrated with Hyprland IPC.
 
 One dock instance is rendered on every connected monitor. Each instance:
 
-- is hidden by default;
-- exposes a three-pixel logical hotspot at the bottom edge;
-- animates into view when the pointer enters the hotspot;
-- hides after the pointer leaves the dock and hotspot;
-- reserves no permanent work area;
-- shows the same pinned applications and all running/minimized applications;
+- is persistent during normal windowed use;
+- reserves a 74 pixel work area so tiled windows do not overlap it;
+- hides while a true fullscreen client is active or CyberLauncher is open;
+- exposes a six-pixel bottom-edge recovery target and resting indicator while
+  hidden for fullscreen;
+- shows the same core pinned applications and all other running/minimized
+  applications;
   and
 - switches to the owning monitor/workspace when a window on another output is
   selected.
 
-The approved pinned applications, in order, are:
+The deliberately short pinned set, in order, is:
 
-1. Thunar
-2. Google Chrome
-3. Ghostty
-4. Zed
-5. KakaoTalk
-6. Thunderbird
-7. Obsidian
-8. Bottles
-9. PhotoGIMP
-10. ONLYOFFICE
-11. RHWP Desktop
+1. Ghostty
+2. Files (Thunar)
+3. Zed
+4. Google Chrome
+5. Applications (CyberLauncher)
 
-The Windows VM pin from the preliminary proposal is removed because VM
+Communication, office, graphics, and Wine applications are intentionally not
+pinned merely because they are managed by this repository. They appear
+dynamically while running, which keeps the Dock close to the concept density.
+The Windows VM pin from the preliminary proposal remains removed because VM
 provisioning was declined.
 
 Dock click semantics are fixed:
@@ -376,7 +389,8 @@ package stages PhotoGIMP 3.1 globally and initializes an isolated
 `~/.config/PhotoGIMP` profile on first `photogimp` launch. It does not replace
 the user's ordinary GIMP profile.
 
-The Dock launches `photogimp`, not raw `gimp`. Acceptance covers the
+The managed PhotoGIMP application entry launches `photogimp`, not raw `gimp`,
+and appears in the Dock while running. Acceptance covers the
 Photoshop-like single-window layout, shortcuts, bracket brush resizing,
 Wayland scaling, Korean text input, file association behavior, and clean
 launch of unmodified GIMP as a rollback path.
@@ -413,14 +427,15 @@ rapidly improving read/write foundation, not yet Hancom-parity layout.
 ## Obsidian design
 
 Obsidian is already installed and routed to DOCUMENT workspace 3. Keep the
-application and its native Wayland flags, add it to the Dock, and do not create
-a vault, choose a sync provider, or commit application state.
+application and its native Wayland flags; it appears dynamically in the Dock
+while running. Do not create a vault, choose a sync provider, or commit
+application state.
 
 ## Package ownership summary
 
 | Owner | Additions |
 | --- | --- |
-| Official Arch manifests | Quickshell, GIMP, Thunderbird, Proton Mail Bridge, rclone, FUSE support, office-compatible fonts, required validation utilities |
+| Official Arch manifests | Quickshell, `adw-gtk-theme`, `capitaine-cursors`, `fcitx5-material-color`, Hyprpwcenter, nwg-displays, GIMP, Thunderbird, Proton Mail Bridge, rclone, FUSE support, office-compatible fonts, required validation utilities |
 | Reviewed AUR allowlist | `cloudflare-warp-bin`, `onlyoffice-bin`, `photogimp` |
 | Pinned local packages | Pretendard/Jetendard desktop fonts and sandboxed RHWP Desktop |
 | User-scoped Flatpak | Existing Bottles |
@@ -466,8 +481,10 @@ resulting account state.
 
 | Area | Required result |
 | --- | --- |
-| Theme | Ratio-specific managed wallpapers on both outputs; coherent bar, lock, launcher, notifications, Dock, GTK apps, terminal, editor, native app titlebars, and login palette |
-| Dock | Hidden by default on both outputs; bottom-edge reveal; leave-to-hide; approved click behavior; crash recovery for minimized clients |
+| Theme | Ratio-specific managed wallpapers on both outputs; coherent bar, lock, CyberLauncher, CyberOSD, notifications, Dock, GTK 3/4 apps, Fcitx5, cursor, terminal, editor, native app titlebars, and login palette |
+| Shell | CyberLauncher has immediate search focus, keyboard selection/cancel, real desktop-entry launch actions, and a maximum seven-result hierarchy; volume and brightness helpers display CyberOSD without taking focus |
+| Dock | Persistent and non-overlapping on both outputs during windowed use; hidden for launcher/true fullscreen; six-pixel fullscreen recovery; approved click behavior; crash recovery for minimized clients |
+| Quick settings | SwayNC shows six functional actions in two rows; toggle state tracks Wi-Fi, Bluetooth, and Night Light; Power, Audio, and Display open their managed tools |
 | Window controls | Close, minimize, and true fullscreen work for tiled and floating clients without compositor-owned duplicate titlebars |
 | Fonts | Pretendard wins global sans matching, Jetendard wins mono matching, and Korean, Nerd Font, emoji, and office fallbacks render correctly |
 | Electron HiDPI | Discord and Slack report `xwayland=false` and match Chrome/Obsidian sizing at scale 1.5 |

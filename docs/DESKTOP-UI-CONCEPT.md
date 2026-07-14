@@ -5,8 +5,8 @@ It is already deployed as the ratio-specific wallpapers under
 `home/dot_local/share/backgrounds/`; the generated images below are interface
 studies, not additional wallpapers. They translate the source artwork into
 repeatable layout, color, density, and interaction rules that can be
-implemented with Hyprland, Waybar, hyprlauncher, SwayNC, Quickshell, and
-Hyprlock.
+implemented with Hyprland, Waybar, the repository-owned Quickshell
+CyberLauncher/Cyberdock/CyberOSD shell, SwayNC, and Hyprlock.
 
 ## Concept studies
 
@@ -16,8 +16,11 @@ Hyprlock.
 
 The shell study establishes the persistent composition: five purpose-led
 workspaces, quiet status chrome, clearly separated tiled windows, a single
-active-focus edge, and a compact reveal-on-demand Dock. Persistent surfaces
-remain substantially opaque so that the wallpaper never competes with text.
+active-focus edge, and a compact persistent Dock. The Dock reserves a stable
+bottom work area during normal use and hides only for a true fullscreen client
+or while CyberLauncher owns the screen; fullscreen retains a small bottom-edge
+reveal target. Persistent surfaces remain substantially opaque so that the
+wallpaper never competes with text.
 
 ### Application launcher
 
@@ -35,9 +38,9 @@ size, and the selected result has one unambiguous cyan focus treatment.
 The notification study keeps transient information on the right edge beneath
 the status bar. Notifications remain grouped and actionable, while status and
 do-not-disturb state are discoverable without filling the persistent bar with
-secondary controls. The current implementation keeps the control surface
-within SwayNC's supported widget set rather than presenting non-functional
-mock controls.
+secondary controls. The implemented 3-by-2 quick-settings grid provides real
+Wi-Fi, Bluetooth, and Night Light toggles plus Power, Audio, and Display
+actions; it does not present non-functional mock controls.
 
 ### Lock and authentication
 
@@ -81,13 +84,20 @@ All components use the same behavioral tokens:
 | --- | --- |
 | Five labeled workspaces | `home/dot_config/waybar/config.jsonc` and Hyprland workspace rules |
 | Active focus edge, gaps, radius, motion | `home/dot_config/hypr/hyprland.lua` |
-| Search surface | `home/dot_config/hypr/hyprlauncher.conf` and its Hyprland layer rule |
+| Two-column search, result detail, and quick apps | `home/dot_config/quickshell/cyberdock/CyberLauncher.qml` and the `cyberlauncher` layer rule |
 | Status and notification entry point | Waybar notification module |
-| Grouped notifications and DND | `home/dot_config/swaync/` |
-| Reveal-on-demand application Dock | `home/dot_config/quickshell/cyberdock/shell.qml` |
+| Grouped notifications, DND, and six functional quick settings | `home/dot_config/swaync/` |
+| Persistent application Dock and fullscreen reveal | `home/dot_config/quickshell/cyberdock/shell.qml` |
+| Volume and brightness feedback | `home/dot_config/quickshell/cyberdock/CyberOsd.qml` and shell IPC helpers |
+| GTK 3/4 application surfaces | managed `settings.ini` and semantic `gtk.css` in `home/dot_config/gtk-3.0/` and `home/dot_config/gtk-4.0/` |
+| Cursor, file chooser, and input-method continuity | UWSM/Hyprland cursor exports, `home/dot_config/xdg-desktop-portal/`, and managed Fcitx5 Classic UI settings |
 | Authentication hierarchy | `home/dot_config/hypr/hyprlock.conf` |
 
 Concept art is deliberately advisory. It must not introduce controls that the
 managed component cannot actually operate, duplicate application-owned title
 bars, or trade legibility for glass effects. Visual acceptance on the real
-internal and external displays remains the final manual gate.
+internal and external displays remains the final manual gate. The named GTK
+theme, cursor, Fcitx5 material theme, Audio panel, and Display panel also
+depend on their declared Arch packages being installed through a complete
+bootstrap/full upgrade; the repository does not perform a partial pacman
+transaction merely to preview the theme.

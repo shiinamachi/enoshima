@@ -8,8 +8,7 @@
     "margin-right": 14,
 
     "modules-left": [
-        "ext/workspaces",
-        "hyprland/window"
+        "ext/workspaces"
     ],
 
     "modules-center": [
@@ -18,22 +17,21 @@
 
     "modules-right": [
         "custom/notification",
-        "tray",
         "pulseaudio",
-        "group/connectivity",
-        "backlight",
-        "custom/power-profile",
-        "battery"
+        "network",
+        "bluetooth",
+        "battery",
+        "group/system"
     ],
 
     "ext/workspaces": {
         "format": "{icon}",
         "format-icons": {
-            "1": "1  DEV",
-            "2": "2  WEB",
-            "3": "3  DOCS",
-            "4": "4  REMOTE",
-            "5": "5  MISC",
+            "1": "DEV",
+            "2": "WEB",
+            "3": "DOCS",
+            "4": "REMOTE",
+            "5": "MISC",
             "default": "{name}"
         },
         "sort-by-id": true,
@@ -41,28 +39,19 @@
         "on-click": "activate"
     },
 
-    "hyprland/window": {
-        "format": "{}",
-        "separate-outputs": true,
-        "max-length": 48,
-        "rewrite": {
-            "^(.*) — Zed$": "Zed · $1",
-            "^(.*) - Google Chrome$": "Chrome · $1"
-        }
-    },
-
     "clock": {
-        "format": "󰥔  {:%a %m-%d  %H:%M}",
-        "format-alt": "  {:%Y-%m-%d}",
+        "format": "{:%a, %b %d  %H:%M}",
+        "format-alt": "{:%Y-%m-%d  %H:%M}",
         "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"
     },
 
     "pulseaudio": {
-        "format": "{icon}  {volume}%",
-        "format-muted": "󰝟  Muted",
+        "format": "{icon}",
+        "format-muted": "󰝟",
         "format-icons": {
             "default": ["󰕿", "󰖀", "󰕾"]
         },
+        "tooltip-format": "Volume · {volume}%\nClick: mixer · Right click: mute",
         "on-click": "pavucontrol",
         "on-click-right": "audio-output-control toggle-mute",
         "on-scroll-up": "audio-output-control raise",
@@ -71,8 +60,9 @@
 
     "backlight": {
         "format": "󰃠  {percent}%",
-        "on-scroll-up": "brightnessctl -e4 -n2 set 5%+",
-        "on-scroll-down": "brightnessctl -e4 -n2 set 5%-"
+        "tooltip-format": "Brightness · {percent}%",
+        "on-scroll-up": "desktop-brightness-control raise",
+        "on-scroll-down": "desktop-brightness-control lower"
     },
 
     "custom/wwan": {
@@ -84,27 +74,41 @@
     },
 
     "network": {
-        "format-wifi": "  {signalStrength}%",
-        "format-ethernet": "󰈀  Ethernet",
-        "format-disconnected": "󰖪  Offline",
-        "tooltip-format-wifi": "Wi-Fi · {signalStrength}%\nHover for WWAN and Bluetooth",
-        "tooltip-format-ethernet": "Wired network",
-        "tooltip-format-disconnected": "No Wi-Fi or Ethernet connection",
-        "on-click": "nm-connection-editor"
+        "format-wifi": "",
+        "format-ethernet": "󰈀",
+        "format-disconnected": "󰖪",
+        "tooltip-format-wifi": "{essid} · {signalStrength}%\nClick: quick settings · Right click: connections",
+        "tooltip-format-ethernet": "Ethernet · {ipaddr}\nClick: quick settings · Right click: connections",
+        "tooltip-format-disconnected": "Offline\nClick: quick settings · Right click: connections",
+        "on-click": "swaync-client -t -sw",
+        "on-click-right": "nm-connection-editor"
     },
 
-    "group/connectivity": {
+    "group/system": {
         "orientation": "inherit",
         "drawer": {
             "transition-duration": 180,
             "transition-left-to-right": false,
-            "children-class": "connectivity-secondary"
+            "children-class": "system-secondary"
         },
         "modules": [
-            "network",
+            "custom/system",
+            "tray",
+            "backlight",
+            "custom/power-profile",
             "custom/wwan",
-            "bluetooth"
+            "clock#date"
         ]
+    },
+
+    "custom/system": {
+        "format": "󰍜",
+        "tooltip-format": "More system status"
+    },
+
+    "clock#date": {
+        "format": "{:%Y-%m-%d}",
+        "tooltip": false
     },
 
     "bluetooth": {
@@ -112,7 +116,8 @@
         "format-connected": "  {num_connections}",
         "format-disabled": "󰂲",
         "tooltip-format": "Bluetooth · {status}",
-        "on-click": "blueman-manager"
+        "on-click": "swaync-client -t -sw",
+        "on-click-right": "blueman-manager"
     },
 
     "custom/power-profile": {

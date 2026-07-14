@@ -1,5 +1,6 @@
 # Packages intentionally removed from the desired desktop state.
 firefox
+hyprlauncher
 kitty
 power-profiles-daemon
 slack-electron

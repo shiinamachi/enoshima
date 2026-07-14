@@ -3,6 +3,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import Quickshell.Widgets
 
 ShellRoot {
@@ -13,6 +14,13 @@ ShellRoot {
         "monitors": [],
         "windows": []
     })
+    property bool launcherOpen: false
+    property string launcherScreenName: ""
+    property bool osdVisible: false
+    property string osdScreenName: ""
+    property string osdKind: "volume"
+    property int osdValue: 0
+    property bool osdMuted: false
 
     // Semantic colors mirror the shared GTK palette while keeping QML free
     // from a runtime file parser. Tests guard these values against drift.
@@ -33,25 +41,18 @@ ShellRoot {
 
     readonly property var pinnedApps: [
         {
-            "id": "thunar",
-            "name": "Thunar",
-            "icon": "org.xfce.thunar",
-            "command": ["thunar"],
-            "pattern": "^(thunar)$"
-        },
-        {
-            "id": "chrome",
-            "name": "Google Chrome",
-            "icon": "google-chrome",
-            "command": ["google-chrome-stable"],
-            "pattern": "^(google-chrome(-stable)?|com\\.google\\.chrome)$"
-        },
-        {
             "id": "ghostty",
             "name": "Ghostty",
             "icon": "com.mitchellh.ghostty",
             "command": ["ghostty"],
             "pattern": "^(com\\.mitchellh\\.ghostty|ghostty)$"
+        },
+        {
+            "id": "thunar",
+            "name": "Files",
+            "icon": "org.xfce.thunar",
+            "command": ["thunar"],
+            "pattern": "^(thunar)$"
         },
         {
             "id": "zed",
@@ -61,55 +62,73 @@ ShellRoot {
             "pattern": "^(dev\\.zed\\.zed|zed)$"
         },
         {
-            "id": "kakaotalk",
-            "name": "KakaoTalk",
-            "icon": "com.usebottles.bottles",
-            "command": [Quickshell.env("HOME") + "/.local/bin/kakaotalk"],
-            "pattern": "^(kakaotalk(\\.exe)?|kakao.*)$"
+            "id": "chrome",
+            "name": "Google Chrome",
+            "icon": "google-chrome",
+            "command": ["google-chrome-stable"],
+            "pattern": "^(google-chrome(-stable)?|com\\.google\\.chrome)$"
         },
         {
-            "id": "thunderbird",
-            "name": "Thunderbird",
-            "icon": "thunderbird",
-            "command": ["thunderbird-wayland"],
-            "pattern": "^(thunderbird|org\\.mozilla\\.thunderbird)$"
-        },
-        {
-            "id": "obsidian",
-            "name": "Obsidian",
-            "icon": "obsidian",
-            "command": ["obsidian"],
-            "pattern": "^(obsidian|md\\.obsidian)$"
-        },
-        {
-            "id": "bottles",
-            "name": "Bottles",
-            "icon": "com.usebottles.bottles",
-            "command": ["flatpak", "run", "com.usebottles.bottles"],
-            "pattern": "^(com\\.usebottles\\.bottles|bottles)$"
-        },
-        {
-            "id": "photogimp",
-            "name": "PhotoGIMP",
-            "icon": "gimp",
-            "command": ["photogimp"],
-            "pattern": "^(photogimp|gimp(-[0-9.]+)?)$"
-        },
-        {
-            "id": "onlyoffice",
-            "name": "ONLYOFFICE",
-            "icon": "onlyoffice-desktopeditors",
-            "command": ["onlyoffice-desktopeditors"],
-            "pattern": "^(onlyoffice.*|desktopeditors)$"
-        },
-        {
-            "id": "rhwp",
-            "name": "RHWP Desktop",
-            "icon": "rhwp-desktop",
-            "command": ["rhwp-desktop"],
-            "pattern": "^(rhwp(-desktop)?|.*rhwp.*)$"
+            "id": "launcher",
+            "name": "Applications",
+            "icon": "view-app-grid-symbolic",
+            "command": [Quickshell.env("HOME") + "/.local/bin/cyberlauncher-toggle"],
+            "pattern": "a^"
         }
     ]
+
+    function focusedScreenName() {
+        const monitors = snapshot.monitors || [];
+        for (const monitor of monitors) {
+            if (monitor.focused)
+                return String(monitor.name || "");
+        }
+        return monitors.length > 0 ? String(monitors[0].name || "") : "";
+    }
+
+    function toggleLauncher() {
+        if (launcherOpen) {
+            launcherOpen = false;
+            return;
+        }
+        launcherScreenName = focusedScreenName();
+        launcherOpen = true;
+    }
+
+    function showOsd(kind, value, muted) {
+        osdScreenName = focusedScreenName();
+        osdKind = kind;
+        osdValue = Math.max(0, Math.min(100, value));
+        osdMuted = muted;
+        osdVisible = true;
+        osdHideTimer.restart();
+    }
+
+    IpcHandler {
+        target: "launcher"
+
+        function toggle(): void { root.toggleLauncher(); }
+        function open(): void {
+            root.launcherScreenName = root.focusedScreenName();
+            root.launcherOpen = true;
+        }
+        function close(): void { root.launcherOpen = false; }
+    }
+
+    IpcHandler {
+        target: "osd"
+
+        function show(kind: string, value: int, muted: bool): void {
+            root.showOsd(kind, value, muted);
+        }
+    }
+
+    Timer {
+        id: osdHideTimer
+        interval: 1400
+        repeat: false
+        onTriggered: root.osdVisible = false
+    }
 
     function windowClass(window) {
         return String(window.initialClass || window.class || "");
@@ -257,7 +276,7 @@ ShellRoot {
                 id: dockWindow
 
                 required property var modelData
-                property bool revealed: false
+                property bool manualReveal: false
                 property var chooserWindows: []
                 property string chooserTitle: ""
                 property var dockApps: root.buildDockApps()
@@ -267,6 +286,25 @@ ShellRoot {
                 property var menuApp: null
                 property real menuCenterX: width / 2
                 readonly property int dockBottomMargin: 7
+                readonly property var monitorState: (root.snapshot.monitors || []).find(monitor =>
+                    String(monitor.name || "") === String(modelData.name || "")) || null
+                readonly property bool fullscreenActive: {
+                    if (!monitorState)
+                        return false;
+                    const activeWorkspace = monitorState.activeWorkspace || {};
+                    const specialWorkspace = monitorState.specialWorkspace || {};
+                    return (root.snapshot.windows || []).some(window => {
+                        const workspaceName = String((window.workspace || {}).name || "");
+                        const onVisibleWorkspace = workspaceName === String(activeWorkspace.name || "")
+                            || (String(specialWorkspace.name || "") !== ""
+                                && workspaceName === String(specialWorkspace.name));
+                        return Number(window.monitor) === Number(monitorState.id)
+                            && onVisibleWorkspace
+                            && Number(window.fullscreen || window.fullscreenClient || 0) >= 2;
+                    });
+                }
+                readonly property bool revealed:
+                    !root.launcherOpen && (!fullscreenActive || manualReveal)
                 readonly property bool pointerInInteractiveArea:
                     hotspotHover.hovered || dockAreaHover.hovered
                     || contextMenuHover.hovered || chooserHover.hovered
@@ -275,8 +313,12 @@ ShellRoot {
                 color: "transparent"
                 aboveWindows: true
                 focusable: false
-                exclusiveZone: 0
+                exclusiveZone: fullscreenActive ? 0 : 74
                 implicitHeight: 380
+
+                WlrLayershell.namespace: "cyberdock"
+                WlrLayershell.layer: WlrLayer.Top
+                WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
                 anchors {
                     left: true
@@ -286,9 +328,9 @@ ShellRoot {
 
                 mask: Region {
                     Region { item: hotspot }
-                    Region { item: dockHitArea; radius: 13 }
-                    Region { item: contextMenu; radius: 16 }
-                    Region { item: chooser; radius: 16 }
+                    Region { item: dockWindow.revealed ? dockHitArea : null; radius: 13 }
+                    Region { item: contextMenu.visible ? contextMenu : null; radius: 16 }
+                    Region { item: chooser.visible ? chooser : null; radius: 16 }
                 }
 
                 onPointerInInteractiveAreaChanged: {
@@ -300,7 +342,7 @@ ShellRoot {
 
                 function reveal() {
                     hideTimer.stop();
-                    revealed = true;
+                    manualReveal = true;
                 }
 
                 function scheduleHide() {
@@ -409,7 +451,7 @@ ShellRoot {
                             dockWindow.clearChooser();
                             dockWindow.clearContextMenu();
                             dockWindow.clearTooltip();
-                            dockWindow.revealed = false;
+                            dockWindow.manualReveal = false;
                         }
                     }
                 }
@@ -430,6 +472,7 @@ ShellRoot {
 
                 Rectangle {
                     id: revealIndicator
+                    visible: !root.launcherOpen
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     width: 42
@@ -514,8 +557,18 @@ ShellRoot {
                                     readonly property bool active: app.windows.some(window =>
                                         window.address === root.snapshot.activeAddress)
 
-                                    width: 44
+                                    width: app.id === "launcher" ? 54 : 44
                                     height: 46
+
+                                    Rectangle {
+                                        visible: appItem.app.id === "launcher"
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 1
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 1
+                                        height: 28
+                                        color: root.colorSelectionBorder
+                                    }
 
                                     Rectangle {
                                         anchors.fill: parent
@@ -800,6 +853,32 @@ ShellRoot {
                     }
                 }
             }
+        }
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        delegate: CyberLauncher {
+            required property var modelData
+            targetScreen: modelData
+            launcherOpen: root.launcherOpen
+            activeScreenName: root.launcherScreenName
+            onCloseRequested: root.launcherOpen = false
+        }
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        delegate: CyberOsd {
+            required property var modelData
+            targetScreen: modelData
+            osdVisible: root.osdVisible
+            activeScreenName: root.osdScreenName
+            osdKind: root.osdKind
+            osdValue: root.osdValue
+            osdMuted: root.osdMuted
         }
     }
 }

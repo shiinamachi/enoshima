@@ -83,7 +83,7 @@ done < <(
 )
 
 echo "==> Parsing YAML and checking desired-state invariants"
-python - "$repo_root" <<'PY'
+/usr/bin/python - "$repo_root" <<'PY'
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
@@ -236,6 +236,7 @@ for test_script in \
   tests/test-audio-output-control.sh \
   tests/test-cyberpunk-library-theme.sh \
   tests/test-cyberdock-state.sh \
+  tests/test-desktop-shell-helpers.sh \
   tests/test-desktop-appearance.sh \
   tests/test-desktop-scaling-status.sh \
   tests/test-graphics-workflow.sh \
@@ -248,9 +249,18 @@ for test_script in \
 done
 
 echo "==> Checking desktop expansion QML and user units"
-if command -v qmllint >/dev/null 2>&1; then
-  qmllint home/dot_config/quickshell/cyberdock/shell.qml
-  qmllint ansible/roles/desktop_expansion/files/sddm-cyberpunk/Main.qml
+qmllint_bin=
+if [[ -x /usr/lib/qt6/bin/qmllint ]]; then
+  qmllint_bin=/usr/lib/qt6/bin/qmllint
+elif command -v qmllint >/dev/null 2>&1; then
+  qmllint_bin=$(command -v qmllint)
+fi
+if [[ -n $qmllint_bin ]]; then
+  "$qmllint_bin" \
+    home/dot_config/quickshell/cyberdock/shell.qml \
+    home/dot_config/quickshell/cyberdock/CyberLauncher.qml \
+    home/dot_config/quickshell/cyberdock/CyberOsd.qml
+  "$qmllint_bin" ansible/roles/desktop_expansion/files/sddm-cyberpunk/Main.qml
 fi
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate packages/local/rhwp-desktop/rhwp-desktop.desktop
@@ -273,7 +283,8 @@ fi
 
 echo "==> Checking desktop expansion security invariants"
 for package in \
-  fuse3 gimp libsecret protonmail-bridge quickshell rclone thunderbird \
+  adw-gtk-theme capitaine-cursors fcitx5-material-color fuse3 gimp hyprpwcenter libsecret \
+  nwg-displays protonmail-bridge quickshell rclone thunderbird \
   ttf-caladea ttf-carlito ttf-liberation wev; do
   grep -Fxq -- "$package" packages/native.txt
 done

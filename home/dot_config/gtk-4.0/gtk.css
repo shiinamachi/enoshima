@@ -1,0 +1,144 @@
+@define-color theme_bg_color #0a0c3e;
+@define-color theme_fg_color #f2ecff;
+@define-color theme_base_color #050623;
+@define-color theme_text_color #f2ecff;
+@define-color theme_selected_bg_color #6541b8;
+@define-color theme_selected_fg_color #f2ecff;
+@define-color window_bg_color #0a0c3e;
+@define-color window_fg_color #f2ecff;
+@define-color view_bg_color #050623;
+@define-color view_fg_color #f2ecff;
+@define-color headerbar_bg_color #101047;
+@define-color headerbar_fg_color #f2ecff;
+@define-color accent_bg_color #9a5cff;
+@define-color accent_fg_color #f2ecff;
+@define-color accent_color #62d8ff;
+@define-color card_bg_color #161151;
+@define-color card_fg_color #f2ecff;
+@define-color popover_bg_color #101047;
+@define-color popover_fg_color #f2ecff;
+@define-color destructive_bg_color #ff5d8f;
+@define-color destructive_fg_color #050623;
+@define-color success_color #77e0c6;
+@define-color warning_color #ffb86b;
+@define-color error_color #ff5d8f;
+@define-color borders rgba(109, 140, 255, 0.48);
+
+window,
+dialog {
+    background-color: @window_bg_color;
+    color: @window_fg_color;
+}
+
+headerbar,
+.titlebar {
+    background-image: none;
+    background-color: @headerbar_bg_color;
+    color: @headerbar_fg_color;
+    border-bottom: 1px solid @borders;
+    box-shadow: none;
+}
+
+button {
+    background-image: none;
+    background-color: rgba(22, 17, 81, 0.78);
+    color: @theme_fg_color;
+    border: 1px solid rgba(109, 140, 255, 0.46);
+    border-radius: 8px;
+}
+
+button:hover {
+    background-color: rgba(154, 92, 255, 0.28);
+    border-color: rgba(154, 92, 255, 0.82);
+}
+
+button:active,
+button:checked,
+button.suggested-action {
+    background-image: none;
+    background-color: @accent_bg_color;
+    color: @accent_fg_color;
+    border-color: @accent_color;
+}
+
+button.destructive-action {
+    background-color: @destructive_bg_color;
+    color: @destructive_fg_color;
+    border-color: @destructive_bg_color;
+}
+
+entry,
+searchentry {
+    background-color: @view_bg_color;
+    color: @view_fg_color;
+    border: 1px solid rgba(109, 140, 255, 0.58);
+    border-radius: 8px;
+}
+
+entry:focus,
+searchentry:focus {
+    border-color: @accent_color;
+    box-shadow: inset 0 0 0 1px @accent_color;
+}
+
+.view,
+treeview,
+list,
+grid,
+textview,
+textview text {
+    background-color: @view_bg_color;
+    color: @view_fg_color;
+}
+
+.view:selected,
+treeview:selected,
+row:selected {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+}
+
+.sidebar,
+placessidebar,
+.navigation-sidebar {
+    background-color: rgba(10, 12, 62, 0.98);
+    color: @theme_fg_color;
+    border-right: 1px solid @borders;
+}
+
+popover,
+popover > contents,
+menu,
+.menu {
+    background-color: @popover_bg_color;
+    color: @popover_fg_color;
+    border: 1px solid rgba(154, 92, 255, 0.56);
+    border-radius: 10px;
+}
+
+notebook > header {
+    background-color: @headerbar_bg_color;
+    border-color: @borders;
+}
+
+scrollbar slider {
+    min-width: 6px;
+    min-height: 6px;
+    background-color: rgba(154, 92, 255, 0.62);
+    border-radius: 6px;
+}
+
+scrollbar slider:hover {
+    background-color: @accent_color;
+}
+
+tooltip {
+    background-color: @card_bg_color;
+    color: @card_fg_color;
+    border: 1px solid @accent_bg_color;
+    border-radius: 8px;
+}
+
+separator {
+    background-color: @borders;
+}

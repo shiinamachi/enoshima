@@ -271,7 +271,6 @@ fi
 echo "==> Desktop session"
 for unit in \
   cyberdock.service \
-  hyprlauncher.service \
   xembed-sni-proxy.service; do
   check "custom user unit enabled: $unit" systemctl --user is-enabled --quiet "$unit"
 done
@@ -301,7 +300,7 @@ if systemctl --user is-active --quiet graphical-session.target; then
     pipewire-pulse.service \
     wireplumber.service \
     xdg-desktop-portal-hyprland.service \
-    hyprlauncher.service \
+    cyberdock.service \
     xembed-sni-proxy.service; do
     check_or_warn "user unit active after login: $unit" systemctl --user is-active --quiet "$unit"
   done
@@ -433,15 +432,22 @@ check "Hyprpaper routes the 16:10 composition to eDP-1" \
   grep -Fq 'cyberpunk-library-16x10.jpg' "$HOME/.config/hypr/hyprpaper.conf"
 check "Hyprlock keeps password and fingerprint authentication" \
   grep -Fq 'fingerprint {' "$HOME/.config/hypr/hyprlock.conf"
-check "Waybar uses 40-pixel targets and the connectivity drawer" \
+check "Waybar uses quiet persistent status and a secondary system drawer" \
   jq -e '
     .height == 48 and
     ."margin-top" == 14 and
-    (."modules-right" | index("group/connectivity") != null)
+    ."modules-left" == ["ext/workspaces"] and
+    (."modules-right" | index("group/system") != null)
   ' \
   "$HOME/.config/waybar/config.jsonc"
-check "Cyberdock exposes a six-pixel reveal target" \
-  grep -Fq 'height: 6' "$HOME/.config/quickshell/cyberdock/shell.qml"
+check "Cyberdock stays discoverable outside true fullscreen" \
+  grep -Fq 'exclusiveZone: fullscreenActive ? 0 : 74' \
+  "$HOME/.config/quickshell/cyberdock/shell.qml"
+check "Cyberlauncher provides searchable app details and keyboard focus" \
+  grep -Fq 'WlrKeyboardFocus.Exclusive' \
+  "$HOME/.config/quickshell/cyberdock/CyberLauncher.qml"
+check "desktop OSD shares the Quickshell surface" \
+  test -x "$HOME/.local/bin/cyberosd-show"
 check "SwayNC exposes notifications and functional quick settings" \
   jq -e '
     ."widget-config".title.text == "Notifications" and
@@ -456,9 +462,15 @@ check "Zed applies the One Dark wallpaper-derived override" \
   jq -e '.theme_overrides["One Dark"]["editor.background"] == "#050623"' \
   "$HOME/.config/zed/settings.json"
 check "GTK 3 uses the managed dark theme" \
-  grep -Fq 'gtk-theme-name=Adwaita-dark' "$HOME/.config/gtk-3.0/settings.ini"
+  grep -Fq 'gtk-theme-name=adw-gtk3-dark' "$HOME/.config/gtk-3.0/settings.ini"
 check "GTK 4 uses the managed dark theme" \
-  grep -Fq 'gtk-theme-name=Adwaita-dark' "$HOME/.config/gtk-4.0/settings.ini"
+  grep -Fq 'gtk-theme-name=adw-gtk3-dark' "$HOME/.config/gtk-4.0/settings.ini"
+check "desktop cursor uses the managed macOS-inspired theme" \
+  grep -Fq 'gtk-cursor-theme-name=capitaine-cursors' \
+  "$HOME/.config/gtk-3.0/settings.ini"
+check "Fcitx candidate UI uses the managed deep-purple theme" \
+  grep -Fq 'Theme=Material-Color-DeepPurple' \
+  "$HOME/.config/fcitx5/conf/classicui.conf"
 check "cyberpunk SDDM theme payload is installed" \
   test -f /usr/share/sddm/themes/cyberpunk/Main.qml
 check "cyberpunk SDDM wallpaper is installed" \

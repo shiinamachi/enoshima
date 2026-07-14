@@ -1,4 +1,5 @@
 # Desired native packages for tpx1c13.
+adw-gtk-theme
 alsa-ucm-conf
 alsa-utils
 base
@@ -11,6 +12,7 @@ bolt
 brightnessctl
 btrfs-progs
 buildah
+capitaine-cursors
 chezmoi
 cliphist
 cmake
@@ -27,6 +29,7 @@ fcitx5
 fcitx5-configtool
 fcitx5-gtk
 fcitx5-hangul
+fcitx5-material-color
 fcitx5-qt
 fd
 file-roller
@@ -45,10 +48,10 @@ grim
 gvfs
 hypridle
 hyprland
-hyprlauncher
 hyprlock
 hyprpaper
 hyprpolkitagent
+hyprpwcenter
 hyprshutdown
 hyprsunset
 intel-media-driver
@@ -75,6 +78,7 @@ networkmanager
 noto-fonts
 noto-fonts-cjk
 noto-fonts-emoji
+nwg-displays
 nvme-cli
 nwg-look
 obsidian

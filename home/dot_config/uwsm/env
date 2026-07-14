@@ -3,6 +3,8 @@
 export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
 export TERMINAL=ghostty
 export BROWSER=google-chrome-stable
+export XCURSOR_THEME=capitaine-cursors
+export XCURSOR_SIZE=24
 
 # Keep native Wayland text-input support as the first choice. XMODIFIERS is
 # still required by XWayland and Wine applications such as KakaoTalk.

@@ -16,10 +16,17 @@ cat >"$work/wpctl" <<'FAKE'
 set -euo pipefail
 printf '%s\n' "$*" >>"${AUDIO_OUTPUT_LOG:?}"
 FAKE
-chmod 0700 "$work/wpctl"
+cat >"$work/osd" <<'FAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"${AUDIO_OUTPUT_OSD_LOG:?}"
+FAKE
+chmod 0700 "$work/wpctl" "$work/osd"
 
 export AUDIO_OUTPUT_WPCTL=$work/wpctl
 export AUDIO_OUTPUT_LOG=$work/calls
+export AUDIO_OUTPUT_OSD=$work/osd
+export AUDIO_OUTPUT_OSD_LOG=$work/osd-calls
 
 printf '%s\n' '==> volume raise unmutes before changing volume'
 : >"$AUDIO_OUTPUT_LOG"
@@ -45,5 +52,7 @@ if bash "$helper" invalid 2>/dev/null; then
   fail 'invalid action unexpectedly succeeded'
 fi
 [[ ! -s $AUDIO_OUTPUT_LOG ]] || fail 'invalid action invoked wpctl'
+[[ $(grep -Fc volume "$AUDIO_OUTPUT_OSD_LOG") -eq 4 ]] ||
+  fail 'valid audio actions did not request OSD feedback'
 
 printf '%s\n' 'Audio output control tests passed.'
