@@ -250,6 +250,9 @@ ShellRoot {
                 property var menuApp: null
                 property real menuCenterX: width / 2
                 readonly property int dockBottomMargin: 7
+                readonly property bool pointerInInteractiveArea:
+                    hotspotHover.hovered || dockAreaHover.hovered
+                    || contextMenuHover.hovered || chooserHover.hovered
 
                 screen: modelData
                 color: "transparent"
@@ -271,15 +274,11 @@ ShellRoot {
                     Region { item: chooser; radius: 16 }
                 }
 
-                HoverHandler {
-                    id: panelHover
-                    blocking: false
-                    onHoveredChanged: {
-                        if (hovered)
-                            dockWindow.reveal();
-                        else
-                            dockWindow.scheduleHide();
-                    }
+                onPointerInInteractiveAreaChanged: {
+                    if (pointerInInteractiveArea)
+                        reveal();
+                    else
+                        scheduleHide();
                 }
 
                 function reveal() {
@@ -389,7 +388,7 @@ ShellRoot {
                     interval: 280
                     repeat: false
                     onTriggered: {
-                        if (!panelHover.hovered) {
+                        if (!dockWindow.pointerInInteractiveArea) {
                             dockWindow.clearChooser();
                             dockWindow.clearContextMenu();
                             dockWindow.clearTooltip();
@@ -400,11 +399,16 @@ ShellRoot {
 
                 Rectangle {
                     id: hotspot
-                    anchors.left: parent.left
-                    anchors.right: parent.right
+                    anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
+                    width: dockSurface.width
                     height: 1
                     color: "transparent"
+
+                    HoverHandler {
+                        id: hotspotHover
+                        blocking: false
+                    }
                 }
 
                 Item {
@@ -413,6 +417,11 @@ ShellRoot {
                     anchors.bottom: parent.bottom
                     width: dockSurface.width
                     height: dockSurface.height + dockWindow.dockBottomMargin
+
+                    HoverHandler {
+                        id: dockAreaHover
+                        blocking: false
+                    }
                 }
 
                 Rectangle {
@@ -604,6 +613,11 @@ ShellRoot {
                     border.color: "#cc8b5cff"
                     z: 14
 
+                    HoverHandler {
+                        id: contextMenuHover
+                        blocking: false
+                    }
+
                     Column {
                         id: contextColumn
                         x: 8
@@ -677,6 +691,11 @@ ShellRoot {
                     border.width: 1
                     border.color: "#ccff3cc7"
                     clip: true
+
+                    HoverHandler {
+                        id: chooserHover
+                        blocking: false
+                    }
 
                     Text {
                         id: chooserHeading
