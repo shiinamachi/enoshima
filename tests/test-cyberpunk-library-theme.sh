@@ -187,6 +187,18 @@ jq -e '
   (.widgets | index("backlight") != null) and
   ."widget-config"."buttons-grid#quick-settings"."buttons-per-row" == 3
 ' "$swaync_config" >/dev/null
+/usr/bin/python - "$waybar_config" "$swaync_config" <<'PY'
+import pathlib
+import sys
+
+for raw_path in sys.argv[1:]:
+    path = pathlib.Path(raw_path)
+    for character in path.read_text(encoding="utf-8"):
+        if 0xF000 <= ord(character) <= 0xF057:
+            raise SystemExit(
+                f"{path} uses U+{ord(character):04X}, which collides with Pretendard's PUA glyphs"
+            )
+PY
 while IFS= read -r quick_setting_command; do
   bash -n -c "$quick_setting_command"
 done < <(

@@ -52,7 +52,7 @@
     },
 
     "clock": {
-        "format": "  {:%a %m-%d  %H:%M}",
+        "format": "󰥔  {:%a %m-%d  %H:%M}",
         "format-alt": "  {:%Y-%m-%d}",
         "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"
     },
@@ -61,7 +61,7 @@
         "format": "{icon}  {volume}%",
         "format-muted": "󰝟  Muted",
         "format-icons": {
-            "default": ["", "", ""]
+            "default": ["󰕿", "󰖀", "󰕾"]
         },
         "on-click": "pavucontrol",
         "on-click-right": "audio-output-control toggle-mute",
