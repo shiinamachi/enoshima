@@ -234,6 +234,7 @@ ShellRoot {
                 property var chooserWindows: []
                 property string chooserTitle: ""
                 property var dockApps: root.buildDockApps()
+                readonly property int dockBottomMargin: 10
 
                 screen: modelData
                 color: "transparent"
@@ -250,8 +251,19 @@ ShellRoot {
 
                 mask: Region {
                     Region { item: hotspot }
-                    Region { item: dockSurface; radius: 18 }
+                    Region { item: dockHitArea; radius: 18 }
                     Region { item: chooser; radius: 16 }
+                }
+
+                HoverHandler {
+                    id: panelHover
+                    blocking: false
+                    onHoveredChanged: {
+                        if (hovered)
+                            dockWindow.reveal();
+                        else
+                            dockWindow.scheduleHide();
+                    }
                 }
 
                 Behavior on implicitHeight {
@@ -283,9 +295,7 @@ ShellRoot {
                     interval: 360
                     repeat: false
                     onTriggered: {
-                        if (!hotspotMouse.containsMouse
-                                && !dockHover.containsMouse
-                                && !chooserHover.containsMouse) {
+                        if (!panelHover.hovered) {
                             dockWindow.clearChooser();
                             dockWindow.revealed = false;
                         }
@@ -299,22 +309,21 @@ ShellRoot {
                     anchors.bottom: parent.bottom
                     height: 1
                     color: "transparent"
+                }
 
-                    MouseArea {
-                        id: hotspotMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.NoButton
-                        onEntered: dockWindow.reveal()
-                        onExited: dockWindow.scheduleHide()
-                    }
+                Item {
+                    id: dockHitArea
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    width: dockSurface.width
+                    height: dockSurface.height + dockWindow.dockBottomMargin
                 }
 
                 Rectangle {
                     id: dockSurface
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
-                    anchors.bottomMargin: 10
+                    anchors.bottomMargin: dockWindow.dockBottomMargin
                     width: Math.min(parent.width - 24, Math.max(96, dockRow.implicitWidth + 24))
                     height: 78
                     radius: 18
@@ -326,15 +335,6 @@ ShellRoot {
 
                     Behavior on opacity { NumberAnimation { duration: 130 } }
                     Behavior on scale { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
-
-                    MouseArea {
-                        id: dockHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.NoButton
-                        onEntered: dockWindow.reveal()
-                        onExited: dockWindow.scheduleHide()
-                    }
 
                     Flickable {
                         anchors.fill: parent
@@ -422,8 +422,6 @@ ShellRoot {
                                         id: appMouse
                                         anchors.fill: parent
                                         hoverEnabled: true
-                                        onEntered: dockWindow.reveal()
-                                        onExited: dockWindow.scheduleHide()
                                         onClicked: {
                                             if (!appItem.running) {
                                                 root.launchApp(appItem.app);
@@ -453,15 +451,6 @@ ShellRoot {
                     border.width: 1
                     border.color: "#ccff3cc7"
                     clip: true
-
-                    MouseArea {
-                        id: chooserHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.NoButton
-                        onEntered: dockWindow.reveal()
-                        onExited: dockWindow.scheduleHide()
-                    }
 
                     Text {
                         id: chooserHeading
@@ -526,8 +515,6 @@ ShellRoot {
                                 id: chooserItemMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
-                                onEntered: dockWindow.reveal()
-                                onExited: dockWindow.scheduleHide()
                                 onClicked: {
                                     root.activateWindow(modelData.address);
                                     dockWindow.clearChooser();
