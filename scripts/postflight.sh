@@ -292,11 +292,11 @@ echo "==> Desktop expansion"
 check "managed 16:9 cyberpunk wallpaper is deployed intact" \
   sha256_matches \
   "$HOME/.local/share/backgrounds/cyberpunk-library-16x9.jpg" \
-  6a68558a01cced891b30f8979bcb70569f308e9bd785e372b64fc2957197f9d2
+  5b96bdca2bfc912164e2dec3ec5aec6f360e3c7ba6dabc7136afe39b618ce1cc
 check "managed 16:10 cyberpunk wallpaper is deployed intact" \
   sha256_matches \
   "$HOME/.local/share/backgrounds/cyberpunk-library-16x10.jpg" \
-  00eaee67432d7d8ce189c67496cadc72d64ab8c5474e87ed5f1500d647fab7a2
+  784c66002966e57a2ab0e5ae2413c3faee7b93a8c656d203899d41b25faffafb
 check "Hyprpaper routes the 16:10 composition to eDP-1" \
   grep -Fq 'cyberpunk-library-16x10.jpg' "$HOME/.config/hypr/hyprpaper.conf"
 check "Hyprlock keeps password and fingerprint authentication" \

@@ -41,13 +41,13 @@ modification at:
 `home/dot_local/share/backgrounds/cyberpunk-city.png`
 
 Two display-native JPEGs are deterministically derived from that source. The
-16:9 asset preserves the full composition, while the 16:10 asset is framed from
-the right so the character remains intact:
+16:9 asset preserves the full composition, while the 16:10 asset uses a
+left-anchored horizontal crop so the library facade and character remain intact:
 
 - `cyberpunk-library-16x9.jpg`: 3840x2160, SHA-256
-  `6a68558a01cced891b30f8979bcb70569f308e9bd785e372b64fc2957197f9d2`
+  `5b96bdca2bfc912164e2dec3ec5aec6f360e3c7ba6dabc7136afe39b618ce1cc`
 - `cyberpunk-library-16x10.jpg`: 2880x1800, SHA-256
-  `00eaee67432d7d8ce189c67496cadc72d64ab8c5474e87ed5f1500d647fab7a2`
+  `784c66002966e57a2ab0e5ae2413c3faee7b93a8c656d203899d41b25faffafb`
 
 The visual palette is sampled conceptually from the asset:
 

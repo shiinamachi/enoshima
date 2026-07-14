@@ -332,7 +332,7 @@ done
 grep -Fq 'font-family = Jetendard' home/dot_config/ghostty/config.ghostty
 grep -Fq '"buffer_font_family": "Jetendard"' home/dot_config/zed/settings.json
 
-wallpaper_source_sha=34053ea6a5b8a0b747261755a964917ffa14900ac85637bda346df5cb2bf64e6
+wallpaper_source_sha=406e63f4806eeff1c9644b16b7efe220bddfb5a068f9db0a27fa8090651d6c0c
 printf '%s  %s\n' \
   "$wallpaper_source_sha" \
   home/dot_local/share/backgrounds/cyberpunk-city.png | sha256sum --check --status

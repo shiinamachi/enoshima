@@ -39,10 +39,10 @@ external_asset=home/dot_local/share/backgrounds/cyberpunk-library-16x9.jpg
 internal_asset=home/dot_local/share/backgrounds/cyberpunk-library-16x10.jpg
 
 printf '%s  %s\n' \
-  '6a68558a01cced891b30f8979bcb70569f308e9bd785e372b64fc2957197f9d2' \
+  '5b96bdca2bfc912164e2dec3ec5aec6f360e3c7ba6dabc7136afe39b618ce1cc' \
   "$external_asset" | sha256sum --check --status
 printf '%s  %s\n' \
-  '00eaee67432d7d8ce189c67496cadc72d64ab8c5474e87ed5f1500d647fab7a2' \
+  '784c66002966e57a2ab0e5ae2413c3faee7b93a8c656d203899d41b25faffafb' \
   "$internal_asset" | sha256sum --check --status
 [[ $(asset_dimensions "$external_asset") == 3840x2160 ]] ||
   fail 'the external wallpaper is not 3840x2160'
