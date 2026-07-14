@@ -96,6 +96,8 @@ bootstrap에서 원하는 상태로 다시 수렴시킨다.
 Hyprland 0.55.4의 ABI pin에서는 `mode = flash`, `fade_opacity = 0.94`만 사용해
 window geometry를 움직이지 않는다. reduced-motion과 accessible profile은
 지원되는 `fade_opacity`를 1.0으로 덮어써 focus flash를 시각적으로 제거한다.
+업그레이드 후 최신 schema가 노출되면 runtime detection이 keyboard flash와
+mouse `none`을 선택하며, reduced-motion profile은 plugin `enable`을 끈다.
 
 ```bash
 hyprpm disable hyprfocus

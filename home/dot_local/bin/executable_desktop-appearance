@@ -59,10 +59,21 @@ persist_mode() {
   temp_path=
 }
 
-hyprfocus_available() {
+hyprfocus_schema() {
   local option
+  option=$(hyprctl getoption plugin:hyprfocus:enable -j 2>/dev/null || true)
+  if [[ -n $option && $option != 'no such option' ]]; then
+    printf 'modern\n'
+    return
+  fi
+
   option=$(hyprctl getoption plugin:hyprfocus:mode -j 2>/dev/null || true)
-  [[ -n $option && $option != 'no such option' ]]
+  if [[ -n $option && $option != 'no such option' ]]; then
+    printf 'legacy\n'
+    return
+  fi
+
+  return 1
 }
 
 apply_mode() {
@@ -74,10 +85,17 @@ apply_mode() {
   # the legacy `hyprctl keyword` path. Apply partial Lua config tables instead.
   case $mode in
     reduced-motion | accessible)
+      local focus_schema
       hyprctl eval 'hl.config({ animations = { enabled = false } })' >/dev/null
-      if hyprfocus_available; then
-        hyprctl eval 'hl.config({ plugin = { hyprfocus = { fade_opacity = 1.0 } } })' >/dev/null
-      fi
+      focus_schema=$(hyprfocus_schema || true)
+      case $focus_schema in
+        modern)
+          hyprctl eval 'hl.config({ plugin = { hyprfocus = { enable = false } } })' >/dev/null
+          ;;
+        legacy)
+          hyprctl eval 'hl.config({ plugin = { hyprfocus = { fade_opacity = 1.0 } } })' >/dev/null
+          ;;
+      esac
       ;;
   esac
 

@@ -111,8 +111,10 @@ SwayNC, Hyprlauncher, tooltips, and session controls.
   and font finders without replacing the launcher with a non-functional mockup.
 - Hyprpm manages only the official `hyprfocus` plugin. Its brief six-percent
   focus flash supplements the native focus border without moving window
-  geometry; reduced-motion profiles neutralize the flash. The retired
-  `hyprbars` state is removed because compositor-owned
+  geometry. The configuration detects both the Hyprland 0.55 schema and the
+  newer input-aware schema, where pointer focus remains unanimated;
+  reduced-motion profiles neutralize or disable the plugin accordingly. The
+  retired `hyprbars` state is removed because compositor-owned
   titlebars duplicate GTK, Qt, and Electron client-side decorations.
 - Ghostty uses the shared 16-color ANSI palette, `minimum-contrast = 4.5`, 94%
   opacity, and balanced 12x10 padding. Compositor blur remains authoritative.

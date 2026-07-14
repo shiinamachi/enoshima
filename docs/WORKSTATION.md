@@ -157,6 +157,8 @@ clicked without relying on Hyprland's removed legacy dispatcher syntax.
 The official `hyprfocus` plugin adds a deliberately subtle six-percent opacity
 flash when window focus changes. It never moves window geometry, and the native
 cyan-violet border remains the complete fallback when the plugin cannot load.
+On plugin releases that distinguish focus reasons, pointer focus is left
+unanimated. Both the pinned and newer plugin schemas are detected at runtime.
 Motion and transparency preferences persist across session reloads through the
 same helper used by the Hyprland start event:
 

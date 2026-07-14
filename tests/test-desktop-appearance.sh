@@ -24,11 +24,22 @@ case ${1:-} in
     printf '[]\n'
     ;;
   getoption)
-    if [[ ${FAKE_PLUGIN_AVAILABLE:-true} == true ]]; then
-      printf '{"option":"plugin:hyprfocus:mode","str":"flash"}\n'
-    else
-      printf 'no such option\n'
-    fi
+    case ${2:-} in
+      plugin:hyprfocus:enable)
+        if [[ ${FAKE_PLUGIN_SCHEMA:-legacy} == modern ]]; then
+          printf '{"option":"plugin:hyprfocus:enable","bool":true}\n'
+        else
+          printf 'no such option\n'
+        fi
+        ;;
+      plugin:hyprfocus:mode)
+        if [[ ${FAKE_PLUGIN_SCHEMA:-legacy} == legacy ]]; then
+          printf '{"option":"plugin:hyprfocus:mode","str":"flash"}\n'
+        else
+          printf 'no such option\n'
+        fi
+        ;;
+    esac
     ;;
 esac
 EOF
@@ -40,7 +51,7 @@ run_helper() {
     HOME="$test_root/home" \
     XDG_STATE_HOME="$test_root/state" \
     FAKE_HYPRCTL_LOG="$log" \
-    FAKE_PLUGIN_AVAILABLE="${FAKE_PLUGIN_AVAILABLE:-true}" \
+    FAKE_PLUGIN_SCHEMA="${FAKE_PLUGIN_SCHEMA:-legacy}" \
     bash "$helper" "$@"
 }
 
@@ -61,6 +72,7 @@ assert_not_logged() {
 assert_logged reload
 assert_logged 'eval hl.config({ animations = { enabled = false } })'
 assert_logged 'eval hl.config({ plugin = { hyprfocus = { fade_opacity = 1.0 } } })'
+assert_not_logged 'eval hl.config({ plugin = { hyprfocus = { enable = false } } })'
 assert_not_logged 'eval hl.config({ decoration = { blur = { enabled = false } } })'
 [[ $(stat -c %a "$test_root/state/desktop-appearance/mode") == 600 ]] ||
   fail 'stored mode is not private'
@@ -86,14 +98,21 @@ assert_not_logged 'eval hl.config({ animations = { enabled = false } })'
 assert_not_logged 'eval hl.config({ decoration = { blur = { enabled = false } } })'
 
 : >"$log"
-FAKE_PLUGIN_AVAILABLE=false run_helper reduced-motion >/dev/null
+FAKE_PLUGIN_SCHEMA=none run_helper reduced-motion >/dev/null
 assert_logged 'eval hl.config({ animations = { enabled = false } })'
 assert_not_logged 'eval hl.config({ plugin = { hyprfocus = { fade_opacity = 1.0 } } })'
+assert_not_logged 'eval hl.config({ plugin = { hyprfocus = { enable = false } } })'
 
 : >"$log"
-FAKE_PLUGIN_AVAILABLE=false run_helper apply
+FAKE_PLUGIN_SCHEMA=none run_helper apply
 assert_not_logged reload
 assert_logged 'eval hl.config({ animations = { enabled = false } })'
+
+: >"$log"
+FAKE_PLUGIN_SCHEMA=modern run_helper reduced-motion >/dev/null
+assert_logged 'eval hl.config({ animations = { enabled = false } })'
+assert_logged 'eval hl.config({ plugin = { hyprfocus = { enable = false } } })'
+assert_not_logged 'eval hl.config({ plugin = { hyprfocus = { fade_opacity = 1.0 } } })'
 
 if run_helper unsupported >/dev/null 2>&1; then
   fail 'unsupported mode unexpectedly succeeded'

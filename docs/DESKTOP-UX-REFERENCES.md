@@ -361,18 +361,24 @@ Hyprland 플러그인은 compositor 프로세스 안에서 실행되는 C++ shar
 `hyprfocus`는 focus가 바뀔 때 사용자가 새 focus 위치를 놓치지 않도록 돕는
 제한적인 용도로 적합하다. Hyprland 0.55.4에 대해 `hyprpm`이 고정하는 버전은
 입력 원인별 효과를 구분하지 않고 `flash`, `bounce`, `slide` mode를 제공한다.
-따라서 현재 ABI에서 지원하지 않는 keyboard/mouse 전용 옵션을 가정하지 않는다.
+반면 최신 schema는 keyboard/mouse 효과와 plugin enable을 따로 제공한다. Arch의
+full-upgrade 이후에도 안전하도록 두 schema를 runtime에서 구분하고 각 schema가
+실제로 제공하는 옵션만 설정한다.
 
 출처: [hyprfocus configuration](https://github.com/hyprwm/hyprland-plugins/tree/main/hyprfocus)
 
 현재 ABI 구현: [Hyprland 0.55 호환 hyprfocus source](https://github.com/hyprwm/hyprland-plugins/blob/3aa21f2e0ca72412f1b434c3126f8f1fec3c716c/hyprfocus/main.cpp)
 
+최신 schema: [hyprfocus README](https://github.com/hyprwm/hyprland-plugins/blob/main/hyprfocus/README.md)
+
 권장 설정 방향은 다음과 같다.
 
 - geometry를 움직이는 `bounce`, `slide` 대신 짧은 `flash` 사용
 - `fade_opacity = 0.94`로 변화량을 6%로 제한
+- 최신 schema에서는 keyboard focus만 flash하고 mouse focus는 `none` 사용
 - native cyan-violet active border를 완전한 fallback으로 유지
-- reduced-motion profile에서는 flash opacity를 1.0으로 만들어 시각 효과 제거
+- reduced-motion profile에서는 최신 schema의 plugin을 끄고, 0.55 schema에서는
+  flash opacity를 1.0으로 만들어 시각 효과 제거
 
 이 효과는 테마 장식이 아니라 focus 접근성을 위한 보조 단서여야 한다.
 

@@ -96,7 +96,10 @@ for binding in \
 done
 for focus_contract in \
   'local function configureHyprfocus()' \
+  'hl.get_config("plugin.hyprfocus.enable")' \
   'hl.get_config("plugin.hyprfocus.mode")' \
+  'keyboard_focus_animation = "flash"' \
+  'mouse_focus_animation = "none"' \
   'mode = "flash"' \
   'fade_opacity = 0.94' \
   'hl.on("hyprland.start", reloadHyprlandPlugins)' \
@@ -106,14 +109,7 @@ for focus_contract in \
   'workspace = "e+1"'; do
   assert_contains "$hyprland" "$focus_contract"
 done
-for unsupported_hyprfocus_option in \
-  'plugin.hyprfocus.enable' \
-  'animate_floating' \
-  'keyboard_focus_animation' \
-  'mouse_focus_animation' \
-  'shrink_percentage'; do
-  assert_not_contains "$hyprland" "$unsupported_hyprfocus_option"
-done
+assert_not_contains "$hyprland" 'shrink_percentage'
 
 hyprpaper=home/dot_config/hypr/hyprpaper.conf
 assert_contains "$hyprpaper" 'monitor = eDP-1'

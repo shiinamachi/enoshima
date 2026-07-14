@@ -174,20 +174,36 @@ hl.animation({ leaf = "workspaces", enabled = true, speed = 5, bezier = "easeInO
 -- after Hyprland starts and schedules a reload; the native active border stays
 -- as the complete fallback when the plugin is unavailable or ABI-incompatible.
 local function configureHyprfocus()
-    local available = hl.get_config("plugin.hyprfocus.mode")
-    if available == nil then
+    local modernEnable = hl.get_config("plugin.hyprfocus.enable")
+    local legacyMode = hl.get_config("plugin.hyprfocus.mode")
+
+    if modernEnable ~= nil then
+        hl.config({
+            plugin = {
+                hyprfocus = {
+                    enable = true,
+                    animate_floating = false,
+                    only_on_monitor_change = false,
+                    keyboard_focus_animation = "flash",
+                    mouse_focus_animation = "none",
+                    fade_opacity = 0.94,
+                },
+            },
+        })
+    elseif legacyMode ~= nil then
+        hl.config({
+            plugin = {
+                hyprfocus = {
+                    mode = "flash",
+                    only_on_monitor_change = false,
+                    fade_opacity = 0.94,
+                },
+            },
+        })
+    else
         return
     end
 
-    hl.config({
-        plugin = {
-            hyprfocus = {
-                mode = "flash",
-                only_on_monitor_change = false,
-                fade_opacity = 0.94,
-            },
-        },
-    })
     hl.animation({ leaf = "hyprfocusIn", enabled = true, speed = 12, bezier = "quick" })
     hl.animation({ leaf = "hyprfocusOut", enabled = true, speed = 10, bezier = "easeOutQuint" })
 end
