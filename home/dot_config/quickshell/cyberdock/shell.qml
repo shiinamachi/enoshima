@@ -272,7 +272,11 @@ ShellRoot {
         model: Quickshell.screens
 
         delegate: Component {
+            // Quickshell's generated qmltypes marks this runtime-provided
+            // window interface as uncreatable even though the plugin creates it.
+            // qmllint disable uncreatable-type
             PanelWindow {
+                // qmllint enable uncreatable-type
                 id: dockWindow
 
                 required property var modelData

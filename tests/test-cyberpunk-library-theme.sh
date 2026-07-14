@@ -385,9 +385,12 @@ assert_contains "$sddm_tasks" 'path: /usr/share/sddm/themes/cyberpunk/background
 assert_contains "$sddm_qml" 'source: "background.jpg"'
 assert_contains "$sddm_qml" 'ComboBox {'
 assert_contains "$sddm_qml" 'PasswordBox {'
-assert_contains "$sddm_qml" 'sddm.suspend()'
-assert_contains "$sddm_qml" 'sddm.reboot()'
-assert_contains "$sddm_qml" 'sddm.powerOff()'
+assert_contains "$sddm_qml" 'function onLoginFailed()'
+assert_contains "$sddm_qml" 'Keys.onPressed: function(keyEvent)'
+assert_contains "$sddm_qml" 'root.greeter.login(username.text, password.text, root.sessionIndex)'
+assert_contains "$sddm_qml" 'root.greeter.suspend()'
+assert_contains "$sddm_qml" 'root.greeter.reboot()'
+assert_contains "$sddm_qml" 'root.greeter.powerOff()'
 assert_contains ansible/roles/desktop_expansion/defaults/main.yml \
   'desktop_expansion_sddm_theme_enabled: false'
 assert_contains ansible/inventory/host_vars/tpx1c13.yml \

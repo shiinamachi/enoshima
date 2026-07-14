@@ -252,18 +252,15 @@ for test_script in \
 done
 
 echo "==> Checking desktop expansion QML and user units"
-qmllint_bin=
 if [[ -x /usr/lib/qt6/bin/qmllint ]]; then
-  qmllint_bin=/usr/lib/qt6/bin/qmllint
-elif command -v qmllint >/dev/null 2>&1; then
-  qmllint_bin=$(command -v qmllint)
-fi
-if [[ -n $qmllint_bin ]]; then
-  "$qmllint_bin" \
+  /usr/lib/qt6/bin/qmllint --max-warnings 0 \
     home/dot_config/quickshell/cyberdock/shell.qml \
     home/dot_config/quickshell/cyberdock/CyberLauncher.qml \
     home/dot_config/quickshell/cyberdock/CyberOsd.qml
-  "$qmllint_bin" ansible/roles/desktop_expansion/files/sddm-cyberpunk/Main.qml
+  /usr/lib/qt6/bin/qmllint --max-warnings 0 \
+    ansible/roles/desktop_expansion/files/sddm-cyberpunk/Main.qml
+else
+  echo "==> Skipping QML lint: Qt 6 qmllint is not installed yet"
 fi
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate packages/local/rhwp-desktop/rhwp-desktop.desktop

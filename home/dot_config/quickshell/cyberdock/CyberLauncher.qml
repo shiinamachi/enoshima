@@ -3,7 +3,11 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
 
+// Quickshell's generated qmltypes marks this runtime-provided window interface
+// as uncreatable even though the plugin registers it for normal shell use.
+// qmllint disable uncreatable-type
 PanelWindow {
+    // qmllint enable uncreatable-type
     id: launcher
 
     required property var targetScreen

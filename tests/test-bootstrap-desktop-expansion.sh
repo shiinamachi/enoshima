@@ -52,6 +52,11 @@ grep -Fq 'tests/test-cyberdock-state.sh' "$validate"
 grep -Fq 'tests/test-cyberpunk-library-theme.sh' "$validate"
 grep -Fq 'tests/test-desktop-appearance.sh' "$validate"
 grep -Fq 'env -u HYPRLAND_INSTANCE_SIGNATURE' "$validate"
+grep -Fq '/usr/lib/qt6/bin/qmllint --max-warnings 0' "$validate"
+if grep -Fq 'command -v qmllint' "$validate"; then
+  printf 'QML validation must not fall back to an incompatible Qt 5 qmllint.\n' >&2
+  exit 1
+fi
 grep -Fq 'Checking desktop expansion security invariants' "$validate"
 grep -Fq 'Cloudflare One daemon did not converge after the AUR phase' "$postflight"
 grep -Fq 'Cyberpunk Library session theme applied' "$bootstrap"

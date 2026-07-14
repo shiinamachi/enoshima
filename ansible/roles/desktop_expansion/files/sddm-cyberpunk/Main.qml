@@ -7,6 +7,14 @@ Rectangle {
     height: 1080
     color: "#050623"
 
+    // These context objects are injected by sddm-greeter at runtime.  Its QML
+    // module does not publish qmltypes metadata for static analysis.
+    // qmllint disable unqualified
+    readonly property var greeter: sddm
+    readonly property var greeterUsers: userModel
+    readonly property var greeterSessions: sessionModel
+    // qmllint enable unqualified
+
     property int sessionIndex: session.index
 
     Background {
@@ -21,8 +29,8 @@ Rectangle {
     }
 
     Connections {
-        target: sddm
-        onLoginFailed: {
+        target: root.greeter
+        function onLoginFailed() {
             password.text = ""
             status.text = "AUTHENTICATION FAILED"
             status.color = "#ff5d8f"
@@ -85,7 +93,7 @@ Rectangle {
                     id: username
                     width: parent.width
                     height: 46
-                    text: userModel.lastUser
+                    text: root.greeterUsers.lastUser
                     color: "#ef161151"
                     textColor: "#f2ecff"
                     borderColor: "#6d8cff"
@@ -111,10 +119,10 @@ Rectangle {
                     font.pixelSize: 16
                     KeyNavigation.backtab: username
                     KeyNavigation.tab: login
-                    Keys.onPressed: {
-                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                            sddm.login(username.text, password.text, sessionIndex)
-                            event.accepted = true
+                    Keys.onPressed: function(keyEvent) {
+                        if (keyEvent.key === Qt.Key_Return || keyEvent.key === Qt.Key_Enter) {
+                            root.greeter.login(username.text, password.text, root.sessionIndex)
+                            keyEvent.accepted = true
                         }
                     }
                     onTextChanged: {
@@ -130,8 +138,8 @@ Rectangle {
                         id: session
                         width: 270
                         height: 42
-                        model: sessionModel
-                        index: sessionModel.lastIndex
+                        model: root.greeterSessions
+                        index: root.greeterSessions.lastIndex
                         color: "#161151"
                         textColor: "#f2ecff"
                         menuColor: "#161151"
@@ -154,7 +162,7 @@ Rectangle {
                         textColor: "#050623"
                         font.family: "Pretendard"
                         font.pixelSize: 15
-                        onClicked: sddm.login(username.text, password.text, sessionIndex)
+                        onClicked: root.greeter.login(username.text, password.text, root.sessionIndex)
                     }
                 }
 
@@ -174,13 +182,13 @@ Rectangle {
             Text {
                 text: "SUSPEND"
                 color: "#62d8ff"
-                visible: sddm.canSuspend
+                visible: root.greeter.canSuspend
                 font.family: "Pretendard"
                 font.pixelSize: 13
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: sddm.suspend()
+                    onClicked: root.greeter.suspend()
                 }
             }
 
@@ -192,7 +200,7 @@ Rectangle {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: sddm.reboot()
+                    onClicked: root.greeter.reboot()
                 }
             }
 
@@ -204,7 +212,7 @@ Rectangle {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: sddm.powerOff()
+                    onClicked: root.greeter.powerOff()
                 }
             }
         }
