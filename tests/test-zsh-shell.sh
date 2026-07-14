@@ -71,11 +71,18 @@ mapfile -t actual_plugins < <(
 )
 [[ ${actual_plugins[*]} == "${expected_plugins[*]}" ]]
 [[ ${actual_plugins[${#actual_plugins[@]} - 1]} == zsh-syntax-highlighting ]]
+# Literal managed Zsh source text; no Bash expansion is intended here.
+# shellcheck disable=SC2016
 grep -Fq 'plugins=(${plugins:#fzf-tab})' "$zshrc"
+# shellcheck disable=SC2016
 grep -Fq 'plugins=(${plugins:#zoxide})' "$zshrc"
+# shellcheck disable=SC2016
 grep -Fq 'plugins=(${plugins:#eza})' "$zshrc"
+# shellcheck disable=SC2016
 grep -Fq 'plugins=(${plugins:#starship})' "$zshrc"
+# shellcheck disable=SC2016
 grep -Fq 'plugins=(${plugins:#zsh-autosuggestions})' "$zshrc"
+# shellcheck disable=SC2016
 grep -Fq 'plugins=(${plugins:#zsh-syntax-highlighting})' "$zshrc"
 if printf '%s\n' "${actual_plugins[@]}" | grep -Fxq zsh-completions; then
   echo 'zsh-completions must use the packaged site-functions directory' >&2
