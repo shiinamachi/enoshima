@@ -27,15 +27,6 @@ system_units_started: []
 system_units_enabled_only: []
 user_units_started: []
 
-rustup_default_toolchain: stable
-rustup_components:
-  - cargo
-  - clippy
-  - rust-docs
-  - rust-std
-  - rustc
-  - rustfmt
-
 flatpak_user_remotes:
   - name: flathub
     url: https://dl.flathub.org/repo/flathub.flatpakrepo

@@ -1,0 +1,12 @@
+min_version = "2026.7.5"
+
+[tools]
+# Pin supported release lanes globally. Project-local mise.toml files may
+# narrow these versions without bypassing the workstation runtime manager.
+node = "24"
+python = "3.14"
+go = "1.26"
+rust = { version = "1.97", profile = "default" }
+
+[settings]
+idiomatic_version_file_enable_tools = ["node", "python", "go", "rust"]

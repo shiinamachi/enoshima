@@ -119,6 +119,14 @@ check "SDDM remains the boot display manager" systemctl is-enabled --quiet sddm.
 check "vi resolves to Vim" bash -c \
   "[[ \$(readlink -f /usr/local/bin/vi) == /usr/bin/vim ]]"
 
+echo "==> Development runtimes"
+mise_config=$HOME/.config/mise/config.toml
+check "mise global runtime configuration deployed" test -f "$mise_config"
+for runtime in node python go rust; do
+  check "mise runtime active: $runtime" env \
+    MISE_CONFIG_FILE="$mise_config" mise which "$runtime"
+done
+
 echo "==> ThinkPad hardware integration"
 check "NetworkManager active" systemctl is-active --quiet NetworkManager.service
 check "ModemManager active" systemctl is-active --quiet ModemManager.service

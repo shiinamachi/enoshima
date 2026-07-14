@@ -11,6 +11,7 @@ apply_boot_artifacts=${APPLY_BOOT_ARTIFACTS:-false}
 sudo_keepalive_pid=
 runtime_dir=
 dotfile_preflight_complete=false
+mise_config_source="$repo_root/home/dot_config/mise/config.toml"
 
 usage() {
   cat <<'EOF'
@@ -204,6 +205,7 @@ sudo pacman --config "$repo_root/ansible/roles/packages/templates/pacman.conf.j2
   git \
   jq \
   lua \
+  mise \
   ripgrep \
   rustup
 
@@ -219,11 +221,13 @@ if [[ $dotfile_preflight_complete != true ]]; then
   "$repo_root/scripts/apply-dotfiles.sh" --check "$conflict_policy"
 fi
 
+echo "==> Installing the managed development runtimes with mise"
+MISE_CONFIG_FILE="$mise_config_source" mise install --yes
+
 if [[ $skip_local != true ]]; then
-  echo "==> Preparing the Rust toolchain required by local packages"
-  rustup toolchain install stable
-  rustup default stable
-  "$repo_root/scripts/install-local-packages.sh"
+  echo "==> Building local packages with the mise-managed Rust toolchain"
+  MISE_CONFIG_FILE="$mise_config_source" \
+    mise exec -- "$repo_root/scripts/install-local-packages.sh"
 else
   echo "==> Skipping local packages because SKIP_LOCAL=true"
 fi

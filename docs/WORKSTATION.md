@@ -149,6 +149,29 @@ frequency or lower either display to 60 Hz on battery. Hypridle locks after
 five minutes, powers displays down after ten minutes, and suspends after thirty
 minutes only when on battery.
 
+## Development runtimes
+
+`mise` is the single user-scoped runtime manager. The global
+`~/.config/mise/config.toml` selects the supported Node.js 24, Python 3.14,
+Go 1.26, and Rust 1.97 release lanes. Rust uses mise's default profile so
+`cargo`, `clippy`, `rustfmt`, and the standard documentation remain available;
+the Arch `rustup` package is retained only as the backend that mise drives.
+
+The bootstrap installs these runtimes before local package builds and executes
+those builds through `mise exec`. Project repositories may declare narrower
+versions in a nearer `mise.toml`, `.node-version`, `.python-version`, `go.mod`,
+or `rust-toolchain.toml`; the project definition takes precedence through
+mise's normal configuration hierarchy.
+
+```bash
+mise ls --current
+mise doctor
+mise install
+```
+
+Update a supported release lane deliberately in the managed global config,
+run `mise install`, validate dependent projects, and commit the version change.
+
 Use `tlpctl performance`, `tlpctl balanced`, or `tlpctl power-saver` for a
 temporary manual selection. `tlp-stat -s -c -p -b` is the authoritative
 diagnostic output.
