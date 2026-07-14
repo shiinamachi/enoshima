@@ -65,6 +65,27 @@ manifest_entries() {
     "$1"
 }
 
+hyprpm_state() {
+  LC_ALL=C hyprpm list 2>/dev/null |
+    sed -E $'s/\x1B\\[[0-9;]*[[:alpha:]]//g'
+}
+
+hyprpm_plugin_enabled() {
+  local plugin=$1
+  hyprpm_state | awk -v plugin="$plugin" '
+    index($0, "Plugin " plugin) > 0 { found = 1; next }
+    found && index($0, "enabled:") > 0 {
+      enabled = ($NF == "true")
+      exit
+    }
+    END { exit !(found && enabled) }
+  '
+}
+
+hyprfocus_loaded() {
+  hyprctl plugin list -j | jq -e '.[] | select(.name == "hyprfocus")'
+}
+
 echo "==> Packages"
 while IFS= read -r package; do
   check "pacman package installed: $package" pacman -Q "$package"
@@ -176,6 +197,15 @@ for unit in \
   check "custom user unit enabled: $unit" systemctl --user is-enabled --quiet "$unit"
 done
 
+check "official hyprfocus plugin is enabled" hyprpm_plugin_enabled hyprfocus
+if hyprpm_plugin_enabled hyprbars; then
+  fail "retired hyprbars plugin is disabled"
+else
+  pass "retired hyprbars plugin is disabled"
+fi
+check "desktop appearance accessibility helper is deployed" \
+  test -x "$HOME/.local/bin/desktop-appearance"
+
 check "Bottles Flatpak installed for the user" flatpak info --user com.usebottles.bottles
 
 if systemctl --user is-active --quiet graphical-session.target; then
@@ -206,6 +236,7 @@ if systemctl --user is-active --quiet graphical-session.target; then
     busctl --user --quiet status org.freedesktop.secrets
   check_or_warn "graphical session imports mise shims (log out once if absent)" bash -c \
     "systemctl --user show-environment | grep -Eq '^PATH=.*/\.local/share/mise/shims'"
+  check_or_warn "hyprfocus plugin is loaded in the active compositor" hyprfocus_loaded
 else
   warn "no graphical session is active; live user-service, UWSM, Fcitx, and Secret Service checks are deferred until login"
 fi

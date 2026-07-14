@@ -86,11 +86,25 @@ for expected in \
 done
 assert_not_contains "$hyprland" 'name = "waybar-blur"'
 for binding in \
+  'hl.bind("ALT + Tab"' \
+  'hl.bind("ALT + SHIFT + Tab"' \
   'hl.bind(mainMod .. " + C"' \
   'hl.bind(mainMod .. " + F"' \
   'hl.bind(mainMod .. " + N"' \
   'hl.bind(mainMod .. " + SHIFT + N"'; do
   assert_contains "$hyprland" "$binding"
+done
+for focus_contract in \
+  'local function configureHyprfocus()' \
+  'keyboard_focus_animation = "shrink"' \
+  'mouse_focus_animation = "none"' \
+  'shrink_percentage = 0.985' \
+  'hl.on("hyprland.start", reloadHyprlandPlugins)' \
+  'hl.dsp.window.cycle_next({ next = nextWindow })' \
+  'hl.on("config.reloaded", applyAppearancePreferences)' \
+  'workspace = "e-1"' \
+  'workspace = "e+1"'; do
+  assert_contains "$hyprland" "$focus_contract"
 done
 
 hyprpaper=home/dot_config/hypr/hyprpaper.conf
@@ -218,6 +232,13 @@ assert_contains "$hyprlauncher" "font_prefix = '"
 assert_contains "$hyprlauncher" 'window_size = 760 480'
 assert_contains home/dot_config/hypr/hyprtoolkit.conf 'base = rgba(0a0c3ef2)'
 assert_contains home/dot_config/hypr/hyprtoolkit.conf 'rounding_large = 18'
+
+for plugin_dependency in cmake cpio; do
+  grep -Fxq "$plugin_dependency" packages/native.txt ||
+    fail "missing native hyprpm dependency: $plugin_dependency"
+done
+assert_contains home/run_after_30-enable-custom-user-services.sh.tmpl \
+  "\"\$hyprbars_state/hyprland-abi\" \"\$hyprbars_state/setup.lock\""
 
 ghostty=home/dot_config/ghostty/config.ghostty
 for expected in \

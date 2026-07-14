@@ -15,14 +15,16 @@ rm -f -- \
   "$HOME/.local/bin/hyprbars-green" \
   "$HOME/.local/bin/hyprbars-setup"
 
-hyprbars_marker=${XDG_STATE_HOME:-$HOME/.local/state}/hyprbars/hyprland-abi
-if [[ -f $hyprbars_marker ]] && command -v hyprpm >/dev/null 2>&1; then
+hyprbars_state=${XDG_STATE_HOME:-$HOME/.local/state}/hyprbars
+if command -v hyprpm >/dev/null 2>&1 &&
+  /usr/bin/sudo -n -v >/dev/null 2>&1; then
   hyprpm disable hyprbars >/dev/null 2>&1 || true
   if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     hyprpm reload >/dev/null 2>&1 || true
   fi
-  rm -f -- "$hyprbars_marker"
 fi
+rm -f -- "$hyprbars_state/hyprland-abi" "$hyprbars_state/setup.lock"
+rmdir -- "$hyprbars_state" 2>/dev/null || true
 
 configuration_consumers=(
   hypridle.service

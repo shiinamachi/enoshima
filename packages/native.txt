@@ -12,6 +12,8 @@ btrfs-progs
 buildah
 chezmoi
 cliphist
+cmake
+cpio
 cryptsetup
 direnv
 discord

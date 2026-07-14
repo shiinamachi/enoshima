@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/desktop-appearance
+mode_file=$state_dir/mode
+temp_path=
+
+usage() {
+  cat <<'EOF'
+Usage: desktop-appearance MODE
+
+Modes:
+  default                Restore the configured motion and transparency.
+  reduced-motion         Disable compositor and focus-cue animation.
+  reduced-transparency   Disable compositor blur.
+  accessible             Disable animation, focus motion, and blur.
+  apply                  Reapply the stored mode to the current session.
+  status                 Print the stored mode.
+EOF
+}
+
+die() {
+  printf 'desktop-appearance: %s\n' "$*" >&2
+  exit 1
+}
+
+cleanup() {
+  if [[ -n $temp_path ]]; then
+    rm -f -- "$temp_path"
+  fi
+}
+trap cleanup EXIT
+
+read_mode() {
+  local mode=default
+  if [[ -r $mode_file ]]; then
+    IFS= read -r mode <"$mode_file" || true
+  fi
+
+  case $mode in
+    default | reduced-motion | reduced-transparency | accessible)
+      printf '%s\n' "$mode"
+      ;;
+    *)
+      printf 'desktop-appearance: ignoring invalid stored mode: %s\n' "$mode" >&2
+      printf 'default\n'
+      ;;
+  esac
+}
+
+persist_mode() {
+  local mode=$1
+  umask 077
+  install -d -m 0700 -- "$state_dir"
+  temp_path=$(mktemp --tmpdir="$state_dir" .mode.XXXXXX)
+  printf '%s\n' "$mode" >"$temp_path"
+  chmod 0600 "$temp_path"
+  mv -f -- "$temp_path" "$mode_file"
+  temp_path=
+}
+
+hyprfocus_available() {
+  local option
+  option=$(hyprctl getoption plugin:hyprfocus:enable -j 2>/dev/null || true)
+  [[ -n $option && $option != 'no such option' ]]
+}
+
+apply_mode() {
+  local mode=$1
+  command -v hyprctl >/dev/null 2>&1 || die 'hyprctl is not installed'
+  hyprctl monitors -j >/dev/null 2>&1 || die 'no active Hyprland session'
+
+  case $mode in
+    reduced-motion | accessible)
+      hyprctl keyword animations:enabled false >/dev/null
+      if hyprfocus_available; then
+        hyprctl keyword plugin:hyprfocus:enable false >/dev/null
+      fi
+      ;;
+  esac
+
+  case $mode in
+    reduced-transparency | accessible)
+      hyprctl keyword decoration:blur:enabled false >/dev/null
+      ;;
+  esac
+}
+
+(($# == 1)) || {
+  usage >&2
+  exit 2
+}
+
+case $1 in
+  status)
+    read_mode
+    ;;
+  apply)
+    apply_mode "$(read_mode)"
+    ;;
+  default | reduced-motion | reduced-transparency | accessible)
+    persist_mode "$1"
+    command -v hyprctl >/dev/null 2>&1 || die 'hyprctl is not installed'
+    hyprctl reload >/dev/null
+    apply_mode "$1"
+    printf '%s\n' "$1"
+    ;;
+  -h | --help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

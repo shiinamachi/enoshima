@@ -143,6 +143,8 @@ Core bindings:
 | `Super+H/J/K/L` | focus left/down/up/right |
 | `Super+Shift+H/J/K/L` | move the active window |
 | `Super+Alt+H/J/K/L` | resize the active split |
+| `Alt+Tab` / `Alt+Shift+Tab` | cycle windows forward/backward on the current workspace |
+| `Super+Ctrl+Left/Right` | move to the adjacent workspace |
 | `Super+1..5` | select workspace 1..5 |
 | `Super+Shift+1..5` | move a window to workspace 1..5 |
 | `Super+left mouse drag` | move a window |
@@ -151,6 +153,22 @@ Core bindings:
 Tiled split boundaries can also be dragged directly with the pointer. Waybar's
 workspace labels use the compositor's ext-workspace protocol, so they can be
 clicked without relying on Hyprland's removed legacy dispatcher syntax.
+
+The official `hyprfocus` plugin adds a deliberately subtle keyboard-only focus
+shrink. The native cyan-violet border remains the complete fallback when the
+plugin cannot load. Motion and transparency preferences persist across session
+reloads through the same helper used by the Hyprland start event:
+
+```bash
+desktop-appearance status
+desktop-appearance reduced-motion
+desktop-appearance reduced-transparency
+desktop-appearance accessible
+desktop-appearance default
+```
+
+These modes store only the selected profile name beneath
+`$XDG_STATE_HOME/desktop-appearance/`; they do not alter the managed config.
 
 ## Power policy
 

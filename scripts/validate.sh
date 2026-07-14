@@ -235,6 +235,7 @@ for test_script in \
   tests/test-audio-output-control.sh \
   tests/test-cyberpunk-library-theme.sh \
   tests/test-cyberdock-state.sh \
+  tests/test-desktop-appearance.sh \
   tests/test-desktop-scaling-status.sh \
   tests/test-graphics-workflow.sh \
   tests/test-kakaotalk-connectivity.sh \

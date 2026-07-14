@@ -44,6 +44,90 @@ refresh_sudo_credentials() {
   /usr/bin/sudo -v
 }
 
+hyprpm_state() {
+  LC_ALL=C hyprpm list 2>/dev/null |
+    sed -E $'s/\x1B\\[[0-9;]*[[:alpha:]]//g'
+}
+
+hyprpm_repository_installed() {
+  hyprpm_state | grep -Fq 'Repository hyprland-plugins '
+}
+
+hyprpm_plugin_enabled() {
+  local plugin=$1
+  hyprpm_state | awk -v plugin="$plugin" '
+    index($0, "Plugin " plugin) > 0 { found = 1; next }
+    found && index($0, "enabled:") > 0 {
+      enabled = ($NF == "true")
+      exit
+    }
+    END { exit !(found && enabled) }
+  '
+}
+
+run_hyprpm_state_command() {
+  if "$@"; then
+    return
+  fi
+
+  # hyprpm changes its persistent state before attempting to contact the
+  # compositor. A TTY/bootstrap run has no instance socket, so verify the
+  # resulting cache and flags below instead of treating that deferred reload
+  # as a build failure.
+  if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    echo "==> Hyprland is not running; plugin load is deferred until login"
+    return
+  fi
+
+  return 1
+}
+
+converge_hyprland_plugins() {
+  local cache_root
+  local official_repo=https://github.com/hyprwm/hyprland-plugins
+  local installed_abi cached_abi
+
+  cache_root=/var/cache/hyprpm/$(id -un)
+
+  command -v hyprpm >/dev/null 2>&1 || die 'hyprpm is unavailable after installing Hyprland'
+
+  if hyprpm_repository_installed; then
+    # Prevent update from loading the retired titlebar plugin into a live
+    # session before the desired plugin state is applied.
+    run_hyprpm_state_command hyprpm disable hyprbars || true
+    run_hyprpm_state_command hyprpm update
+  else
+    # A first add requires headers in hyprpm's global state. The official
+    # repository prompt accepts an empty response as confirmation; feed that
+    # reviewed answer so bootstrap remains one-shot and non-interactive.
+    run_hyprpm_state_command hyprpm update
+    [[ -f $cache_root/headersRoot/share/pkgconfig/hyprland.pc ]] ||
+      die 'hyprpm did not install matching Hyprland headers'
+    printf '\n' | hyprpm add "$official_repo"
+  fi
+
+  installed_abi=$(Hyprland --version | sed -n 's/^Version ABI string: //p')
+  cached_abi=$(awk -F "'" '$1 ~ /^[[:space:]]*hash = / { print $2; exit }' \
+    "$cache_root/state.toml")
+  [[ -n $installed_abi && $cached_abi == "$installed_abi" ]] ||
+    die 'hyprpm plugin cache does not match the installed Hyprland ABI'
+  [[ -f $cache_root/hyprland-plugins/hyprfocus.so ]] ||
+    die 'hyprpm did not build the official hyprfocus plugin'
+
+  run_hyprpm_state_command hyprpm disable hyprbars || true
+  run_hyprpm_state_command hyprpm enable hyprfocus || true
+
+  if hyprpm_plugin_enabled hyprbars; then
+    die 'hyprbars remains enabled after plugin convergence'
+  fi
+  hyprpm_plugin_enabled hyprfocus ||
+    die 'hyprfocus is not enabled after plugin convergence'
+
+  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    hyprpm reload
+  fi
+}
+
 cleanup() {
   local status=$?
   trap - EXIT
@@ -279,6 +363,10 @@ ANSIBLE_BECOME_ASK_PASS=false \
 echo "==> Applying user configuration with policy: $conflict_policy"
 "$repo_root/scripts/apply-dotfiles.sh" --apply "$conflict_policy"
 echo "==> Cyberpunk Library session theme applied; SDDM selection remains acceptance-gated"
+
+echo "==> Converging official Hyprland plugins"
+refresh_sudo_credentials
+converge_hyprland_plugins
 
 echo "==> Running integrated postflight checks"
 "$repo_root/scripts/postflight.sh"

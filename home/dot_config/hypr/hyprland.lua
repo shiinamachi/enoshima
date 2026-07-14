@@ -170,6 +170,41 @@ hl.animation({ leaf = "fade", enabled = true, speed = 5, bezier = "quick" })
 hl.animation({ leaf = "layers", enabled = true, speed = 5, bezier = "easeOutQuint" })
 hl.animation({ leaf = "workspaces", enabled = true, speed = 5, bezier = "easeInOutCubic", style = "slide" })
 
+-- The official hyprfocus plugin is optional at parse time. Hyprpm loads it
+-- after Hyprland starts and schedules a reload; the native active border stays
+-- as the complete fallback when the plugin is unavailable or ABI-incompatible.
+local function configureHyprfocus()
+    local available = hl.get_config("plugin.hyprfocus.enable")
+    if available == nil then
+        return
+    end
+
+    hl.config({
+        plugin = {
+            hyprfocus = {
+                enable = true,
+                animate_floating = false,
+                only_on_monitor_change = false,
+                keyboard_focus_animation = "shrink",
+                mouse_focus_animation = "none",
+                fade_opacity = 0.94,
+                shrink_percentage = 0.985,
+                slide_height = 8,
+            },
+        },
+    })
+    hl.animation({ leaf = "hyprfocusIn", enabled = true, speed = 12, bezier = "quick" })
+    hl.animation({ leaf = "hyprfocusOut", enabled = true, speed = 10, bezier = "easeOutQuint" })
+end
+
+configureHyprfocus()
+
+local function reloadHyprlandPlugins()
+    hl.exec_cmd("command -v hyprpm >/dev/null 2>&1 && hyprpm reload")
+end
+
+hl.on("hyprland.start", reloadHyprlandPlugins)
+
 hl.gesture({
     fingers = 3,
     direction = "horizontal",
@@ -193,11 +228,17 @@ local function routeWorkspaces()
     hl.exec_cmd("workspace-output-route")
 end
 
+local function applyAppearancePreferences()
+    hl.exec_cmd("desktop-appearance apply")
+end
+
 hl.on("hyprland.start", routeWorkspaces)
 hl.on("config.reloaded", routeWorkspaces)
 hl.on("monitor.added", routeWorkspaces)
 hl.on("monitor.layout_changed", routeWorkspaces)
 hl.on("monitor.removed", routeWorkspaces)
+hl.on("hyprland.start", applyAppearancePreferences)
+hl.on("config.reloaded", applyAppearancePreferences)
 
 local mainMod = "SUPER"
 local launcherOptions = {
@@ -207,6 +248,18 @@ local launcherOptions = {
 
 hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd(launcher), launcherOptions)
 hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(launcher), launcherOptions)
+
+local function cycleWindow(nextWindow)
+    hl.dispatch(hl.dsp.window.cycle_next({ next = nextWindow }))
+    hl.dispatch(hl.dsp.window.bring_to_top())
+end
+
+hl.bind("ALT + Tab", function()
+    cycleWindow(true)
+end, { description = "Focus next window on this workspace" })
+hl.bind("ALT + SHIFT + Tab", function()
+    cycleWindow(false)
+end, { description = "Focus previous window on this workspace" })
 
 hl.bind(mainMod .. " + RETURN", hl.dsp.exec_cmd(terminal), { description = "Open Ghostty" })
 hl.bind(mainMod .. " + Q", hl.dsp.exec_cmd(terminal), { description = "Open Ghostty" })
@@ -254,6 +307,13 @@ for key, direction in pairs(arrowDirections) do
     hl.bind(mainMod .. " + SHIFT + " .. key,
         hl.dsp.window.move({ direction = direction }))
 end
+
+hl.bind(mainMod .. " + CTRL + left",
+    hl.dsp.focus({ workspace = "e-1" }),
+    { description = "Focus previous workspace" })
+hl.bind(mainMod .. " + CTRL + right",
+    hl.dsp.focus({ workspace = "e+1" }),
+    { description = "Focus next workspace" })
 
 for id = 1, 5 do
     local key = id

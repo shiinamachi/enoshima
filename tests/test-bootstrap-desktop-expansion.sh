@@ -21,8 +21,14 @@ line_number() {
 aur_line=$(line_number "$bootstrap" "\"\$repo_root/scripts/install-aur.sh\"")
 converge_line=$(line_number "$bootstrap" '==> Converging desktop expansion after the AUR phase')
 apply_line=$(line_number "$bootstrap" "\"\$repo_root/scripts/apply-dotfiles.sh\" --apply")
+plugins_line=$(line_number "$bootstrap" '==> Converging official Hyprland plugins')
+postflight_line=$(line_number "$bootstrap" "\"\$repo_root/scripts/postflight.sh\"")
 ((aur_line < converge_line && converge_line < apply_line)) || {
   printf 'Desktop expansion must converge after AUR and before dotfile apply.\n' >&2
+  exit 1
+}
+((apply_line < plugins_line && plugins_line < postflight_line)) || {
+  printf 'Hyprland plugins must converge after dotfiles and before postflight.\n' >&2
   exit 1
 }
 
@@ -33,12 +39,17 @@ if [[ $(grep -Fc 'ANSIBLE_WORKER_SESSION_ISOLATION=false' "$bootstrap") -ne 2 ]]
   printf 'Every Ansible convergence must retain the bootstrap TTY session.\n' >&2
   exit 1
 fi
-if [[ $(grep -Fc 'refresh_sudo_credentials' "$bootstrap") -ne 3 ]]; then
-  printf 'Every Ansible convergence must refresh the sudo credential first.\n' >&2
+if [[ $(grep -Fc 'refresh_sudo_credentials' "$bootstrap") -ne 4 ]]; then
+  printf 'Every privileged convergence phase must refresh sudo first.\n' >&2
   exit 1
 fi
+grep -Fq "hyprpm add \"\$official_repo\"" "$bootstrap"
+grep -Fq 'hyprpm disable hyprbars' "$bootstrap"
+grep -Fq 'hyprpm enable hyprfocus' "$bootstrap"
+grep -Fq 'Version ABI string:' "$bootstrap"
 grep -Fq 'tests/test-cyberdock-state.sh' "$validate"
 grep -Fq 'tests/test-cyberpunk-library-theme.sh' "$validate"
+grep -Fq 'tests/test-desktop-appearance.sh' "$validate"
 grep -Fq 'Checking desktop expansion security invariants' "$validate"
 grep -Fq 'Cloudflare One daemon did not converge after the AUR phase' "$postflight"
 grep -Fq 'Cyberpunk Library session theme applied' "$bootstrap"

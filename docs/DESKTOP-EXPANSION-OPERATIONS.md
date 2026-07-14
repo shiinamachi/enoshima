@@ -79,6 +79,35 @@ SwayNC가 시작한다. Waybar의 network leader에 pointer를 올리면 WWAN과
 상태가 drawer로 나타나며, SwayNC에는 Wi-Fi, Bluetooth, Night Light, volume,
 brightness의 실제 제어만 표시된다.
 
+bootstrap은 공식 `hyprland-plugins` 저장소를 `hyprpm`으로 ABI에 맞춰 빌드하고,
+`hyprbars`를 disable한 뒤 `hyprfocus`만 enable한다. C++ plugin은 compositor 안에서
+실행되므로 임의의 `.so`를 직접 복사하거나 `--force`로 ABI 검사를 우회하지 않는다.
+
+```bash
+hyprpm list
+hyprctl plugin list -j | jq
+hyprctl configerrors
+```
+
+`hyprfocus`가 실패해도 기본 cyan-violet 2픽셀 border와 모든 focus 단축키는
+그대로 동작한다. 즉시 plugin을 분리해 진단하려면 다음 명령을 사용하고, 다음
+bootstrap에서 원하는 상태로 다시 수렴시킨다.
+
+```bash
+hyprpm disable hyprfocus
+hyprpm reload
+```
+
+모션이나 투명도에 민감한 경우 managed config를 수정하지 않고 아래 profile을
+선택한다. 선택은 `$XDG_STATE_HOME/desktop-appearance/mode`에만 저장된다.
+
+```bash
+desktop-appearance reduced-motion
+desktop-appearance reduced-transparency
+desktop-appearance accessible
+desktop-appearance default
+```
+
 ## 권장 대화식 온보딩 순서
 
 자동 적용과 재로그인을 마친 뒤 아래 순서를 사용한다. Cloudflare One이 DNS 경로를
