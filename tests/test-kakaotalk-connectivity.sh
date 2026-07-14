@@ -187,10 +187,18 @@ assert_contains "$test_root/setup-calls.log" \
   'override --user --env=XMODIFIERS=@im=fcitx --env=RES_OPTIONS=single-request-reopen'
 assert_contains "$setup_output" \
   'Configuring the KakaoTalk bottle for Korean text and locale.'
+assert_contains "$setup_output" \
+  'Configuring the KakaoTalk Wine runner and graphics compatibility.'
+assert_contains "$test_root/setup-calls.log" 'runner.startswith("sys-wine-")'
+assert_contains "$test_root/setup-calls.log" 'version_tuple(runner)[0] >= 11'
+assert_contains "$test_root/setup-calls.log" 'component=component,'
+assert_contains "$test_root/setup-calls.log" 'remove=True,'
+assert_contains "$test_root/setup-calls.log" 'key="Runner", value=runner'
 assert_contains "$test_root/setup-calls.log" 'config.Language = "ko_KR"'
 assert_contains "$test_root/setup-calls.log" 'Pretendard-Regular.ttf'
 assert_contains "$test_root/setup-calls.log" '00000412'
 assert_contains "$test_root/setup-calls.log" '"ACP", "949"'
+assert_contains "$test_root/setup-calls.log" '"Graphics", "x11"'
 
 new_setup_output=$test_root/new-setup.out
 new_connectivity_count=$test_root/new-connectivity-count
