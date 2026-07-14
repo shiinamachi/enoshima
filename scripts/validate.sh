@@ -230,7 +230,8 @@ for test_script in \
   tests/test-cyberdock-state.sh \
   tests/test-desktop-scaling-status.sh \
   tests/test-graphics-workflow.sh \
-  tests/test-kakaotalk-connectivity.sh; do
+  tests/test-kakaotalk-connectivity.sh \
+  tests/test-workspace-output-route.sh; do
   "$repo_root/$test_script"
 done
 

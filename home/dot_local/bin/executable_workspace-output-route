@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+hyprctl_bin=${WORKSPACE_OUTPUT_ROUTE_HYPRCTL:-hyprctl}
+jq_bin=${WORKSPACE_OUTPUT_ROUTE_JQ:-jq}
+
+monitors=$($hyprctl_bin monitors -j)
+workspaces=$($hyprctl_bin workspaces -j)
+
+internal_output=$(
+  $jq_bin -r 'map(select(.name == "eDP-1"))[0].name // empty' <<<"$monitors"
+)
+[[ -n $internal_output ]] || exit 0
+
+external_output=$(
+  $jq_bin -r '
+    map(select(
+      ((.description // "") | contains("DELL U2725QE"))
+      or ((.model // "") | contains("U2725QE"))
+    ))[0].name // empty
+  ' <<<"$monitors"
+)
+
+external_workspace_ids=(1 2 4)
+internal_workspace_ids=(3 5 6 7 8 9 10)
+
+move_workspace() {
+  local id=$1
+  local target_output=$2
+  local current_output
+
+  current_output=$(
+    # `$id` is a jq variable supplied by --argjson, not a shell expansion.
+    # shellcheck disable=SC2016
+    $jq_bin -r --argjson id "$id" \
+      'map(select(.id == $id))[0].monitor // empty' <<<"$workspaces"
+  )
+
+  [[ $current_output == "$target_output" ]] && return 0
+  $hyprctl_bin dispatch moveworkspacetomonitor "$id $target_output" >/dev/null
+}
+
+if [[ -n $external_output ]]; then
+  for id in "${external_workspace_ids[@]}"; do
+    move_workspace "$id" "$external_output"
+  done
+else
+  for id in "${external_workspace_ids[@]}"; do
+    move_workspace "$id" "$internal_output"
+  done
+fi
+
+for id in "${internal_workspace_ids[@]}"; do
+  move_workspace "$id" "$internal_output"
+done

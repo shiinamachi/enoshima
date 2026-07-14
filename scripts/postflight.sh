@@ -202,6 +202,33 @@ if command -v hyprctl >/dev/null 2>&1 && hyprctl monitors -j >/dev/null 2>&1; th
     warn "Dell U2725QE is disconnected; its EDID selector and 120 Hz mode remain to be verified"
   fi
 
+  workspace_json=$(hyprctl workspaces -j)
+  external_output=$(
+    jq -r 'map(select(.model | contains("U2725QE")))[0].name // empty' \
+      <<<"$monitor_json"
+  )
+  workspace_layout_ok=true
+  for workspace_id in 1 2 4; do
+    expected_output=${external_output:-eDP-1}
+    actual_output=$(
+      jq -r --argjson id "$workspace_id" \
+        'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json"
+    )
+    [[ $actual_output == "$expected_output" ]] || workspace_layout_ok=false
+  done
+  for workspace_id in 3 5 6 7 8 9 10; do
+    actual_output=$(
+      jq -r --argjson id "$workspace_id" \
+        'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json"
+    )
+    [[ $actual_output == eDP-1 ]] || workspace_layout_ok=false
+  done
+  if [[ $workspace_layout_ok == true ]]; then
+    pass "workspaces match the requested external/internal output map"
+  else
+    fail "workspaces do not match the requested external/internal output map"
+  fi
+
   if [[ -z $(hyprctl configerrors) ]]; then
     pass "Hyprland reports no configuration errors"
   else

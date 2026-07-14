@@ -168,45 +168,18 @@ for id = 1, 10 do
     })
 end
 
-local externalWorkspaceIds = { 1, 2, 4 }
-local internalWorkspaceIds = { 3, 5, 6, 7, 8, 9, 10 }
-
-local function moveWorkspaces(ids, monitor)
-    if monitor == nil then
-        return
-    end
-
-    for _, id in ipairs(ids) do
-        local workspace = hl.get_workspace(tostring(id))
-        if workspace ~= nil
-            and (workspace.monitor == nil or workspace.monitor.id ~= monitor.id) then
-            hl.dispatch(hl.dsp.workspace.move({
-                workspace = workspace,
-                monitor = monitor,
-            }))
-        end
-    end
-end
-
+-- Resolve the Dell from live output metadata instead of assuming a connector
+-- name. USB-C docks may expose the same monitor as DP-1, DP-2, and so on after
+-- reconnects. The helper is idempotent, so every topology change can converge
+-- the workspace layout safely.
 local function routeWorkspaces()
-    local internal = hl.get_monitor(internalMonitor)
-    if internal == nil then
-        return
-    end
-
-    local external = hl.get_monitor(externalMonitor)
-    if external ~= nil then
-        moveWorkspaces(externalWorkspaceIds, external)
-        moveWorkspaces(internalWorkspaceIds, internal)
-    else
-        moveWorkspaces(externalWorkspaceIds, internal)
-        moveWorkspaces(internalWorkspaceIds, internal)
-    end
+    hl.exec_cmd("workspace-output-route")
 end
 
 hl.on("hyprland.start", routeWorkspaces)
 hl.on("config.reloaded", routeWorkspaces)
 hl.on("monitor.added", routeWorkspaces)
+hl.on("monitor.layout_changed", routeWorkspaces)
 hl.on("monitor.removed", routeWorkspaces)
 
 local mainMod = "SUPER"
