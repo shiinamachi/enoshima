@@ -226,6 +226,7 @@ echo "==> Testing single-authentication sudo wrapper"
 echo "==> Testing desktop expansion behavior"
 for test_script in \
   tests/test-bootstrap-desktop-expansion.sh \
+  tests/test-audio-output-control.sh \
   tests/test-cyberdock-state.sh \
   tests/test-desktop-scaling-status.sh \
   tests/test-graphics-workflow.sh \

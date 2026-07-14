@@ -71,7 +71,9 @@
             "default": ["", "", ""]
         },
         "on-click": "pavucontrol",
-        "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+        "on-click-right": "audio-output-control toggle-mute",
+        "on-scroll-up": "audio-output-control raise",
+        "on-scroll-down": "audio-output-control lower"
     },
 
     "backlight": {

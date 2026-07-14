@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly wpctl_bin=${AUDIO_OUTPUT_WPCTL:-wpctl}
+readonly sink=@DEFAULT_AUDIO_SINK@
+
+case ${1:-} in
+  raise)
+    # Match desktop volume-key behavior: raising the volume also recovers a
+    # sink that was left muted by the dedicated ThinkPad mute key.
+    "$wpctl_bin" set-mute "$sink" 0
+    "$wpctl_bin" set-volume -l 1 "$sink" 5%+
+    ;;
+  lower)
+    "$wpctl_bin" set-volume "$sink" 5%-
+    ;;
+  toggle-mute)
+    "$wpctl_bin" set-mute "$sink" toggle
+    ;;
+  unmute)
+    "$wpctl_bin" set-mute "$sink" 0
+    ;;
+  *)
+    printf 'audio-output-control: usage: audio-output-control {raise|lower|toggle-mute|unmute}\n' >&2
+    exit 2
+    ;;
+esac
