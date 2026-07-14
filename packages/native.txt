@@ -18,6 +18,7 @@ discord
 dmidecode
 dosfstools
 efibootmgr
+fastfetch
 fcitx5
 fcitx5-configtool
 fcitx5-gtk
@@ -142,3 +143,4 @@ xorg-xwayland
 yq
 zed
 zram-generator
+zsh

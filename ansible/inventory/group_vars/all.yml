@@ -1,7 +1,7 @@
 ---
 target_user: kentakang
 target_user_home: /home/kentakang
-target_user_shell: /bin/bash
+target_user_shell: /bin/zsh
 target_user_groups:
   - wheel
 

@@ -118,6 +118,14 @@ done
 check "SDDM remains the boot display manager" systemctl is-enabled --quiet sddm.service
 check "vi resolves to Vim" bash -c \
   "[[ \$(readlink -f /usr/local/bin/vi) == /usr/bin/vim ]]"
+# The inner expression is intentionally evaluated by bash -c.
+# shellcheck disable=SC2016
+check "login shell is Zsh" bash -c \
+  '[[ $(getent passwd "${USER:-$(id -un)}" | cut -d: -f7) == /bin/zsh ]]'
+check "Oh My Zsh is installed from the managed package" \
+  test -r /usr/share/oh-my-zsh/oh-my-zsh.sh
+check "fastfetch configuration deployed" \
+  test -f "$HOME/.config/fastfetch/config.jsonc"
 
 echo "==> Development runtimes"
 mise_config=$HOME/.config/mise/config.toml
@@ -196,6 +204,8 @@ if systemctl --user is-active --quiet graphical-session.target; then
     "systemctl --user show-environment | grep -Fxq 'XMODIFIERS=@im=fcitx'"
   check_or_warn "Secret Service is available for application credentials after login" \
     busctl --user --quiet status org.freedesktop.secrets
+  check_or_warn "graphical session imports mise shims (log out once if absent)" bash -c \
+    "systemctl --user show-environment | grep -Eq '^PATH=.*/\.local/share/mise/shims'"
 else
   warn "no graphical session is active; live user-service, UWSM, Fcitx, and Secret Service checks are deferred until login"
 fi

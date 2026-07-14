@@ -3,6 +3,7 @@ chatgpt-desktop-bin
 cloudflare-warp-bin
 google-chrome
 notion-app-electron
+oh-my-zsh-git
 onlyoffice-bin
 parsec-bin
 paru

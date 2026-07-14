@@ -1,0 +1,14 @@
+# Login-shell path shared by terminals and text sessions. UWSM mirrors this
+# order for graphical applications in ~/.config/uwsm/env.
+typeset -U path PATH
+path=(
+  "$HOME/.local/share/mise/shims"
+  "$HOME/.local/bin"
+  "$HOME/.cargo/bin"
+  $path
+)
+export PATH
+
+export EDITOR=zeditor
+export VISUAL=zeditor
+export PAGER=less

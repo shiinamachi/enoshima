@@ -90,6 +90,26 @@ for Parsec, portals, screenshots, and Wine capture. XWayland zero-scaling is
 enabled so legacy applications render sharply; the KakaoTalk bottle is set to
 144 DPI to match scale 1.5.
 
+## Shell environment
+
+Zsh is the login shell. Oh My Zsh is installed as the reviewed
+`oh-my-zsh-git` AUR package under `/usr/share/oh-my-zsh`; its self-updater is
+disabled so framework changes only arrive through the repository's explicit
+AUR phase. The managed plugin set stays small: Git context, fzf integration,
+sudo retry, colored manuals, and archive extraction.
+
+The prompt uses the desktop's cyan, violet, and magenta semantic accents.
+Fastfetch presents a compact hardware/session summary once per terminal tree;
+set `FASTFETCH_SUPPRESS=1` before starting Zsh to keep a session quiet. History,
+completion caches, and other mutable shell state remain under XDG state/cache
+directories and outside Git.
+
+Interactive Zsh uses full `mise activate zsh` hooks for directory-aware runtime
+selection. Login shells and the UWSM graphical session put
+`~/.local/share/mise/shims` first, so Zed, launchers, and non-interactive tasks
+see the same runtime definitions. Log out and back in after the first apply to
+replace the existing graphical session environment.
+
 ## Workspaces and window control
 
 | Workspace | Purpose | Preferred output | Routed applications |

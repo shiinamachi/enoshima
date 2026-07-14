@@ -1,0 +1,66 @@
+# Interactive Zsh configuration managed by chezmoi.
+export ZSH=/usr/share/oh-my-zsh
+export ZSH_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/oh-my-zsh"
+export ZSH_COMPDUMP="$ZSH_CACHE_DIR/zcompdump-$ZSH_VERSION"
+ZSH_THEME=""
+
+# The AUR package owns framework updates; interactive shells never mutate it.
+zstyle ':omz:update' mode disabled
+zstyle ':omz:lib:theme-and-appearance' gnu-ls yes
+
+plugins=(
+  git
+  fzf
+  sudo
+  colored-man-pages
+  extract
+)
+
+command mkdir -p -- \
+  "$ZSH_CACHE_DIR" \
+  "${XDG_STATE_HOME:-$HOME/.local/state}/zsh"
+
+HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
+HISTSIZE=50000
+SAVEHIST=10000
+setopt APPEND_HISTORY
+setopt SHARE_HISTORY
+setopt HIST_EXPIRE_DUPS_FIRST
+setopt HIST_IGNORE_ALL_DUPS
+setopt HIST_REDUCE_BLANKS
+setopt PROMPT_SUBST
+
+ZSH_THEME_GIT_PROMPT_PREFIX='%F{magenta}‹%f%F{blue}'
+ZSH_THEME_GIT_PROMPT_SUFFIX='%f%F{magenta}›%f'
+ZSH_THEME_GIT_PROMPT_DIRTY='%F{magenta}*%f'
+ZSH_THEME_GIT_PROMPT_CLEAN='%F{cyan}✓%f'
+
+if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
+  source "$ZSH/oh-my-zsh.sh"
+else
+  print -u2 'Oh My Zsh is unavailable; run the repository bootstrap.'
+fi
+
+autoload -Uz colors && colors
+if (( $+functions[git_prompt_info] )); then
+  PROMPT='%F{cyan}╭─%f %F{magenta}%n%f@%F{blue}%m%f %F{cyan}%~%f $(git_prompt_info)
+%F{cyan}╰─❯%f '
+else
+  PROMPT='%F{cyan}╭─%f %F{magenta}%n%f@%F{blue}%m%f %F{cyan}%~%f
+%F{cyan}╰─❯%f '
+fi
+RPROMPT='%F{8}%D{%H:%M}%f'
+
+# Full activation supplies per-directory runtime switching in interactive
+# shells. UWSM and login shells use mise shims for non-interactive children.
+if [[ -x /usr/bin/mise ]]; then
+  eval "$(/usr/bin/mise activate zsh)"
+fi
+
+# Display workstation context once per terminal tree, not in every nested
+# shell. Set FASTFETCH_SUPPRESS=1 for scripts or intentionally quiet sessions.
+if [[ -t 1 && -z ${CI:-} && -z ${FASTFETCH_SUPPRESS:-} &&
+  -z ${FASTFETCH_SHOWN:-} ]] && (( $+commands[fastfetch] )); then
+  export FASTFETCH_SHOWN=1
+  fastfetch
+fi
