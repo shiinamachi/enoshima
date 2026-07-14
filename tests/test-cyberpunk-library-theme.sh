@@ -60,7 +60,8 @@ printf '%s  %s\n' \
 for concept_asset in \
   docs/assets/concepts/cyberpunk-desktop-shell.png \
   docs/assets/concepts/cyberpunk-launcher.png \
-  docs/assets/concepts/cyberpunk-notification-center.png; do
+  docs/assets/concepts/cyberpunk-notification-center.png \
+  docs/assets/concepts/cyberpunk-lock-screen.png; do
   dimensions=$(asset_dimensions "$concept_asset")
   width=${dimensions%x*}
   height=${dimensions#*x}

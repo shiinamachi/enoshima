@@ -39,6 +39,17 @@ secondary controls. The current implementation keeps the control surface
 within SwayNC's supported widget set rather than presenting non-functional
 mock controls.
 
+### Lock and authentication
+
+![Lock screen concept](assets/concepts/cyberpunk-lock-screen.png)
+
+The lock study keeps the supplied artwork recognizable behind a restrained
+scrim and moves the complete authentication hierarchy into one lower-left
+card. Time, date, session state, the focused password field, and fingerprint
+readiness follow one reading path without placing fictional controls over the
+character or the library signage. The managed Hyprlock layout uses the same
+placement, palette, focus edge, and biometric status model.
+
 ## Shared visual language
 
 | Role | Value | Use |
