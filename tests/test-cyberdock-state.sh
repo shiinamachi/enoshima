@@ -39,8 +39,45 @@ case ${1:-} in
     cat "$root/$1.json"
     ;;
   dispatch)
-    dispatcher=${2:?}
-    argument=${3:-}
+    expression=${2:?}
+    dispatcher=
+    argument=
+    case $expression in
+      hl.dsp.window.move*)
+        dispatcher=movetoworkspacesilent
+        target=$(sed -nE 's/.*workspace = "?([^", }]+)"?.*/\1/p' <<<"$expression")
+        address=$(sed -nE 's/.*address:(0x[0-9A-Fa-f]+).*/\1/p' <<<"$expression")
+        argument="$target,address:$address"
+        ;;
+      hl.dsp.workspace.move*)
+        dispatcher=moveworkspacetomonitor
+        target=$(sed -nE 's/.*workspace = "?([^", }]+)"?.*/\1/p' <<<"$expression")
+        monitor=$(sed -nE 's/.*monitor = "([[:alnum:]_.-]+)".*/\1/p' <<<"$expression")
+        argument="$target $monitor"
+        ;;
+      hl.dsp.focus*)
+        if [[ $expression == *'monitor ='* ]]; then
+          dispatcher=focusmonitor
+          argument=$(sed -nE 's/.*monitor = "([[:alnum:]_.-]+)".*/\1/p' <<<"$expression")
+        elif [[ $expression == *'workspace ='* ]]; then
+          dispatcher=workspace
+          argument=$(sed -nE 's/.*workspace = "?([^", }]+)"?.*/\1/p' <<<"$expression")
+        else
+          dispatcher=focuswindow
+          address=$(sed -nE 's/.*address:(0x[0-9A-Fa-f]+).*/\1/p' <<<"$expression")
+          argument="address:$address"
+        fi
+        ;;
+      hl.dsp.window.close*)
+        dispatcher=closewindow
+        address=$(sed -nE 's/.*address:(0x[0-9A-Fa-f]+).*/\1/p' <<<"$expression")
+        argument="address:$address"
+        ;;
+      *)
+        exit 1
+        ;;
+    esac
+    [[ -n $dispatcher && -n $argument ]]
     printf '%s\t%s\n' "$dispatcher" "$argument" >>"$root/dispatch.log"
     case $dispatcher in
       movetoworkspacesilent)
@@ -104,6 +141,16 @@ case ${1:-} in
         jq -c --arg address "$address" \
           '.[] | select(.address == $address)' "$root/clients.json" |
           replace_json "$root/activewindow.json"
+        ;;
+      closewindow)
+        address=${argument#address:}
+        jq -c --arg address "$address" \
+          'map(select(.address != $address))' "$root/clients.json" |
+          replace_json "$root/clients.json"
+        if jq -e --arg address "$address" '.address == $address' \
+          "$root/activewindow.json" >/dev/null; then
+          printf '{}\n' >"$root/activewindow.json"
+        fi
         ;;
       *)
         exit 1
@@ -204,6 +251,17 @@ mv -f -- "$work/clients.new" "$CYBERDOCK_FAKE_ROOT/clients.json"
 run_state snapshot >/dev/null
 jq -e '.windows | length == 0' "$XDG_RUNTIME_DIR/cyberdock/minimized.json" >/dev/null ||
   fail 'closed client record was not pruned'
+
+printf '%s\n' '==> close requests target a specific window and clear minimized state'
+reset_fixture
+run_state minimize 0xaaa
+run_state close 0xaaa
+jq -e 'all(.[]; .address != "0xaaa")' "$CYBERDOCK_FAKE_ROOT/clients.json" >/dev/null ||
+  fail 'targeted close did not remove the window'
+jq -e '.windows | length == 0' "$XDG_RUNTIME_DIR/cyberdock/minimized.json" >/dev/null ||
+  fail 'targeted close retained minimized state'
+grep -Fqx $'closewindow\taddress:0xaaa' "$CYBERDOCK_FAKE_ROOT/dispatch.log" ||
+  fail 'targeted close did not use the Lua dispatcher'
 
 printf '%s\n' '==> crash recovery restores unrecorded minimized clients to a safe workspace'
 cat >"$CYBERDOCK_FAKE_ROOT/clients.json" <<'JSON'

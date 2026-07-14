@@ -179,6 +179,16 @@ ShellRoot {
         refreshSoon.restart();
     }
 
+    function minimizeWindow(address) {
+        Quickshell.execDetached(["cyberdock-minimize", address]);
+        refreshSoon.restart();
+    }
+
+    function closeWindow(address) {
+        Quickshell.execDetached(["cyberdock-close", address]);
+        refreshSoon.restart();
+    }
+
     function windowTitle(window) {
         const title = String(window.title || "").trim();
         return title || windowClass(window) || "Window";
@@ -234,6 +244,11 @@ ShellRoot {
                 property var chooserWindows: []
                 property string chooserTitle: ""
                 property var dockApps: root.buildDockApps()
+                property string tooltipAppId: ""
+                property string tooltipText: ""
+                property real tooltipCenterX: width / 2
+                property var menuApp: null
+                property real menuCenterX: width / 2
                 readonly property int dockBottomMargin: 10
 
                 screen: modelData
@@ -241,7 +256,7 @@ ShellRoot {
                 aboveWindows: true
                 focusable: false
                 exclusiveZone: 0
-                implicitHeight: revealed ? (chooser.visible ? 322 : 102) : 1
+                implicitHeight: 380
 
                 anchors {
                     left: true
@@ -252,6 +267,7 @@ ShellRoot {
                 mask: Region {
                     Region { item: hotspot }
                     Region { item: dockHitArea; radius: 18 }
+                    Region { item: contextMenu; radius: 16 }
                     Region { item: chooser; radius: 16 }
                 }
 
@@ -266,10 +282,6 @@ ShellRoot {
                     }
                 }
 
-                Behavior on implicitHeight {
-                    NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
-                }
-
                 function reveal() {
                     hideTimer.stop();
                     revealed = true;
@@ -280,6 +292,7 @@ ShellRoot {
                 }
 
                 function showChooser(app) {
+                    clearContextMenu();
                     chooserTitle = app.name;
                     chooserWindows = root.recentWindows(app.windows);
                     reveal();
@@ -290,13 +303,96 @@ ShellRoot {
                     chooserTitle = "";
                 }
 
+                function showTooltip(app, item) {
+                    const point = item.mapToItem(null, item.width / 2, 0);
+                    tooltipAppId = app.id;
+                    tooltipText = app.name;
+                    tooltipCenterX = point.x;
+                }
+
+                function clearTooltip(appId) {
+                    if (!appId || tooltipAppId === appId) {
+                        tooltipAppId = "";
+                        tooltipText = "";
+                    }
+                }
+
+                function showContextMenu(app, item) {
+                    const point = item.mapToItem(null, item.width / 2, 0);
+                    clearChooser();
+                    clearTooltip();
+                    menuApp = app;
+                    menuCenterX = point.x;
+                    reveal();
+                }
+
+                function clearContextMenu() {
+                    menuApp = null;
+                }
+
+                function contextActions() {
+                    const app = menuApp;
+                    if (!app)
+                        return [];
+
+                    if (!app.windows || app.windows.length === 0)
+                        return [{"id": "launch", "label": "Open"}];
+
+                    const actions = [];
+                    if (app.command && app.command.length > 0)
+                        actions.push({"id": "launch", "label": "New Window"});
+                    actions.push({
+                        "id": "show",
+                        "label": app.windows.length > 1 ? "Show Windows…" : "Show Window"
+                    });
+                    if (app.windows.some(window => !window.minimized)) {
+                        actions.push({
+                            "id": "minimize",
+                            "label": app.windows.length > 1 ? "Minimize All" : "Minimize"
+                        });
+                    }
+                    actions.push({
+                        "id": "close",
+                        "label": app.windows.length > 1 ? "Close All Windows" : "Close Window",
+                        "destructive": true
+                    });
+                    return actions;
+                }
+
+                function performContextAction(actionId) {
+                    const app = menuApp;
+                    clearContextMenu();
+                    if (!app)
+                        return;
+
+                    if (actionId === "launch") {
+                        root.launchApp(app);
+                    } else if (actionId === "show") {
+                        if (app.windows.length > 1)
+                            showChooser(app);
+                        else
+                            root.activateWindow(app.windows[0].address);
+                    } else if (actionId === "minimize") {
+                        for (const window of app.windows) {
+                            if (!window.minimized)
+                                root.minimizeWindow(window.address);
+                        }
+                    } else if (actionId === "close") {
+                        for (const window of app.windows)
+                            root.closeWindow(window.address);
+                    }
+                    refreshSoon.restart();
+                }
+
                 Timer {
                     id: hideTimer
-                    interval: 360
+                    interval: 280
                     repeat: false
                     onTriggered: {
                         if (!panelHover.hovered) {
                             dockWindow.clearChooser();
+                            dockWindow.clearContextMenu();
+                            dockWindow.clearTooltip();
                             dockWindow.revealed = false;
                         }
                     }
@@ -331,10 +427,27 @@ ShellRoot {
                     border.width: 1
                     border.color: "#cc33d6ff"
                     opacity: dockWindow.revealed ? 1 : 0
-                    scale: dockWindow.revealed ? 1 : 0.96
+                    scale: dockWindow.revealed ? 1 : 0.985
 
-                    Behavior on opacity { NumberAnimation { duration: 130 } }
-                    Behavior on scale { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+                    transform: Translate {
+                        y: dockWindow.revealed ? 0 : 18
+                        Behavior on y {
+                            NumberAnimation {
+                                duration: dockWindow.revealed ? 190 : 145
+                                easing.type: dockWindow.revealed ? Easing.OutCubic : Easing.InCubic
+                            }
+                        }
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: dockWindow.revealed ? 150 : 115 }
+                    }
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: dockWindow.revealed ? 190 : 145
+                            easing.type: dockWindow.revealed ? Easing.OutCubic : Easing.InCubic
+                        }
+                    }
 
                     Flickable {
                         anchors.fill: parent
@@ -422,16 +535,129 @@ ShellRoot {
                                         id: appMouse
                                         anchors.fill: parent
                                         hoverEnabled: true
-                                        onClicked: {
-                                            if (!appItem.running) {
+                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                        onEntered: dockWindow.showTooltip(appItem.app, appItem)
+                                        onExited: dockWindow.clearTooltip(appItem.app.id)
+                                        onClicked: mouse => {
+                                            if (mouse.button === Qt.RightButton) {
+                                                dockWindow.showContextMenu(appItem.app, appItem);
+                                            } else if (!appItem.running) {
+                                                dockWindow.clearContextMenu();
                                                 root.launchApp(appItem.app);
                                             } else if (appItem.app.windows.length > 1) {
                                                 dockWindow.showChooser(appItem.app);
                                             } else {
+                                                dockWindow.clearContextMenu();
                                                 root.activateWindow(appItem.app.windows[0].address);
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: appTooltip
+                    visible: dockWindow.tooltipText !== ""
+                        && !contextMenu.visible && !chooser.visible
+                    x: Math.max(8, Math.min(parent.width - width - 8,
+                        dockWindow.tooltipCenterX - width / 2))
+                    anchors.bottom: dockSurface.top
+                    anchors.bottomMargin: 8
+                    width: Math.min(parent.width - 16, tooltipLabel.implicitWidth + 22)
+                    height: 32
+                    radius: 9
+                    color: "#f2070b2a"
+                    border.width: 1
+                    border.color: "#aa33d6ff"
+                    opacity: visible ? 1 : 0
+                    z: 12
+
+                    Behavior on opacity { NumberAnimation { duration: 90 } }
+
+                    Text {
+                        id: tooltipLabel
+                        anchors.centerIn: parent
+                        text: dockWindow.tooltipText
+                        color: "#e9e8ff"
+                        font.family: "Pretendard"
+                        font.pixelSize: 12
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+                }
+
+                Rectangle {
+                    id: contextMenu
+                    visible: dockWindow.menuApp !== null
+                    x: Math.max(8, Math.min(parent.width - width - 8,
+                        dockWindow.menuCenterX - width / 2))
+                    anchors.bottom: dockSurface.top
+                    anchors.bottomMargin: 10
+                    width: 244
+                    height: contextColumn.implicitHeight + 16
+                    radius: 14
+                    color: "#f2070b2a"
+                    border.width: 1
+                    border.color: "#cc8b5cff"
+                    z: 14
+
+                    Column {
+                        id: contextColumn
+                        x: 8
+                        y: 8
+                        width: parent.width - 16
+                        spacing: 3
+
+                        Text {
+                            width: parent.width
+                            height: 34
+                            verticalAlignment: Text.AlignVCenter
+                            leftPadding: 8
+                            rightPadding: 8
+                            text: dockWindow.menuApp ? dockWindow.menuApp.name : ""
+                            color: "#33d6ff"
+                            font.family: "Pretendard"
+                            font.pixelSize: 13
+                            font.bold: true
+                            elide: Text.ElideRight
+                        }
+
+                        Rectangle {
+                            width: parent.width
+                            height: 1
+                            color: "#558b5cff"
+                        }
+
+                        Repeater {
+                            model: dockWindow.contextActions()
+
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: contextColumn.width
+                                height: 36
+                                radius: 9
+                                color: contextActionMouse.containsMouse ? "#448b5cff" : "transparent"
+
+                                Text {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 9
+                                    anchors.rightMargin: 9
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: modelData.label
+                                    color: modelData.destructive ? "#ff7abf" : "#e9e8ff"
+                                    font.family: "Pretendard"
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                }
+
+                                MouseArea {
+                                    id: contextActionMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: dockWindow.performContextAction(modelData.id)
                                 }
                             }
                         }

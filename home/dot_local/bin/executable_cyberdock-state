@@ -67,8 +67,60 @@ hypr_json() {
     die "hyprctl $resource returned invalid JSON"
 }
 
-dispatch() {
-  "$hyprctl_bin" dispatch "$1" "$2" >/dev/null
+hypr_dispatch() {
+  "$hyprctl_bin" dispatch "$1" >/dev/null
+}
+
+workspace_lua_value() {
+  local workspace=$1
+
+  if [[ $workspace =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s' "$workspace"
+  elif [[ $workspace =~ ^(name:|special:)?[[:alnum:]_.-]+$ ]]; then
+    printf '"%s"' "$workspace"
+  else
+    return 1
+  fi
+}
+
+move_workspace_to_monitor() {
+  local workspace=$1 monitor=$2 workspace_value
+  workspace_value=$(workspace_lua_value "$workspace") || return 1
+  [[ $monitor =~ ^[[:alnum:]_.-]+$ ]] || return 1
+  hypr_dispatch \
+    "hl.dsp.workspace.move({ workspace = $workspace_value, monitor = \"$monitor\" })"
+}
+
+move_window_to_workspace() {
+  local workspace=$1 address=$2 workspace_value
+  workspace_value=$(workspace_lua_value "$workspace") || return 1
+  valid_address "$address" || return 1
+  hypr_dispatch \
+    "hl.dsp.window.move({ workspace = $workspace_value, follow = false, window = \"address:$address\" })"
+}
+
+focus_monitor() {
+  local monitor=$1
+  [[ $monitor =~ ^[[:alnum:]_.-]+$ ]] || return 1
+  hypr_dispatch "hl.dsp.focus({ monitor = \"$monitor\" })"
+}
+
+focus_workspace() {
+  local workspace_value
+  workspace_value=$(workspace_lua_value "$1") || return 1
+  hypr_dispatch "hl.dsp.focus({ workspace = $workspace_value })"
+}
+
+focus_window() {
+  local address=$1
+  valid_address "$address" || return 1
+  hypr_dispatch "hl.dsp.focus({ window = \"address:$address\" })"
+}
+
+close_window() {
+  local address=$1
+  valid_address "$address" || return 1
+  hypr_dispatch "hl.dsp.window.close({ window = \"address:$address\" })"
 }
 
 prune_state() {
@@ -172,19 +224,19 @@ restore_one() {
       ' <<<"$workspaces"
     )
     if [[ $current_workspace_monitor != "$target_monitor" ]]; then
-      dispatch moveworkspacetomonitor "$target_workspace $target_monitor" || true
+      move_workspace_to_monitor "$target_workspace" "$target_monitor" || true
     fi
   fi
 
-  if ! dispatch movetoworkspacesilent "$target_workspace,address:$address"; then
+  if ! move_window_to_workspace "$target_workspace" "$address"; then
     return 1
   fi
   remove_record "$address"
 
   if [[ $focus_after == true ]]; then
-    dispatch focusmonitor "$target_monitor" || true
-    dispatch workspace "$target_workspace" || true
-    dispatch focuswindow "address:$address" || true
+    focus_monitor "$target_monitor" || true
+    focus_workspace "$target_workspace" || true
+    focus_window "$address" || true
   fi
 }
 
@@ -268,7 +320,7 @@ minimize_command() {
   )
   write_state "$state"
 
-  if ! dispatch movetoworkspacesilent "special:minimized,address:$address"; then
+  if ! move_window_to_workspace "special:minimized" "$address"; then
     remove_record "$address"
     die "failed to move $address to special:minimized"
   fi
@@ -305,9 +357,22 @@ activate_command() {
     monitor_name=$fallback_monitor
   }
 
-  dispatch focusmonitor "$monitor_name" || true
-  dispatch workspace "$workspace" || true
-  dispatch focuswindow "address:$address" || true
+  focus_monitor "$monitor_name" || true
+  focus_workspace "$workspace" || true
+  focus_window "$address" || true
+}
+
+close_command() {
+  local address=$1 clients
+  valid_address "$address" || die "invalid window address: $address"
+  clients=$(hypr_json clients)
+  prune_state "$clients"
+  "$jq_bin" -e --arg address "$address" \
+    'any(.[]; .address == $address)' <<<"$clients" >/dev/null ||
+    die "window does not exist: $address"
+
+  close_window "$address" || die "failed to close $address"
+  remove_record "$address"
 }
 
 recover_command() {
@@ -351,10 +416,14 @@ case ${1:-snapshot} in
       activate_command "$2"
     fi
     ;;
+  close)
+    [[ $# -eq 2 ]] || die "usage: cyberdock-state close ADDRESS"
+    close_command "$2"
+    ;;
   recover)
     recover_command
     ;;
   *)
-    die 'usage: cyberdock-state {snapshot|prune|minimize [ADDRESS]|restore ADDRESS|activate ADDRESS|recover}'
+    die 'usage: cyberdock-state {snapshot|prune|minimize [ADDRESS]|restore ADDRESS|activate ADDRESS|close ADDRESS|recover}'
     ;;
 esac
