@@ -165,7 +165,8 @@ done < <(find home -type f -name '*.lua' -print0)
 
 hyprland_command=$(command -v Hyprland || command -v hyprland || true)
 if [[ -n $hyprland_command ]]; then
-  "$hyprland_command" --verify-config -c home/dot_config/hypr/hyprland.lua
+  env -u HYPRLAND_INSTANCE_SIGNATURE \
+    "$hyprland_command" --verify-config -c home/dot_config/hypr/hyprland.lua
 else
   echo "==> Skipping Hyprland semantic validation: Hyprland is not installed"
 fi
