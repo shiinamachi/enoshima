@@ -1,7 +1,7 @@
 # Maintainer: local workstation configuration
 pkgname=rhwp-desktop
 pkgver=1.2.2
-pkgrel=1
+pkgrel=2
 pkgdesc='Experimental HWP/HWPX desktop editor with a protected Chromium sandbox'
 arch=('x86_64')
 url='https://github.com/runableapp/rhwp-desktop'
@@ -63,6 +63,9 @@ package() {
   cd "rhwp-desktop-${pkgver}/squashfs-root"
   install -d "$pkgdir/opt/rhwp-desktop"
   cp -a . "$pkgdir/opt/rhwp-desktop/"
+  # The AppImage extraction leaves private 0700 modes on its directory tree.
+  # Restore the read/traversal access required by the unprivileged launcher.
+  find "$pkgdir/opt/rhwp-desktop" -type d -exec chmod 0755 -- {} +
   rm -f \
     "$pkgdir/opt/rhwp-desktop/AppRun" \
     "$pkgdir/opt/rhwp-desktop/rhwp-desktop.desktop"

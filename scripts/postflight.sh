@@ -392,6 +392,15 @@ else
   fail "PDF default changed from the approved existing policy"
 fi
 
+rhwp_private_dir=$(
+  find /opt/rhwp-desktop -type d ! -perm -0005 -print -quit 2>/dev/null || true
+)
+if [[ $(stat -c '%U:%G:%a' /opt/rhwp-desktop 2>/dev/null) == root:root:755 ]] &&
+  [[ -z $rhwp_private_dir ]]; then
+  pass "RHWP application directories are readable and traversable"
+else
+  fail "RHWP application directory ownership or modes are incorrect"
+fi
 if [[ $(stat -c '%U:%G:%a' /opt/rhwp-desktop/chrome-sandbox 2>/dev/null) == root:root:4755 ]]; then
   pass "RHWP Chromium sandbox has the reviewed root-owned 4755 mode"
 else

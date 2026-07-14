@@ -327,6 +327,8 @@ grep -Fq 'sha256:94295aa3fe74ee505d115936edd5b8df7e5293a205e244be4301a31725bfdeb
   docs/DESKTOP-EXPANSION.md
 grep -Fq "'94295aa3fe74ee505d115936edd5b8df7e5293a205e244be4301a31725bfdeb7'" \
   packages/local/rhwp-desktop/PKGBUILD
+grep -Fq "find \"\$pkgdir/opt/rhwp-desktop\" -type d -exec chmod 0755" \
+  packages/local/rhwp-desktop/PKGBUILD
 grep -Fq 'chmod 4755 ' packages/local/rhwp-desktop/PKGBUILD
 if awk '!/^[[:space:]]*#/' packages/local/rhwp-desktop/rhwp-desktop.sh |
   grep -Fq -- '--no-sandbox'; then
