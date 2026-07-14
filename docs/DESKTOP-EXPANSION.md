@@ -291,7 +291,11 @@ offline.
 Both use `--vfs-cache-mode full`, a bounded write-back delay, a minimum-free-
 space guard, private mount/cache permissions, clean lazy unmount on service
 stop, and user systemd service restart on transient network failure. They do
-not use `--allow-other`.
+not use `--allow-other`. The units explicitly keep `PrivateTmp=false`: systemd's
+private temporary-directory isolation also creates a private mount namespace,
+which prevents a desktop-visible FUSE mount and makes `fusermount3` fail with
+`Operation not permitted`. Proton Drive uses a five-minute service retry delay
+to avoid amplifying the experimental backend's rate limits.
 
 The Proton backend is explicitly experimental because Proton publishes no
 supported Linux Drive application or public Drive API. Its backend metadata

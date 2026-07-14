@@ -207,8 +207,11 @@ Mount와 cache 정책은 다음과 같다.
 
 두 unit 모두 VFS full cache, 15분 write-back, 5 GiB 최소 여유 공간, `0700`
 directory와 `0600` file mode를 사용한다. `--allow-other`는 사용하지 않으며 stop
-때 lazy unmount한다. Proton Drive backend는 experimental이며 다른 client와 같은
-파일을 동시에 편집하지 않는다.
+때 lazy unmount한다. 두 unit의 `PrivateTmp=false`는 완화 가능한 보안 옵션이 아니라
+FUSE mount가 desktop의 mount namespace에 보이기 위한 필수 조건이다. 이를
+`true`로 바꾸면 `fusermount3: mount failed: Operation not permitted`가 재발한다.
+Proton Drive backend는 experimental이며, 5분 간격으로만 service를 재시도하고
+다른 client와 같은 파일을 동시에 편집하지 않는다.
 
 ```bash
 systemctl --user status rclone-google-drive.service --no-pager

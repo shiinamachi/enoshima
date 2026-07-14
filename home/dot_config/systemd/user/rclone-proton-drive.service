@@ -16,8 +16,11 @@ ExecStop=-/usr/bin/fusermount3 -uz %h/Cloud/ProtonDrive
 KillSignal=SIGINT
 TimeoutStopSec=30
 Restart=on-failure
-RestartSec=30
-PrivateTmp=true
+RestartSec=5min
+# FUSE mounts must be created in the user manager's mount namespace so they
+# remain visible to desktop applications. PrivateTmp= implicitly creates a
+# private mount namespace and makes fusermount3 fail with EPERM.
+PrivateTmp=false
 
 [Install]
 WantedBy=graphical-session.target
