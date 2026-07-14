@@ -1,5 +1,8 @@
 # 11 pt remains comfortable at the 1.5 fractional scale used on both displays.
 font-family = Jetendard
+# Supply the Powerline and file-type glyphs used by Starship and eza without
+# replacing Jetendard for ordinary Latin text.
+font-family = JetBrainsMono Nerd Font Mono
 font-family = Noto Sans Mono CJK KR
 font-size = 11
 

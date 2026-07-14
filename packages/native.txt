@@ -3,6 +3,7 @@ alsa-ucm-conf
 alsa-utils
 base
 base-devel
+bat
 blueman
 bluez
 bluez-utils
@@ -20,6 +21,7 @@ discord
 dmidecode
 dosfstools
 efibootmgr
+eza
 fastfetch
 fcitx5
 fcitx5-configtool
@@ -105,6 +107,7 @@ smartmontools
 snap-pac
 snapper
 sof-firmware
+starship
 stress-ng
 sudo
 swappy
@@ -144,5 +147,9 @@ xorg-setxkbmap
 xorg-xwayland
 yq
 zed
+zoxide
 zram-generator
 zsh
+zsh-autosuggestions
+zsh-completions
+zsh-syntax-highlighting

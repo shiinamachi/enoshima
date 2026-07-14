@@ -65,6 +65,24 @@ manifest_entries() {
     "$1"
 }
 
+zsh_developer_plugins_loaded() {
+  # The single-quoted script must be evaluated by the child Zsh, not Bash.
+  # shellcheck disable=SC2016
+  FASTFETCH_SUPPRESS=1 zsh -ic '
+    [[ ${plugins[-1]} == zsh-syntax-highlighting ]] || exit 10
+    (( $+functions[fzf-tab-complete] )) || exit 11
+    (( $+functions[_zsh_autosuggest_start] )) || exit 12
+    (( $+functions[_zsh_highlight] )) || exit 13
+    (( $+functions[history-substring-search-up] )) || exit 14
+    (( $+functions[__zoxide_z] )) || exit 15
+    (( $+functions[als] )) || exit 16
+    (( $+functions[mise] )) || exit 17
+    [[ $STARSHIP_SHELL == zsh ]] || exit 18
+    [[ $(bindkey "^I") == *fzf-tab-complete* ]] || exit 19
+    [[ ${aliases[ls]} == eza* ]] || exit 20
+  ' </dev/null
+}
+
 hyprpm_state() {
   LC_ALL=C hyprpm list 2>/dev/null |
     sed -E $'s/\x1B\\[[0-9;]*[[:alpha:]]//g'
@@ -192,6 +210,22 @@ check "Oh My Zsh is installed from the managed package" \
   test -r /usr/share/oh-my-zsh/oh-my-zsh.sh
 check "fastfetch configuration deployed" \
   test -f "$HOME/.config/fastfetch/config.jsonc"
+for shell_package in \
+  bat \
+  eza \
+  fzf-tab \
+  starship \
+  zoxide \
+  zsh-autosuggestions \
+  zsh-completions \
+  zsh-syntax-highlighting; do
+  check "managed shell package installed: $shell_package" \
+    pacman -Q -- "$shell_package"
+done
+check "Starship configuration deployed" \
+  test -f "$HOME/.config/starship.toml"
+check "developer Zsh plugins load in their managed order" \
+  zsh_developer_plugins_loaded
 
 echo "==> Development runtimes"
 mise_config=$HOME/.config/mise/config.toml

@@ -95,20 +95,46 @@ enabled so legacy applications render sharply; the KakaoTalk bottle is set to
 Zsh is the login shell. Oh My Zsh is installed as the reviewed
 `oh-my-zsh-git` AUR package under `/usr/share/oh-my-zsh`; its self-updater is
 disabled so framework changes only arrive through the repository's explicit
-AUR phase. The managed plugin set stays small: Git context, fzf integration,
-sudo retry, colored manuals, and archive extraction.
+AUR phase. Packaged third-party plugins are exposed through small managed
+wrappers under `~/.config/oh-my-zsh`; no interactive plugin manager clones or
+updates code in the home directory.
 
-The prompt uses the desktop's cyan, violet, and magenta semantic accents.
-Fastfetch presents a compact hardware/session summary once per terminal tree;
-set `FASTFETCH_SUPPRESS=1` before starting Zsh to keep a session quiet. History,
+The ordered plugin set provides Git aliases, `Ctrl-R` fzf history, fzf-backed
+Tab completion, zoxide directory ranking (`z` and `zi`), eza listings,
+direnv/mise hooks, substring history on the arrow keys, alias discovery with
+`als`, asynchronous history suggestions, and syntax highlighting. The
+`zsh-completions` package installs directly into Zsh's site-functions path, so
+Oh My Zsh remains the only owner of `compinit`. `zsh-syntax-highlighting` stays
+last because it must observe every earlier line-editor widget.
+
+Starship renders a two-line prompt using the same cyan, violet, magenta, and
+semantic status colors as the desktop. It shows Git state, slow-command
+duration, failures, time, and contextual Node.js, Python, Go, or Rust versions
+without running the heavier Starship mise-health module. Ghostty explicitly
+falls back to JetBrains Mono Nerd Font for eza's file icons while the prompt
+uses stable Unicode and text labels. Fastfetch still presents a compact
+hardware/session summary only once per terminal tree; set
+`FASTFETCH_SUPPRESS=1` before starting Zsh to keep a session quiet. History,
 completion caches, and other mutable shell state remain under XDG state/cache
 directories and outside Git.
 
-Interactive Zsh uses full `mise activate zsh` hooks for directory-aware runtime
-selection. Login shells and the UWSM graphical session put
+The official Oh My Zsh `mise` plugin supplies full directory-aware runtime
+activation and a cached completion. Login shells and the UWSM session put
 `~/.local/share/mise/shims` first, so Zed, launchers, and non-interactive tasks
 see the same runtime definitions. Log out and back in after the first apply to
 replace the existing graphical session environment.
+
+The normal validation checks the configured load order and, once the packages
+are installed, starts a real interactive shell to verify every plugin. A warm
+startup median is an opt-in local performance gate so heterogeneous CI workers
+do not create timing flakes:
+
+```bash
+RUN_ZSH_STARTUP_BENCHMARK=1 tests/test-zsh-shell.sh
+```
+
+It warms caches, samples eleven shells with Fastfetch suppressed, and enforces
+the 150 ms median budget.
 
 ## Workspaces and window control
 

@@ -1,5 +1,6 @@
 # Interactive Zsh configuration managed by chezmoi.
 export ZSH=/usr/share/oh-my-zsh
+export ZSH_CUSTOM="${ZSH_CUSTOM:-${XDG_CONFIG_HOME:-$HOME/.config}/oh-my-zsh}"
 export ZSH_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/oh-my-zsh"
 export ZSH_COMPDUMP="$ZSH_CACHE_DIR/zcompdump-$ZSH_VERSION"
 ZSH_THEME=""
@@ -8,12 +9,83 @@ ZSH_THEME=""
 zstyle ':omz:update' mode disabled
 zstyle ':omz:lib:theme-and-appearance' gnu-ls yes
 
+# Keep fuzzy search consistent with the desktop palette. The fzf plugin uses
+# fd automatically, but the explicit commands include hidden files while
+# continuing to respect project-local .git directories.
+export FZF_DEFAULT_COMMAND='fd --hidden --follow --exclude .git --type f'
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_ALT_C_COMMAND='fd --hidden --follow --exclude .git --type d'
+export FZF_DEFAULT_OPTS='--height=45% --layout=reverse --border=rounded --info=inline --prompt=SEARCH\  --pointer=◆ --marker=✓ --color=bg:#050623,bg+:#161151,fg:#C9BFE8,fg+:#F2ECFF,hl:#9A5CFF,hl+:#E56BFF,border:#6D8CFF,label:#62D8FF,prompt:#E56BFF,pointer:#62D8FF,marker:#77E0C6,spinner:#FFB86B,header:#6D8CFF'
+
+# fzf-tab consumes normal Zsh completion results after Oh My Zsh has run its
+# single compinit. It intentionally receives dedicated flags because some
+# global fzf options are incompatible with completion widgets.
+zstyle ':completion:*' menu no
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*:descriptions' format '[%d]'
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+zstyle ':completion:*' use-cache yes
+zstyle ':completion:*' cache-path "$ZSH_CACHE_DIR/completion"
+zstyle ':fzf-tab:*' fzf-flags \
+  --height=45% \
+  --layout=reverse \
+  --border=rounded \
+  '--color=bg:#050623,bg+:#161151,fg:#C9BFE8,fg+:#F2ECFF,hl:#9A5CFF,hl+:#E56BFF,border:#6D8CFF,prompt:#E56BFF,pointer:#62D8FF,marker:#77E0C6'
+zstyle ':fzf-tab:*' switch-group '<' '>'
+zstyle ':fzf-tab:*' continuous-trigger '/'
+zstyle ':fzf-tab:complete:cd:*' fzf-preview \
+  'eza --tree --level=2 --color=always --icons=auto --group-directories-first -- "$realpath"'
+zstyle ':fzf-tab:complete:*:*' fzf-preview \
+  'if [[ -d "$realpath" ]]; then eza --tree --level=2 --color=always --icons=auto --group-directories-first -- "$realpath"; elif [[ -f "$realpath" ]]; then bat --color=always --paging=never --style=numbers --line-range=:200 -- "$realpath"; else print -r -- "$realpath"; fi'
+
+# eza replaces only the familiar listing aliases. Direct `command ls` remains
+# available for scripts and strict POSIX output.
+zstyle ':omz:plugins:eza' dirs-first yes
+zstyle ':omz:plugins:eza' git-status yes
+zstyle ':omz:plugins:eza' icons yes
+zstyle ':omz:plugins:eza' show-group no
+zstyle ':omz:plugins:eza' hyperlink yes
+zstyle ':omz:plugins:eza' time-style long-iso
+
+# Ghost text comes only from known history; Tab owns completion. Suggestions
+# remain asynchronous on the managed Zsh version and stop on large paste
+# buffers to avoid input latency.
+ZSH_AUTOSUGGEST_STRATEGY=(history)
+ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=120
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#4B477A'
+
+# Syntax colors use the same semantic roles as the desktop and Starship.
+typeset -A ZSH_HIGHLIGHT_STYLES
+ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets)
+ZSH_HIGHLIGHT_STYLES[command]='fg=#62D8FF,bold'
+ZSH_HIGHLIGHT_STYLES[alias]='fg=#62D8FF,bold'
+ZSH_HIGHLIGHT_STYLES[builtin]='fg=#6D8CFF,bold'
+ZSH_HIGHLIGHT_STYLES[function]='fg=#6D8CFF'
+ZSH_HIGHLIGHT_STYLES[path]='fg=#C9BFE8,underline'
+ZSH_HIGHLIGHT_STYLES[globbing]='fg=#9A5CFF'
+ZSH_HIGHLIGHT_STYLES[single-hyphen-option]='fg=#E56BFF'
+ZSH_HIGHLIGHT_STYLES[double-hyphen-option]='fg=#E56BFF'
+ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=#77E0C6'
+ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=#77E0C6'
+ZSH_HIGHLIGHT_STYLES[unknown-token]='fg=#FF5D8F,bold'
+ZSH_HIGHLIGHT_STYLES[reserved-word]='fg=#FFB86B,bold'
+
 plugins=(
   git
   fzf
+  fzf-tab
+  zoxide
+  eza
+  direnv
+  mise
   sudo
   colored-man-pages
   extract
+  history-substring-search
+  aliases
+  starship
+  zsh-autosuggestions
+  zsh-syntax-highlighting
 )
 
 command mkdir -p -- \
@@ -22,39 +94,22 @@ command mkdir -p -- \
 
 HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
 HISTSIZE=50000
-SAVEHIST=10000
+SAVEHIST=50000
 setopt APPEND_HISTORY
 setopt SHARE_HISTORY
+setopt EXTENDED_HISTORY
 setopt HIST_EXPIRE_DUPS_FIRST
 setopt HIST_IGNORE_ALL_DUPS
+setopt HIST_IGNORE_SPACE
+setopt HIST_FIND_NO_DUPS
 setopt HIST_REDUCE_BLANKS
+setopt HIST_SAVE_NO_DUPS
 setopt PROMPT_SUBST
-
-ZSH_THEME_GIT_PROMPT_PREFIX='%F{magenta}‹%f%F{blue}'
-ZSH_THEME_GIT_PROMPT_SUFFIX='%f%F{magenta}›%f'
-ZSH_THEME_GIT_PROMPT_DIRTY='%F{magenta}*%f'
-ZSH_THEME_GIT_PROMPT_CLEAN='%F{cyan}✓%f'
 
 if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
   source "$ZSH/oh-my-zsh.sh"
 else
   print -u2 'Oh My Zsh is unavailable; run the repository bootstrap.'
-fi
-
-autoload -Uz colors && colors
-if (( $+functions[git_prompt_info] )); then
-  PROMPT='%F{cyan}╭─%f %F{magenta}%n%f@%F{blue}%m%f %F{cyan}%~%f $(git_prompt_info)
-%F{cyan}╰─❯%f '
-else
-  PROMPT='%F{cyan}╭─%f %F{magenta}%n%f@%F{blue}%m%f %F{cyan}%~%f
-%F{cyan}╰─❯%f '
-fi
-RPROMPT='%F{8}%D{%H:%M}%f'
-
-# Full activation supplies per-directory runtime switching in interactive
-# shells. UWSM and login shells use mise shims for non-interactive children.
-if [[ -x /usr/bin/mise ]]; then
-  eval "$(/usr/bin/mise activate zsh)"
 fi
 
 # Display workstation context once per terminal tree, not in every nested
