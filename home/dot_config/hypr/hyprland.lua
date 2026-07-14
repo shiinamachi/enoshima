@@ -123,6 +123,7 @@ hl.config({
         disable_splash_rendering = true,
         force_default_wallpaper = 0,
         focus_on_activate = true,
+        render_unfocused_fps = 10,
         vrr = 0,
     },
 
@@ -325,6 +326,33 @@ hl.window_rule({
     float = true,
     center = true,
     size = { 900, 640 },
+})
+
+-- The packaged taskbar client requests maximize and may otherwise be created
+-- on whichever numbered workspace happened to be active at login. Keep its UI
+-- as a normal closable utility on MISC while leaving the tray service running.
+hl.window_rule({
+    name = "cloudflare-one-client",
+    match = {
+        class = [[(?i)^warp-taskbar$]],
+    },
+    float = true,
+    center = true,
+    size = { 960, 700 },
+    fullscreen_state = "0 0",
+    workspace = "5 silent",
+    suppress_event = "fullscreen maximize fullscreenoutput",
+})
+
+-- Hidden workspaces are normally not rendered. Codex depends on its renderer
+-- event loop to deliver completion notifications, so keep it ticking at the
+-- deliberately low background frame rate configured above.
+hl.window_rule({
+    name = "keep-codex-background-active",
+    match = {
+        class = [[(?i)^(chatgpt|com\.openai\.chatgpt)$]],
+    },
+    render_unfocused = true,
 })
 
 hl.window_rule({
