@@ -249,7 +249,7 @@ ShellRoot {
                 property real tooltipCenterX: width / 2
                 property var menuApp: null
                 property real menuCenterX: width / 2
-                readonly property int dockBottomMargin: 10
+                readonly property int dockBottomMargin: 5
 
                 screen: modelData
                 color: "transparent"
@@ -420,9 +420,9 @@ ShellRoot {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: dockWindow.dockBottomMargin
-                    width: Math.min(parent.width - 24, Math.max(96, dockRow.implicitWidth + 24))
-                    height: 78
-                    radius: 18
+                    width: Math.min(parent.width - 12, Math.max(48, dockRow.implicitWidth + 12))
+                    height: 36
+                    radius: 9
                     color: "#ee111447"
                     border.width: 1
                     border.color: "#cc33d6ff"
@@ -430,7 +430,7 @@ ShellRoot {
                     scale: dockWindow.revealed ? 1 : 0.985
 
                     transform: Translate {
-                        y: dockWindow.revealed ? 0 : 18
+                        y: dockWindow.revealed ? 0 : 9
                         Behavior on y {
                             NumberAnimation {
                                 duration: dockWindow.revealed ? 190 : 145
@@ -451,7 +451,7 @@ ShellRoot {
 
                     Flickable {
                         anchors.fill: parent
-                        anchors.margins: 10
+                        anchors.margins: 4
                         contentWidth: dockRow.implicitWidth
                         contentHeight: height
                         boundsBehavior: Flickable.StopAtBounds
@@ -461,7 +461,7 @@ ShellRoot {
                         Row {
                             id: dockRow
                             height: parent.height
-                            spacing: 6
+                            spacing: 3
 
                             Repeater {
                                 model: dockWindow.dockApps
@@ -475,12 +475,12 @@ ShellRoot {
                                     readonly property bool active: app.windows.some(window =>
                                         window.address === root.snapshot.activeAddress)
 
-                                    width: 52
-                                    height: 58
+                                    width: 24
+                                    height: 28
 
                                     Rectangle {
                                         anchors.fill: parent
-                                        radius: 13
+                                        radius: 7
                                         color: appMouse.containsMouse
                                             ? "#448b5cff"
                                             : (appItem.active ? "#338b5cff" : "transparent")
@@ -491,9 +491,9 @@ ShellRoot {
                                     IconImage {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.top: parent.top
-                                        anchors.topMargin: 5
-                                        implicitWidth: 38
-                                        implicitHeight: 38
+                                        anchors.topMargin: 2
+                                        implicitWidth: 18
+                                        implicitHeight: 18
                                         source: Quickshell.iconPath(appItem.app.icon,
                                             "application-x-executable")
                                         opacity: appItem.minimized ? 0.62 : 1
@@ -504,10 +504,10 @@ ShellRoot {
                                     Rectangle {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.bottom: parent.bottom
-                                        anchors.bottomMargin: 2
-                                        width: appItem.running ? (appItem.active ? 18 : 8) : 0
-                                        height: 3
-                                        radius: 2
+                                        anchors.bottomMargin: 1
+                                        width: appItem.running ? (appItem.active ? 9 : 4) : 0
+                                        height: 2
+                                        radius: 1
                                         color: appItem.minimized ? "#ff3cc7" : "#33d6ff"
                                         Behavior on width { NumberAnimation { duration: 120 } }
                                     }
@@ -516,9 +516,9 @@ ShellRoot {
                                         visible: appItem.app.windows.length > 1
                                         anchors.right: parent.right
                                         anchors.top: parent.top
-                                        width: 18
-                                        height: 18
-                                        radius: 9
+                                        width: 10
+                                        height: 10
+                                        radius: 5
                                         color: "#ff8b5cff"
 
                                         Text {
@@ -526,7 +526,7 @@ ShellRoot {
                                             text: appItem.app.windows.length
                                             color: "#e9e8ff"
                                             font.family: "Pretendard"
-                                            font.pixelSize: 10
+                                            font.pixelSize: 7
                                             font.bold: true
                                         }
                                     }
