@@ -33,7 +33,9 @@ jq -e '
 ' "$fastfetch_config" >/dev/null
 
 if command -v zsh >/dev/null 2>&1; then
-  zsh -n "$repo_root/home/dot_zprofile" "$zshrc"
+  for zsh_file in "$repo_root/home/dot_zprofile" "$zshrc"; do
+    zsh -n "$zsh_file"
+  done
 fi
 if command -v fastfetch >/dev/null 2>&1; then
   fastfetch --config "$fastfetch_config" --pipe >/dev/null
