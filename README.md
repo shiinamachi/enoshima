@@ -45,23 +45,46 @@ Do not manage the same file with both Ansible and chezmoi.
 └── state/tpx1c13/          # observed state; not an install manifest
 ```
 
-## Quick start on a newly installed Arch system
+## One-command convergence
 
 Read [docs/INSTALL.md](docs/INSTALL.md) first. Partitioning, LUKS formatting,
 TPM enrollment and Secure Boot key enrollment are deliberately not automated.
+After those prerequisites, the same command is used for both a new Arch
+installation and every later configuration update:
 
 ```bash
 git clone <repository-url> ~/src/my-arch-configurations
 cd ~/src/my-arch-configurations
-./bootstrap.sh tpx1c13
+./bootstrap.sh
 ```
 
-The bootstrap performs a full Arch upgrade, installs the management tools,
-offers to build the reviewed pinned local packages, runs Ansible, offers to
-build the reviewed AUR package list, shows the chezmoi diff, and asks before
-applying dotfiles.
+At startup it asks once how all conflicting chezmoi-managed user files should
+be handled: back up and replace, overwrite, keep local, or abort. It then asks
+sudo to authenticate once and keeps that credential alive without allowing any
+later password prompt. The command performs a supported full Arch upgrade,
+installs only missing or changed local/AUR packages, converges Ansible state,
+applies non-conflicting or selected dotfile state, and runs postflight checks.
 
-Useful maintenance commands:
+The default conflict policy stores preserved files beneath
+`~/.my-arch-configurations/backups/`. For unattended use, select a
+policy without a prompt:
+
+```bash
+./bootstrap.sh --conflict-policy backup
+```
+
+The conflict engine never follows symlinks or crosses mounted subtrees during
+recursive backup or replacement. `keep` preserves such a mounted tree;
+`backup` and `overwrite` stop before changing user files so the mount can be
+reviewed and removed explicitly.
+
+`make` and `make apply` are aliases for the same complete convergence path.
+Root-owned text configuration remains Ansible-authoritative and receives
+Ansible backups when its contents are replaced. Unexpected pacman file
+conflicts fail safely;
+the command never uses a blanket `pacman --overwrite` rule.
+
+Optional diagnostic commands (none is a required completion step):
 
 ```bash
 make audit PROFILE=tpx1c13
@@ -70,6 +93,11 @@ make postflight
 make chezmoi-diff
 make ansible-check PROFILE=tpx1c13
 ```
+
+Postflight can warn about work that inherently requires a person or hardware,
+such as fingerprint enrollment, APN credentials, a disconnected monitor, or a
+KakaoTalk login, or a failed third-party session unit. Those warnings do not
+turn a completed automated convergence into a failure.
 
 ## Desired versus observed packages
 

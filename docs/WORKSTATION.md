@@ -80,8 +80,10 @@ After the first connected login, verify the exact value with:
 
 ```bash
 hyprctl monitors all
-make postflight
 ```
+
+The normal convergence command also verifies this automatically whenever
+Hyprland IPC and the display are available.
 
 The profile uses SDR, 8-bit output, and VRR off. This is the conservative path
 for Parsec, portals, screenshots, and Wine capture. XWayland zero-scaling is
@@ -226,12 +228,15 @@ is carrying a remote administration session.
 
 ## First-apply checklist
 
-1. Run `make validate` and review both local PKGBUILDs and every AUR PKGBUILD.
-2. Run `./bootstrap.sh tpx1c13` from the target desktop user.
+1. Review both pinned local PKGBUILDs and decide whether the current AUR
+   package-base allowlist is acceptable as an automatic trust boundary.
+2. Run `./bootstrap.sh` from the target desktop user. Validation and postflight
+   are included.
 3. Reboot, select **Hyprland (uwsm-managed)** in SDDM (not plain Hyprland),
    then log in once with the password so the new UWSM environment is imported.
 4. Keep a root shell open and test SDDM, Hyprlock, and `sudo` fingerprint paths.
-5. Connect the Dell by USB-C and run `make postflight`.
+5. Connect the Dell by USB-C and inspect `hyprctl monitors all` if it was absent
+   during convergence.
 6. Enroll the Dell/Thunderbolt device with `boltctl` only after confirming its
    identity.
 7. Run `kakaotalk-setup` and validate KakaoTalk behavior.

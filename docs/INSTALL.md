@@ -31,22 +31,57 @@ repartitioning. Update the host variables after creating a new filesystem.
 7. Update `ansible/inventory/host_vars/<host>.yml` with the new LUKS, Btrfs and
    ESP identifiers.
 
+The inventory `target_user_home` must be the user's real, canonical home path,
+not a symlink to another directory.
+
 Then run:
 
 ```bash
-./bootstrap.sh <host>
+./bootstrap.sh
 ```
 
-The local and AUR package phases are deliberately interactive so their
-PKGBUILDs can be reviewed. `SKIP_LOCAL=true` and `SKIP_AUR=true` are available
-for a partial recovery, but the complete `tpx1c13` profile requires both
-phases. Local packages are built before Ansible so their systemd units exist
-when service desired state is applied. AUR applications are installed after
-Ansible enables multilib and installs their native prerequisites.
+If the inventory has one host, the command selects it automatically. With
+multiple hosts, use `./bootstrap.sh --profile <host>`. The exact same command
+is the maintenance/update command after pulling repository changes.
 
-Before accepting the chezmoi apply, inspect the diff. The next graphical login
-is required for UWSM to import the new input-method environment and for the XDG
-autostart entries to take effect.
+Before any system configuration is changed, the command asks once for a
+run-wide chezmoi user-file conflict policy:
+
+- `backup` (default): preserve every conflict under
+  `~/.my-arch-configurations/backups/`, then apply the repository.
+- `overwrite`: apply the repository without making conflict backups.
+- `keep`: preserve all conflicting local targets and apply everything else.
+- `abort`: stop before Ansible if any user-file conflict exists.
+
+Recursive conflict handling never follows symlinks or crosses a mount beneath
+the home directory. `keep` preserves a mounted tree. `backup` and `overwrite`
+stop during preflight when replacement would cross a mount; unmount that tree
+after reviewing it, or choose `keep` for the run.
+
+For a non-interactive run, pass `--conflict-policy <policy>` or set
+`CONFLICT_POLICY`. The command then requests sudo authentication once, refreshes
+that credential in the background, and forces all child privilege escalation
+to be non-interactive. If the credential cannot be refreshed, the run fails
+instead of asking for a second password.
+
+Local PKGBUILDs are reviewed and pinned in this repository. The AUR manifest is
+only a package-base allowlist: automatic mode trusts the current AUR PKGBUILD
+fetched during that run and does not cryptographically bind an earlier review.
+Audit AUR history out of band or move a recipe under `packages/local/` when a
+content pin is required. The package phases do not stop for individual
+approval. `SKIP_LOCAL=true` and `SKIP_AUR=true` remain available for partial
+recovery, but the complete `tpx1c13` profile requires both phases. Local
+packages are built only when the declared version differs from the installed
+version and are installed before Ansible so their systemd units exist. AUR
+applications follow Ansible after multilib and native prerequisites are
+present.
+
+Validation, chezmoi hooks, service refreshes, and postflight checks are part of
+the command. No later `make validate`, `make apply`, or `make postflight` step
+is required. The next graphical login is still required for UWSM to import a
+new input-method environment and for XDG autostart entries to take effect;
+session-dependent postflight checks are warnings when no graphical session is
+active.
 
 ## Secure Boot and TPM2
 
@@ -69,14 +104,21 @@ tested should TPM2 enrollment be performed, for example with
 Ansible.
 
 By default Ansible writes the declared boot configuration without rebuilding
-artifacts. After keys and mounts are ready, the playbook may be run with:
+artifacts. This remains a deliberate trust boundary rather than a missing
+postflight step. After keys and mounts are ready, include rebuilding in the
+same convergence command with:
 
 ```bash
-ansible-playbook -K -i ansible/inventory/hosts.yml ansible/site.yml \
-  --limit <host> -e apply_boot_artifacts=true
+./bootstrap.sh --apply-boot-artifacts
 sudo sbctl sign-all
 sudo sbctl verify
 ```
+
+The latter signing and verification commands are security-key operations, not
+automated configuration. `--apply-boot-artifacts` rebuilds on the first
+explicit request and thereafter only after a managed boot input changes.
+Normal Arch kernel and firmware package transactions may independently run
+their standard mkinitcpio hooks with the configuration present at that point.
 
 ## Snapper
 
@@ -112,7 +154,8 @@ After a reboot and password login:
    UWSM session is required for the managed environment, graphical user units,
    and XDG autostart applications.
 2. Connect the Dell U2725QE and verify its EDID selector, scale, geometry and
-   120 Hz mode with `make postflight`.
+   120 Hz mode with `hyprctl monitors all` if it was disconnected during the
+   integrated postflight.
 3. Inspect and enroll the intended Thunderbolt/USB4 device with `boltctl`.
 4. Run `kakaotalk-setup`, complete the official KakaoTalk installer and login,
    then create a Bottles snapshot.
@@ -121,9 +164,11 @@ After a reboot and password login:
 6. Launch Notion, Parsec and KakaoTalk once and confirm their runtime classes
    with the command in `WORKSTATION.md`.
 
-## Verification
+## Optional diagnostics
 
-Before rebooting:
+The convergence command already runs repository validation and postflight.
+The following remain useful when investigating a warning or capturing a new
+observation, but they are not installation completion steps:
 
 ```bash
 make validate
