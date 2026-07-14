@@ -1,7 +1,7 @@
 -- ThinkPad X1 Carbon Gen 13 desktop configuration for Hyprland 0.55+.
 
 local internalMonitor = "eDP-1"
-local externalMonitor = "desc:Dell Inc. DELL U2725QE"
+local knownDellMonitor = "desc:Dell Inc. DELL U2725QE"
 
 local terminal = "ghostty"
 -- Arch's official `zed` package installs the CLI as `zeditor`.
@@ -23,7 +23,7 @@ hl.monitor({
 })
 
 hl.monitor({
-    output = externalMonitor,
+    output = knownDellMonitor,
     mode = "3840x2160@120",
     position = "1920x0",
     scale = 1.5,
@@ -32,12 +32,13 @@ hl.monitor({
     vrr = 0,
 })
 
--- Safe fallback for projectors and monitors other than the known Dell.
+-- Every other output joins the desktop in extended mode. Automatic scale is
+-- safer across projectors, standard-DPI displays, and high-DPI USB-C panels.
 hl.monitor({
     output = "",
     mode = "preferred",
     position = "auto-right",
-    scale = 1,
+    scale = "auto",
     bitdepth = 8,
     cm = "srgb",
     vrr = 0,

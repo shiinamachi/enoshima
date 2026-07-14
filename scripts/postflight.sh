@@ -191,25 +191,40 @@ if command -v hyprctl >/dev/null 2>&1 && hyprctl monitors -j >/dev/null 2>&1; th
     fail "internal display does not match the requested mode/scale/layout"
   fi
 
-  if jq -e '.[] | select(.model | contains("U2725QE"))' <<<"$monitor_json" >/dev/null; then
+  if jq -e '.[] | select((.model // "") | contains("U2725QE"))' <<<"$monitor_json" >/dev/null; then
     if jq -e '.[] | select(.model | contains("U2725QE")) | select(.width == 3840 and .height == 2160 and .refreshRate >= 119 and .scale == 1.5 and .x == 1920 and .y == 0)' \
       <<<"$monitor_json" >/dev/null; then
       pass "Dell U2725QE is 3840x2160@120, scale 1.5, at 1920x0"
     else
       fail "connected Dell U2725QE does not match the requested mode/scale/layout"
     fi
-  else
-    warn "Dell U2725QE is disconnected; its EDID selector and 120 Hz mode remain to be verified"
   fi
 
   workspace_json=$(hyprctl workspaces -j)
-  external_output=$(
-    jq -r 'map(select(.model | contains("U2725QE")))[0].name // empty' \
-      <<<"$monitor_json"
+  mapfile -t external_outputs < <(
+    jq -r '
+      map(select(
+        .name != "eDP-1"
+        and (.disabled // false) == false
+        and (.mirrorOf // "none") == "none"
+      ))
+      | sort_by(.x // 0, .y // 0, .name)
+      | .[].name
+    ' <<<"$monitor_json"
   )
+  if ((${#external_outputs[@]} > 0)); then
+    pass "${#external_outputs[@]} external display(s) are active in extended mode"
+  else
+    warn "no external display is currently active; extended output routing was checked statically"
+  fi
   workspace_layout_ok=true
-  for workspace_id in 1 2 4; do
-    expected_output=${external_output:-eDP-1}
+  external_workspace_ids=(1 2 4)
+  for index in "${!external_workspace_ids[@]}"; do
+    workspace_id=${external_workspace_ids[$index]}
+    expected_output=eDP-1
+    if ((${#external_outputs[@]} > 0)); then
+      expected_output=${external_outputs[$((index % ${#external_outputs[@]}))]}
+    fi
     actual_output=$(
       jq -r --argjson id "$workspace_id" \
         'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json"

@@ -12,12 +12,17 @@ internal_output=$(
 )
 [[ -n $internal_output ]] || exit 0
 
-external_output=$(
-  $jq_bin -r '
+mapfile -t external_outputs < <(
+  # `$internal` is a jq variable supplied by --arg, not a shell expansion.
+  # shellcheck disable=SC2016
+  $jq_bin -r --arg internal "$internal_output" '
     map(select(
-      ((.description // "") | contains("DELL U2725QE"))
-      or ((.model // "") | contains("U2725QE"))
-    ))[0].name // empty
+      .name != $internal
+      and (.disabled // false) == false
+      and (.mirrorOf // "none") == "none"
+    ))
+    | sort_by(.x // 0, .y // 0, .name)
+    | .[].name
   ' <<<"$monitors"
 )
 
@@ -37,12 +42,17 @@ move_workspace() {
   )
 
   [[ $current_output == "$target_output" ]] && return 0
-  $hyprctl_bin dispatch moveworkspacetomonitor "$id $target_output" >/dev/null
+  [[ $target_output =~ ^[[:alnum:]_.-]+$ ]] || return 1
+  $hyprctl_bin dispatch \
+    "hl.dsp.workspace.move({ workspace = $id, monitor = \"$target_output\" })" \
+    >/dev/null
 }
 
-if [[ -n $external_output ]]; then
-  for id in "${external_workspace_ids[@]}"; do
-    move_workspace "$id" "$external_output"
+if ((${#external_outputs[@]} > 0)); then
+  for index in "${!external_workspace_ids[@]}"; do
+    id=${external_workspace_ids[$index]}
+    output=${external_outputs[$((index % ${#external_outputs[@]}))]}
+    move_workspace "$id" "$output"
   done
 else
   for id in "${external_workspace_ids[@]}"; do
