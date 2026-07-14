@@ -13,6 +13,25 @@ runtime_dir=
 dotfile_preflight_complete=false
 mise_config_source="$repo_root/home/dot_config/mise/config.toml"
 
+# Bootstrap is intentionally non-interactive after the explicit conflict-policy
+# and sudo gates.  Do not let package helpers, Git, or systemd inherit a desktop
+# editor or an interactive pager from the user's login shell.  An unexpected
+# editor request fails visibly instead of silently accepting unreviewed input.
+export EDITOR=/usr/bin/false
+export VISUAL=/usr/bin/false
+export GIT_EDITOR=/usr/bin/false
+export GIT_SEQUENCE_EDITOR=/usr/bin/false
+export GIT_MERGE_AUTOEDIT=no
+export SYSTEMD_EDITOR=/usr/bin/false
+export SUDO_EDITOR=/usr/bin/false
+export PAGER=/usr/bin/cat
+export GIT_PAGER=/usr/bin/cat
+export SYSTEMD_PAGER=/usr/bin/cat
+export MANPAGER=/usr/bin/cat
+export BAT_PAGER=/usr/bin/cat
+export PARU_PAGER=/usr/bin/cat
+export GIT_TERMINAL_PROMPT=0
+
 usage() {
   cat <<'EOF'
 Usage: ./bootstrap.sh [PROFILE] [OPTIONS]

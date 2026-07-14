@@ -1,3 +1,9 @@
 [user]
 	name = Chan Kang
 	email = me@kentakang.com
+[core]
+	editor = zeditor --wait
+[sequence]
+	editor = zeditor --wait
+[merge]
+	autoEdit = no

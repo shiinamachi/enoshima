@@ -230,6 +230,9 @@ echo "==> Testing dotfile conflict policies"
 echo "==> Testing single-authentication sudo wrapper"
 "$repo_root/tests/test-sudo-wrapper.sh"
 
+echo "==> Testing non-interactive bootstrap behavior"
+"$repo_root/tests/test-bootstrap-noninteractive.sh"
+
 echo "==> Testing desktop expansion behavior"
 for test_script in \
   tests/test-bootstrap-desktop-expansion.sh \
