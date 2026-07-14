@@ -39,6 +39,14 @@ check_or_warn() {
   fi
 }
 
+sha256_matches() {
+  local path=$1
+  local expected=$2
+  local actual
+  actual=$(sha256sum -- "$path") || return 1
+  [[ ${actual%% *} == "$expected" ]]
+}
+
 lenovo_sar_run_succeeded() {
   local invocation result exit_status
   invocation=$(systemctl show lenovo-cfgservice.service \
@@ -281,10 +289,41 @@ else
 fi
 
 echo "==> Desktop expansion"
-check "managed cyberpunk wallpaper is deployed" \
-  test -f "$HOME/.local/share/backgrounds/cyberpunk-city.png"
+check "managed 16:9 cyberpunk wallpaper is deployed intact" \
+  sha256_matches \
+  "$HOME/.local/share/backgrounds/cyberpunk-library-16x9.jpg" \
+  6a68558a01cced891b30f8979bcb70569f308e9bd785e372b64fc2957197f9d2
+check "managed 16:10 cyberpunk wallpaper is deployed intact" \
+  sha256_matches \
+  "$HOME/.local/share/backgrounds/cyberpunk-library-16x10.jpg" \
+  00eaee67432d7d8ce189c67496cadc72d64ab8c5474e87ed5f1500d647fab7a2
+check "Hyprpaper routes the 16:10 composition to eDP-1" \
+  grep -Fq 'cyberpunk-library-16x10.jpg' "$HOME/.config/hypr/hyprpaper.conf"
+check "Hyprlock keeps password and fingerprint authentication" \
+  grep -Fq 'fingerprint {' "$HOME/.config/hypr/hyprlock.conf"
+check "Waybar uses the expanded 42-pixel interaction surface" \
+  jq -e '.height == 42 and ."margin-top" == 14' \
+  "$HOME/.config/waybar/config.jsonc"
+check "Cyberdock uses the accessible reveal and hide timing" \
+  grep -Fq 'interval: 420' "$HOME/.config/quickshell/cyberdock/shell.qml"
+check "SwayNC exposes the themed notification stream" \
+  jq -e '."widget-config".title.text == "NOTIFICATION // STREAM"' \
+  "$HOME/.config/swaync/config.json"
+check "Ghostty enforces WCAG contrast" \
+  grep -Fq 'minimum-contrast = 4.5' "$HOME/.config/ghostty/config.ghostty"
+check "Zed applies the One Dark wallpaper-derived override" \
+  jq -e '.theme_overrides["One Dark"]["editor.background"] == "#050623"' \
+  "$HOME/.config/zed/settings.json"
+check "GTK 3 uses the managed dark theme" \
+  grep -Fq 'gtk-theme-name=Adwaita-dark' "$HOME/.config/gtk-3.0/settings.ini"
+check "GTK 4 uses the managed dark theme" \
+  grep -Fq 'gtk-theme-name=Adwaita-dark' "$HOME/.config/gtk-4.0/settings.ini"
 check "cyberpunk SDDM theme payload is installed" \
   test -f /usr/share/sddm/themes/cyberpunk/Main.qml
+check "cyberpunk SDDM wallpaper is installed" \
+  test -f /usr/share/sddm/themes/cyberpunk/background.jpg
+check "superseded SDDM wallpaper was removed" \
+  test ! -e /usr/share/sddm/themes/cyberpunk/background.png
 
 if [[ -f /etc/sddm.conf.d/20-cyberpunk-theme.conf ]]; then
   check "gated cyberpunk SDDM theme is selected" \

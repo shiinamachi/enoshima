@@ -38,8 +38,11 @@ if [[ $(grep -Fc 'refresh_sudo_credentials' "$bootstrap") -ne 3 ]]; then
   exit 1
 fi
 grep -Fq 'tests/test-cyberdock-state.sh' "$validate"
+grep -Fq 'tests/test-cyberpunk-library-theme.sh' "$validate"
 grep -Fq 'Checking desktop expansion security invariants' "$validate"
 grep -Fq 'Cloudflare One daemon did not converge after the AUR phase' "$postflight"
+grep -Fq 'Cyberpunk Library session theme applied' "$bootstrap"
+grep -Fq 'managed 16:10 cyberpunk wallpaper is deployed intact' "$postflight"
 
 if rg -q 'validate-desktop-expansion|postflight-desktop-expansion|converge-desktop-expansion' \
   "$bootstrap" "$validate" "$postflight"; then

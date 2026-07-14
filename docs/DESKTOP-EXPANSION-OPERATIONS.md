@@ -62,8 +62,19 @@ systemctl --user status cyberdock.service --no-pager
 
 `cyberdock.service`는 Quickshell Dock을 실행하며 비정상 종료나 stop 뒤에
 `cyberdock-recover`를 호출한다. Dock 설정은
-`~/.config/quickshell/cyberdock/shell.qml`이고, 모든 출력에 1픽셀 하단 hotspot과
-작업 영역을 예약하지 않는 Dock을 만든다.
+`~/.config/quickshell/cyberdock/shell.qml`이고, 모든 출력에 3픽셀 하단 hotspot과
+작업 영역을 예약하지 않는 Dock을 만든다. Dock은 58픽셀 높이, 40x46 앱 표적,
+420ms 숨김 지연을 사용한다.
+
+bootstrap이 적용하는 테마 자산은 다음과 같다.
+
+- 외부·fallback: `~/.local/share/backgrounds/cyberpunk-library-16x9.jpg`
+  (3840x2160)
+- 내부 `eDP-1`: `~/.local/share/backgrounds/cyberpunk-library-16x10.jpg`
+  (2880x1800)
+
+Hyprpaper와 Hyprlock은 두 자산을 같은 모니터 규칙으로 사용한다. Waybar는 상단
+14픽셀 여백과 42픽셀 높이를 사용하므로 SwayNC는 상단 64픽셀에서 시작한다.
 
 ## 권장 대화식 온보딩 순서
 
@@ -105,9 +116,10 @@ desktop_expansion_sddm_theme_enabled: true
 desktop_expansion_sddm_fallback_theme: maya
 ```
 
-재부팅 전 `/etc/sddm.conf.d/20-cyberpunk-theme.conf`가 cyberpunk theme만
-선택하는지 확인한다. SDDM에서 비밀번호 로그인, fingerprint 로그인, 세션 선택과
-실패 후 재입력을 모두 시험한다.
+재부팅 전 `/usr/share/sddm/themes/cyberpunk/background.jpg`와
+`/etc/sddm.conf.d/20-cyberpunk-theme.conf`를 확인한다. SDDM에서 비밀번호 로그인,
+빈 비밀번호 제출을 통한 fingerprint 로그인, 세션 선택, Suspend, Reboot,
+Power Off와 실패 후 재입력을 모두 시험한다.
 
 정상 rollback은 inventory 값을 `false`로 되돌리고 같은 Ansible 역할을 다시
 적용하는 것이다. 로그인이 불가능한 비상 상황에서는 TTY에서 다음 drop-in만
@@ -152,7 +164,7 @@ ONLYOFFICE, RHWP Desktop이다.
 
 다음 동작을 확인한다.
 
-- 기본은 숨김이고 각 출력의 최하단 1픽셀에서 reveal됨
+- 기본은 숨김이고 각 출력의 최하단 3픽셀에서 reveal됨
 - pointer가 Dock과 hotspot을 떠나면 다시 숨김
 - 정지된 pinned app은 실행되고, 실행 중인 app은 최근 창으로 이동
 - 이미 focus된 단일 창을 다시 클릭해도 상태가 바뀌지 않음
@@ -355,11 +367,15 @@ gimp
 
 ### 화면, 글꼴과 창
 
-- 두 출력이 scale 1.5이고 wallpaper, lock, bar, launcher, notification, Dock과
-  titlebar palette가 일치한다.
+- 두 출력이 scale 1.5이고 `eDP-1`에는 16:10, 외부 출력에는 16:9 wallpaper가
+  표시되며 lock, bar, launcher, notification, Dock과 titlebar palette가
+  일치한다.
+- OLED의 암부 뭉개짐, 120Hz에서 blur size 7/pass 2의 프레임 안정성, 42픽셀
+  Waybar 모듈의 포인터 표적과 3픽셀 Dock hotspot을 확인한다.
 - `fc-match sans-serif`에서는 Pretendard가, `fc-match monospace`에서는
   Jetendard가 우선한다.
-- Ghostty와 Zed에서 한글 폭, Nerd Font icon과 emoji fallback을 확인한다.
+- Ghostty의 최소 대비 4.5와 Zed One Dark override를 포함해 한글 폭, Nerd Font
+  icon과 emoji fallback을 확인한다.
 - Calibri/Cambria 호환 글꼴을 명시한 office 문서가 Carlito/Caladea로 적절히
   렌더링된다.
 - Dock reveal/hide, multi-window chooser, cross-monitor focus, minimize/restore와

@@ -2,11 +2,12 @@
 
 ## Status
 
-Approved and implemented in the repository on 2026-07-13. Declarative package,
-service, desktop, and validation state is complete. Account enrollment, SDDM
-theme activation, and the visual/interactive acceptance items remain explicit
-manual gates documented in `DESKTOP-EXPANSION-OPERATIONS.md`; their mutable
-results are intentionally not committed.
+Approved and implemented in the repository, with the Cyberpunk Library visual
+refinement completed on 2026-07-14. Declarative package, service, desktop, and
+validation state is complete. Account enrollment, SDDM theme activation, and
+the visual/interactive acceptance items remain explicit manual gates documented
+in `DESKTOP-EXPANSION-OPERATIONS.md`; their mutable results are intentionally
+not committed.
 
 ## Goals
 
@@ -34,26 +35,38 @@ results are intentionally not committed.
 
 ## Approved visual language
 
-The source asset will be copied without generative modification from:
-
-`/home/kentakang/Downloads/ChatGPT Image Jul 13, 2026, 05_31_02 PM.png`
-
-to the managed chezmoi source:
+The original user-provided source remains recoverable without generative
+modification at:
 
 `home/dot_local/share/backgrounds/cyberpunk-city.png`
+
+Two display-native JPEGs are deterministically derived from that source. The
+16:9 asset preserves the full composition, while the 16:10 asset is framed from
+the right so the character remains intact:
+
+- `cyberpunk-library-16x9.jpg`: 3840x2160, SHA-256
+  `6a68558a01cced891b30f8979bcb70569f308e9bd785e372b64fc2957197f9d2`
+- `cyberpunk-library-16x10.jpg`: 2880x1800, SHA-256
+  `00eaee67432d7d8ce189c67496cadc72d64ab8c5474e87ed5f1500d647fab7a2`
 
 The visual palette is sampled conceptually from the asset:
 
 | Role | Color |
 | --- | --- |
-| Deep background | `#070b2a` |
-| Glass surface | `#111447` |
-| Neon cyan | `#33d6ff` |
-| Neon magenta | `#ff3cc7` |
-| Electric violet | `#8b5cff` |
-| Primary text | `#e9e8ff` |
-| Warning | `#ffb84d` |
-| Critical | `#ff426d` |
+| Ink | `#050623` |
+| Deep | `#0a0c3e` |
+| Surface | `#161151` |
+| Surface high | `#1a1472` |
+| Neon cyan | `#62d8ff` |
+| Electric blue | `#6d8cff` |
+| Neon violet | `#9a5cff` |
+| Neon magenta | `#e56bff` |
+| Pink | `#ff72bd` |
+| Primary text | `#f2ecff` |
+| Muted text | `#c9bfe8` |
+| Warning | `#ffb86b` |
+| Critical | `#ff5d8f` |
+| Success | `#77e0c6` |
 
 The following surfaces share these tokens instead of defining unrelated
 themes: Hyprland borders, Hyprpaper, Hyprlock, SDDM, Waybar, Quickshell dock,
@@ -61,17 +74,41 @@ SwayNC, Hyprlauncher, tooltips, and session controls.
 
 ### Wallpaper and lock/login screens
 
-- Hyprpaper uses the managed image on every output with `cover` behavior.
-  The external 16:9 panel receives the near-native composition; the internal
-  16:10 panel uses a centered crop.
-- Hyprlock uses the same file rather than a live screenshot. It dims and blurs
-  the background, places the clock and authentication field in the lower-left
-  negative space, and keeps the character readable on the right.
+- Hyprpaper routes the 2880x1800 composition explicitly to `eDP-1` and uses the
+  3840x2160 composition as the fallback for external and newly attached
+  outputs. Both use `cover` behavior.
+- Hyprlock mirrors that routing, applies brightness `0.47` with two blur passes,
+  and places the time, date, password/fingerprint status, and input field in a
+  translucent lower-left authentication card. Success, failure, and lock-key
+  states use distinct success, critical, and warning colors.
 - SDDM receives a matching theme only after the session theme is validated.
   The theme must not alter the existing PAM and fingerprint authentication
   policy, and SDDM must retain a known-good fallback theme.
-- Waybar remains at the top and uses a translucent glass surface, thin cyan to
-  magenta edge, violet focus state, and existing information modules.
+- Hyprland uses 7/14 pixel gaps, 12 pixel rounding, a cyan-violet-magenta active
+  border, and an Intel iGPU-conscious blur ceiling of size 7 and two passes.
+- Waybar remains at the top with every existing workspace and hardware module.
+  It uses a 42 pixel surface, 14 pixel edge margins, 30 pixel module targets,
+  a gradient active workspace, text-backed disconnected states, and redundant
+  color/border/pulse feedback for a critical battery.
+
+### Shell and application surfaces
+
+- Cyberdock retains per-monitor rendering, `exclusiveZone: 0`, pinned and
+  running applications, minimized workspace recovery, the multi-window chooser,
+  and context menus. Its reveal hotspot is 3 pixels, surface height is 58
+  pixels, application target is 40x46, hide delay is 420 ms, and the active
+  indicator is 16x3.
+- SwayNC remains aligned below the upper-right Waybar edge. The control center
+  is 660 pixels high, preserves grouping and images, labels its stream
+  `NOTIFICATION // STREAM`, uses a two-pixel pink critical border, and renders
+  DND with the shared gradient.
+- Ghostty uses the shared 16-color ANSI palette, `minimum-contrast = 4.5`, 94%
+  opacity, and balanced 12x10 padding. Compositor blur remains authoritative.
+- Zed retains its built-in One Dark syntax and Command Palette behavior while
+  overriding only the editor background and seven accents.
+- GTK 3, GTK 4, and dconf converge on Adwaita-dark, Papirus-Dark, Pretendard,
+  Jetendard, and `prefer-dark`; Hyprland Toolkit and Cyberdock use the same icon
+  and color choices.
 
 ## Font architecture
 
@@ -110,7 +147,7 @@ allows minimized-state behavior to be integrated with Hyprland IPC.
 One dock instance is rendered on every connected monitor. Each instance:
 
 - is hidden by default;
-- exposes a one-pixel logical hotspot at the bottom edge;
+- exposes a three-pixel logical hotspot at the bottom edge;
 - animates into view when the pointer enters the hotspot;
 - hides after the pointer leaves the dock and hotspot;
 - reserves no permanent work area;
@@ -411,7 +448,7 @@ resulting account state.
 
 | Area | Required result |
 | --- | --- |
-| Theme | Same managed wallpaper on both outputs; coherent bar, lock, launcher, notifications, Dock, native app titlebars, and login palette |
+| Theme | Ratio-specific managed wallpapers on both outputs; coherent bar, lock, launcher, notifications, Dock, GTK apps, terminal, editor, native app titlebars, and login palette |
 | Dock | Hidden by default on both outputs; bottom-edge reveal; leave-to-hide; approved click behavior; crash recovery for minimized clients |
 | Window controls | Close, minimize, and true fullscreen work for tiled and floating clients without compositor-owned duplicate titlebars |
 | Fonts | Pretendard wins global sans matching, Jetendard wins mono matching, and Korean, Nerd Font, emoji, and office fallbacks render correctly |

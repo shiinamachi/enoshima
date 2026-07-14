@@ -265,6 +265,7 @@ ANSIBLE_BECOME_ASK_PASS=false \
 
 echo "==> Applying user configuration with policy: $conflict_policy"
 "$repo_root/scripts/apply-dotfiles.sh" --apply "$conflict_policy"
+echo "==> Cyberpunk Library session theme applied; SDDM selection remains acceptance-gated"
 
 echo "==> Running integrated postflight checks"
 "$repo_root/scripts/postflight.sh"

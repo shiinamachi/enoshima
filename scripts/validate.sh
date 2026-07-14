@@ -163,8 +163,9 @@ while IFS= read -r -d '' lua_file; do
   luac -p "$lua_file"
 done < <(find home -type f -name '*.lua' -print0)
 
-if command -v Hyprland >/dev/null 2>&1; then
-  Hyprland --verify-config -c home/dot_config/hypr/hyprland.lua
+hyprland_command=$(command -v Hyprland || command -v hyprland || true)
+if [[ -n $hyprland_command ]]; then
+  "$hyprland_command" --verify-config -c home/dot_config/hypr/hyprland.lua
 else
   echo "==> Skipping Hyprland semantic validation: Hyprland is not installed"
 fi
@@ -175,6 +176,11 @@ done < <(find home -type f -name '*.json' -print0)
 
 if [[ -f home/dot_config/waybar/config.jsonc ]]; then
   jq empty home/dot_config/waybar/config.jsonc
+fi
+
+if command -v ghostty >/dev/null 2>&1; then
+  ghostty +validate-config \
+    --config-file="$repo_root/home/dot_config/ghostty/config.ghostty"
 fi
 
 echo "==> Checking package manifests and local PKGBUILDs"
@@ -227,6 +233,7 @@ echo "==> Testing desktop expansion behavior"
 for test_script in \
   tests/test-bootstrap-desktop-expansion.sh \
   tests/test-audio-output-control.sh \
+  tests/test-cyberpunk-library-theme.sh \
   tests/test-cyberdock-state.sh \
   tests/test-desktop-scaling-status.sh \
   tests/test-graphics-workflow.sh \
@@ -238,6 +245,7 @@ done
 echo "==> Checking desktop expansion QML and user units"
 if command -v qmllint >/dev/null 2>&1; then
   qmllint home/dot_config/quickshell/cyberdock/shell.qml
+  qmllint ansible/roles/desktop_expansion/files/sddm-cyberpunk/Main.qml
 fi
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate packages/local/rhwp-desktop/rhwp-desktop.desktop
@@ -324,9 +332,9 @@ done
 grep -Fq 'font-family = Jetendard' home/dot_config/ghostty/config.ghostty
 grep -Fq '"buffer_font_family": "Jetendard"' home/dot_config/zed/settings.json
 
-wallpaper_sha=34053ea6a5b8a0b747261755a964917ffa14900ac85637bda346df5cb2bf64e6
+wallpaper_source_sha=34053ea6a5b8a0b747261755a964917ffa14900ac85637bda346df5cb2bf64e6
 printf '%s  %s\n' \
-  "$wallpaper_sha" \
+  "$wallpaper_source_sha" \
   home/dot_local/share/backgrounds/cyberpunk-city.png | sha256sum --check --status
 
 grep -Fq 'sha256:94295aa3fe74ee505d115936edd5b8df7e5293a205e244be4301a31725bfdeb7' \
