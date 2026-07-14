@@ -6,6 +6,7 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
   notify: Reload TLP power policy
 
 - name: Ensure systemd sleep configuration directory exists
@@ -23,3 +24,4 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true

@@ -15,6 +15,7 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
 
 - name: Configure subordinate group ID range
   ansible.builtin.lineinfile:
@@ -25,6 +26,7 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
 
 - name: Configure hostname
   ansible.builtin.hostname:
@@ -37,6 +39,7 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
 
 - name: Configure timezone
   community.general.timezone:
@@ -55,6 +58,7 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
 
 - name: Configure virtual console keymap
   ansible.builtin.template:
@@ -63,6 +67,17 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
+  register: vconsole_configuration
+  notify: Rebuild boot artifacts
+
+- name: Invalidate boot artifact record after a virtual console change
+  ansible.builtin.file:
+    path: "{{ boot_artifact_state_file }}"
+    state: absent
+  when:
+    - manage_boot_config | bool
+    - vconsole_configuration.changed
 
 - name: Preserve empty fstab layout used by systemd GPT discovery
   ansible.builtin.template:
@@ -81,6 +96,7 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
   notify: Reload systemd
 
 - name: Configure laptop power policy
@@ -116,6 +132,7 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
   when: snapper_configure_root | bool
 
 - name: Configure initramfs crypttab
@@ -125,7 +142,18 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
+  register: initramfs_crypttab_configuration
   when: manage_boot_config | bool
+  notify: Rebuild boot artifacts
+
+- name: Invalidate boot artifact record after an initramfs crypttab change
+  ansible.builtin.file:
+    path: "{{ boot_artifact_state_file }}"
+    state: absent
+  when:
+    - manage_boot_config | bool
+    - initramfs_crypttab_configuration.changed
 
 - name: Configure kernel command line
   ansible.builtin.template:
@@ -134,7 +162,18 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
+  register: kernel_command_line_configuration
   when: manage_boot_config | bool
+  notify: Rebuild boot artifacts
+
+- name: Invalidate boot artifact record after a kernel command line change
+  ansible.builtin.file:
+    path: "{{ boot_artifact_state_file }}"
+    state: absent
+  when:
+    - manage_boot_config | bool
+    - kernel_command_line_configuration.changed
 
 - name: Configure mkinitcpio hooks
   ansible.builtin.template:
@@ -144,7 +183,17 @@
     group: root
     mode: "0644"
     backup: true
+  register: mkinitcpio_configuration
   when: manage_boot_config | bool
+  notify: Rebuild boot artifacts
+
+- name: Invalidate boot artifact record after an mkinitcpio change
+  ansible.builtin.file:
+    path: "{{ boot_artifact_state_file }}"
+    state: absent
+  when:
+    - manage_boot_config | bool
+    - mkinitcpio_configuration.changed
 
 - name: Configure UKI presets
   ansible.builtin.template:
@@ -153,13 +202,41 @@
     owner: root
     group: root
     mode: "0644"
+    backup: true
+  register: uki_preset_configuration
   loop: "{{ uki_presets }}"
   when: manage_boot_config | bool
+  notify: Rebuild boot artifacts
 
-- name: Rebuild boot artifacts only when explicitly requested
-  ansible.builtin.command:
-    cmd: mkinitcpio -P
+- name: Invalidate boot artifact record after a UKI preset change
+  ansible.builtin.file:
+    path: "{{ boot_artifact_state_file }}"
+    state: absent
+  when:
+    - manage_boot_config | bool
+    - uki_preset_configuration.changed
+
+- name: Ensure the configuration state directory exists
+  ansible.builtin.file:
+    path: "{{ boot_artifact_state_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: manage_boot_config | bool
+
+- name: Inspect the boot artifact application record
+  ansible.builtin.stat:
+    path: "{{ boot_artifact_state_file }}"
+  register: boot_artifact_record
+  when: manage_boot_config | bool
+
+- name: Schedule the first explicitly requested boot artifact rebuild
+  ansible.builtin.debug:
+    msg: Boot artifacts have not yet been rebuilt by this configuration.
+  changed_when: true
   when:
     - manage_boot_config | bool
     - apply_boot_artifacts | bool
-  changed_when: true
+    - not (boot_artifact_record.stat.exists | default(false))
+  notify: Rebuild boot artifacts

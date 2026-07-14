@@ -12,3 +12,20 @@
   ansible.builtin.systemd_service:
     name: wwan-fallback.service
     state: started
+
+- name: Rebuild boot artifacts
+  ansible.builtin.command:
+    cmd: mkinitcpio -P
+  when:
+    - manage_boot_config | bool
+    - apply_boot_artifacts | bool
+  changed_when: true
+  notify: Record boot artifact rebuild
+
+- name: Record boot artifact rebuild
+  ansible.builtin.copy:
+    content: "managed boot inputs applied\n"
+    dest: "{{ boot_artifact_state_file }}"
+    owner: root
+    group: root
+    mode: "0644"
