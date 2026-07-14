@@ -46,6 +46,7 @@ fi
 grep -Fq "hyprpm add \"\$official_repo\"" "$bootstrap"
 grep -Fq 'hyprpm disable hyprbars' "$bootstrap"
 grep -Fq 'hyprpm enable hyprfocus' "$bootstrap"
+grep -Fq 'hyprctl reload config-only' "$bootstrap"
 grep -Fq 'Version ABI string:' "$bootstrap"
 grep -Fq 'tests/test-cyberdock-state.sh' "$validate"
 grep -Fq 'tests/test-cyberpunk-library-theme.sh' "$validate"

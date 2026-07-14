@@ -102,6 +102,8 @@ for focus_contract in \
   'mouse_focus_animation = "none"' \
   'mode = "flash"' \
   'fade_opacity = 0.94' \
+  'hyprbars == "false" && hyprfocus == "true"' \
+  'hyprpm reload && hyprctl reload config-only' \
   'hl.on("hyprland.start", reloadHyprlandPlugins)' \
   'hl.dsp.window.cycle_next({ next = nextWindow })' \
   'hl.on("config.reloaded", applyAppearancePreferences)' \
@@ -255,6 +257,11 @@ for plugin_dependency in cmake cpio; do
 done
 assert_contains home/run_after_30-enable-custom-user-services.sh.tmpl \
   "\"\$hyprbars_state/hyprland-abi\" \"\$hyprbars_state/setup.lock\""
+assert_contains home/run_after_30-enable-custom-user-services.sh.tmpl \
+  'hyprctl reload config-only'
+assert_contains scripts/postflight.sh 'hyprfocus_configured()'
+assert_contains scripts/postflight.sh \
+  'hyprfocus uses the managed schema and accessibility mode'
 
 ghostty=home/dot_config/ghostty/config.ghostty
 for expected in \

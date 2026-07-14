@@ -211,7 +211,20 @@ end
 configureHyprfocus()
 
 local function reloadHyprlandPlugins()
-    hl.exec_cmd("command -v hyprpm >/dev/null 2>&1 && hyprpm reload")
+    -- Never load a stale optional plugin set during login. Bootstrap first
+    -- converges these flags and the ABI cache; only that reviewed state may be
+    -- loaded into the compositor.
+    hl.exec_cmd([[
+test -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" &&
+state="/var/cache/hyprpm/$USER/hyprland-plugins/state.toml" &&
+awk '
+    /^\[/ { section = $0 }
+    section == "[hyprbars]" && $1 == "enabled" { hyprbars = $3 }
+    section == "[hyprfocus]" && $1 == "enabled" { hyprfocus = $3 }
+    END { exit !(hyprbars == "false" && hyprfocus == "true") }
+' "$state" &&
+hyprpm reload && hyprctl reload config-only
+]])
 end
 
 hl.on("hyprland.start", reloadHyprlandPlugins)

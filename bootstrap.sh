@@ -125,6 +125,7 @@ converge_hyprland_plugins() {
 
   if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     hyprpm reload
+    hyprctl reload config-only
   fi
 }
 

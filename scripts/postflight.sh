@@ -86,6 +86,51 @@ hyprfocus_loaded() {
   hyprctl plugin list -j | jq -e '.[] | select(.name == "hyprfocus")'
 }
 
+hyprfocus_configured() {
+  local appearance_mode=default
+  local animate_floating enable fade keyboard legacy_mode mouse
+
+  if [[ -x $HOME/.local/bin/desktop-appearance ]]; then
+    appearance_mode=$("$HOME/.local/bin/desktop-appearance" status 2>/dev/null || printf 'default\n')
+  fi
+
+  enable=$(hyprctl getoption plugin:hyprfocus:enable -j 2>/dev/null || true)
+  if jq -e '.option == "plugin:hyprfocus:enable"' <<<"$enable" >/dev/null 2>&1; then
+    animate_floating=$(hyprctl getoption plugin:hyprfocus:animate_floating -j 2>/dev/null) || return 1
+    keyboard=$(hyprctl getoption plugin:hyprfocus:keyboard_focus_animation -j 2>/dev/null) || return 1
+    mouse=$(hyprctl getoption plugin:hyprfocus:mouse_focus_animation -j 2>/dev/null) || return 1
+    fade=$(hyprctl getoption plugin:hyprfocus:fade_opacity -j 2>/dev/null) || return 1
+
+    jq -e '.bool == false' <<<"$animate_floating" >/dev/null || return 1
+    jq -e '.str == "flash"' <<<"$keyboard" >/dev/null || return 1
+    jq -e '.str == "none"' <<<"$mouse" >/dev/null || return 1
+    jq -e '.float >= 0.939 and .float <= 0.941' <<<"$fade" >/dev/null || return 1
+
+    case $appearance_mode in
+      reduced-motion | accessible)
+        jq -e '.bool == false' <<<"$enable" >/dev/null
+        ;;
+      *)
+        jq -e '.bool == true' <<<"$enable" >/dev/null
+        ;;
+    esac
+    return
+  fi
+
+  legacy_mode=$(hyprctl getoption plugin:hyprfocus:mode -j 2>/dev/null) || return 1
+  fade=$(hyprctl getoption plugin:hyprfocus:fade_opacity -j 2>/dev/null) || return 1
+  jq -e '.str == "flash"' <<<"$legacy_mode" >/dev/null || return 1
+
+  case $appearance_mode in
+    reduced-motion | accessible)
+      jq -e '.float >= 0.999 and .float <= 1.0' <<<"$fade" >/dev/null
+      ;;
+    *)
+      jq -e '.float >= 0.939 and .float <= 0.941' <<<"$fade" >/dev/null
+      ;;
+  esac
+}
+
 echo "==> Packages"
 while IFS= read -r package; do
   check "pacman package installed: $package" pacman -Q "$package"
@@ -237,6 +282,8 @@ if systemctl --user is-active --quiet graphical-session.target; then
   check_or_warn "graphical session imports mise shims (log out once if absent)" bash -c \
     "systemctl --user show-environment | grep -Eq '^PATH=.*/\.local/share/mise/shims'"
   check_or_warn "hyprfocus plugin is loaded in the active compositor" hyprfocus_loaded
+  check_or_warn "hyprfocus uses the managed schema and accessibility mode" \
+    hyprfocus_configured
 else
   warn "no graphical session is active; live user-service, UWSM, Fcitx, and Secret Service checks are deferred until login"
 fi

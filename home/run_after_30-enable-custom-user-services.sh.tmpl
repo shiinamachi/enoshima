@@ -20,7 +20,8 @@ if command -v hyprpm >/dev/null 2>&1 &&
   /usr/bin/sudo -n -v >/dev/null 2>&1; then
   hyprpm disable hyprbars >/dev/null 2>&1 || true
   if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
-    hyprpm reload >/dev/null 2>&1 || true
+    hyprpm reload >/dev/null 2>&1 &&
+      hyprctl reload config-only >/dev/null 2>&1 || true
   fi
 fi
 rm -f -- "$hyprbars_state/hyprland-abi" "$hyprbars_state/setup.lock"
