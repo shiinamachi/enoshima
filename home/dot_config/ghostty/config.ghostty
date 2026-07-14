@@ -3,6 +3,38 @@ font-family = Jetendard
 font-family = Noto Sans Mono CJK KR
 font-size = 11
 
+# Functional palette sampled from the managed wallpaper. Bright variants retain
+# meaning without using violet or magenta for ordinary body text.
+background = #050623
+foreground = #F2ECFF
+selection-background = #2B1E66
+selection-foreground = #F2ECFF
+cursor-color = #62D8FF
+cursor-text = #050623
+minimum-contrast = 4.5
+
+palette = 0=#050623
+palette = 1=#FF5D8F
+palette = 2=#77E0C6
+palette = 3=#FFB86B
+palette = 4=#6D8CFF
+palette = 5=#E56BFF
+palette = 6=#62D8FF
+palette = 7=#C9BFE8
+palette = 8=#4B477A
+palette = 9=#FF72BD
+palette = 10=#9AF0D9
+palette = 11=#FFD29A
+palette = 12=#91A8FF
+palette = 13=#F09CFF
+palette = 14=#9AE6FF
+palette = 15=#F2ECFF
+
+background-opacity = 0.94
+window-padding-x = 12
+window-padding-y = 10
+window-padding-balance = true
+
 # Prefer Ghostty's native GTK titlebar instead of compositor-wide decorations.
 window-decoration = auto
 # Preserve blocking `ghostty -e ...` CLI launches while reusing the graphical

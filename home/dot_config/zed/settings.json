@@ -6,6 +6,25 @@
   "buffer_font_family": "Jetendard",
   "buffer_font_fallbacks": ["Noto Sans Mono CJK KR"],
   "buffer_font_size": 14,
+  "theme": {
+    "mode": "dark",
+    "light": "One Dark",
+    "dark": "One Dark"
+  },
+  "theme_overrides": {
+    "One Dark": {
+      "editor.background": "#050623",
+      "accents": [
+        "#62D8FF",
+        "#6D8CFF",
+        "#9A5CFF",
+        "#E56BFF",
+        "#FF72BD",
+        "#77E0C6",
+        "#FFB86B"
+      ]
+    }
+  },
   "terminal": {
     "font_family": "Jetendard",
     "font_size": 13
