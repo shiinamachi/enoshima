@@ -5,19 +5,19 @@ Rectangle {
     id: root
     width: 1920
     height: 1080
-    color: "#070b2a"
+    color: "#050623"
 
     property int sessionIndex: session.index
 
     Background {
         anchors.fill: parent
-        source: "background.png"
+        source: "background.jpg"
         fillMode: Image.PreserveAspectCrop
     }
 
     Rectangle {
         anchors.fill: parent
-        color: "#73070b2a"
+        color: "#78050623"
     }
 
     Connections {
@@ -25,6 +25,7 @@ Rectangle {
         onLoginFailed: {
             password.text = ""
             status.text = "AUTHENTICATION FAILED"
+            status.color = "#ff5d8f"
             password.focus = true
         }
     }
@@ -38,7 +39,7 @@ Rectangle {
 
         Text {
             text: "SHIINAMACHI // ACCESS NODE"
-            color: "#33d6ff"
+            color: "#62d8ff"
             font.family: "Pretendard"
             font.pixelSize: 17
             font.bold: true
@@ -47,7 +48,7 @@ Rectangle {
         Text {
             id: clock
             text: Qt.formatTime(new Date(), "HH:mm")
-            color: "#e9e8ff"
+            color: "#f2ecff"
             font.family: "Pretendard"
             font.pixelSize: 76
             font.bold: true
@@ -62,7 +63,7 @@ Rectangle {
 
         Text {
             text: Qt.formatDate(new Date(), "dddd, dd MMMM yyyy")
-            color: "#c6c4e8"
+            color: "#c9bfe8"
             font.family: "Pretendard"
             font.pixelSize: 19
         }
@@ -71,8 +72,8 @@ Rectangle {
             width: 470
             height: 226
             radius: 18
-            color: "#e6111447"
-            border.color: "#aa33d6ff"
+            color: "#ed0a0c3e"
+            border.color: "#c662d8ff"
             border.width: 2
 
             Column {
@@ -85,11 +86,11 @@ Rectangle {
                     width: parent.width
                     height: 46
                     text: userModel.lastUser
-                    color: "#ee111447"
-                    textColor: "#e9e8ff"
-                    borderColor: "#8b5cff"
-                    focusColor: "#33d6ff"
-                    hoverColor: "#ff3cc7"
+                    color: "#ef161151"
+                    textColor: "#f2ecff"
+                    borderColor: "#6d8cff"
+                    focusColor: "#62d8ff"
+                    hoverColor: "#e56bff"
                     radius: 10
                     font.family: "Pretendard"
                     font.pixelSize: 16
@@ -100,11 +101,11 @@ Rectangle {
                     id: password
                     width: parent.width
                     height: 46
-                    color: "#ee111447"
-                    textColor: "#e9e8ff"
-                    borderColor: "#8b5cff"
-                    focusColor: "#33d6ff"
-                    hoverColor: "#ff3cc7"
+                    color: "#ef161151"
+                    textColor: "#f2ecff"
+                    borderColor: "#6d8cff"
+                    focusColor: "#62d8ff"
+                    hoverColor: "#e56bff"
                     radius: 10
                     font.family: "Pretendard"
                     font.pixelSize: 16
@@ -115,6 +116,10 @@ Rectangle {
                             sddm.login(username.text, password.text, sessionIndex)
                             event.accepted = true
                         }
+                    }
+                    onTextChanged: {
+                        status.text = "PASSWORD OR FINGERPRINT"
+                        status.color = "#ffb86b"
                     }
                 }
 
@@ -127,13 +132,13 @@ Rectangle {
                         height: 42
                         model: sessionModel
                         index: sessionModel.lastIndex
-                        color: "#111447"
-                        textColor: "#e9e8ff"
-                        menuColor: "#111447"
-                        borderColor: "#8b5cff"
-                        focusColor: "#33d6ff"
-                        hoverColor: "#ff3cc7"
-                        arrowColor: "#33d6ff"
+                        color: "#161151"
+                        textColor: "#f2ecff"
+                        menuColor: "#161151"
+                        borderColor: "#6d8cff"
+                        focusColor: "#62d8ff"
+                        hoverColor: "#e56bff"
+                        arrowColor: "#62d8ff"
                         font.family: "Pretendard"
                         font.pixelSize: 14
                     }
@@ -143,10 +148,10 @@ Rectangle {
                         width: 144
                         height: 42
                         text: "ENTER"
-                        color: "#8b5cff"
-                        activeColor: "#33d6ff"
-                        pressedColor: "#ff3cc7"
-                        textColor: "#070b2a"
+                        color: "#9a5cff"
+                        activeColor: "#62d8ff"
+                        pressedColor: "#e56bff"
+                        textColor: "#050623"
                         font.family: "Pretendard"
                         font.pixelSize: 15
                         onClicked: sddm.login(username.text, password.text, sessionIndex)
@@ -156,7 +161,7 @@ Rectangle {
                 Text {
                     id: status
                     text: "PASSWORD OR FINGERPRINT"
-                    color: "#ffb84d"
+                    color: "#ffb86b"
                     font.family: "Pretendard"
                     font.pixelSize: 12
                 }
@@ -168,7 +173,7 @@ Rectangle {
 
             Text {
                 text: "SUSPEND"
-                color: "#33d6ff"
+                color: "#62d8ff"
                 visible: sddm.canSuspend
                 font.family: "Pretendard"
                 font.pixelSize: 13
@@ -181,7 +186,7 @@ Rectangle {
 
             Text {
                 text: "REBOOT"
-                color: "#ffb84d"
+                color: "#ffb86b"
                 font.family: "Pretendard"
                 font.pixelSize: 13
                 MouseArea {
@@ -193,7 +198,7 @@ Rectangle {
 
             Text {
                 text: "POWER OFF"
-                color: "#ff426d"
+                color: "#ff5d8f"
                 font.family: "Pretendard"
                 font.pixelSize: 13
                 MouseArea {

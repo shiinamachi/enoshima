@@ -19,12 +19,17 @@
 
 - name: Install the managed wallpaper for the SDDM greeter
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../home/dot_local/share/backgrounds/cyberpunk-city.png"
-    dest: /usr/share/sddm/themes/cyberpunk/background.png
+    src: "{{ playbook_dir }}/../home/dot_local/share/backgrounds/cyberpunk-library-16x9.jpg"
+    dest: /usr/share/sddm/themes/cyberpunk/background.jpg
     owner: root
     group: root
     mode: "0644"
     backup: true
+
+- name: Remove the superseded SDDM wallpaper asset
+  ansible.builtin.file:
+    path: /usr/share/sddm/themes/cyberpunk/background.png
+    state: absent
 
 - name: Check the known-good SDDM fallback theme
   ansible.builtin.stat:
