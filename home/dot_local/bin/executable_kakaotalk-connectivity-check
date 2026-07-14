@@ -42,6 +42,7 @@ host_dns_ok=false
 host_https_ok=false
 sandbox_dns_ok=false
 sandbox_https_ok=false
+sandbox_resolver_compat_ok=false
 
 if getent ahosts "$probe_host" >/dev/null 2>&1; then
   host_dns_ok=true
@@ -81,11 +82,12 @@ import pycurl
 
 handle = pycurl.Curl()
 handle.setopt(pycurl.URL, "https://ping.usebottles.com")
-handle.setopt(pycurl.CONNECTTIMEOUT, 10)
-handle.setopt(pycurl.TIMEOUT, 20)
 handle.setopt(pycurl.FOLLOWLOCATION, True)
-handle.setopt(pycurl.FAILONERROR, True)
-handle.setopt(pycurl.WRITEFUNCTION, lambda data: len(data))
+handle.setopt(pycurl.NOBODY, True)
+handle.setopt(pycurl.NOPROGRESS, False)
+handle.setopt(pycurl.XFERINFOFUNCTION, lambda *_: pycurl.E_OK)
+handle.setopt(pycurl.CONNECTTIMEOUT, 5)
+handle.setopt(pycurl.TIMEOUT, 10)
 
 try:
     handle.perform()
@@ -112,9 +114,24 @@ sandbox_probe_output=$(
 sandbox_probe_status=$?
 if ((sandbox_probe_status == 0)); then
   sandbox_https_ok=true
-  pass "Bottles sandbox pycurl reaches the endpoint ($sandbox_probe_output)"
+  pass "Bottles exact online check reaches the endpoint ($sandbox_probe_output)"
 else
-  warn "Bottles sandbox pycurl probe failed: $sandbox_probe_output"
+  warn "Bottles exact online check failed: $sandbox_probe_output"
+
+  resolver_compat_output=$(
+    flatpak run --user \
+      --env=RES_OPTIONS=single-request-reopen \
+      --command=python3 \
+      "$app_id" \
+      -c "$pycurl_probe" 2>&1
+  )
+  resolver_compat_status=$?
+  if ((resolver_compat_status == 0)); then
+    sandbox_resolver_compat_ok=true
+    warn 'Bottles succeeds with its app-scoped resolver compatibility option'
+  else
+    warn "Bottles resolver compatibility probe failed: $resolver_compat_output"
+  fi
 fi
 
 if [[ $sandbox_dns_ok == true && $sandbox_https_ok == true ]]; then
@@ -141,11 +158,19 @@ Diagnosis: the host can reach Bottles, but DNS fails only inside the Flatpak
 sandbox. Restart Bottles after network/WARP changes and inspect the user
 Flatpak runtime before retrying.
 EOF
+elif [[ $sandbox_resolver_compat_ok == true ]]; then
+  cat >&2 <<'EOF'
+Diagnosis: Bottles' exact online check exceeds its five-second DNS deadline,
+but succeeds when A and AAAA lookups use separate resolver sockets. Run
+`kakaotalk-setup` to apply the app-scoped resolver compatibility option. Do
+not hard-code a DNS server or change the system-wide resolver configuration.
+EOF
 else
   cat >&2 <<'EOF'
-Diagnosis: DNS works inside Flatpak, but Bottles' own pycurl HTTPS path fails.
-This usually indicates a sandbox TLS, proxy, or transient network problem.
-Restart Bottles and retry after confirming the active WARP connection state.
+Diagnosis: DNS works inside Flatpak, but Bottles' exact pycurl HTTPS path fails
+even with the app-scoped resolver compatibility option. This usually indicates
+a sandbox TLS, proxy, or transient network problem. Restart Bottles and retry
+after confirming the active WARP connection state.
 EOF
 fi
 

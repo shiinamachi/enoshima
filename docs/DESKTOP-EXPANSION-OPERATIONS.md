@@ -263,8 +263,11 @@ kakaotalk-setup
 ```
 
 preflight는 host와 Bottles Flatpak sandbox 양쪽에서
-`https://ping.usebottles.com`의 DNS·HTTPS·pycurl 경로를 확인한다. 실패하면 DNS를
-hard-code하지 말고 보고된 host/sandbox/WARP 경로를 복구한 뒤 retry한다.
+`https://ping.usebottles.com`의 DNS·HTTPS 경로와 Bottles가 사용하는 5초 제한의
+pycurl `HEAD` 검사를 확인한다. 모바일망 DNS가 병렬 A/AAAA 질의를 처리하지 못하면
+`kakaotalk-setup`이 Bottles 앱에만 `single-request-reopen` resolver 호환 옵션을
+적용한다. 실패하면 DNS를 hard-code하지 말고 보고된 host/sandbox/WARP 경로를
+복구한 뒤 retry한다.
 
 `kakaotalk-setup`은 user-scoped Bottles에 64-bit application bottle을 만들고,
 XWayland/Wine, 144 DPI와 `XMODIFIERS=@im=fcitx`를 설정한다. 파일 권한은 Downloads,

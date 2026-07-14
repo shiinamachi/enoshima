@@ -46,6 +46,7 @@ flatpak remote-add --user --if-not-exists flathub "$flathub_url"
 flatpak install --user --noninteractive flathub "$app_id"
 flatpak override --user \
   --env=XMODIFIERS=@im=fcitx \
+  --env=RES_OPTIONS=single-request-reopen \
   --filesystem=xdg-download:rw \
   --filesystem=xdg-documents:rw \
   --filesystem=xdg-pictures:rw \

@@ -37,7 +37,13 @@ if [[ ${1:-} == run && $* == *--command=getent* ]]; then
 fi
 
 if [[ ${1:-} == run && $* == *--command=python3* ]]; then
-  if [[ ${FAKE_SANDBOX_HTTPS:-ok} == ok ]]; then
+  if [[ $* == *--env=RES_OPTIONS=single-request-reopen* ]]; then
+    probe_state=${FAKE_RESOLVER_COMPAT_HTTPS:-${FAKE_SANDBOX_HTTPS:-ok}}
+  else
+    probe_state=${FAKE_SANDBOX_HTTPS:-ok}
+  fi
+
+  if [[ $probe_state == ok ]]; then
     printf 'HTTP 200\n'
     exit 0
   fi
@@ -83,7 +89,7 @@ assert_contains() {
 
 success_output=$test_root/success.out
 run_probe "$success_output" env
-assert_contains "$success_output" 'Bottles sandbox pycurl reaches the endpoint (HTTP 200)'
+assert_contains "$success_output" 'Bottles exact online check reaches the endpoint (HTTP 200)'
 assert_contains "$success_output" 'Bottles connectivity preflight passed.'
 
 sandbox_failure_output=$test_root/sandbox-failure.out
@@ -91,8 +97,19 @@ if run_probe "$sandbox_failure_output" env FAKE_SANDBOX_HTTPS=fail; then
   printf 'Sandbox HTTPS failure unexpectedly passed.\n' >&2
   exit 1
 fi
-assert_contains "$sandbox_failure_output" "Bottles' own pycurl HTTPS path fails"
+assert_contains "$sandbox_failure_output" "Bottles' exact pycurl HTTPS path fails"
 assert_contains "$sandbox_failure_output" "Rerun \`kakaotalk-connectivity-check\`"
+
+resolver_compat_output=$test_root/resolver-compat.out
+if run_probe "$resolver_compat_output" env \
+  FAKE_SANDBOX_HTTPS=fail FAKE_RESOLVER_COMPAT_HTTPS=ok; then
+  printf 'Resolver compatibility diagnosis unexpectedly passed.\n' >&2
+  exit 1
+fi
+assert_contains "$resolver_compat_output" \
+  'Bottles succeeds with its app-scoped resolver compatibility option'
+assert_contains "$resolver_compat_output" \
+  "\`kakaotalk-setup\` to apply the app-scoped resolver compatibility option."
 
 dns_failure_output=$test_root/dns-failure.out
 if run_probe "$dns_failure_output" env FAKE_HOST_DNS=fail FAKE_SANDBOX_DNS=fail; then
@@ -152,5 +169,7 @@ first_bottles_call_line=$(grep -n -- '--command=bottles-cli' "$test_root/setup-c
 }
 assert_contains "$setup_output" 'No bottle has been created or changed.'
 assert_contains "$setup_output" 'KakaoTalk setup is complete.'
+assert_contains "$test_root/setup-calls.log" \
+  'override --user --env=XMODIFIERS=@im=fcitx --env=RES_OPTIONS=single-request-reopen'
 
 printf 'KakaoTalk connectivity tests passed.\n'
