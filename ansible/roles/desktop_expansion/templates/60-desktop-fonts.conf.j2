@@ -4,7 +4,6 @@
   <alias>
     <family>sans-serif</family>
     <prefer>
-      <family>Pretendard</family>
       <family>Noto Sans CJK KR</family>
       <family>Noto Color Emoji</family>
     </prefer>
@@ -12,9 +11,24 @@
   <alias>
     <family>monospace</family>
     <prefer>
-      <family>Jetendard</family>
       <family>Noto Sans Mono CJK KR</family>
       <family>Noto Color Emoji</family>
     </prefer>
   </alias>
+  <match target="pattern">
+    <test name="family" qual="any" compare="eq">
+      <string>sans-serif</string>
+    </test>
+    <edit name="family" mode="prepend_first" binding="strong">
+      <string>Pretendard</string>
+    </edit>
+  </match>
+  <match target="pattern">
+    <test name="family" qual="any" compare="eq">
+      <string>monospace</string>
+    </test>
+    <edit name="family" mode="prepend_first" binding="strong">
+      <string>Jetendard</string>
+    </edit>
+  </match>
 </fontconfig>

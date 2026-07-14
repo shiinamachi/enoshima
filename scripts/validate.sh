@@ -295,8 +295,12 @@ if grep -Fq '/etc/fonts/conf.avail' \
 fi
 
 desktop_fontconfig=ansible/roles/desktop_expansion/templates/60-desktop-fonts.conf.j2
-grep -Fq '<family>Pretendard</family>' "$desktop_fontconfig"
-grep -Fq '<family>Jetendard</family>' "$desktop_fontconfig"
+grep -Fq '<string>Pretendard</string>' "$desktop_fontconfig"
+grep -Fq '<string>Jetendard</string>' "$desktop_fontconfig"
+if [[ $(grep -Fc 'mode="prepend_first" binding="strong"' "$desktop_fontconfig") -ne 2 ]]; then
+  echo "Desktop font preferences must strongly prepend both primary families." >&2
+  exit 1
+fi
 grep -Fq 'upstream/pretendard/Pretendard-*.ttf' \
   packages/local/ttf-jetendard/PKGBUILD
 grep -Fq 'PRETENDARD-LICENSE' packages/local/ttf-jetendard/PKGBUILD
