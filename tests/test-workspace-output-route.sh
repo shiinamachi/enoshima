@@ -11,6 +11,20 @@ fail() {
   exit 1
 }
 
+hyprland_config="$repo_root/home/dot_config/hypr/hyprland.lua"
+waybar_config="$repo_root/home/dot_config/waybar/config.jsonc"
+
+[[ $(grep -Fc 'for id = 1, 5 do' "$hyprland_config") -eq 2 ]] ||
+  fail 'Hyprland does not limit both persistence and keybindings to workspaces 1-5'
+if grep -Fq 'for id = 1, 10 do' "$hyprland_config"; then
+  fail 'Hyprland still creates or binds reserve workspaces 6-10'
+fi
+jq -e '
+  (."ext/workspaces"."format-icons" | keys | sort) ==
+  ["1", "2", "3", "4", "5", "default"]
+' "$waybar_config" >/dev/null ||
+  fail 'Waybar exposes workspace labels outside the five purpose-led workspaces'
+
 cat >"$test_root/hyprctl" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -50,7 +64,7 @@ cat >"$test_root/monitors.json" <<'JSON'
 ]
 JSON
 
-jq -n '[range(1; 11) | {id: ., name: tostring, monitor: "eDP-1"}]' \
+jq -n '[range(1; 6) | {id: ., name: tostring, monitor: "eDP-1"}]' \
   >"$test_root/workspaces.json"
 : >"$test_root/dispatch.log"
 
@@ -68,7 +82,7 @@ for id in 1 2 4; do
 done
 jq -e '
   all(.[] | select(.id == 1 or .id == 2 or .id == 4); .monitor == "HDMI-A-1")
-  and all(.[] | select(.id == 3 or .id >= 5); .monitor == "eDP-1")
+  and all(.[] | select(.id == 3 or .id == 5); .monitor == "eDP-1")
 ' "$test_root/workspaces.json" >/dev/null || fail 'connected workspace layout is incorrect'
 
 printf '%s\n' '==> repeated routing is idempotent'

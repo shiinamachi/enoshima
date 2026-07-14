@@ -177,8 +177,9 @@ hl.gesture({
     action = "workspace",
 })
 
--- Persistent numbered workspaces keep keybindings and Waybar stable.
-for id = 1, 10 do
+-- Five purpose-led workspaces keep navigation predictable without exposing
+-- unused reserves in the overview, keymap, or Waybar.
+for id = 1, 5 do
     hl.workspace_rule({
         workspace = tostring(id),
         persistent = true,
@@ -255,8 +256,8 @@ for key, direction in pairs(arrowDirections) do
         hl.dsp.window.move({ direction = direction }))
 end
 
-for id = 1, 10 do
-    local key = id % 10
+for id = 1, 5 do
+    local key = id
     hl.bind(mainMod .. " + " .. key,
         hl.dsp.focus({ workspace = id }))
     hl.bind(mainMod .. " + SHIFT + " .. key,

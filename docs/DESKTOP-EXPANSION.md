@@ -86,7 +86,8 @@ SwayNC, Hyprlauncher, tooltips, and session controls.
   policy, and SDDM must retain a known-good fallback theme.
 - Hyprland uses 7/14 pixel gaps, 12 pixel rounding, a cyan-violet-magenta active
   border, and an Intel iGPU-conscious blur ceiling of size 7 and two passes.
-- Waybar remains at the top with every existing workspace and hardware module.
+- Waybar remains at the top with the five purpose-led workspaces and hardware
+  modules; unused reserve workspaces are neither persistent nor displayed.
   It uses a 42 pixel surface, 14 pixel edge margins, 30 pixel module targets,
   a gradient active workspace, text-backed disconnected states, and redundant
   color/border/pulse feedback for a critical battery.

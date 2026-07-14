@@ -239,7 +239,7 @@ if command -v hyprctl >/dev/null 2>&1 && hyprctl monitors -j >/dev/null 2>&1; th
     )
     [[ $actual_output == "$expected_output" ]] || workspace_layout_ok=false
   done
-  for workspace_id in 3 5 6 7 8 9 10; do
+  for workspace_id in 3 5; do
     actual_output=$(
       jq -r --argjson id "$workspace_id" \
         'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json"
@@ -247,7 +247,7 @@ if command -v hyprctl >/dev/null 2>&1 && hyprctl monitors -j >/dev/null 2>&1; th
     [[ $actual_output == eDP-1 ]] || workspace_layout_ok=false
   done
   if [[ $workspace_layout_ok == true ]]; then
-    pass "workspaces match the requested external/internal output map"
+    pass "five workspaces match the requested external/internal output map"
   else
     fail "workspaces do not match the requested external/internal output map"
   fi

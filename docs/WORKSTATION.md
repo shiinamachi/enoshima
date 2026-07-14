@@ -100,8 +100,9 @@ enabled so legacy applications render sharply; the KakaoTalk bottle is set to
 | 4 REMOTE | remote control | Dell | Parsec |
 | 5 MISC | files and utilities | internal | Thunar and other tools |
 
-Workspaces 6–10 remain persistent reserves. When the Dell is unplugged, the
-workspace routing falls back to `eDP-1`. Application class rules are broad
+Only these five workspaces are persistent; unused reserves 6–10 are not
+created or shown. When the Dell is unplugged, the workspace routing falls back
+to `eDP-1`. Application class rules are broad
 enough for the known packages, but Notion, Parsec, and Wine can change their
 runtime class. Inspect first-run values without exposing application data:
 
@@ -122,8 +123,8 @@ Core bindings:
 | `Super+H/J/K/L` | focus left/down/up/right |
 | `Super+Shift+H/J/K/L` | move the active window |
 | `Super+Alt+H/J/K/L` | resize the active split |
-| `Super+1..0` | select workspace 1..10 |
-| `Super+Shift+1..0` | move a window to workspace 1..10 |
+| `Super+1..5` | select workspace 1..5 |
+| `Super+Shift+1..5` | move a window to workspace 1..5 |
 | `Super+left mouse drag` | move a window |
 | `Super+right mouse drag` | resize a window |
 
