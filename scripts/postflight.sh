@@ -145,7 +145,6 @@ fi
 echo "==> Desktop session"
 for unit in \
   cyberdock.service \
-  hyprbars-check.service \
   hyprlauncher.service \
   xembed-sni-proxy.service; do
   check "custom user unit enabled: $unit" systemctl --user is-enabled --quiet "$unit"
@@ -262,19 +261,6 @@ if [[ $(fc-match -f '%{family}\n' monospace 2>/dev/null) == Jetendard* ]]; then
   pass "Jetendard is the first monospace match"
 else
   fail "Jetendard is not the first monospace match"
-fi
-
-hyprbars_marker=${XDG_STATE_HOME:-$HOME/.local/state}/hyprbars/hyprland-abi
-if [[ -f $hyprbars_marker ]]; then
-  if hyprctl plugin list -j 2>/dev/null |
-    jq -e 'any(.[]?; ((.name // "") | ascii_downcase) == "hyprbars")' \
-      >/dev/null 2>&1; then
-    pass "Hyprbars is loaded for the running compositor"
-  else
-    fail "Hyprbars onboarding marker exists but the plugin is not loaded"
-  fi
-else
-  warn "Hyprbars is not onboarded; run hyprbars-setup interactively"
 fi
 
 scaling_helper=$HOME/.local/bin/desktop-scaling-status

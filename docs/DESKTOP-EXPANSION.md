@@ -12,8 +12,8 @@ results are intentionally not committed.
 
 1. Turn the current Hyprland session into a coherent cyberpunk desktop based
    on the user-supplied wallpaper.
-2. Add a macOS-like dock and usable close, minimize, maximize/restore, and
-   fullscreen window controls.
+2. Add a macOS-like dock and usable close, minimize, and fullscreen controls
+   while preserving application-native titlebars.
 3. Make the requested communication, cloud, mail, graphics, and office tools
    reproducible without committing account or document data.
 4. Correct HiDPI behavior where an application has a safe native or per-app
@@ -57,7 +57,7 @@ The visual palette is sampled conceptually from the asset:
 
 The following surfaces share these tokens instead of defining unrelated
 themes: Hyprland borders, Hyprpaper, Hyprlock, SDDM, Waybar, Quickshell dock,
-Hyprbars, SwayNC, Hyprlauncher, tooltips, and session controls.
+SwayNC, Hyprlauncher, tooltips, and session controls.
 
 ### Wallpaper and lock/login screens
 
@@ -90,7 +90,7 @@ A reproducible local package combines the two reviewed families:
 
 A managed fontconfig rule puts `Pretendard` first for `sans-serif` and
 `Jetendard` first for `monospace`. GTK/dconf, Qt-facing UI, Waybar, Hyprlock,
-Hyprbars, Quickshell, Zed UI, and SDDM explicitly request Pretendard. Ghostty,
+Quickshell, Zed UI, and SDDM explicitly request Pretendard. Ghostty,
 Zed buffers/terminal, and other code surfaces explicitly retain Jetendard.
 Noto CJK and emoji remain fallbacks. Carlito, Caladea, and Liberation remain
 installed for metric-compatible Microsoft Office document rendering.
@@ -162,24 +162,17 @@ Runtime state is pruned when a client closes and is never committed. A
 Quickshell crash must not strand windows: a recovery command lists every
 client in `special:minimized` and restores it to a safe current workspace.
 
-### Hyprbars controls
+### Native window decorations
 
-The official `hyprbars` plugin supplies compositor-owned title bars. Because
-Hyprland plugins are ABI-coupled, an idempotent `hyprpm` helper selects the
-official plugin revision matching the installed Hyprland version and
-revalidates it after Hyprland upgrades.
+Applications own their titlebars. GTK clients use their normal client-side
+decorations, supported Electron clients explicitly enable Wayland window
+decorations, and Ghostty uses its automatic native GTK decoration mode. A
+compositor cannot reliably infer whether every toolkit has a complete native
+titlebar, so no common fallback bar is overlaid on all windows.
 
-Buttons follow the approved behavior:
-
-- red: close;
-- yellow: invoke the minimize helper;
-- green: toggle maximized/work-area state while retaining bars;
-- double-click the green button or press `Super+F`: toggle true fullscreen.
-
-Native client-side decorations are suppressed or exempted per application so
-that an application never receives two title bars. Plugin failure must leave
-keyboard controls usable (`Super+C` close and recovery command for minimized
-windows).
+Window management remains available independently of decorations: `Super+C`
+closes, `Super+N` minimizes through Cyberdock, and `Super+F` toggles true
+fullscreen.
 
 ## HiDPI and input design
 
@@ -410,9 +403,9 @@ resulting account state.
 
 | Area | Required result |
 | --- | --- |
-| Theme | Same managed wallpaper on both outputs; coherent bar, lock, launcher, notifications, Dock, titlebar, and login palette |
+| Theme | Same managed wallpaper on both outputs; coherent bar, lock, launcher, notifications, Dock, native app titlebars, and login palette |
 | Dock | Hidden by default on both outputs; bottom-edge reveal; leave-to-hide; approved click behavior; crash recovery for minimized clients |
-| Window controls | Close, minimize, maximize/restore, and true fullscreen work for tiled and floating clients without duplicate titlebars |
+| Window controls | Close, minimize, and true fullscreen work for tiled and floating clients without compositor-owned duplicate titlebars |
 | Fonts | Pretendard wins global sans matching, Jetendard wins mono matching, and Korean, Nerd Font, emoji, and office fallbacks render correctly |
 | Electron HiDPI | Discord and Slack report `xwayland=false` and match Chrome/Obsidian sizing at scale 1.5 |
 | Parsec | Remains XWayland, sharp, functional, and intentionally small in its management UI |

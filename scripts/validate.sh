@@ -227,7 +227,6 @@ echo "==> Testing desktop expansion behavior"
 for test_script in \
   tests/test-bootstrap-desktop-expansion.sh \
   tests/test-cyberdock-state.sh \
-  tests/test-hyprbars-green.sh \
   tests/test-desktop-scaling-status.sh \
   tests/test-graphics-workflow.sh \
   tests/test-kakaotalk-connectivity.sh; do
@@ -246,7 +245,6 @@ if command -v systemd-analyze >/dev/null 2>&1; then
   mkdir -- "$unit_dir"
   for unit in \
     home/dot_config/systemd/user/cyberdock.service \
-    home/dot_config/systemd/user/hyprbars-check.service \
     home/dot_config/systemd/user/protonmail-bridge.service \
     home/dot_config/systemd/user/rclone-google-drive.service \
     home/dot_config/systemd/user/rclone-proton-drive.service; do
@@ -258,11 +256,6 @@ if command -v systemd-analyze >/dev/null 2>&1; then
 fi
 
 echo "==> Checking desktop expansion security invariants"
-if rg -n '\bbar_text_weight\b' home/dot_config/hypr/hyprland.lua; then
-  echo "The Hyprbars release pinned for the managed Hyprland ABI does not support bar_text_weight." >&2
-  exit 1
-fi
-
 for package in \
   fuse3 gimp libsecret protonmail-bridge quickshell rclone thunderbird \
   ttf-caladea ttf-carlito ttf-liberation wev; do

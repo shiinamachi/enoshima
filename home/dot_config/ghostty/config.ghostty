@@ -3,8 +3,8 @@ font-family = Jetendard
 font-family = Noto Sans Mono CJK KR
 font-size = 11
 
-# Hyprland owns the window border and title-free tiling presentation.
-window-decoration = none
+# Prefer Ghostty's native GTK titlebar instead of compositor-wide decorations.
+window-decoration = auto
 # Preserve blocking `ghostty -e ...` CLI launches while reusing the graphical
 # instance for ordinary desktop launches.
 gtk-single-instance = detect

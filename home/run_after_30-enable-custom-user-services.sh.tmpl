@@ -3,10 +3,26 @@ set -euo pipefail
 
 units=(
   cyberdock.service
-  hyprbars-check.service
   hyprlauncher.service
   xembed-sni-proxy.service
 )
+
+# Hyprbars used to add the same compositor titlebar to every client. Retire
+# that optional plugin and its user files so applications can own decorations.
+systemctl --user disable --now hyprbars-check.service 2>/dev/null || true
+rm -f -- \
+  "$HOME/.config/systemd/user/hyprbars-check.service" \
+  "$HOME/.local/bin/hyprbars-green" \
+  "$HOME/.local/bin/hyprbars-setup"
+
+hyprbars_marker=${XDG_STATE_HOME:-$HOME/.local/state}/hyprbars/hyprland-abi
+if [[ -f $hyprbars_marker ]] && command -v hyprpm >/dev/null 2>&1; then
+  hyprpm disable hyprbars >/dev/null 2>&1 || true
+  if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    hyprpm reload >/dev/null 2>&1 || true
+  fi
+  rm -f -- "$hyprbars_marker"
+fi
 
 configuration_consumers=(
   hypridle.service
