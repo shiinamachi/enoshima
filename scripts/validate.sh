@@ -342,6 +342,7 @@ for test_script in \
   tests/test-bootstrap-desktop-expansion.sh \
   tests/test-audio-output-control.sh \
   tests/test-cyberpunk-library-theme.sh \
+  tests/test-cyberdock-pins.sh \
   tests/test-cyberdock-state.sh \
   tests/test-desktop-shell-helpers.sh \
   tests/test-desktop-appearance.sh \

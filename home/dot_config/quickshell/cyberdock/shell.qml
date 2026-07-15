@@ -21,6 +21,8 @@ ShellRoot {
     property string osdKind: "volume"
     property int osdValue: 0
     property bool osdMuted: false
+    property var pinIds: []
+    property bool pinsLoaded: false
 
     readonly property alias theme: themeTokens
     readonly property string appearanceStateHome: {
@@ -29,6 +31,14 @@ ShellRoot {
             ? configured
             : Quickshell.env("HOME") + "/.local/state";
     }
+    readonly property string configHome: {
+        const configured = Quickshell.env("XDG_CONFIG_HOME");
+        return configured !== ""
+            ? configured
+            : Quickshell.env("HOME") + "/.config";
+    }
+    readonly property string pinsPath:
+        configHome + "/enoshima/user/cyberdock-pins.json"
     readonly property string appearanceMode: {
         const candidate = appearanceModeFile.text().trim();
         if (["default", "reduced-motion", "reduced-transparency", "accessible"]
@@ -119,43 +129,122 @@ ShellRoot {
         onTriggered: appearanceModeFile.reload()
     }
 
-    readonly property var pinnedApps: [
-        {
-            "id": "ghostty",
-            "name": "Ghostty",
-            "icon": "com.mitchellh.ghostty",
-            "command": ["ghostty"],
-            "pattern": "^(com\\.mitchellh\\.ghostty|ghostty)$"
-        },
-        {
-            "id": "thunar",
-            "name": "Files",
-            "icon": "org.xfce.thunar",
-            "command": ["thunar"],
-            "pattern": "^(thunar)$"
-        },
-        {
-            "id": "zed",
-            "name": "Zed",
-            "icon": "zed",
-            "command": ["zeditor"],
-            "pattern": "^(dev\\.zed\\.zed|zed)$"
-        },
-        {
-            "id": "chrome",
-            "name": "Google Chrome",
-            "icon": "google-chrome",
-            "command": ["google-chrome-stable"],
-            "pattern": "^(google-chrome(-stable)?|com\\.google\\.chrome)$"
-        },
-        {
-            "id": "launcher",
-            "name": "Applications",
-            "icon": "view-app-grid-symbolic",
-            "command": [Quickshell.env("HOME") + "/.local/bin/cyberlauncher-toggle"],
-            "pattern": "a^"
+    readonly property var systemLauncherApp: ({
+        "id": "launcher",
+        "desktopId": "",
+        "name": "Applications",
+        "icon": "view-app-grid-symbolic",
+        "command": [Quickshell.env("HOME") + "/.local/bin/cyberlauncher-toggle"],
+        "pinned": false,
+        "systemControl": true,
+        "unavailable": false,
+        "windows": []
+    })
+
+    FileView {
+        id: pinsFile
+        path: root.pinsPath
+        preload: true
+        printErrors: false
+        watchChanges: true
+        onFileChanged: {
+            reload();
+            root.schedulePinsRefresh();
         }
-    ]
+    }
+
+    Process {
+        id: pinsProcess
+        command: ["cyberdock-pins", "list", "--json"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const document = JSON.parse(text);
+                    if (document.schema === 1 && Array.isArray(document.entries)) {
+                        root.pinIds = document.entries.map(entry => String(entry));
+                        root.pinsLoaded = true;
+                    }
+                } catch (error) {
+                    console.warn("cyberdock: invalid pin state:", error);
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: refreshPinsSoon
+        interval: 180
+        repeat: false
+        onTriggered: {
+            if (!pinsProcess.running)
+                pinsProcess.running = true;
+        }
+    }
+
+    Timer {
+        interval: 5000
+        repeat: true
+        running: !root.pinsLoaded
+        triggeredOnStart: true
+        onTriggered: refreshPinsSoon.restart()
+    }
+
+    function runPinAction(arguments_) {
+        Quickshell.execDetached(["cyberdock-pins"].concat(arguments_));
+        refreshPinsSoon.restart();
+    }
+
+    function schedulePinsRefresh() {
+        refreshPinsSoon.restart();
+    }
+
+    function normalizeDesktopId(value) {
+        const id = String(value || "").toLocaleLowerCase();
+        if (id === "")
+            return "";
+        return /\.desktop$/.test(id) ? id : id + ".desktop";
+    }
+
+    function canonicalDesktopId(value) {
+        const id = String(value || "");
+        if (id === "")
+            return "";
+        return /\.desktop$/i.test(id) ? id : id + ".desktop";
+    }
+
+    function desktopEntryById(id) {
+        const target = normalizeDesktopId(id);
+        for (const entry of DesktopEntries.applications.values) {
+            if (entry && normalizeDesktopId(entry.id) === target)
+                return entry;
+        }
+        return null;
+    }
+
+    function pinPosition(id) {
+        const target = normalizeDesktopId(id);
+        for (let index = 0; index < pinIds.length; ++index) {
+            if (normalizeDesktopId(pinIds[index]) === target)
+                return index;
+        }
+        return -1;
+    }
+
+    function pinnedMetadata(id) {
+        const entry = desktopEntryById(id);
+        const fallbackName = String(id).replace(/\.desktop$/i, "");
+        return {
+            "id": "pinned-" + normalizeDesktopId(id),
+            "desktopId": String(id),
+            "name": entry ? entry.name : fallbackName,
+            "icon": entry && entry.icon ? entry.icon : "application-x-executable",
+            "command": entry ? [...entry.command] : [],
+            "pinned": true,
+            "systemControl": false,
+            "unavailable": entry === null,
+            "windows": []
+        };
+    }
 
     function focusedScreenName() {
         const monitors = snapshot.monitors || [];
@@ -216,8 +305,10 @@ ShellRoot {
 
     function pinnedIndex(window) {
         const candidate = windowClass(window);
-        for (let index = 0; index < pinnedApps.length; ++index) {
-            if (new RegExp(pinnedApps[index].pattern, "i").test(candidate))
+        const entry = DesktopEntries.heuristicLookup(candidate);
+        const desktopId = entry ? normalizeDesktopId(entry.id) : "";
+        for (let index = 0; index < pinIds.length; ++index) {
+            if (desktopId !== "" && desktopId === normalizeDesktopId(pinIds[index]))
                 return index;
         }
         return -1;
@@ -234,19 +325,13 @@ ShellRoot {
         const entry = DesktopEntries.heuristicLookup(candidate);
         return {
             "name": entry ? entry.name : candidate,
-            "icon": entry && entry.icon ? entry.icon : "application-x-executable"
+            "icon": entry && entry.icon ? entry.icon : "application-x-executable",
+            "desktopId": entry ? canonicalDesktopId(entry.id) : ""
         };
     }
 
     function buildDockApps() {
-        const groups = pinnedApps.map(app => ({
-            "id": app.id,
-            "name": app.name,
-            "icon": app.icon,
-            "command": app.command,
-            "pinned": true,
-            "windows": []
-        }));
+        const groups = pinIds.map(id => pinnedMetadata(id));
         const dynamic = {};
         const windows = snapshot.windows || [];
 
@@ -264,10 +349,13 @@ ShellRoot {
                 const metadata = dynamicMetadata(window);
                 dynamic[key] = {
                     "id": "running-" + key,
+                    "desktopId": metadata.desktopId,
                     "name": metadata.name,
                     "icon": metadata.icon,
                     "command": [],
                     "pinned": false,
+                    "systemControl": false,
+                    "unavailable": false,
                     "windows": []
                 };
             }
@@ -280,7 +368,7 @@ ShellRoot {
         for (const group of runningOnly)
             group.windows = recentWindows(group.windows);
         runningOnly.sort((left, right) => left.name.localeCompare(right.name));
-        return groups.concat(runningOnly);
+        return groups.concat(runningOnly).concat([systemLauncherApp]);
     }
 
     function launchApp(app) {
@@ -458,7 +546,9 @@ ShellRoot {
                 function showTooltip(app, item) {
                     const point = item.mapToItem(null, item.width / 2, 0);
                     tooltipAppId = app.id;
-                    tooltipText = app.name;
+                    tooltipText = app.unavailable
+                        ? app.name + " · Unavailable"
+                        : app.name;
                     tooltipCenterX = point.x;
                 }
 
@@ -487,27 +577,46 @@ ShellRoot {
                     if (!app)
                         return [];
 
-                    if (!app.windows || app.windows.length === 0)
-                        return [{"id": "launch", "label": "Open"}];
+                    if (app.systemControl)
+                        return [{"id": "launch", "label": "Open Applications"}];
 
                     const actions = [];
-                    if (app.command && app.command.length > 0)
-                        actions.push({"id": "launch", "label": "New Window"});
-                    actions.push({
-                        "id": "show",
-                        "label": app.windows.length > 1 ? "Show Windows…" : "Show Window"
-                    });
-                    if (app.windows.some(window => !window.minimized)) {
+                    if (app.command && app.command.length > 0) {
                         actions.push({
-                            "id": "minimize",
-                            "label": app.windows.length > 1 ? "Minimize All" : "Minimize"
+                            "id": "launch",
+                            "label": app.windows && app.windows.length > 0
+                                ? "New Window"
+                                : "Open"
                         });
                     }
-                    actions.push({
-                        "id": "close",
-                        "label": app.windows.length > 1 ? "Close All Windows" : "Close Window",
-                        "destructive": true
-                    });
+                    if (app.windows && app.windows.length > 0) {
+                        actions.push({
+                            "id": "show",
+                            "label": app.windows.length > 1 ? "Show Windows…" : "Show Window"
+                        });
+                        if (app.windows.some(window => !window.minimized)) {
+                            actions.push({
+                                "id": "minimize",
+                                "label": app.windows.length > 1 ? "Minimize All" : "Minimize"
+                            });
+                        }
+                        actions.push({
+                            "id": "close",
+                            "label": app.windows.length > 1 ? "Close All Windows" : "Close Window",
+                            "destructive": true
+                        });
+                    }
+
+                    const pinIndex = root.pinPosition(app.desktopId);
+                    if (pinIndex >= 0) {
+                        actions.push({"id": "unpin", "label": "Unpin from Dock"});
+                        if (pinIndex > 0)
+                            actions.push({"id": "move-left", "label": "Move Left"});
+                        if (pinIndex < root.pinIds.length - 1)
+                            actions.push({"id": "move-right", "label": "Move Right"});
+                    } else if (app.desktopId) {
+                        actions.push({"id": "pin", "label": "Pin to Dock"});
+                    }
                     return actions;
                 }
 
@@ -532,6 +641,24 @@ ShellRoot {
                     } else if (actionId === "close") {
                         for (const window of app.windows)
                             root.closeWindow(window.address);
+                    } else if (actionId === "pin") {
+                        root.runPinAction(["add", app.desktopId]);
+                    } else if (actionId === "unpin") {
+                        root.runPinAction(["remove", app.desktopId]);
+                    } else if (actionId === "move-left") {
+                        const index = root.pinPosition(app.desktopId);
+                        if (index > 0) {
+                            root.runPinAction([
+                                "move", app.desktopId, "--before", root.pinIds[index - 1]
+                            ]);
+                        }
+                    } else if (actionId === "move-right") {
+                        const index = root.pinPosition(app.desktopId);
+                        if (index >= 0 && index < root.pinIds.length - 1) {
+                            root.runPinAction([
+                                "move", app.desktopId, "--after", root.pinIds[index + 1]
+                            ]);
+                        }
                     }
                     refreshSoon.restart();
                 }
@@ -685,9 +812,11 @@ ShellRoot {
                                     Accessible.name: app.name
                                     Accessible.description: appItem.active
                                         ? "현재 활성화된 애플리케이션"
-                                        : (appItem.running
-                                            ? "실행 중인 애플리케이션"
-                                            : "애플리케이션 열기")
+                                        : (appItem.app.unavailable
+                                            ? "현재 설치되어 있지 않은 고정 애플리케이션"
+                                            : (appItem.running
+                                                ? "실행 중인 애플리케이션"
+                                                : "애플리케이션 열기"))
                                     Accessible.pressed: appMouse.pressed
                                     Accessible.onPressAction:
                                         dockWindow.performPrimaryAction(appItem.app)
@@ -727,7 +856,9 @@ ShellRoot {
                                         implicitHeight: 29
                                         source: Quickshell.iconPath(appItem.app.icon,
                                             "application-x-executable")
-                                        opacity: appItem.minimized ? 0.62 : 1
+                                        opacity: appItem.app.unavailable
+                                            ? 0.38
+                                            : (appItem.minimized ? 0.62 : 1)
                                         scale: appMouse.containsMouse ? 1.09 : 1
                                         Behavior on scale {
                                             enabled: !root.reducedMotion
@@ -1042,7 +1173,9 @@ ShellRoot {
             activeScreenName: root.launcherScreenName
             theme: root.theme
             reducedMotion: root.reducedMotion
+            pinIds: root.pinIds
             onCloseRequested: root.launcherOpen = false
+            onPinsChanged: root.schedulePinsRefresh()
         }
     }
 

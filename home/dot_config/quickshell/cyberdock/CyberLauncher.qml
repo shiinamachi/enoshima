@@ -15,24 +15,16 @@ PanelWindow {
     required property string activeScreenName
     required property var theme
     required property bool reducedMotion
+    required property var pinIds
 
     signal closeRequested()
+    signal pinsChanged()
 
     property int selectedIndex: 0
     readonly property bool queryEmpty: searchField.text.trim().length === 0
     property var selectedEntry: filteredApps.values.length > 0
         ? filteredApps.values[Math.min(selectedIndex, filteredApps.values.length - 1)]
         : null
-
-    readonly property var favoriteOrder: [
-        "com.mitchellh.ghostty",
-        "thunar",
-        "dev.zed.zed",
-        "google-chrome",
-        "nm-connection-editor",
-        "org.pulseaudio.pavucontrol",
-        "blueman-manager"
-    ]
 
     screen: targetScreen
     visible: launcherOpen && targetScreen.name === activeScreenName
@@ -58,13 +50,37 @@ PanelWindow {
         return String(value || "").toLocaleLowerCase();
     }
 
-    function favoriteRank(entry) {
-        const id = normalized(entry.id).replace(/\.desktop$/, "");
-        for (let index = 0; index < favoriteOrder.length; ++index) {
-            if (id === favoriteOrder[index])
+    function desktopId(entry) {
+        if (!entry)
+            return "";
+        const id = String(entry.id || "");
+        return /\.desktop$/i.test(id) ? id : id + ".desktop";
+    }
+
+    function pinPosition(entry) {
+        const id = normalized(desktopId(entry));
+        for (let index = 0; index < pinIds.length; ++index) {
+            if (normalized(pinIds[index]) === id)
                 return index;
         }
-        return 999;
+        return -1;
+    }
+
+    function togglePin(entry) {
+        const id = desktopId(entry);
+        if (id === "")
+            return;
+        Quickshell.execDetached([
+            "cyberdock-pins",
+            pinPosition(entry) >= 0 ? "remove" : "add",
+            id
+        ]);
+        pinsChanged();
+    }
+
+    function favoriteRank(entry) {
+        const index = pinPosition(entry);
+        return index >= 0 ? index : 999;
     }
 
     function searchableText(entry) {
@@ -265,6 +281,10 @@ PanelWindow {
                         launcher.launch(launcher.selectedEntry);
                         event.accepted = true;
                     } else if ((event.modifiers & Qt.ControlModifier)
+                            && event.key === Qt.Key_P) {
+                        launcher.togglePin(launcher.selectedEntry);
+                        event.accepted = true;
+                    } else if ((event.modifiers & Qt.ControlModifier)
                             && event.key >= Qt.Key_1 && event.key <= Qt.Key_4
                             && launcher.queryEmpty) {
                         launcher.launchQuick(event.key - Qt.Key_1);
@@ -403,8 +423,13 @@ PanelWindow {
                             id: resultMouse
                             anchors.fill: parent
                             hoverEnabled: true
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
                             onEntered: launcher.selectedIndex = index
-                            onClicked: launcher.selectedIndex = index
+                            onClicked: mouse => {
+                                launcher.selectedIndex = index;
+                                if (mouse.button === Qt.RightButton)
+                                    launcher.togglePin(modelData);
+                            }
                             onDoubleClicked: launcher.launch(modelData)
                         }
                     }
@@ -672,6 +697,68 @@ PanelWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: launcher.launch(launcher.selectedEntry)
+                    }
+                }
+
+                Rectangle {
+                    id: pinButton
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: openButton.bottom
+                    anchors.topMargin: 10
+                    height: 44
+                    radius: launcher.theme.radiusControl
+                    color: pinMouse.pressed
+                        ? launcher.theme.colorFocusSelected
+                        : (pinMouse.containsMouse
+                            ? launcher.theme.colorFocusHover
+                            : "transparent")
+                    border.width: 1
+                    border.color: launcher.theme.colorQuietBorder
+                    scale: pinMouse.pressed ? 0.985 : 1
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: launcher.pinPosition(launcher.selectedEntry) >= 0
+                        ? "Dock에서 고정 해제"
+                        : "Dock에 고정"
+                    Accessible.description: "Ctrl+P로 전환"
+                    Accessible.pressed: pinMouse.pressed
+                    Accessible.onPressAction: launcher.togglePin(launcher.selectedEntry)
+
+                    Behavior on scale {
+                        enabled: !launcher.reducedMotion
+                        NumberAnimation { duration: launcher.theme.durationFast }
+                    }
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: launcher.pinPosition(launcher.selectedEntry) >= 0
+                            ? "Dock에서 고정 해제"
+                            : "Dock에 고정"
+                        color: launcher.theme.colorText
+                        font.family: "Pretendard"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Text {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Ctrl+P"
+                        color: launcher.theme.colorFocus
+                        font.family: "Jetendard"
+                        font.pixelSize: 12
+                        Accessible.ignored: true
+                    }
+
+                    MouseArea {
+                        id: pinMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: launcher.togglePin(launcher.selectedEntry)
                     }
                 }
             }

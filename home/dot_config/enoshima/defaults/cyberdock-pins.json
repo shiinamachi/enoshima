@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "entries": [
+    "com.mitchellh.ghostty.desktop",
+    "thunar.desktop",
+    "dev.zed.Zed.desktop",
+    "google-chrome.desktop"
+  ]
+}

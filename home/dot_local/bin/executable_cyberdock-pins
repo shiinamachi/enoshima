@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq programs intentionally use single quotes.
+set -euo pipefail
+
+readonly jq_bin=${CYBERDOCK_PINS_JQ:-jq}
+readonly config_home=${CYBERDOCK_PINS_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}}
+readonly defaults_file=${CYBERDOCK_PINS_DEFAULTS_FILE:-$config_home/enoshima/defaults/cyberdock-pins.json}
+readonly user_dir=${CYBERDOCK_PINS_USER_DIR:-$config_home/enoshima/user}
+readonly user_file=${CYBERDOCK_PINS_USER_FILE:-$user_dir/cyberdock-pins.json}
+readonly backup_file=$user_dir/cyberdock-pins.last-valid.json
+readonly lock_file=$user_dir/cyberdock-pins.lock
+
+die() {
+  printf 'cyberdock-pins: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat >&2 <<'EOF'
+usage: cyberdock-pins list --json
+       cyberdock-pins add DESKTOP_ENTRY_ID
+       cyberdock-pins remove DESKTOP_ENTRY_ID
+       cyberdock-pins toggle DESKTOP_ENTRY_ID
+       cyberdock-pins move DESKTOP_ENTRY_ID (--before|--after) DESKTOP_ENTRY_ID
+       cyberdock-pins reset
+       cyberdock-pins import FILE
+       cyberdock-pins export FILE
+       cyberdock-pins doctor
+EOF
+  exit 2
+}
+
+command -v "$jq_bin" >/dev/null 2>&1 || die "jq command not found: $jq_bin"
+command -v flock >/dev/null 2>&1 || die 'flock is required'
+[[ $user_dir == /* && $user_file == /* ]] || die 'configuration paths must be absolute'
+[[ ! -L $user_dir ]] || die "$user_dir must not be a symbolic link"
+install -d -m 0700 "$user_dir"
+chmod 0700 "$user_dir"
+
+exec 9>"$lock_file"
+chmod 0600 "$lock_file"
+flock -x 9
+
+valid_id() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._@+-]*\.desktop$ ]]
+}
+
+validate_file() {
+  local source=$1
+  "$jq_bin" -c -e '
+    select(
+      .schema == 1
+      and (.entries | type == "array")
+      and all(.entries[];
+        type == "string"
+        and test("^[A-Za-z0-9][A-Za-z0-9._@+\\-]*\\.desktop$")
+      )
+    )
+    | .entries |= reduce .[] as $entry ([];
+        if index($entry) == null then . + [$entry] else . end)
+  ' "$source" 2>/dev/null
+}
+
+write_state() {
+  local content=$1 temporary
+  temporary=$(mktemp "$user_dir/.cyberdock-pins.XXXXXX")
+  chmod 0600 "$temporary"
+  printf '%s\n' "$content" >"$temporary"
+  sync -f "$temporary" 2>/dev/null || true
+  mv -f -- "$temporary" "$user_file"
+  printf '%s\n' "$content" >"$backup_file"
+  chmod 0600 "$backup_file"
+}
+
+load_state() {
+  local source content
+  if [[ -f $user_file && ! -L $user_file ]] && content=$(validate_file "$user_file"); then
+    state=$content
+    chmod 0600 "$user_file"
+    return
+  fi
+
+  for source in "$backup_file" "$defaults_file"; do
+    if [[ -f $source && ! -L $source ]] && content=$(validate_file "$source"); then
+      state=$content
+      write_state "$state"
+      return
+    fi
+  done
+
+  die "no valid pin defaults are available at $defaults_file"
+}
+
+desktop_entry_exists() {
+  local id=$1 data_home candidate
+  data_home=${XDG_DATA_HOME:-$HOME/.local/share}
+  for candidate in \
+    "$data_home/applications/$id" \
+    "$HOME/.local/share/flatpak/exports/share/applications/$id" \
+    "/var/lib/flatpak/exports/share/applications/$id" \
+    "/usr/local/share/applications/$id" \
+    "/usr/share/applications/$id"; do
+    [[ -f $candidate ]] && return 0
+  done
+  return 1
+}
+
+load_state
+
+case ${1:-} in
+  list)
+    [[ $# -eq 2 && $2 == --json ]] || usage
+    printf '%s\n' "$state"
+    ;;
+  add | remove | toggle)
+    [[ $# -eq 2 ]] || usage
+    valid_id "$2" || die "invalid desktop entry ID: $2"
+    case $1 in
+      add)
+        state=$("$jq_bin" -c --arg id "$2" \
+          'if .entries | index($id) then . else .entries += [$id] end' <<<"$state")
+        ;;
+      remove)
+        state=$("$jq_bin" -c --arg id "$2" \
+          '.entries |= map(select(. != $id))' <<<"$state")
+        ;;
+      toggle)
+        state=$("$jq_bin" -c --arg id "$2" '
+          if .entries | index($id)
+          then .entries |= map(select(. != $id))
+          else .entries += [$id]
+          end
+        ' <<<"$state")
+        ;;
+    esac
+    write_state "$state"
+    ;;
+  move)
+    [[ $# -eq 4 ]] || usage
+    valid_id "$2" || die "invalid desktop entry ID: $2"
+    valid_id "$4" || die "invalid desktop entry ID: $4"
+    [[ $2 != "$4" ]] || exit 0
+    "$jq_bin" -e --arg id "$2" --arg anchor "$4" \
+      '(.entries | index($id)) != null and (.entries | index($anchor)) != null' \
+      <<<"$state" >/dev/null || die 'both entries must already be pinned'
+    case $3 in
+      --before)
+        state=$("$jq_bin" -c --arg id "$2" --arg anchor "$4" '
+          .entries |= (map(select(. != $id))
+            | . as $entries
+            | ($entries | index($anchor)) as $index
+            | $entries[0:$index] + [$id] + $entries[$index:])
+        ' <<<"$state")
+        ;;
+      --after)
+        state=$("$jq_bin" -c --arg id "$2" --arg anchor "$4" '
+          .entries |= (map(select(. != $id))
+            | . as $entries
+            | (($entries | index($anchor)) + 1) as $index
+            | $entries[0:$index] + [$id] + $entries[$index:])
+        ' <<<"$state")
+        ;;
+      *) usage ;;
+    esac
+    write_state "$state"
+    ;;
+  reset)
+    state=$(validate_file "$defaults_file") || die 'managed defaults are invalid'
+    write_state "$state"
+    ;;
+  import)
+    [[ $# -eq 2 && $2 == /* && ! -L $2 ]] || usage
+    state=$(validate_file "$2") || die "invalid import file: $2"
+    write_state "$state"
+    ;;
+  export)
+    [[ $# -eq 2 && $2 == /* ]] || usage
+    [[ ! -L $2 ]] || die "refusing to replace symbolic link: $2"
+    export_dir=$(dirname -- "$2")
+    [[ -d $export_dir && ! -L $export_dir ]] ||
+      die "export directory must already exist and not be a symbolic link: $export_dir"
+    temporary=$(mktemp "$export_dir/.cyberdock-pins-export.XXXXXX")
+    printf '%s\n' "$state" >"$temporary"
+    chmod 0600 "$temporary"
+    mv -f -- "$temporary" "$2"
+    ;;
+  doctor)
+    unavailable=0
+    while IFS= read -r id; do
+      if desktop_entry_exists "$id"; then
+        printf '[PASS] %s\n' "$id"
+      else
+        printf '[WARN] unavailable: %s\n' "$id"
+        unavailable=$((unavailable + 1))
+      fi
+    done < <("$jq_bin" -r '.entries[]' <<<"$state")
+    printf 'Pin store: %s\nUnavailable entries: %d\n' "$user_file" "$unavailable"
+    ;;
+  *) usage ;;
+esac
