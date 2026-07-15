@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "reviewed_at": "2026-07-15",
+  "skills": [
+    {
+      "name": "design-taste-frontend",
+      "repository": "https://github.com/Leonxlnx/taste-skill",
+      "commit": "b17742737e796305d829b3ad39eda3add0d79060",
+      "source_path": "skills/taste-skill",
+      "source_skill_sha256": "aa194351b246b8b4799099d4ed7b033d29eab6e6e3d58d8d2172978be7b3ec89",
+      "license": "MIT",
+      "vendored_reference": ".agents/skills/design-taste-frontend/references/taste-skill-v2.md",
+      "localization": "Project adapter activates only for desktop design work and routes to the upstream v2 experimental reference selectively."
+    },
+    {
+      "name": "ui-ux-pro-max",
+      "repository": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+      "commit": "f8ac5e1266dba8354ea96e19994d9f4345e7ec31",
+      "source_path": ".claude/skills/ui-ux-pro-max",
+      "source_skill_sha256": "305a7527fcb2f5b6e4129ab22cd839b5172d26df7f14d3324bfdec8fc1763560",
+      "license": "MIT",
+      "vendored_reference": null,
+      "localization": "Compact core is pinned; activation scope, repository authority, unsupported-stack behavior, persistence, and script paths are adapted for Codex."
+    }
+  ]
+}

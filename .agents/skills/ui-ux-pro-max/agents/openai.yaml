@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI/UX Pro Max (Desktop)"
+  short_description: "Local UI/UX evidence and accessibility checks"
+  default_prompt: "Use $ui-ux-pro-max with $design-taste-frontend to research and review this desktop UI change."
