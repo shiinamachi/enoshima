@@ -139,19 +139,19 @@ for entry in review_entries:
     assert len(entry["pkgbuild_sha256"]) == 64
     assert len(entry["srcinfo_sha256"]) == 64
 
-present = native | management | optional
-assert not (present & absent), (
-    "packages cannot be both present and absent: "
-    + ", ".join(sorted(present & absent))
-)
-
+pacman_desired = native | management | optional
 local_package_names = {
     path.parent.name
     for path in (root / "packages" / "local").glob("*/PKGBUILD")
 }
-assert not (present & local_package_names), (
+all_desired = pacman_desired | aur | local_package_names
+assert not (all_desired & absent), (
+    "packages cannot be both desired and absent: "
+    + ", ".join(sorted(all_desired & absent))
+)
+assert not (pacman_desired & local_package_names), (
     "packages cannot be managed by both native manifests and local PKGBUILD: "
-    + ", ".join(sorted(present & local_package_names))
+    + ", ".join(sorted(pacman_desired & local_package_names))
 )
 assert not (aur & local_package_names), (
     "packages cannot be managed by both AUR and local PKGBUILD: "
@@ -324,6 +324,28 @@ if command -v desktop-file-validate >/dev/null 2>&1; then
   while IFS= read -r -d '' desktop_file; do
     desktop-file-validate "$desktop_file"
   done < <(find home -type f -name '*.desktop' -print0)
+fi
+
+echo "==> Checking managed Git configuration"
+git_config=$repo_root/home/dot_gitconfig
+git config --file "$git_config" --list >/dev/null
+mapfile -t managed_git_credential_helpers < <(
+  git config --file "$git_config" --get-all credential.helper || true
+)
+if ((${#managed_git_credential_helpers[@]} != 1)) ||
+  [[ ${managed_git_credential_helpers[0]:-} != store ]]; then
+  echo "home/dot_gitconfig must define credential.helper exactly once as store" >&2
+  exit 1
+fi
+
+tracked_git_credential_files=$(
+  git ls-files |
+    rg '^home/([^/]*dot_git-credentials|.*/git/[^/]*credentials)$' || true
+)
+if [[ -n $tracked_git_credential_files ]]; then
+  echo "Plaintext Git credential stores must not be tracked:" >&2
+  printf '%s\n' "$tracked_git_credential_files" >&2
+  exit 1
 fi
 
 echo "==> Checking chezmoi source state"

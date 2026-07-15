@@ -286,6 +286,19 @@ application set, but this profile does not prohibit a user-managed installation.
 FileZilla site definitions, connection history, and credentials are mutable
 user data and remain outside Git.
 
+### Git credential storage
+
+The managed global `~/.gitconfig` deliberately selects
+`credential.helper=store`. This is an explicit convenience-versus-security
+decision: Git stores HTTPS credentials unencrypted on disk and protects them
+only with filesystem permissions.
+
+Only the helper selection is managed. `~/.git-credentials` and
+`$XDG_CONFIG_HOME/git/credentials` must never be added to chezmoi or committed
+to this repository. They are created by Git only after an HTTPS authentication
+flow needs to persist a credential. Postflight validates that either runtime
+file, when present, denies access to group and other users.
+
 `notion-app-electron` is not published or supported by Notion. Its PKGBUILD and
 upstream payload must be reviewed at every meaningful update. Parsec on Linux
 is a client and uses XWayland; this profile installs it but does not configure

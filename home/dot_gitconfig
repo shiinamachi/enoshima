@@ -1,6 +1,8 @@
 [user]
 	name = Chan Kang
 	email = me@kentakang.com
+[credential]
+	helper = store
 [core]
 	editor = zeditor --wait
 [sequence]

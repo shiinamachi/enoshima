@@ -11,3 +11,7 @@ work/
 *.pem
 ansible/.vault_pass
 ansible/inventory/host_vars/*/secrets.yml
+
+# Plaintext Git credential stores must never enter chezmoi source state.
+home/*dot_git-credentials
+home/**/git/*credentials

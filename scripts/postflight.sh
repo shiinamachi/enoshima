@@ -238,6 +238,37 @@ check "Starship configuration deployed" \
 check "developer Zsh plugins load in their managed order" \
   zsh_developer_plugins_loaded
 
+echo "==> Git credentials"
+mapfile -t global_git_credential_helpers < <(
+  git config --global --get-all credential.helper 2>/dev/null || true
+)
+if ((${#global_git_credential_helpers[@]} == 1)) &&
+  [[ ${global_git_credential_helpers[0]} == store ]]; then
+  pass "global Git credential helper is exactly store"
+else
+  fail "global Git credential helper must be exactly store"
+  git config \
+    --global \
+    --show-origin \
+    --show-scope \
+    --get-all credential.helper >&2 || true
+fi
+
+credential_files=(
+  "$HOME/.git-credentials"
+  "${XDG_CONFIG_HOME:-$HOME/.config}/git/credentials"
+)
+for credential_file in "${credential_files[@]}"; do
+  [[ -e $credential_file ]] || continue
+
+  mode=$(stat -c '%a' "$credential_file" 2>/dev/null || true)
+  if [[ $mode =~ ^[0-7]+$ ]] && (((8#$mode & 077) == 0)); then
+    pass "Git credential file is private: $credential_file ($mode)"
+  else
+    fail "Git credential file is accessible by group/others: $credential_file (${mode:-unknown})"
+  fi
+done
+
 echo "==> Development runtimes"
 mise_config=$HOME/.config/mise/config.toml
 check "mise global runtime configuration deployed" test -f "$mise_config"

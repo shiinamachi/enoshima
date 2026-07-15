@@ -48,5 +48,11 @@ grep -Fq "PACMAN_AUTH=(%q)" "$aur_installer" ||
   fail 'interactive rebases do not use the managed graphical editor'
 [[ $(git config --file "$git_config" --get merge.autoEdit) == no ]] ||
   fail 'Git pulls may still open an editor for an automatic merge message'
+mapfile -t credential_helpers < <(
+  git config --file "$git_config" --get-all credential.helper || true
+)
+if ((${#credential_helpers[@]} != 1)) || [[ ${credential_helpers[0]:-} != store ]]; then
+  fail 'the managed global Git credential helper is not exactly store'
+fi
 
 printf 'Non-interactive bootstrap tests passed.\n'
