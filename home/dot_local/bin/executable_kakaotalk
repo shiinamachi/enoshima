@@ -9,7 +9,9 @@ readonly program_name=KakaoTalk
 
 command -v flatpak >/dev/null 2>&1 || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
+command -v kakaotalk-profile >/dev/null 2>&1 || exit 0
 flatpak info --user "$app_id" >/dev/null 2>&1 || exit 0
+kakaotalk-profile verify >/dev/null 2>&1 || exit 0
 
 readonly -a bottles_cli=(
   flatpak run

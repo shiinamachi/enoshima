@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly profile_bin=${KAKAOTALK_SMOKE_PROFILE:-kakaotalk-profile}
+readonly state_home=${KAKAOTALK_SMOKE_STATE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}}
+readonly report_dir=$state_home/enoshima/kakaotalk/test-reports
+readonly app_id=com.usebottles.bottles
+readonly bottle_name=KakaoTalk
+
+die() {
+  printf 'kakaotalk-smoke-test: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ -t 0 ]] || die 'run this acceptance test interactively from a terminal'
+command -v jq >/dev/null 2>&1 || die 'jq is required'
+command -v "$profile_bin" >/dev/null 2>&1 || die 'kakaotalk-profile is required'
+profile=$($profile_bin current --json)
+profile_id=$(jq -r '.id' <<<"$profile")
+required_direct=$(jq -r '.acceptance.direct_hangul_inputs' <<<"$profile")
+required_paste=$(jq -r '.acceptance.paste_trials' <<<"$profile")
+required_focus=$(jq -r '.acceptance.focus_transitions' <<<"$profile")
+
+cat <<EOF
+KakaoTalk acceptance profile: $profile_id
+
+Do not enter chat text, contact names, or account details in this terminal.
+Use a harmless private test conversation in KakaoTalk and complete:
+
+1. Empty input field: type Hangul directly $required_direct times. The first
+   syllable must remove the placeholder and enable send every time.
+2. Paste harmless Hangul text $required_paste times.
+3. Switch native Wayland app ↔ KakaoTalk $required_focus times, including tray
+   hide/restore and workspace changes. English and Hangul input must remain live.
+4. Trigger a KakaoTalk notification and click its popup.
+5. Run kakaotalk-focus-repair once and confirm input returns without restarting.
+6. Repeat the direct-input check after a fresh graphical login.
+EOF
+
+read_number() {
+  local prompt=$1 value
+  read -r -p "$prompt" value
+  [[ $value =~ ^[0-9]+$ ]] || die 'enter a numeric completed-trial count'
+  printf '%s\n' "$value"
+}
+
+read_boolean() {
+  local prompt=$1 value
+  read -r -p "$prompt [y/N] " value
+  if [[ $value =~ ^[Yy]$ ]]; then printf true; else printf false; fi
+}
+
+command_version() {
+  local fallback=$1 value
+  shift
+  value=$("$@" 2>/dev/null | head -n 1 || true)
+  if [[ -n $value ]]; then printf '%s' "$value"; else printf '%s' "$fallback"; fi
+}
+
+bottles_version=unavailable
+kakaotalk_version=unavailable
+if command -v flatpak >/dev/null 2>&1; then
+  bottles_version=$(command_version unavailable flatpak run \
+    --command=bottles-cli "$app_id" --version)
+  # PowerShell expands $env inside the Wine process, not this Bash process.
+  # shellcheck disable=SC2016
+  kakaotalk_version=$(flatpak run --command=bottles-cli "$app_id" shell \
+    -b "$bottle_name" -i \
+    'wine powershell -NoProfile -Command "(Get-Item \"$env:LOCALAPPDATA\\Kakao\\KakaoTalk\\KakaoTalk.exe\").VersionInfo.FileVersion"' \
+    2>/dev/null | tr -d '\r' | grep -E '^[0-9]+([.][0-9]+){1,3}$' | tail -n 1 || true)
+  [[ -n $kakaotalk_version ]] || kakaotalk_version=unavailable
+fi
+fcitx_version=$(command_version unavailable fcitx5 --version)
+hyprland_version=$(command_version unavailable hyprctl version)
+
+direct=$(read_number 'Successful direct Hangul trials: ')
+paste=$(read_number 'Successful paste trials: ')
+focus=$(read_number 'Successful focus transitions: ')
+tray=$(read_boolean 'Was a real notification popup visible and clickable?')
+repair=$(read_boolean 'Did the manual focus repair restore keyboard input?')
+relogin=$(read_boolean 'Was the direct-input check repeated after relogin?')
+
+status=failed
+if ((direct >= required_direct && paste >= required_paste && focus >= required_focus)) &&
+  [[ $tray == true && $repair == true && $relogin == true ]]; then
+  status=passed
+fi
+
+install -d -m 0700 "$report_dir"
+[[ ! -L $report_dir ]] || die "$report_dir must not be a symbolic link"
+timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+report=$report_dir/$timestamp-$profile_id.json
+temporary=$(mktemp "$report_dir/.report.XXXXXX")
+chmod 0600 "$temporary"
+jq -n \
+  --arg profileId "$profile_id" \
+  --arg status "$status" \
+  --arg testedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg runner "$(jq -r '.runner.name' <<<"$profile")" \
+  --arg bottlesVersion "$bottles_version" \
+  --arg kakaotalkVersion "$kakaotalk_version" \
+  --arg fcitxVersion "$fcitx_version" \
+  --arg hyprlandVersion "$hyprland_version" \
+  --argjson direct "$direct" \
+  --argjson paste "$paste" \
+  --argjson focus "$focus" \
+  --argjson tray "$tray" \
+  --argjson repair "$repair" \
+  --argjson relogin "$relogin" '
+  {
+    schema: 1,
+    profile_id: $profileId,
+    runner: $runner,
+    tested_at: $testedAt,
+    status: $status,
+    results: {
+      direct_hangul_inputs: $direct,
+      paste_trials: $paste,
+      focus_transitions: $focus,
+      tray_notification: $tray,
+      focus_repair: $repair,
+      relogin: $relogin
+    },
+    versions: {
+      bottles: $bottlesVersion,
+      kakaotalk: $kakaotalkVersion,
+      fcitx: $fcitxVersion,
+      hyprland: $hyprlandVersion
+    }
+  }
+' >"$temporary"
+sync -f "$temporary" 2>/dev/null || true
+mv -f -- "$temporary" "$report"
+
+printf 'Report: %s\n' "$report"
+if [[ $status == passed ]]; then
+  printf 'Acceptance passed. Promote locally with:\n  kakaotalk-profile promote %s --report %q\n' \
+    "$profile_id" "$report"
+else
+  printf 'Acceptance failed; the profile remains a candidate.\n' >&2
+  exit 1
+fi

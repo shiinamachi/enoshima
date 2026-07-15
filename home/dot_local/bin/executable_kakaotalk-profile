@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq variables are intentionally single-quoted.
+set -euo pipefail
+
+readonly app_id=com.usebottles.bottles
+readonly bottle_name=KakaoTalk
+readonly jq_bin=${KAKAOTALK_PROFILE_JQ:-jq}
+readonly curl_bin=${KAKAOTALK_PROFILE_CURL:-curl}
+readonly tar_bin=${KAKAOTALK_PROFILE_TAR:-tar}
+readonly flatpak_bin=${KAKAOTALK_PROFILE_FLATPAK:-flatpak}
+readonly config_home=${KAKAOTALK_PROFILE_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}}
+readonly cache_home=${KAKAOTALK_PROFILE_CACHE_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}}
+readonly profile_dir=${KAKAOTALK_PROFILE_DIR:-$config_home/enoshima/kakaotalk/profiles}
+readonly defaults_file=${KAKAOTALK_PROFILE_DEFAULTS:-$config_home/enoshima/defaults/kakaotalk.json}
+readonly user_file=${KAKAOTALK_PROFILE_USER_FILE:-$config_home/enoshima/user/kakaotalk-profile.json}
+readonly runners_dir=${KAKAOTALK_PROFILE_RUNNERS_DIR:-$HOME/.var/app/$app_id/data/bottles/runners}
+readonly cache_dir=$cache_home/enoshima/kakaotalk
+readonly lock_file=${KAKAOTALK_PROFILE_LOCK_FILE:-$cache_dir/profile.lock}
+
+die() {
+  printf 'kakaotalk-profile: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat >&2 <<'EOF'
+usage: kakaotalk-profile list --json
+       kakaotalk-profile current --json
+       kakaotalk-profile verify [PROFILE_ID]
+       kakaotalk-profile install [PROFILE_ID]
+       kakaotalk-profile select PROFILE_ID
+       kakaotalk-profile apply PROFILE_ID
+       kakaotalk-profile promote PROFILE_ID --report REPORT.json
+       kakaotalk-profile rollback
+       kakaotalk-profile doctor
+EOF
+  exit 2
+}
+
+command -v "$jq_bin" >/dev/null 2>&1 || die 'jq is required'
+command -v flock >/dev/null 2>&1 || die 'flock is required'
+[[ -d $profile_dir && ! -L $profile_dir ]] || die "managed profile directory is missing: $profile_dir"
+[[ -f $defaults_file && ! -L $defaults_file ]] || die "managed defaults are missing: $defaults_file"
+default_id=$("$jq_bin" -r -e 'select(.schema == 1) | .default_profile | select(type == "string")' \
+  "$defaults_file") || die 'managed KakaoTalk defaults are invalid'
+
+for directory in "$(dirname -- "$user_file")" "$cache_dir" "$runners_dir"; do
+  [[ ! -L $directory ]] || die "$directory must not be a symbolic link"
+  install -d -m 0700 "$directory"
+done
+exec 9>"$lock_file"
+chmod 0600 "$lock_file"
+flock -x 9
+
+profile_path() {
+  local id=$1
+  [[ $id =~ ^[a-z0-9][a-z0-9.-]{2,80}$ ]] || die "invalid profile ID: $id"
+  printf '%s/%s.json\n' "$profile_dir" "$id"
+}
+
+load_profile() {
+  local id=$1 path
+  path=$(profile_path "$id")
+  [[ -f $path && ! -L $path ]] || die "unknown profile: $id"
+  "$jq_bin" -c -e --arg id "$id" '
+    select(
+      .schema == 1 and .id == $id and
+      (.status == "candidate" or .status == "known-good") and
+      (.runner.name | test("^[A-Za-z0-9._-]+$")) and
+      (.runner.wine_version_pattern | test("^\\^wine-[0-9]")) and
+      (.runner.source_url | startswith("https://")) and
+      (.runner.sha256 | test("^[0-9a-f]{64}$")) and
+      .bottle.architecture == "win64" and
+      .bottle.environment == "application" and
+      .bottle.graphics == "x11" and
+      .bottle.dxvk == false and .bottle.vkd3d == false and
+      (.dependencies | type == "array") and
+      all(.dependencies[]; (.id | type == "string") and (.winetricks | test("^[a-z0-9._-]+$"))) and
+      .registry.input_style == "root" and
+      .acceptance.direct_hangul_inputs >= 30 and
+      .acceptance.paste_trials >= 10 and
+      .acceptance.focus_transitions >= 100
+    )
+  ' "$path" || die "profile failed schema validation: $id"
+}
+
+selection_json() {
+  if [[ -f $user_file && ! -L $user_file ]]; then
+    "$jq_bin" -c -e 'select(.schema == 1 and (.profile_id | type == "string"))' \
+      "$user_file" 2>/dev/null || printf null
+  else
+    printf null
+  fi
+}
+
+current_id() {
+  local selection id candidate
+  selection=$(selection_json)
+  id=$default_id
+  if [[ $selection != null ]]; then
+    candidate=$("$jq_bin" -r '.profile_id' <<<"$selection")
+    if [[ -f $(profile_path "$candidate") ]]; then
+      id=$candidate
+    fi
+  fi
+  printf '%s\n' "$id"
+}
+
+write_json() {
+  local destination=$1 content=$2 directory temporary
+  [[ ! -L $destination ]] || die "$destination must not be a symbolic link"
+  directory=$(dirname -- "$destination")
+  temporary=$(mktemp "$directory/.kakaotalk-profile.XXXXXX")
+  chmod 0600 "$temporary"
+  printf '%s\n' "$content" >"$temporary"
+  sync -f "$temporary" 2>/dev/null || true
+  mv -f -- "$temporary" "$destination"
+}
+
+runner_marker() {
+  local profile=$1 name
+  name=$("$jq_bin" -r '.runner.name' <<<"$profile")
+  printf '%s/%s/.enoshima-profile.json\n' "$runners_dir" "$name"
+}
+
+verify_runner() {
+  local profile=$1 marker name version_pattern actual_version
+  marker=$(runner_marker "$profile")
+  name=$("$jq_bin" -r '.runner.name' <<<"$profile")
+  version_pattern=$("$jq_bin" -r '.runner.wine_version_pattern' <<<"$profile")
+  [[ -f $marker && ! -L $marker ]] || return 1
+  "$jq_bin" -e --arg id "$("$jq_bin" -r '.id' <<<"$profile")" \
+    --arg sha "$("$jq_bin" -r '.runner.sha256' <<<"$profile")" '
+      .schema == 1 and .profile_id == $id and .archive_sha256 == $sha
+    ' "$marker" >/dev/null 2>&1 || return 1
+  [[ -x $runners_dir/$name/bin/wine ]] || return 1
+  actual_version=$("$runners_dir/$name/bin/wine" --version 2>/dev/null || true)
+  "$jq_bin" -n -e --arg actual "$actual_version" --arg pattern "$version_pattern" \
+    '$actual | test($pattern)' >/dev/null
+}
+
+verify_bottle_runner() {
+  local profile=$1 expected bottles actual
+  command -v "$flatpak_bin" >/dev/null 2>&1 || return 1
+  expected=$("$jq_bin" -r '.runner.name' <<<"$profile")
+  bottles=$("$flatpak_bin" run --command=bottles-cli "$app_id" --json list bottles 2>/dev/null) || return 1
+  actual=$("$jq_bin" -r --arg name "$bottle_name" '.[$name].Runner // .[$name].runner // ""' <<<"$bottles")
+  [[ $actual == "$expected" ]]
+}
+
+install_runner() {
+  local profile=$1 id name url sha runner_path archive temporary extract_root top marker
+  id=$("$jq_bin" -r '.id' <<<"$profile")
+  name=$("$jq_bin" -r '.runner.name' <<<"$profile")
+  url=$("$jq_bin" -r '.runner.source_url' <<<"$profile")
+  sha=$("$jq_bin" -r '.runner.sha256' <<<"$profile")
+  runner_path=$runners_dir/$name
+  if [[ -e $runner_path ]]; then
+    verify_runner "$profile" || die "existing runner is not owned by profile $id: $runner_path"
+    return
+  fi
+
+  archive=$cache_dir/$name.tar.xz
+  temporary=$archive.partial
+  rm -f -- "$temporary"
+  "$curl_bin" --fail --location --proto '=https' --tlsv1.2 --output "$temporary" "$url"
+  printf '%s  %s\n' "$sha" "$temporary" | sha256sum --check --status || {
+    rm -f -- "$temporary"
+    die "runner archive checksum mismatch for $id"
+  }
+  mv -f -- "$temporary" "$archive"
+
+  while IFS= read -r entry; do
+    [[ $entry != /* && $entry != .. && $entry != ../* &&
+      $entry != */.. && $entry != */../* ]] ||
+      die 'runner archive contains an unsafe path'
+  done < <("$tar_bin" -tf "$archive")
+  extract_root=$(mktemp -d "$runners_dir/.runner.XXXXXX")
+  trap 'rm -rf -- "${extract_root:-}" "${temporary:-}"' RETURN
+  "$tar_bin" -xf "$archive" -C "$extract_root"
+  mapfile -t roots < <(find "$extract_root" -mindepth 1 -maxdepth 1 -type d -print)
+  ((${#roots[@]} == 1)) || die 'runner archive must contain exactly one root directory'
+  top=${roots[0]}
+  [[ -x $top/bin/wine ]] || die 'runner archive does not contain bin/wine'
+  marker=$top/.enoshima-profile.json
+  write_json "$marker" "$("$jq_bin" -c -n --arg id "$id" --arg sha "$sha" \
+    --arg installedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema:1,profile_id:$id,archive_sha256:$sha,installed_at:$installedAt}')"
+  mv -- "$top" "$runner_path"
+  rmdir -- "$extract_root"
+  trap - RETURN
+}
+
+set_selection() {
+  local id=$1 status=$2 report_sha=${3:-} previous selection previous_profile
+  load_profile "$id" >/dev/null
+  previous=$(selection_json)
+  if [[ $previous == null ]]; then
+    previous_profile=$(load_profile "$default_id")
+    previous=$("$jq_bin" -c -n \
+      --arg id "$default_id" \
+      --arg status "$("$jq_bin" -r '.status' <<<"$previous_profile")" \
+      '{schema:1,profile_id:$id,status:$status,report_sha256:null}')
+  fi
+  selection=$("$jq_bin" -c -n \
+    --arg id "$id" --arg status "$status" --arg reportSha "$report_sha" \
+    --arg selectedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson previous "$previous" '
+      {schema:1,profile_id:$id,status:$status,selected_at:$selectedAt,
+       report_sha256:(if $reportSha == "" then null else $reportSha end),
+       previous:(if $previous == null then null else
+         {profile_id:$previous.profile_id,status:($previous.status // "candidate"),report_sha256:($previous.report_sha256 // null)} end)}
+    ')
+  write_json "$user_file" "$selection"
+}
+
+apply_profile() {
+  local profile=$1 runner
+  verify_runner "$profile" || die 'profile runner is not installed and verified'
+  runner=$("$jq_bin" -r '.runner.name' <<<"$profile")
+  "$flatpak_bin" run --command=bottles-cli "$app_id" edit \
+    -b "$bottle_name" --runner "$runner"
+}
+
+case ${1:-} in
+  list)
+    [[ $# -eq 2 && $2 == --json ]] || usage
+    profiles=()
+    while IFS= read -r path; do
+      profiles+=("$(load_profile "$(basename "$path" .json)")")
+    done < <(find "$profile_dir" -maxdepth 1 -type f -name '*.json' -print | sort)
+    printf '%s\n' "${profiles[@]}" | "$jq_bin" -sc '{schema:1,profiles:.}'
+    ;;
+  current)
+    [[ $# -eq 2 && $2 == --json ]] || usage
+    id=$(current_id)
+    profile=$(load_profile "$id")
+    selection=$(selection_json)
+    "$jq_bin" -c --argjson selection "$selection" \
+      '. + {selection_status:($selection.status // .status),promoted:($selection.status == "known-good")}' \
+      <<<"$profile"
+    ;;
+  verify)
+    [[ $# -le 2 ]] || usage
+    id=${2:-$(current_id)}
+    profile=$(load_profile "$id")
+    verify_runner "$profile" || die "runner is not installed for profile $id"
+    verify_bottle_runner "$profile" || die "the KakaoTalk bottle is not using profile $id"
+    ;;
+  install)
+    [[ $# -le 2 ]] || usage
+    id=${2:-$(current_id)}
+    profile=$(load_profile "$id")
+    install_runner "$profile"
+    ;;
+  select)
+    [[ $# -eq 2 ]] || usage
+    set_selection "$2" candidate
+    ;;
+  apply)
+    [[ $# -eq 2 ]] || usage
+    apply_profile "$(load_profile "$2")"
+    ;;
+  promote)
+    [[ $# -eq 4 && $3 == --report ]] || usage
+    id=$2
+    report=$4
+    profile=$(load_profile "$id")
+    [[ -f $report && ! -L $report ]] || die "test report is unavailable: $report"
+    "$jq_bin" -e --arg id "$id" --argjson profile "$profile" '
+      .schema == 1 and .profile_id == $id and .status == "passed" and
+      .results.direct_hangul_inputs >= $profile.acceptance.direct_hangul_inputs and
+      .results.paste_trials >= $profile.acceptance.paste_trials and
+      .results.focus_transitions >= $profile.acceptance.focus_transitions and
+      .results.relogin == true and .results.tray_notification == true and
+      .results.focus_repair == true
+    ' "$report" >/dev/null || die 'report does not satisfy the profile acceptance gate'
+    verify_runner "$profile" || die 'profile runner is not installed and verified'
+    report_sha=$(sha256sum "$report" | awk '{print $1}')
+    set_selection "$id" known-good "$report_sha"
+    ;;
+  rollback)
+    [[ $# -eq 1 ]] || usage
+    selection=$(selection_json)
+    [[ $selection != null ]] || die 'there is no selected profile to roll back'
+    previous=$("$jq_bin" -c '.previous // null' <<<"$selection")
+    [[ $previous != null ]] || die 'there is no previous profile to roll back to'
+    id=$("$jq_bin" -r '.profile_id' <<<"$previous")
+    profile=$(load_profile "$id")
+    apply_profile "$profile"
+    write_json "$user_file" "$("$jq_bin" -c -n --argjson previous "$previous" \
+      '{schema:1,profile_id:$previous.profile_id,status:$previous.status,
+       report_sha256:$previous.report_sha256,selected_at:(now|todate),previous:null}')"
+    ;;
+  doctor)
+    [[ $# -eq 1 ]] || usage
+    id=$(current_id)
+    profile=$(load_profile "$id")
+    printf 'Profile: %s (%s)\n' "$id" "$("$jq_bin" -r '.status' <<<"$profile")"
+    printf 'Runner: %s\n' "$("$jq_bin" -r '.runner.name' <<<"$profile")"
+    if verify_runner "$profile"; then printf 'Runner marker: verified\n'; else printf 'Runner marker: missing or invalid\n'; fi
+    printf 'Selection: %s\n' "$(selection_json)"
+    ;;
+  *) usage ;;
+esac

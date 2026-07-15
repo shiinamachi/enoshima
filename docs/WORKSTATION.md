@@ -288,8 +288,10 @@ Neither proprietary Lenovo blobs nor built packages are committed to Git.
 ## KakaoTalk through Bottles
 
 Bottles is installed from the user-scoped Flathub remote. The repository does
-not create a bottle automatically because accepting the application installer,
-logging in, and choosing a runner are interactive trust decisions.
+not create a bottle automatically because accepting the application installer
+and logging in are interactive trust decisions. The runner is not selected by
+"latest version": a managed profile pins its release asset and SHA-256, while
+the Wine prefix and the user's selected/promoted profile remain outside Git.
 
 After bootstrap and a fresh login:
 
@@ -297,7 +299,9 @@ After bootstrap and a fresh login:
 kakaotalk-setup
 ```
 
-The helper creates a dedicated 64-bit application bottle, grants only
+The helper verifies and installs the pinned Wine 11.8 staging candidate, creates
+a dedicated 64-bit application bottle, installs the profile's CJK fonts,
+Visual C++ runtime and rich-edit dependencies, grants only
 Downloads/Documents/Pictures, exports Fcitx XIM, applies 144 DPI, launches the
 official Kakao installer, and registers the installed executable. The
 `kakaotalk` wrapper and login autostart remain silent until provisioning is
@@ -305,10 +309,18 @@ complete. Wine's `InputStyle=root` is scoped to `kakaotalk.exe`, so Fcitx owns
 the visible preedit and KakaoTalk receives committed Hangul without the
 one-composition cursor lag. Other applications retain their normal preedit.
 
-After the first successful login, create a Bottles snapshot and keep the known
-working runner instead of changing it during an urgent KakaoTalk update. Verify
-chat, Korean input, file send/receive, clipboard, tray restore, and desktop
-notifications. Voice/video calls and screen sharing are out of scope. Wine and
+After the first successful login, create a Bottles snapshot and run
+`kakaotalk-smoke-test`. It records runner, Bottles, KakaoTalk, Fcitx and
+Hyprland versions in a private state report. Promote the candidate only when
+the report passes all Hangul, paste, focus, tray and relogin gates:
+
+```bash
+kakaotalk-profile promote wine-11.8-staging-candidate --report REPORT.json
+```
+
+Keep the known-good runner instead of changing it during an urgent KakaoTalk
+update. `kakaotalk-profile rollback` restores the previous locally selected
+profile. Voice/video calls and screen sharing are out of scope. Wine and
 KakaoTalk updates can still regress otherwise working behavior.
 
 ## Network preference

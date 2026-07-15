@@ -66,7 +66,7 @@ if [[ ${1:-} == run && $* == *--command=bottles-cli* ]]; then
       printf '{}\n'
       exit 0
     fi
-    printf '{"KakaoTalk":{"Arch":"win64","Environment":"application"}}\n'
+    printf '{"KakaoTalk":{"Arch":"win64","Environment":"application","Runner":"wine-11.8-staging-amd64"}}\n'
   elif [[ $* == *'--json programs'* ]]; then
     printf '[{"name":"KakaoTalk","path":"C:\\\\KakaoTalk.exe"}]\n'
   elif [[ $* == *' new '* ]]; then
@@ -165,17 +165,38 @@ printf '%d\n' "$count" >"$count_file"
 printf 'connectivity %d\n' "$count" >>"${FAKE_CALL_LOG:?}"
 ((count >= 2))
 EOF
-chmod +x "$fake_bin/kakaotalk-connectivity-check"
+
+cat >"$fake_bin/kakaotalk-profile" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'profile %s\n' "$*" >>"${FAKE_CALL_LOG:?}"
+case ${1:-} in
+  current)
+    cat "${FAKE_PROFILE_JSON:?}"
+    ;;
+  install | verify)
+    ;;
+  *)
+    exit 2
+    ;;
+esac
+EOF
+chmod +x "$fake_bin/kakaotalk-connectivity-check" "$fake_bin/kakaotalk-profile"
+
+profile_json=$test_root/profile.json
+cp -- "$repo_root/home/dot_config/enoshima/kakaotalk/profiles/wine-11.8-staging-candidate.json" \
+  "$profile_json"
 
 setup_output=$test_root/setup.out
 connectivity_count=$test_root/connectivity-count
 printf -v setup_command \
-  'env PATH=%q HOME=%q WAYLAND_DISPLAY=%q FAKE_CALL_LOG=%q FAKE_CONNECTIVITY_COUNT=%q bash %q' \
+  'env PATH=%q HOME=%q WAYLAND_DISPLAY=%q FAKE_CALL_LOG=%q FAKE_CONNECTIVITY_COUNT=%q FAKE_PROFILE_JSON=%q bash %q' \
   "$fake_bin:/usr/bin" \
   "$test_root/home" \
   wayland-test \
   "$test_root/setup-calls.log" \
   "$connectivity_count" \
+  "$profile_json" \
   "$setup_helper"
 printf 'y\nr\n' | script --quiet --return --command "$setup_command" /dev/null \
   >"$setup_output" 2>&1
@@ -186,8 +207,11 @@ printf 'y\nr\n' | script --quiet --return --command "$setup_command" /dev/null \
 }
 second_probe_line=$(grep -n '^connectivity 2$' "$test_root/setup-calls.log" | cut -d: -f1)
 first_bottles_call_line=$(grep -n -- '--command=bottles-cli' "$test_root/setup-calls.log" | head -n1 | cut -d: -f1)
+profile_install_line=$(grep -n '^profile install ' "$test_root/setup-calls.log" | cut -d: -f1)
 [[ -n $second_probe_line && -n $first_bottles_call_line &&
-  $second_probe_line -lt $first_bottles_call_line ]] || {
+  -n $profile_install_line &&
+  $second_probe_line -lt $profile_install_line &&
+  $profile_install_line -lt $first_bottles_call_line ]] || {
   printf 'Bottles state was accessed before connectivity passed.\n' >&2
   sed -n '1,240p' "$test_root/setup-calls.log" >&2
   exit 1
@@ -200,8 +224,10 @@ assert_contains "$setup_output" \
   'Configuring the KakaoTalk bottle for Korean text and locale.'
 assert_contains "$setup_output" \
   'Configuring the KakaoTalk Wine runner and graphics compatibility.'
-assert_contains "$test_root/setup-calls.log" 'runner.startswith("sys-wine-")'
-assert_contains "$test_root/setup-calls.log" 'version_tuple(runner)[0] >= 11'
+assert_contains "$test_root/setup-calls.log" \
+  'profile install wine-11.8-staging-candidate'
+assert_contains "$test_root/setup-calls.log" \
+  'the pinned runner is unavailable'
 assert_contains "$test_root/setup-calls.log" 'component=component,'
 assert_contains "$test_root/setup-calls.log" 'remove=True,'
 assert_contains "$test_root/setup-calls.log" 'key="Runner", value=runner'
@@ -212,19 +238,22 @@ assert_contains "$test_root/setup-calls.log" '"ACP", "949"'
 assert_contains "$test_root/setup-calls.log" '"Graphics", "x11"'
 assert_contains "$test_root/setup-calls.log" 'AppDefaults\kakaotalk.exe\X11 Driver'
 assert_contains "$test_root/setup-calls.log" '"InputStyle", "root"'
+assert_contains "$test_root/setup-calls.log" \
+  'shell -b KakaoTalk -i winetricks -q cjkfonts vcrun2022 riched20 msftedit'
 
 new_setup_output=$test_root/new-setup.out
 new_connectivity_count=$test_root/new-connectivity-count
 bottle_created=$test_root/bottle-created
 printf '1\n' >"$new_connectivity_count"
 printf -v new_setup_command \
-  'env PATH=%q HOME=%q WAYLAND_DISPLAY=%q FAKE_CALL_LOG=%q FAKE_CONNECTIVITY_COUNT=%q FAKE_BOTTLE_STATE=missing FAKE_BOTTLE_CREATED=%q bash %q' \
+  'env PATH=%q HOME=%q WAYLAND_DISPLAY=%q FAKE_CALL_LOG=%q FAKE_CONNECTIVITY_COUNT=%q FAKE_BOTTLE_STATE=missing FAKE_BOTTLE_CREATED=%q FAKE_PROFILE_JSON=%q bash %q' \
   "$fake_bin:/usr/bin" \
   "$test_root/new-home" \
   wayland-test \
   "$test_root/new-setup-calls.log" \
   "$new_connectivity_count" \
   "$bottle_created" \
+  "$profile_json" \
   "$setup_helper"
 printf 'y\n' | script --quiet --return --command "$new_setup_command" /dev/null \
   >"$new_setup_output" 2>&1
@@ -235,6 +264,9 @@ printf 'y\n' | script --quiet --return --command "$new_setup_command" /dev/null 
   exit 1
 }
 assert_contains "$new_setup_output" 'Creating the dedicated KakaoTalk bottle.'
+assert_contains "$test_root/new-setup-calls.log" \
+  'the checksum-pinned runner is unavailable'
+assert_contains "$test_root/new-setup-calls.log" 'runner=runner,'
 assert_contains "$new_setup_output" \
   'Configuring the KakaoTalk bottle for Korean text and locale.'
 assert_contains "$new_setup_output" 'KakaoTalk setup is complete.'
@@ -249,13 +281,14 @@ future_connectivity_count=$test_root/future-connectivity-count
 future_bottle_created=$test_root/future-bottle-created
 printf '1\n' >"$future_connectivity_count"
 printf -v future_setup_command \
-  'env PATH=%q HOME=%q WAYLAND_DISPLAY=%q FAKE_CALL_LOG=%q FAKE_CONNECTIVITY_COUNT=%q FAKE_BOTTLE_STATE=missing FAKE_BOTTLE_CREATED=%q FAKE_BOTTLES_VERSION=64.2 bash %q' \
+  'env PATH=%q HOME=%q WAYLAND_DISPLAY=%q FAKE_CALL_LOG=%q FAKE_CONNECTIVITY_COUNT=%q FAKE_BOTTLE_STATE=missing FAKE_BOTTLE_CREATED=%q FAKE_BOTTLES_VERSION=64.2 FAKE_PROFILE_JSON=%q bash %q' \
   "$fake_bin:/usr/bin" \
   "$test_root/future-home" \
   wayland-test \
   "$test_root/future-setup-calls.log" \
   "$future_connectivity_count" \
   "$future_bottle_created" \
+  "$profile_json" \
   "$setup_helper"
 printf 'y\n' | script --quiet --return --command "$future_setup_command" /dev/null \
   >"$future_setup_output" 2>&1
@@ -274,6 +307,7 @@ env \
   PATH="$fake_bin:/usr/bin" \
   DISPLAY=:99 \
   FAKE_CALL_LOG="$launcher_call_log" \
+  FAKE_PROFILE_JSON="$profile_json" \
   bash "$launcher"
 
 assert_contains "$launcher_call_log" 'setxkbmap -option korean:ralt_hangul'

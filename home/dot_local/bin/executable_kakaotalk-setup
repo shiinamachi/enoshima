@@ -23,6 +23,7 @@ require_command flatpak
 require_command curl
 require_command jq
 require_command kakaotalk-connectivity-check
+require_command kakaotalk-profile
 require_command xdg-user-dir
 
 [[ -t 0 ]] || die 'run this helper interactively from a terminal'
@@ -74,6 +75,14 @@ readonly -a bottles_cli=(
   "$app_id"
 )
 
+profile_json=$(kakaotalk-profile current --json)
+profile_id=$(jq -r '.id' <<<"$profile_json")
+profile_runner=$(jq -r '.runner.name' <<<"$profile_json")
+mapfile -t profile_dependencies < <(jq -r '.dependencies[].winetricks' <<<"$profile_json")
+((${#profile_dependencies[@]} > 0)) || die 'the selected profile has no compatibility dependencies'
+printf 'Installing the pinned KakaoTalk runner profile: %s\n' "$profile_id"
+kakaotalk-profile install "$profile_id"
+
 create_bottle_with_bottles_64_1() {
   local python_source
 
@@ -116,7 +125,7 @@ def fail(message):
     raise SystemExit(1)
 
 
-name, environment, arch = sys.argv[1:4]
+name, environment, arch, runner = sys.argv[1:5]
 manager = Manager(g_settings=Gio.Settings.new(APP_ID), is_cli=True)
 
 print("Loading the Bottles component catalogs.", flush=True)
@@ -145,11 +154,8 @@ manager.check_runners(False)
 manager.check_dxvk(False)
 manager.check_vkd3d(False)
 
-managed_runners = [
-    runner for runner in manager.runners_available if not runner.startswith("sys-")
-]
-if not managed_runners:
-    fail("Bottles could not install a managed Wine runner")
+if runner not in manager.runners_available:
+    fail(f"the checksum-pinned runner is unavailable: {runner}")
 if not manager.dxvk_available:
     fail("Bottles could not install DXVK")
 if not manager.vkd3d_available:
@@ -159,7 +165,7 @@ result = manager.create_bottle(
     name=name,
     environment=environment,
     arch=arch,
-    runner=managed_runners[0],
+    runner=runner,
     dxvk=manager.dxvk_available[0],
     vkd3d=manager.vkd3d_available[0],
     fn_logger=lambda message: print(message, flush=True),
@@ -171,7 +177,7 @@ PYTHON
 
   flatpak run --user --command=python3 "$app_id" \
     -c "$python_source" \
-    "$bottle_name" application win64
+    "$bottle_name" application win64 "$profile_runner"
 }
 
 configure_kakaotalk_compatibility() {
@@ -180,10 +186,9 @@ configure_kakaotalk_compatibility() {
   python_source=$(
     cat <<'PYTHON'
 # Current KakaoTalk builds use Themida protection that exits with "Wrong DLL
-# Present" on the Soda 9 runner. Select the Wine 11+ runtime shipped inside
-# the Bottles Flatpak and restore Wine's own graphics DLLs for this non-game
+# Present" on the Soda 9 runner. Select only the checksum-pinned runner from
+# the managed profile and restore Wine's own graphics DLLs for this non-game
 # bottle. Only uninstall components that are active so reruns stay safe.
-import re
 import sys
 
 sys.path.insert(1, "/app/share/bottles")
@@ -204,14 +209,7 @@ def fail(message):
     raise SystemExit(1)
 
 
-def version_tuple(runner):
-    match = re.search(r"(\d+(?:[.-]\d+)*)$", runner)
-    if not match:
-        return ()
-    return tuple(int(part) for part in re.split(r"[.-]", match.group(1)))
-
-
-name = sys.argv[1]
+name, runner = sys.argv[1:3]
 manager = Manager(g_settings=Gio.Settings.new(APP_ID), is_cli=True)
 manager.check_bottles()
 if name not in manager.local_bottles:
@@ -239,17 +237,8 @@ for component in ("dxvk", "vkd3d"):
     config = updated.data["config"]
 
 manager.check_runners(False)
-compatible_runners = [
-    runner
-    for runner in manager.runners_available
-    if runner.startswith("sys-wine-")
-    and version_tuple(runner)
-    and version_tuple(runner)[0] >= 11
-]
-if not compatible_runners:
-    fail("the Bottles Flatpak does not provide the required Wine 11+ runtime")
-
-runner = sorted(compatible_runners, key=version_tuple, reverse=True)[0]
+if runner not in manager.runners_available:
+    fail(f"the pinned runner is unavailable: {runner}")
 if config.Runner != runner:
     updated = manager.update_config(config=config, key="Runner", value=runner)
     if not updated.ok:
@@ -272,7 +261,7 @@ PYTHON
 
   flatpak run --user --command=python3 "$app_id" \
     -c "$python_source" \
-    "$bottle_name"
+    "$bottle_name" "$profile_runner"
 }
 
 configure_korean_bottle() {
@@ -466,6 +455,14 @@ configure_kakaotalk_compatibility
 printf 'Configuring the KakaoTalk bottle for Korean text and locale.\n'
 configure_korean_bottle
 
+printf 'Installing the pinned KakaoTalk compatibility dependencies.\n'
+dependency_command='winetricks -q'
+for dependency in "${profile_dependencies[@]}"; do
+  [[ $dependency =~ ^[a-z0-9._-]+$ ]] || die "unsafe profile dependency: $dependency"
+  dependency_command+=" $dependency"
+done
+"${bottles_cli[@]}" shell -b "$bottle_name" -i "$dependency_command"
+
 # XIM is required for Hangul composition in Wine/XWayland. A 144-DPI Wine
 # desktop matches the 1.5 compositor scale (96 * 1.5).
 "${bottles_cli[@]}" edit \
@@ -565,4 +562,7 @@ KakaoTalk setup is complete. Launch it from the app launcher with "KakaoTalk".
 Before accepting a KakaoTalk update, open Bottles, select the KakaoTalk bottle,
 and create a version/snapshot. Keep the bottle's working runner selected; do not
 change it merely because a newer runner appears.
+
+Run `kakaotalk-smoke-test` after login. The selected runner remains a candidate
+until that report passes and `kakaotalk-profile promote` records it locally.
 EOF

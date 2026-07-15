@@ -158,7 +158,8 @@ After a reboot and password login:
    integrated postflight.
 3. Inspect and enroll the intended Thunderbolt/USB4 device with `boltctl`.
 4. Run `kakaotalk-setup`, complete the official KakaoTalk installer and login,
-   then create a Bottles snapshot.
+   then create a Bottles snapshot. Run `kakaotalk-smoke-test`; promote the
+   checksum-pinned candidate only after its acceptance report passes.
 5. Test Wi-Fi to WWAN handoff locally. Do not disconnect the link carrying a
    remote session.
 6. Launch Notion, Parsec and KakaoTalk once and confirm their runtime classes

@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "id": "wine-11.8-staging-candidate",
+  "status": "candidate",
+  "runner": {
+    "name": "wine-11.8-staging-amd64",
+    "wine_version_pattern": "^wine-11\\.8( \\(Staging\\))?$",
+    "source_url": "https://github.com/Kron4ek/Wine-Builds/releases/download/11.8/wine-11.8-staging-amd64.tar.xz",
+    "sha256": "6c6f642b0954248493ebbd86ec232c46a6b9cf97c747ab3f1bcb707a22efed1d"
+  },
+  "bottle": {
+    "architecture": "win64",
+    "environment": "application",
+    "graphics": "x11",
+    "dxvk": false,
+    "vkd3d": false,
+    "dpi": 144
+  },
+  "dependencies": [
+    {"id": "cjkfonts", "winetricks": "cjkfonts"},
+    {"id": "vcredist2022", "winetricks": "vcrun2022"},
+    {"id": "riched20", "winetricks": "riched20"},
+    {"id": "msftedit", "winetricks": "msftedit"}
+  ],
+  "environment": {
+    "XMODIFIERS": "@im=fcitx"
+  },
+  "registry": {
+    "input_style": "root"
+  },
+  "acceptance": {
+    "direct_hangul_inputs": 30,
+    "paste_trials": 10,
+    "focus_transitions": 100,
+    "requires_relogin": true,
+    "requires_tray_notification": true
+  }
+}

@@ -353,6 +353,7 @@ for test_script in \
   tests/test-desktop-scaling-status.sh \
   tests/test-graphics-workflow.sh \
   tests/test-kakaotalk-connectivity.sh \
+  tests/test-kakaotalk-profile.sh \
   tests/test-mise-runtimes.sh \
   tests/test-rclone-user-units.sh \
   tests/test-swaync-quick-setting.sh \
