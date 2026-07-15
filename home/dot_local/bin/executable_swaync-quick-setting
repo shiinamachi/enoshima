@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  printf 'Usage: %s {apply|status} {wifi|bluetooth|night-light}\n' "${0##*/}" >&2
+  exit 64
+}
+
+[[ $# == 2 ]] || usage
+operation=$1
+setting=$2
+
+status() {
+  case $setting in
+    wifi)
+      if [[ $(LC_ALL=C nmcli radio wifi 2>/dev/null) == enabled ]]; then
+        printf 'true\n'
+      else
+        printf 'false\n'
+      fi
+      ;;
+    bluetooth)
+      if LC_ALL=C bluetoothctl show 2>/dev/null | grep -Fq 'Powered: yes'; then
+        printf 'true\n'
+      else
+        printf 'false\n'
+      fi
+      ;;
+    night-light)
+      if systemctl --user is-active --quiet hyprsunset-quick.service 2>/dev/null; then
+        printf 'true\n'
+      else
+        printf 'false\n'
+      fi
+      ;;
+    *) usage ;;
+  esac
+}
+
+apply() {
+  case ${SWAYNC_TOGGLE_STATE:-} in
+    true) enabled=true ;;
+    false) enabled=false ;;
+    *)
+      printf 'SWAYNC_TOGGLE_STATE must be true or false\n' >&2
+      exit 64
+      ;;
+  esac
+
+  case $setting in
+    wifi)
+      if [[ $enabled == true ]]; then
+        nmcli radio wifi on
+      else
+        nmcli radio wifi off
+      fi
+      ;;
+    bluetooth)
+      if [[ $enabled == true ]]; then
+        bluetoothctl power on
+      else
+        bluetoothctl power off
+      fi
+      ;;
+    night-light)
+      if [[ $enabled == true ]]; then
+        systemctl --user start hyprsunset-quick.service
+      else
+        systemctl --user stop hyprsunset-quick.service
+      fi
+      ;;
+    *) usage ;;
+  esac
+}
+
+case $operation in
+  apply) apply ;;
+  status) status ;;
+  *) usage ;;
+esac

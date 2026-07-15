@@ -87,7 +87,7 @@
     "group/system": {
         "orientation": "inherit",
         "drawer": {
-            "transition-duration": 180,
+            "transition-duration": 0,
             "transition-left-to-right": false,
             "children-class": "system-secondary"
         },
@@ -115,7 +115,7 @@
         "format": "",
         "format-connected": "  {num_connections}",
         "format-disabled": "󰂲",
-        "tooltip-format": "Bluetooth · {status}",
+        "tooltip-format": "Bluetooth · {status}\nClick: quick settings · Right click: devices",
         "on-click": "swaync-client -t -sw",
         "on-click-right": "blueman-manager"
     },

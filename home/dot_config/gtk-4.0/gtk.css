@@ -1,28 +1,54 @@
-@define-color theme_bg_color #0a0c3e;
-@define-color theme_fg_color #f2ecff;
-@define-color theme_base_color #050623;
-@define-color theme_text_color #f2ecff;
-@define-color theme_selected_bg_color #6541b8;
-@define-color theme_selected_fg_color #f2ecff;
-@define-color window_bg_color #0a0c3e;
-@define-color window_fg_color #f2ecff;
-@define-color view_bg_color #050623;
-@define-color view_fg_color #f2ecff;
-@define-color headerbar_bg_color #101047;
-@define-color headerbar_fg_color #f2ecff;
-@define-color accent_bg_color #9a5cff;
-@define-color accent_fg_color #f2ecff;
-@define-color accent_color #62d8ff;
-@define-color card_bg_color #161151;
-@define-color card_fg_color #f2ecff;
-@define-color popover_bg_color #101047;
-@define-color popover_fg_color #f2ecff;
-@define-color destructive_bg_color #ff5d8f;
-@define-color destructive_fg_color #050623;
-@define-color success_color #77e0c6;
-@define-color warning_color #ffb86b;
-@define-color error_color #ff5d8f;
-@define-color borders rgba(109, 140, 255, 0.48);
+@import url("../cyberpunk-library/palette.css");
+
+@define-color theme_bg_color @cyber_surface;
+@define-color theme_fg_color @cyber_text;
+@define-color theme_base_color @cyber_canvas;
+@define-color theme_text_color @cyber_text;
+@define-color theme_selected_bg_color @cyber_selection_strong;
+@define-color theme_selected_fg_color @cyber_on_selection;
+@define-color window_bg_color @cyber_surface;
+@define-color window_fg_color @cyber_text;
+@define-color view_bg_color @cyber_canvas;
+@define-color view_fg_color @cyber_text;
+@define-color headerbar_bg_color @cyber_header;
+@define-color headerbar_fg_color @cyber_text;
+@define-color accent_bg_color @cyber_selection_strong;
+@define-color accent_fg_color @cyber_on_selection;
+@define-color accent_color @cyber_focus;
+@define-color card_bg_color @cyber_raised;
+@define-color card_fg_color @cyber_text;
+@define-color popover_bg_color @cyber_header;
+@define-color popover_fg_color @cyber_text;
+@define-color destructive_bg_color @cyber_critical;
+@define-color destructive_fg_color @cyber_canvas;
+@define-color success_color @cyber_success;
+@define-color warning_color @cyber_warning;
+@define-color error_color @cyber_critical;
+@define-color borders alpha(@cyber_info, 0.48);
+
+:root {
+    --accent-bg-color: @cyber_selection_strong;
+    --accent-fg-color: @cyber_on_selection;
+    --accent-color: @cyber_focus;
+    --window-bg-color: @cyber_surface;
+    --window-fg-color: @cyber_text;
+    --view-bg-color: @cyber_canvas;
+    --view-fg-color: @cyber_text;
+    --headerbar-bg-color: @cyber_header;
+    --headerbar-fg-color: @cyber_text;
+    --popover-bg-color: @cyber_header;
+    --popover-fg-color: @cyber_text;
+    --card-bg-color: @cyber_raised;
+    --card-fg-color: @cyber_text;
+    --dialog-bg-color: @cyber_surface;
+    --dialog-fg-color: @cyber_text;
+    --sidebar-bg-color: @cyber_surface;
+    --sidebar-fg-color: @cyber_text;
+    --border-color: alpha(@cyber_info, 0.48);
+    --success-color: @cyber_success;
+    --warning-color: @cyber_warning;
+    --error-color: @cyber_critical;
+}
 
 window,
 dialog {
@@ -40,16 +66,24 @@ headerbar,
 }
 
 button {
+    min-height: 32px;
+    padding: 4px 10px;
     background-image: none;
-    background-color: rgba(22, 17, 81, 0.78);
+    background-color: alpha(@cyber_raised, 0.78);
     color: @theme_fg_color;
-    border: 1px solid rgba(109, 140, 255, 0.46);
-    border-radius: 8px;
+    border: 1px solid alpha(@cyber_info, 0.46);
+    border-radius: 10px;
 }
 
 button:hover {
-    background-color: rgba(154, 92, 255, 0.28);
-    border-color: rgba(154, 92, 255, 0.82);
+    background-color: alpha(@cyber_selection, 0.28);
+    border-color: alpha(@cyber_selection, 0.82);
+}
+
+button:focus,
+button:focus-visible {
+    border-color: @accent_color;
+    box-shadow: inset 0 0 0 1px @accent_color;
 }
 
 button:active,
@@ -69,16 +103,45 @@ button.destructive-action {
 
 entry,
 searchentry {
+    min-height: 32px;
     background-color: @view_bg_color;
     color: @view_fg_color;
-    border: 1px solid rgba(109, 140, 255, 0.58);
-    border-radius: 8px;
+    caret-color: @accent_color;
+    border: 1px solid alpha(@cyber_info, 0.58);
+    border-radius: 10px;
 }
 
 entry:focus,
-searchentry:focus {
+entry:focus-within,
+searchentry:focus,
+searchentry:focus-within {
     border-color: @accent_color;
     box-shadow: inset 0 0 0 1px @accent_color;
+}
+
+switch {
+    min-width: 48px;
+    min-height: 28px;
+    background-color: alpha(@cyber_raised, 0.92);
+    border: 1px solid alpha(@cyber_info, 0.58);
+    border-radius: 16px;
+}
+
+switch:checked {
+    background-color: @accent_bg_color;
+    border-color: @accent_color;
+}
+
+switch:focus,
+switch:focus-visible {
+    box-shadow: 0 0 0 2px alpha(@accent_color, 0.36);
+}
+
+switch slider {
+    min-width: 24px;
+    min-height: 24px;
+    background-color: @cyber_text;
+    border-radius: 12px;
 }
 
 .view,
@@ -93,7 +156,8 @@ textview text {
 
 .view:selected,
 treeview:selected,
-row:selected {
+row:selected,
+selection {
     background-color: @theme_selected_bg_color;
     color: @theme_selected_fg_color;
 }
@@ -101,7 +165,7 @@ row:selected {
 .sidebar,
 placessidebar,
 .navigation-sidebar {
-    background-color: rgba(10, 12, 62, 0.98);
+    background-color: alpha(@cyber_surface, 0.98);
     color: @theme_fg_color;
     border-right: 1px solid @borders;
 }
@@ -112,8 +176,13 @@ menu,
 .menu {
     background-color: @popover_bg_color;
     color: @popover_fg_color;
-    border: 1px solid rgba(154, 92, 255, 0.56);
-    border-radius: 10px;
+    border: 1px solid alpha(@cyber_selection, 0.56);
+    border-radius: 12px;
+}
+
+menuitem:hover {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
 }
 
 notebook > header {
@@ -124,7 +193,7 @@ notebook > header {
 scrollbar slider {
     min-width: 6px;
     min-height: 6px;
-    background-color: rgba(154, 92, 255, 0.62);
+    background-color: alpha(@cyber_selection, 0.62);
     border-radius: 6px;
 }
 
@@ -136,7 +205,7 @@ tooltip {
     background-color: @card_bg_color;
     color: @card_fg_color;
     border: 1px solid @accent_bg_color;
-    border-radius: 8px;
+    border-radius: 10px;
 }
 
 separator {

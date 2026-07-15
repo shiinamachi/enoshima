@@ -1,26 +1,39 @@
 @import url("../cyberpunk-library/palette.css");
 
 :root {
-    --cc-bg: alpha(@cyber_surface, 0.97);
-    --noti-border-color: alpha(@cyber_focus, 0.62);
-    --noti-bg: alpha(@cyber_raised, 0.94);
+    --cc-bg: alpha(@cyber_surface, 0.98);
+    --noti-border-color: alpha(@cyber_focus, 0.58);
+    --noti-bg: 22, 17, 81;
+    --noti-bg-alpha: 0.96;
     --noti-bg-darker: @cyber_canvas;
-    --noti-bg-hover: alpha(@cyber_selection, 0.28);
+    --noti-bg-alt: alpha(@cyber_raised, 0.88);
+    --noti-bg-hover: alpha(@cyber_selection, 0.26);
     --noti-bg-focus: alpha(@cyber_info, 0.22);
-    --noti-close-bg: alpha(@cyber_accent, 0.18);
-    --noti-close-bg-hover: alpha(@cyber_accent, 0.38);
+    --noti-close-bg: alpha(@cyber_accent, 0.16);
+    --noti-close-bg-hover: alpha(@cyber_accent, 0.34);
     --text-color: @cyber_text;
-    --text-color-disabled: alpha(@cyber_text_muted, 0.52);
-    --bg-selected: @cyber_selection;
+    --text-color-disabled: alpha(@cyber_text_muted, 0.58);
+    --bg-selected: @cyber_selection_strong;
+    --notification-icon-size: 48px;
+    --notification-app-icon-size: 20px;
+    --notification-group-icon-size: 28px;
     --border: 1px solid var(--noti-border-color);
     --border-radius: 14px;
-    --notification-shadow: 0 8px 28px alpha(@cyber_canvas, 0.76);
+    --notification-shadow: 0 8px 24px alpha(@cyber_canvas, 0.58);
     --font-size-body: 14px;
     --font-size-summary: 15px;
+    --hover-tranistion: background-color 140ms ease-out, border-color 140ms ease-out;
+    --group-collapse-tranistion: opacity 0ms linear;
+    --hover-transition: var(--hover-tranistion);
+    --group-collapse-transition: var(--group-collapse-tranistion);
+    --mpris-album-art-overlay: alpha(@cyber_canvas, 0.72);
+    --mpris-button-hover: alpha(@cyber_focus, 0.18);
+    --mpris-album-art-icon-size: 88px;
+    --mpris-album-art-shadow: 0 6px 18px alpha(@cyber_canvas, 0.56);
 }
 
 * {
-    font-family: "Pretendard", "JetBrainsMono Nerd Font", "Noto Sans CJK KR", sans-serif;
+    font-family: "Pretendard", "Noto Sans CJK KR", sans-serif;
 }
 
 notificationwindow,
@@ -34,7 +47,13 @@ blankwindow,
     color: var(--text-color);
     border: 1px solid alpha(@cyber_selection, 0.62);
     border-radius: 18px;
-    box-shadow: 0 12px 36px alpha(@cyber_canvas, 0.80);
+    box-shadow: 0 12px 36px alpha(@cyber_canvas, 0.74);
+}
+
+.notification-row:focus,
+.notification-group:focus {
+    background: var(--noti-bg-focus);
+    box-shadow: inset 0 0 0 2px @cyber_focus;
 }
 
 .notification-row .notification-background {
@@ -42,14 +61,14 @@ blankwindow,
 }
 
 .notification-row .notification-background .notification {
-    background: var(--noti-bg);
+    background: rgba(var(--noti-bg), var(--noti-bg-alpha));
     border: var(--border);
     border-radius: var(--border-radius);
     box-shadow: var(--notification-shadow);
 }
 
 .notification-row .notification-background .notification.low {
-    border-color: alpha(@cyber_info, 0.68);
+    border-color: alpha(@cyber_info, 0.62);
 }
 
 .notification-row .notification-background .notification.critical {
@@ -63,6 +82,8 @@ blankwindow,
 
 .notification-row .notification-background .notification .notification-action > button {
     min-height: 40px;
+    background: alpha(@cyber_canvas, 0.38);
+    border: 1px solid alpha(@cyber_info, 0.48);
     border-radius: 10px;
 }
 
@@ -73,7 +94,28 @@ blankwindow,
 
 .notification-row .notification-background .notification .notification-default-action:focus,
 .notification-row .notification-background .notification .notification-action > button:focus {
-    box-shadow: inset 0 0 0 1px @cyber_focus;
+    box-shadow: inset 0 0 0 2px @cyber_focus;
+}
+
+.notification-row .notification-background .notification .notification-default-action:active,
+.notification-row .notification-background .notification .notification-action > button:active {
+    background: alpha(@cyber_selection_strong, 0.78);
+}
+
+.notification-row .notification-background .notification .notification-default-action .notification-content .text-box .summary {
+    color: @cyber_text;
+    font-weight: 700;
+}
+
+.notification-row .notification-background .notification .notification-default-action .notification-content .text-box .time {
+    color: @cyber_text_muted;
+    font-size: 12px;
+    font-weight: 500;
+    margin-right: 52px;
+}
+
+.notification-row .notification-background .notification .notification-default-action .notification-content .text-box .body {
+    color: @cyber_text_muted;
 }
 
 .notification-row .notification-background .notification.critical .summary,
@@ -81,58 +123,153 @@ blankwindow,
     color: @cyber_critical;
 }
 
-.close-button {
-    background: var(--noti-close-bg);
-    color: var(--text-color);
+.notification-row .notification-background .notification .notification-default-action .notification-content .inline-reply .inline-reply-entry {
+    min-height: 40px;
+    background: @cyber_canvas;
+    color: @cyber_text;
+    caret-color: @cyber_focus;
+    border: 1px solid alpha(@cyber_info, 0.58);
+    border-radius: 10px;
+}
+
+.notification-row .notification-background .notification .notification-default-action .notification-content .inline-reply .inline-reply-button {
     min-width: 40px;
     min-height: 40px;
+    margin-left: 6px;
+    background: alpha(@cyber_raised, 0.92);
+    color: @cyber_text;
+    border: 1px solid alpha(@cyber_info, 0.58);
+    border-radius: 10px;
+}
+
+.notification-row .notification-background .notification .notification-default-action .notification-content .inline-reply .inline-reply-entry:focus,
+.notification-row .notification-background .notification .notification-default-action .notification-content .inline-reply .inline-reply-button:focus {
+    border-color: @cyber_focus;
+    box-shadow: inset 0 0 0 1px @cyber_focus;
+}
+
+.notification-row .notification-background .notification .notification-default-action .notification-content .inline-reply .inline-reply-button:hover {
+    background: var(--noti-bg-hover);
+}
+
+.notification-row .notification-background .notification .notification-default-action .notification-content .inline-reply .inline-reply-button:active {
+    background: @cyber_selection_strong;
+    color: @cyber_on_selection;
+}
+
+.notification-group.collapsed .notification-row .notification {
+    background-color: rgba(var(--noti-bg), 1);
+}
+
+.notification-group {
+    transition: none;
+}
+
+.close-button {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    background: var(--noti-close-bg);
+    color: var(--text-color);
+    border: 1px solid alpha(@cyber_accent, 0.32);
+    border-radius: 20px;
 }
 
 .close-button:hover {
     background: var(--noti-close-bg-hover);
+    border-color: @cyber_accent;
+}
+
+.close-button:focus {
+    box-shadow: inset 0 0 0 2px @cyber_focus;
+}
+
+.close-button:active {
+    background: @cyber_selection_strong;
+}
+
+.control-center .control-center-list-placeholder {
+    color: alpha(@cyber_text_muted, 0.68);
+    opacity: 1;
 }
 
 .widget {
-    margin: 8px;
-    padding: 8px;
+    margin: 5px 10px;
+    padding: 6px;
     border-radius: 12px;
 }
 
+.widget-title {
+    margin-top: 10px;
+    margin-bottom: 2px;
+}
+
 .widget-title > label {
-    color: @cyber_focus;
+    color: @cyber_text;
     font-size: 18px;
     font-weight: 700;
 }
 
-.widget-title > button,
-.widget-dnd switch {
+.widget-title > button {
     min-height: 40px;
-    background: alpha(@cyber_selection, 0.22);
-    color: var(--text-color);
-    border: 1px solid alpha(@cyber_info, 0.68);
+    padding: 0 14px;
+    background: alpha(@cyber_selection, 0.18);
+    color: @cyber_text;
+    border: 1px solid alpha(@cyber_info, 0.58);
     border-radius: 10px;
 }
 
 .widget-title > button:hover {
-    background: alpha(@cyber_accent, 0.28);
+    background: alpha(@cyber_accent, 0.24);
     border-color: @cyber_accent;
+}
+
+.widget-title > button:focus {
+    border-color: @cyber_focus;
+    box-shadow: inset 0 0 0 1px @cyber_focus;
+}
+
+.widget-title > button:active {
+    background: @cyber_selection_strong;
+    color: @cyber_on_selection;
 }
 
 .widget-dnd label {
     color: var(--text-color);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.widget-dnd switch {
+    min-width: 60px;
+    min-height: 28px;
+    padding: 5px;
+    background: alpha(@cyber_raised, 0.92);
+    border: 1px solid alpha(@cyber_info, 0.62);
+    border-radius: 20px;
+}
+
+.widget-dnd switch:hover {
+    border-color: @cyber_selection;
+}
+
+.widget-dnd switch:focus {
+    border-color: @cyber_focus;
+    box-shadow: inset 0 0 0 1px @cyber_focus;
 }
 
 .widget-dnd switch:checked {
-    background-image: linear-gradient(110deg, @cyber_focus, @cyber_selection);
+    background: @cyber_selection_strong;
     border-color: @cyber_focus;
 }
 
 .widget-dnd switch slider {
+    min-width: 28px;
+    min-height: 28px;
     background: @cyber_text;
-}
-
-.control-center .control-center-list-placeholder {
-    color: alpha(@cyber_text_muted, 0.62);
+    border: 1px solid alpha(@cyber_canvas, 0.34);
+    border-radius: 14px;
+    box-shadow: 0 2px 6px alpha(@cyber_canvas, 0.46);
 }
 
 .widget-buttons-grid flowboxchild {
@@ -141,45 +278,131 @@ blankwindow,
 
 .widget-buttons-grid flowboxchild > button {
     min-height: 82px;
-    padding: 12px 8px;
-    color: @cyber_text;
-    background: alpha(@cyber_canvas, 0.62);
+    padding: 12px 8px 8px;
+    color: @cyber_text_muted;
+    background-color: alpha(@cyber_canvas, 0.66);
+    background-repeat: no-repeat;
+    background-position: center 13px;
+    background-size: 28px 28px;
     border: 1px solid alpha(@cyber_info, 0.52);
     border-radius: 12px;
     font-size: 13px;
     font-weight: 600;
 }
 
+.widget-buttons-grid flowboxchild > button label {
+    margin-top: 34px;
+}
+
+.widget-buttons-grid flowboxchild:nth-child(1) > button {
+    background-image: -gtk-icontheme("network-wireless-offline-symbolic");
+}
+
+.widget-buttons-grid flowboxchild:nth-child(1) > button.toggle:checked {
+    background-image: -gtk-icontheme("network-wireless-signal-excellent-symbolic");
+}
+
+.widget-buttons-grid flowboxchild:nth-child(2) > button {
+    background-image: -gtk-icontheme("bluetooth-disabled-symbolic");
+}
+
+.widget-buttons-grid flowboxchild:nth-child(2) > button.toggle:checked {
+    background-image: -gtk-icontheme("bluetooth-active-symbolic");
+}
+
+.widget-buttons-grid flowboxchild:nth-child(3) > button {
+    background-image: -gtk-icontheme("night-light-disabled-symbolic");
+}
+
+.widget-buttons-grid flowboxchild:nth-child(3) > button.toggle:checked {
+    background-image: -gtk-icontheme("weather-clear-night-symbolic");
+}
+
+.widget-buttons-grid flowboxchild:nth-child(4) > button {
+    background-image: -gtk-icontheme("system-shutdown-symbolic");
+}
+
+.widget-buttons-grid flowboxchild:nth-child(5) > button {
+    background-image: -gtk-icontheme("audio-volume-high-symbolic");
+}
+
+.widget-buttons-grid flowboxchild:nth-child(6) > button {
+    background-image: -gtk-icontheme("video-display-symbolic");
+}
+
 .widget-buttons-grid flowboxchild > button:hover {
-    background: alpha(@cyber_selection, 0.24);
+    color: @cyber_text;
+    background-color: alpha(@cyber_selection, 0.24);
     border-color: @cyber_selection;
 }
 
 .widget-buttons-grid flowboxchild > button:focus {
-    box-shadow: inset 0 0 0 1px @cyber_focus;
+    color: @cyber_text;
+    border-color: @cyber_focus;
+    box-shadow: inset 0 0 0 2px @cyber_focus;
+}
+
+.widget-buttons-grid flowboxchild > button:active {
+    background-color: alpha(@cyber_selection_strong, 0.78);
 }
 
 .widget-buttons-grid flowboxchild > button.toggle:checked {
-    color: @cyber_text;
-    background-image: linear-gradient(110deg, @cyber_focus, @cyber_selection);
+    color: @cyber_on_selection;
+    background-color: @cyber_selection_strong;
     border-color: @cyber_focus;
 }
 
 .widget-mpris {
-    background: alpha(@cyber_canvas, 0.46);
+    padding: 0;
+    background: alpha(@cyber_canvas, 0.42);
     border: 1px solid alpha(@cyber_info, 0.42);
     border-radius: 12px;
 }
 
-.widget-mpris-player {
+.widget-mpris .widget-mpris-player {
+    margin: 8px;
     color: @cyber_text;
-    background: alpha(@cyber_raised, 0.76);
+    background: alpha(@cyber_raised, 0.88);
+    border: 1px solid alpha(@cyber_info, 0.42);
     border-radius: 10px;
+    box-shadow: var(--mpris-album-art-shadow);
+}
+
+.widget-mpris .widget-mpris-player .mpris-background {
+    filter: none;
+}
+
+.widget-mpris .widget-mpris-player .mpris-overlay {
+    padding: 14px;
+    background-color: var(--mpris-album-art-overlay);
+}
+
+.widget-mpris .widget-mpris-player .mpris-overlay button,
+.widget-mpris > box > button {
+    min-width: 40px;
+    min-height: 40px;
+    color: @cyber_text;
+    border-radius: 10px;
+}
+
+.widget-mpris .widget-mpris-player .mpris-overlay button:hover,
+.widget-mpris > box > button:hover {
+    background: var(--mpris-button-hover);
+}
+
+.widget-mpris .widget-mpris-player .mpris-overlay button:focus,
+.widget-mpris > box > button:focus {
+    box-shadow: inset 0 0 0 2px @cyber_focus;
+}
+
+.widget-mpris .widget-mpris-player .mpris-overlay button:active,
+.widget-mpris > box > button:active {
+    background: @cyber_selection_strong;
 }
 
 .widget-volume,
 .widget-backlight {
-    background: alpha(@cyber_canvas, 0.46);
+    background: alpha(@cyber_canvas, 0.42);
     border: 1px solid alpha(@cyber_info, 0.42);
     border-radius: 12px;
 }
@@ -187,7 +410,7 @@ blankwindow,
 .widget-volume scale trough,
 .widget-backlight scale trough {
     min-height: 6px;
-    background: alpha(@cyber_text_muted, 0.22);
+    background: alpha(@cyber_text_muted, 0.24);
     border-radius: 6px;
 }
 
@@ -199,9 +422,15 @@ blankwindow,
 
 .widget-volume scale slider,
 .widget-backlight scale slider {
-    min-width: 18px;
-    min-height: 18px;
+    min-width: 22px;
+    min-height: 22px;
     background: @cyber_text;
-    border: 2px solid @cyber_selection;
-    border-radius: 10px;
+    border: 2px solid @cyber_selection_strong;
+    border-radius: 11px;
+}
+
+.widget-volume scale:focus slider,
+.widget-backlight scale:focus slider {
+    border-color: @cyber_focus;
+    box-shadow: 0 0 0 2px alpha(@cyber_focus, 0.34);
 }
