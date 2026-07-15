@@ -100,6 +100,8 @@ for shell_binding in \
   'local launcher = "cyberlauncher-toggle"' \
   'hl.bind(mainMod .. " + A"' \
   'hl.bind(mainMod .. " + SHIFT + A"' \
+  'hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("desktop-display-mode menu")' \
+  'hl.bind(mainMod .. " + SHIFT + P", hl.dsp.window.pseudo()' \
   'desktop-brightness-control raise' \
   'desktop-brightness-control lower'; do
   assert_contains "$hyprland" "$shell_binding"
@@ -293,8 +295,8 @@ assert_contains "$dock" 'readonly property bool reducedTransparency:'
 assert_contains "$dock" 'colorCanvasOverlay: root.reducedTransparency'
 assert_contains "$dock" 'colorLauncherSurface: root.reducedTransparency'
 assert_count 8 "$dock" 'enabled: !root.reducedMotion'
-assert_count 2 "$dock" 'theme: root.theme'
-assert_count 2 "$dock" 'reducedMotion: root.reducedMotion'
+assert_count 3 "$dock" 'theme: root.theme'
+assert_count 3 "$dock" 'reducedMotion: root.reducedMotion'
 assert_contains "$dock" 'border.color: root.theme.colorQuietBorder'
 assert_contains "$dock" 'color: root.theme.colorRaisedOverlay'
 assert_contains "$dock" '? "9+"'
@@ -348,6 +350,13 @@ assert_contains "$osd" 'xfpm-brightness-lcd'
 assert_contains "$osd" 'audio-volume-muted'
 assert_contains "$osd" 'Accessible.role: Accessible.ProgressBar'
 assert_count 1 "$osd" 'enabled: !osd.reducedMotion'
+
+display_overlay=home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
+assert_contains "$display_overlay" 'WlrLayershell.namespace: "cyberdisplay"'
+assert_contains "$display_overlay" '"id": "mirror", "label": "복제"'
+assert_contains "$display_overlay" '"label": "변경 내용 유지"'
+assert_contains "$display_overlay" 'overlay.displayStatus.seconds_remaining'
+assert_contains "$display_overlay" 'Accessible.role: Accessible.Button'
 
 if grep -Eq '#[[:xdigit:]]{6,8}' "$launcher" "$osd"; then
   fail 'Launcher and OSD must consume the shared semantic theme instead of raw colors'
@@ -446,7 +455,7 @@ jq -e '
   ."widget-config"."buttons-grid#quick-settings".actions[2].command == "swaync-quick-setting apply night-light" and
   ."widget-config"."buttons-grid#quick-settings".actions[2]."update-command" == "swaync-quick-setting status night-light" and
   ."widget-config"."buttons-grid#quick-settings".actions[4].command == "hyprpwcenter" and
-  ."widget-config"."buttons-grid#quick-settings".actions[5].command == "nwg-displays"
+  ."widget-config"."buttons-grid#quick-settings".actions[5].command == "desktop-display-mode menu"
 ' "$swaync_config" >/dev/null
 /usr/bin/python - "$waybar_config" "$swaync_config" <<'PY'
 import pathlib

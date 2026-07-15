@@ -87,7 +87,7 @@
         {
           "label": "Display",
           "type": "normal",
-          "command": "nwg-displays"
+          "command": "desktop-display-mode menu"
         }
       ]
     },

@@ -111,6 +111,7 @@ smartmontools
 snap-pac
 snapper
 sof-firmware
+socat
 starship
 stress-ng
 sudo

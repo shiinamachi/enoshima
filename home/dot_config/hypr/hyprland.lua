@@ -253,6 +253,10 @@ local function routeWorkspaces()
     hl.exec_cmd("workspace-output-route")
 end
 
+local function reconcileDisplays()
+    hl.exec_cmd("desktop-display-mode reconcile")
+end
+
 local function applyAppearancePreferences()
     hl.exec_cmd("desktop-appearance apply")
 end
@@ -262,6 +266,8 @@ hl.on("config.reloaded", routeWorkspaces)
 hl.on("monitor.added", routeWorkspaces)
 hl.on("monitor.layout_changed", routeWorkspaces)
 hl.on("monitor.removed", routeWorkspaces)
+hl.on("hyprland.start", reconcileDisplays)
+hl.on("config.reloaded", reconcileDisplays)
 hl.on("hyprland.start", applyAppearancePreferences)
 hl.on("config.reloaded", applyAppearancePreferences)
 
@@ -305,7 +311,10 @@ hl.bind(mainMod .. " + F", hl.dsp.exec_cmd("hyprctl dispatch fullscreen 0"), { d
 hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("cyberdock-minimize"), { description = "Minimize active window" })
 hl.bind(mainMod .. " + SHIFT + N", hl.dsp.exec_cmd("cyberdock-recover"), { description = "Recover minimized windows" })
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }), { description = "Toggle floating" })
-hl.bind(mainMod .. " + P", hl.dsp.window.pseudo(), { description = "Toggle pseudotiling" })
+hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("desktop-display-mode menu"), {
+    description = "Choose projection mode",
+})
+hl.bind(mainMod .. " + SHIFT + P", hl.dsp.window.pseudo(), { description = "Toggle pseudotiling" })
 hl.bind(mainMod .. " + T", hl.dsp.layout("togglesplit"), { description = "Toggle dwindle split" })
 hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("loginctl lock-session"), { description = "Lock session" })
 hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("hyprshutdown"), { description = "Open session menu" })
@@ -514,6 +523,14 @@ hl.layer_rule({
     name = "cyberosd-style",
     match = { namespace = "^cyberosd$" },
     blur = true,
+    ignore_alpha = 0.12,
+})
+
+hl.layer_rule({
+    name = "cyberdisplay-style",
+    match = { namespace = "^cyberdisplay$" },
+    blur = true,
+    dim_around = true,
     ignore_alpha = 0.12,
 })
 

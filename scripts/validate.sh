@@ -344,6 +344,7 @@ for test_script in \
   tests/test-cyberpunk-library-theme.sh \
   tests/test-cyberdock-pins.sh \
   tests/test-cyberdock-state.sh \
+  tests/test-desktop-display-mode.sh \
   tests/test-desktop-shell-helpers.sh \
   tests/test-desktop-appearance.sh \
   tests/test-desktop-scaling-status.sh \
@@ -361,6 +362,7 @@ echo "==> Checking desktop expansion QML and user units"
 if [[ -x /usr/lib/qt6/bin/qmllint ]]; then
   /usr/lib/qt6/bin/qmllint --max-warnings 0 \
     home/dot_config/quickshell/cyberdock/shell.qml \
+    home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml \
     home/dot_config/quickshell/cyberdock/CyberLauncher.qml \
     home/dot_config/quickshell/cyberdock/CyberOsd.qml
   /usr/lib/qt6/bin/qmllint --max-warnings 0 \
@@ -376,6 +378,9 @@ if command -v systemd-analyze >/dev/null 2>&1; then
   mkdir -- "$unit_dir"
   for unit in \
     home/dot_config/systemd/user/cyberdock.service \
+    home/dot_config/systemd/user/desktop-display-events.service \
+    home/dot_config/systemd/user/desktop-display-revert.service \
+    home/dot_config/systemd/user/desktop-display-revert.timer \
     home/dot_config/systemd/user/hyprsunset-quick.service \
     home/dot_config/systemd/user/protonmail-bridge.service \
     home/dot_config/systemd/user/rclone-google-drive.service \
@@ -390,7 +395,7 @@ fi
 echo "==> Checking desktop expansion security invariants"
 for package in \
   adw-gtk-theme capitaine-cursors fcitx5-material-color fuse3 gimp hyprpwcenter libsecret \
-  nwg-displays protonmail-bridge quickshell rclone thunderbird \
+  nwg-displays protonmail-bridge quickshell rclone socat thunderbird \
   ttf-caladea ttf-carlito ttf-liberation wev; do
   grep -Fxq -- "$package" packages/native.txt
 done

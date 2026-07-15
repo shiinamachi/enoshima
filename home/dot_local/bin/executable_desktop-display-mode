@@ -1,0 +1,500 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq programs intentionally use single quotes.
+set -euo pipefail
+
+readonly hyprctl_bin=${DESKTOP_DISPLAY_HYPRCTL:-hyprctl}
+readonly jq_bin=${DESKTOP_DISPLAY_JQ:-jq}
+readonly systemctl_bin=${DESKTOP_DISPLAY_SYSTEMCTL:-systemctl}
+readonly qs_bin=${DESKTOP_DISPLAY_QS:-qs}
+readonly route_bin=${DESKTOP_DISPLAY_ROUTE:-workspace-output-route}
+readonly config_home=${DESKTOP_DISPLAY_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}}
+readonly state_home=${DESKTOP_DISPLAY_STATE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}}
+readonly runtime_home=${DESKTOP_DISPLAY_RUNTIME_HOME:-${XDG_RUNTIME_DIR:-}}
+readonly defaults_file=${DESKTOP_DISPLAY_DEFAULTS_FILE:-$config_home/enoshima/defaults/display.json}
+readonly user_dir=$config_home/enoshima/user/display-topologies
+readonly state_dir=$state_home/enoshima/display
+readonly runtime_dir=$runtime_home/enoshima/display
+readonly pending_file=$runtime_dir/pending.json
+readonly lock_file=$runtime_dir/controller.lock
+
+die() {
+  printf 'desktop-display-mode: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat >&2 <<'EOF'
+usage: desktop-display-mode menu
+       desktop-display-mode status --json
+       desktop-display-mode list --json
+       desktop-display-mode apply {internal|extend|mirror|external}
+       desktop-display-mode confirm
+       desktop-display-mode revert
+       desktop-display-mode reconcile
+       desktop-display-mode identify
+       desktop-display-mode import-current
+       desktop-display-mode doctor
+EOF
+  exit 2
+}
+
+if [[ ${1:-} == menu ]]; then
+  exec "$qs_bin" -p "$config_home/quickshell/cyberdock" \
+    ipc call -- display toggle
+fi
+
+command -v "$hyprctl_bin" >/dev/null 2>&1 || die "hyprctl command not found: $hyprctl_bin"
+command -v "$jq_bin" >/dev/null 2>&1 || die "jq command not found: $jq_bin"
+command -v flock >/dev/null 2>&1 || die 'flock is required'
+[[ -n $runtime_home && $runtime_home == /* ]] || die 'XDG_RUNTIME_DIR must be absolute'
+[[ -f $defaults_file && ! -L $defaults_file ]] || die "managed defaults are missing: $defaults_file"
+defaults=$("$jq_bin" -c -e '
+  select(
+    .schema == 1
+    and (.internal_output | type == "string")
+    and (.confirmation_timeout_seconds | type == "number")
+    and .confirmation_timeout_seconds >= 5
+  )
+' "$defaults_file") || die 'managed display defaults are invalid'
+
+for directory in "$user_dir" "$state_dir" "$runtime_dir"; do
+  [[ ! -L $directory ]] || die "$directory must not be a symbolic link"
+  install -d -m 0700 "$directory"
+  chmod 0700 "$directory"
+done
+
+exec 9>"$lock_file"
+chmod 0600 "$lock_file"
+flock -x 9
+
+internal_output=$("$jq_bin" -r '.internal_output' <<<"$defaults")
+confirm_timeout=$("$jq_bin" -r '.confirmation_timeout_seconds | floor' <<<"$defaults")
+internal_scale=$("$jq_bin" -r '.internal_scale // 1.5' <<<"$defaults")
+external_scale=$("$jq_bin" -r '.external_scale // "auto"' <<<"$defaults")
+
+monitors_all() {
+  local output
+  output=$("$hyprctl_bin" -j monitors all) || die 'Hyprland monitor query failed'
+  "$jq_bin" -c -e 'select(type == "array")' <<<"$output" ||
+    die 'Hyprland returned invalid monitor JSON'
+}
+
+active_monitors() {
+  "$jq_bin" -c '[.[] | select((.disabled // false) == false and (.width // 0) > 0)]'
+}
+
+valid_output() {
+  [[ $1 =~ ^[A-Za-z0-9_.:-]+$ ]]
+}
+
+topology_hash() {
+  local monitors=$1
+  "$jq_bin" -c '
+    [
+      .[]
+      | select((.name // "") != "")
+      | [(.make // ""), (.model // ""), (.serial // .serialNumber // ""), (.description // "")]
+      | join("|")
+    ] | sort
+  ' <<<"$monitors" | sha256sum | awk '{print $1}'
+}
+
+capture_snapshot() {
+  local monitors=$1 captured_at
+  captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  "$jq_bin" -c --arg capturedAt "$captured_at" '
+    {
+      schema: 1,
+      captured_at: $capturedAt,
+      monitors: [
+        .[]
+        | select((.disabled // false) == false and (.width // 0) > 0)
+        | {
+            name,
+            mode: ((.width | tostring) + "x" + (.height | tostring)
+              + "@" + ((.refreshRate // 60) | tostring)),
+            position: ((.x // 0 | tostring) + "x" + (.y // 0 | tostring)),
+            scale: (.scale // 1),
+            transform: (.transform // 0),
+            mirror: (.mirrorOf // "none"),
+            fingerprint: ([
+              (.make // ""),
+              (.model // ""),
+              (.serial // .serialNumber // ""),
+              (.description // "")
+            ] | join("|"))
+          }
+      ]
+    }
+  ' <<<"$monitors"
+}
+
+write_json() {
+  local destination=$1 content=$2 directory temporary
+  directory=$(dirname -- "$destination")
+  temporary=$(mktemp "$directory/.display-state.XXXXXX")
+  chmod 0600 "$temporary"
+  printf '%s\n' "$content" >"$temporary"
+  sync -f "$temporary" 2>/dev/null || true
+  mv -f -- "$temporary" "$destination"
+}
+
+rule_for_monitor() {
+  local name=$1 mode=$2 position=$3 scale=$4 transform=${5:-0} mirror=${6:-none}
+  valid_output "$name" || die "unsafe output name: $name"
+  [[ $mode =~ ^(preferred|highres|highrr|maxwidth|[0-9]+x[0-9]+@[0-9.]+)$ ]] ||
+    die "unsafe output mode: $mode"
+  [[ $position =~ ^(auto(-right|-left|-up|-down)?|[-0-9]+x[-0-9]+)$ ]] ||
+    die "unsafe output position: $position"
+  [[ $scale =~ ^(auto|[0-9]+([.][0-9]+)?)$ ]] || die "unsafe output scale: $scale"
+  [[ $transform =~ ^[0-7]$ ]] || die "unsafe output transform: $transform"
+  printf '%s,%s,%s,%s,transform,%s,bitdepth,8,cm,srgb' \
+    "$name" "$mode" "$position" "$scale" "$transform"
+  if [[ $mirror != none ]]; then
+    valid_output "$mirror" || die "unsafe mirror source: $mirror"
+    printf ',mirror,%s' "$mirror"
+  fi
+}
+
+apply_rule() {
+  "$hyprctl_bin" keyword monitor "$1" >/dev/null
+}
+
+apply_batch() {
+  local batch='' rule
+  (($# > 0)) || return 0
+  for rule in "$@"; do
+    batch+="keyword monitor $rule;"
+  done
+  "$hyprctl_bin" --batch "$batch" >/dev/null
+}
+
+current_rule() {
+  local monitor=$1 default_position=$2 default_scale=$3
+  "$jq_bin" -r \
+    --arg position "$default_position" \
+    --arg scale "$default_scale" '
+      if (.disabled // false) == false and (.width // 0) > 0 then
+        [
+          .name,
+          ((.width | tostring) + "x" + (.height | tostring)
+            + "@" + ((.refreshRate // 60) | tostring)),
+          ((.x // 0 | tostring) + "x" + (.y // 0 | tostring)),
+          ((.scale // ($scale | tonumber? // $scale)) | tostring),
+          ((.transform // 0) | tostring)
+        ] | @tsv
+      else
+        [.name, "preferred", $position, $scale, "0"] | @tsv
+      end
+    ' <<<"$monitor"
+}
+
+common_mirror_mode() {
+  local internal=$1 external=$2
+  "$jq_bin" -nr --argjson internal "$internal" --argjson external "$external" '
+    def modes($monitor):
+      [
+        ($monitor.availableModes // [])[]
+        | capture("^(?<width>[0-9]+)x(?<height>[0-9]+)@(?<refresh>[0-9.]+)")
+        | .width |= tonumber
+        | .height |= tonumber
+        | .refresh |= tonumber
+        | .refresh_key = ((.refresh * 100 | round) / 100)
+      ];
+    modes($internal) as $left
+    | modes($external) as $right
+    | [
+        $left[] as $candidate
+        | select(any($right[];
+            .width == $candidate.width
+            and .height == $candidate.height
+            and ((.refresh_key - $candidate.refresh_key) | fabs) < 0.02))
+        | $candidate
+        | .area = (.width * .height)
+      ]
+    | sort_by(.area, .refresh)
+    | last
+    | if . == null then empty
+      else ((.width | tostring) + "x" + (.height | tostring) + "@" + (.refresh | tostring))
+      end
+  '
+}
+
+mode_from_monitors() {
+  local monitors=$1
+  "$jq_bin" -r --arg internal "$internal_output" '
+    [ .[] | select((.disabled // false) == false and (.width // 0) > 0) ] as $active
+    | if ($active | length) == 0 then "none"
+      elif any($active[]; (.mirrorOf // "none") != "none") then "mirror"
+      elif ($active | length) > 1 then "extend"
+      elif $active[0].name == $internal then "internal"
+      else "external"
+      end
+  ' <<<"$monitors"
+}
+
+verify_mode() {
+  local expected=$1 current
+  current=$(mode_from_monitors "$(monitors_all)")
+  [[ $current == "$expected" ]] || {
+    printf 'desktop-display-mode: expected %s, Hyprland reports %s\n' "$expected" "$current" >&2
+    return 1
+  }
+}
+
+restore_snapshot() {
+  local snapshot=$1 current_json row name mode position scale transform mirror fingerprint mapped_name
+  local -a enable_rules=() disable_rules=() restored_names=()
+  current_json=$(monitors_all)
+
+  while IFS=$'\t' read -r name mode position scale transform mirror fingerprint; do
+    [[ -n $name ]] || continue
+    mapped_name=$("$jq_bin" -r --arg fingerprint "$fingerprint" --arg name "$name" '
+      def fingerprint: [
+        (.make // ""),
+        (.model // ""),
+        (.serial // .serialNumber // ""),
+        (.description // "")
+      ] | join("|");
+      (map(select(fingerprint == $fingerprint))[0].name
+        // map(select(.name == $name))[0].name
+        // "")
+    ' <<<"$current_json")
+    [[ -n $mapped_name ]] || die "saved output is no longer connected: $name"
+    if [[ $mirror != none ]]; then
+      mirror=$("$jq_bin" -r --arg mirror "$mirror" '
+        (.monitors | map(select(.name == $mirror))[0] // null) as $saved
+        | if $saved == null then $mirror
+          else ($saved.fingerprint // $mirror)
+          end
+      ' <<<"$snapshot")
+      mirror=$("$jq_bin" -r --arg fingerprint "$mirror" --arg name "$mirror" '
+        def fingerprint: [
+          (.make // ""),
+          (.model // ""),
+          (.serial // .serialNumber // ""),
+          (.description // "")
+        ] | join("|");
+        (map(select(fingerprint == $fingerprint))[0].name
+          // map(select(.name == $name))[0].name
+          // "")
+      ' <<<"$current_json")
+      [[ -n $mirror ]] || die 'saved mirror source is no longer connected'
+    fi
+    restored_names+=("$mapped_name")
+    enable_rules+=("$(rule_for_monitor "$mapped_name" "$mode" "$position" "$scale" "$transform" "$mirror")")
+  done < <("$jq_bin" -r '.monitors[] | [.name,.mode,.position,(.scale|tostring),(.transform|tostring),.mirror,.fingerprint] | @tsv' <<<"$snapshot")
+  ((${#enable_rules[@]} > 0)) || die 'refusing to restore a snapshot with no active outputs'
+  apply_batch "${enable_rules[@]}"
+
+  while IFS= read -r name; do
+    [[ -n $name ]] || continue
+    found=false
+    for row in "${restored_names[@]}"; do
+      [[ $row == "$name" ]] && found=true
+    done
+    if [[ $found == false ]]; then
+      disable_rules+=("$name,disable")
+    fi
+  done < <("$jq_bin" -r '.[].name' <<<"$current_json")
+  apply_batch "${disable_rules[@]}"
+  "$route_bin" >/dev/null 2>&1 || true
+}
+
+save_profile() {
+  local monitors=$1 mode=$2 topology profile
+  topology=$(topology_hash "$monitors")
+  profile=$(capture_snapshot "$monitors" | "$jq_bin" -c --arg topology "$topology" --arg mode "$mode" \
+    '. + {topology: $topology, mode: $mode}')
+  write_json "$user_dir/$topology.json" "$profile"
+}
+
+arm_revert() {
+  "$systemctl_bin" --user restart desktop-display-revert.timer >/dev/null 2>&1
+}
+
+cancel_revert() {
+  "$systemctl_bin" --user stop desktop-display-revert.timer >/dev/null 2>&1 || true
+}
+
+apply_mode() {
+  local target=$1 require_confirmation=${2:-true}
+  local monitors internal external mirror_mode snapshot topology transaction deadline pending
+  local row name mode position scale transform
+  local -a connected_names=() externals=() target_rules=() disable_rules=()
+
+  monitors=$(monitors_all)
+  snapshot=$(capture_snapshot "$monitors")
+  internal=$("$jq_bin" -c -e --arg internal "$internal_output" '.[] | select(.name == $internal)' <<<"$monitors") ||
+    die "internal output is not connected: $internal_output"
+  mapfile -t connected_names < <("$jq_bin" -r '.[].name' <<<"$monitors")
+  mapfile -t externals < <("$jq_bin" -r --arg internal "$internal_output" '.[] | select(.name != $internal) | .name' <<<"$monitors")
+  external=$("$jq_bin" -c --arg internal "$internal_output" '[.[] | select(.name != $internal)][0] // empty' <<<"$monitors")
+
+  case $target in
+    internal)
+      IFS=$'\t' read -r name mode position scale transform < <(current_rule "$internal" 0x0 "$internal_scale")
+      apply_rule "$(rule_for_monitor "$name" "$mode" 0x0 "$scale" "$transform")"
+      for name in "${externals[@]}"; do disable_rules+=("$name,disable"); done
+      apply_batch "${disable_rules[@]}"
+      ;;
+    external)
+      [[ -n $external ]] || die 'no external output is connected'
+      IFS=$'\t' read -r name mode position scale transform < <(current_rule "$external" 0x0 "$external_scale")
+      apply_rule "$(rule_for_monitor "$name" "$mode" 0x0 "$scale" "$transform")"
+      for row in "${connected_names[@]}"; do
+        [[ $row == "$name" ]] || disable_rules+=("$row,disable")
+      done
+      apply_batch "${disable_rules[@]}"
+      ;;
+    extend)
+      [[ -n $external ]] || die 'no external output is connected'
+      IFS=$'\t' read -r name mode position scale transform < <(current_rule "$internal" 0x0 "$internal_scale")
+      target_rules+=("$(rule_for_monitor "$name" "$mode" "$position" "$scale" "$transform")")
+      for row in "${externals[@]}"; do
+        external=$("$jq_bin" -c -e --arg name "$row" '.[] | select(.name == $name)' <<<"$monitors")
+        IFS=$'\t' read -r name mode position scale transform < <(current_rule "$external" auto-right "$external_scale")
+        target_rules+=("$(rule_for_monitor "$name" "$mode" "$position" "$scale" "$transform")")
+      done
+      apply_batch "${target_rules[@]}"
+      ;;
+    mirror)
+      [[ -n $external ]] || die 'no external output is connected'
+      mirror_mode=$(common_mirror_mode "$internal" "$external")
+      [[ -n $mirror_mode ]] || die 'no compatible duplicate mode exists'
+      external_name=$("$jq_bin" -r '.name' <<<"$external")
+      apply_rule "$(rule_for_monitor "$internal_output" "$mirror_mode" 0x0 1 0)"
+      target_rules+=("$(rule_for_monitor "$external_name" "$mirror_mode" 0x0 1 0 "$internal_output")")
+      for row in "${externals[@]:1}"; do disable_rules+=("$row,disable"); done
+      apply_batch "${target_rules[@]}" "${disable_rules[@]}"
+      ;;
+    *) die "unknown display mode: $target" ;;
+  esac
+
+  if ! verify_mode "$target"; then
+    restore_snapshot "$snapshot"
+    die 'display mode verification failed; the previous layout was restored'
+  fi
+  "$route_bin" >/dev/null 2>&1 || true
+
+  if [[ $require_confirmation == true ]]; then
+    snapshot=$(capture_snapshot "$monitors")
+    topology=$(topology_hash "$monitors")
+    transaction="$(date +%s)-$$"
+    deadline=$(($(date +%s) + confirm_timeout))
+    pending=$("$jq_bin" -c -n \
+      --arg transaction "$transaction" \
+      --arg target "$target" \
+      --arg topology "$topology" \
+      --argjson deadline "$deadline" \
+      --argjson snapshot "$snapshot" \
+      '{schema:1,transaction:$transaction,target_mode:$target,topology:$topology,deadline:$deadline,snapshot:$snapshot}')
+    write_json "$pending_file" "$pending"
+    if ! arm_revert; then
+      restore_snapshot "$snapshot"
+      rm -f -- "$pending_file"
+      die 'failed to arm automatic rollback; the previous layout was restored'
+    fi
+  fi
+}
+
+status_command() {
+  local monitors mode topology pending=null now remaining=0 external_count
+  monitors=$(monitors_all)
+  mode=$(mode_from_monitors "$monitors")
+  topology=$(topology_hash "$monitors")
+  external_count=$("$jq_bin" -r --arg internal "$internal_output" \
+    '[.[] | select(.name != $internal)] | length' <<<"$monitors")
+  if [[ -f $pending_file && ! -L $pending_file ]]; then
+    pending=$("$jq_bin" -c -e 'select(.schema == 1 and (.snapshot.monitors | length > 0))' "$pending_file" 2>/dev/null || printf null)
+    if [[ $pending != null ]]; then
+      now=$(date +%s)
+      remaining=$(($("$jq_bin" -r '.deadline' <<<"$pending") - now))
+      ((remaining > 0)) || remaining=0
+    fi
+  fi
+  "$jq_bin" -c -n --arg mode "$mode" --arg topology "$topology" \
+    --argjson remaining "$remaining" --argjson pending "$pending" \
+    --argjson externalCount "$external_count" \
+    '{schema:1,mode:$mode,topology:$topology,pending:($pending != null),seconds_remaining:$remaining,target_mode:($pending.target_mode // null),external_count:$externalCount}'
+}
+
+case ${1:-} in
+  status)
+    [[ $# -eq 2 && $2 == --json ]] || usage
+    status_command
+    ;;
+  list)
+    [[ $# -eq 2 && $2 == --json ]] || usage
+    monitors=$(monitors_all)
+    external_count=$("$jq_bin" -r --arg internal "$internal_output" '[.[] | select(.name != $internal)] | length' <<<"$monitors")
+    "$jq_bin" -c -n --argjson externalCount "$external_count" \
+      '{schema:1,modes:[
+        {id:"internal",available:true},
+        {id:"mirror",available:($externalCount > 0)},
+        {id:"extend",available:($externalCount > 0)},
+        {id:"external",available:($externalCount > 0)}
+      ]}'
+    ;;
+  apply)
+    [[ $# -eq 2 ]] || usage
+    apply_mode "$2" true
+    ;;
+  confirm)
+    [[ $# -eq 1 ]] || usage
+    [[ -f $pending_file && ! -L $pending_file ]] || exit 0
+    pending=$("$jq_bin" -c -e 'select(.schema == 1)' "$pending_file") || die 'pending transaction is invalid'
+    save_profile "$(monitors_all)" "$("$jq_bin" -r '.target_mode' <<<"$pending")"
+    rm -f -- "$pending_file"
+    cancel_revert
+    ;;
+  revert)
+    [[ $# -eq 1 ]] || usage
+    [[ -f $pending_file && ! -L $pending_file ]] || exit 0
+    pending=$("$jq_bin" -c -e 'select(.schema == 1 and (.snapshot.monitors | length > 0))' "$pending_file") ||
+      die 'pending transaction is invalid'
+    restore_snapshot "$("$jq_bin" -c '.snapshot' <<<"$pending")"
+    rm -f -- "$pending_file"
+    cancel_revert
+    ;;
+  reconcile)
+    [[ $# -eq 1 ]] || usage
+    [[ ! -f $pending_file ]] || exit 0
+    monitors=$(monitors_all)
+    topology=$(topology_hash "$monitors")
+    profile=$user_dir/$topology.json
+    if [[ -f $profile && ! -L $profile ]]; then
+      profile_json=$("$jq_bin" -c -e 'select(.schema == 1 and (.monitors | length > 0))' "$profile") || exit 0
+      mode=$("$jq_bin" -r '.mode' <<<"$profile_json")
+      snapshot=$(capture_snapshot "$monitors")
+      restore_snapshot "$("$jq_bin" -c '{schema,monitors}' <<<"$profile_json")"
+      if ! verify_mode "$mode"; then
+        restore_snapshot "$snapshot"
+        die 'saved topology verification failed; the current layout was restored'
+      fi
+    else
+      "$route_bin" >/dev/null 2>&1 || true
+    fi
+    ;;
+  identify)
+    [[ $# -eq 1 ]] || usage
+    monitors=$(monitors_all)
+    while IFS=$'\t' read -r name description; do
+      "$hyprctl_bin" notify -1 3500 'rgb(62d8ff)' "[$name] $description" >/dev/null || true
+    done < <("$jq_bin" -r '.[] | [.name, (.description // .name)] | @tsv' <<<"$monitors")
+    ;;
+  import-current)
+    [[ $# -eq 1 ]] || usage
+    monitors=$(monitors_all)
+    save_profile "$monitors" "$(mode_from_monitors "$monitors")"
+    ;;
+  doctor)
+    [[ $# -eq 1 ]] || usage
+    monitors=$(monitors_all)
+    printf 'Hyprland: %s\n' "$("$hyprctl_bin" version | head -n1)"
+    printf 'Topology: %s\n' "$(topology_hash "$monitors")"
+    printf 'Current mode: %s\n' "$(mode_from_monitors "$monitors")"
+    "$jq_bin" -r '.[] | "- \(.name): \(.description // "unknown") [\(if (.disabled // false) then "disabled" else "active" end)]"' <<<"$monitors"
+    ;;
+  *) usage ;;
+esac

@@ -123,7 +123,11 @@ Fcitx5 Classic UI, tooltips, and session controls.
   is 460x850 pixels, preserves notification grouping and images, and uses a
   functional 3-by-2 quick-settings grid: Wi-Fi, Bluetooth, and Night Light are
   stateful toggles; Power opens Hyprshutdown, Audio opens Hyprpwcenter, and
-  Display opens nwg-displays. Volume, brightness, DND, and an auto-hiding MPRIS
+  Display opens the repository-owned projection overlay. `Super+P` exposes
+  internal-only, duplicate, extend, and external-only modes; each transaction
+  has a 15-second rollback timer, and confirmed preferences are stored per
+  physical monitor topology. Advanced display settings remain available
+  through nwg-displays. Volume, brightness, DND, and an auto-hiding MPRIS
   widget remain below the grid.
 - Hyprpm manages only the official `hyprfocus` plugin. Its brief six-percent
   focus flash supplements the native focus border without moving window

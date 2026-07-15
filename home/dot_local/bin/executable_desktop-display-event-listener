@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly socat_bin=${DESKTOP_DISPLAY_SOCAT:-socat}
+readonly controller=${DESKTOP_DISPLAY_CONTROLLER:-desktop-display-mode}
+
+command -v "$socat_bin" >/dev/null 2>&1 || {
+  printf 'desktop-display-event-listener: socat is required\n' >&2
+  exit 1
+}
+[[ -n ${XDG_RUNTIME_DIR:-} && -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || {
+  printf 'desktop-display-event-listener: Hyprland runtime environment is missing\n' >&2
+  exit 1
+}
+
+socket=$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
+[[ -S $socket ]] || {
+  printf 'desktop-display-event-listener: socket is unavailable: %s\n' "$socket" >&2
+  exit 1
+}
+
+"$socat_bin" - "UNIX-CONNECT:$socket" | while IFS= read -r event; do
+  case $event in
+    monitoradded* | monitorremoved* | monitorlayoutchanged* | configreloaded*)
+      # Hotplug often emits several adjacent layout events. A short blocking
+      # debounce lets the compositor settle before topology reconciliation.
+      sleep 0.5
+      "$controller" reconcile || true
+      ;;
+  esac
+done

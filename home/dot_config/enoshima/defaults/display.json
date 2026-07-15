@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "internal_output": "eDP-1",
+  "confirmation_timeout_seconds": 15,
+  "internal_scale": 1.5,
+  "external_scale": "auto"
+}

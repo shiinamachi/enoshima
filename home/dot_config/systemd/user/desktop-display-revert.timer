@@ -1,0 +1,10 @@
+[Unit]
+Description=Automatically revert an unconfirmed display mode after 15 seconds
+
+[Timer]
+OnActiveSec=15s
+AccuracySec=1s
+Unit=desktop-display-revert.service
+
+[Install]
+WantedBy=graphical-session.target

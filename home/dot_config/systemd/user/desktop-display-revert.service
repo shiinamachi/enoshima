@@ -1,0 +1,6 @@
+[Unit]
+Description=Revert an unconfirmed display mode transaction
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/desktop-display-mode revert

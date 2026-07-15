@@ -16,6 +16,8 @@ ShellRoot {
     })
     property bool launcherOpen: false
     property string launcherScreenName: ""
+    property bool displayOverlayOpen: false
+    property string displayOverlayScreenName: ""
     property bool osdVisible: false
     property string osdScreenName: ""
     property string osdKind: "volume"
@@ -264,6 +266,16 @@ ShellRoot {
         launcherOpen = true;
     }
 
+    function toggleDisplayOverlay() {
+        if (displayOverlayOpen) {
+            displayOverlayOpen = false;
+            return;
+        }
+        launcherOpen = false;
+        displayOverlayScreenName = focusedScreenName();
+        displayOverlayOpen = true;
+    }
+
     function showOsd(kind, value, muted) {
         osdScreenName = focusedScreenName();
         osdKind = kind;
@@ -282,6 +294,18 @@ ShellRoot {
             root.launcherOpen = true;
         }
         function close(): void { root.launcherOpen = false; }
+    }
+
+    IpcHandler {
+        target: "display"
+
+        function toggle(): void { root.toggleDisplayOverlay(); }
+        function open(): void {
+            root.launcherOpen = false;
+            root.displayOverlayScreenName = root.focusedScreenName();
+            root.displayOverlayOpen = true;
+        }
+        function close(): void { root.displayOverlayOpen = false; }
     }
 
     IpcHandler {
@@ -405,8 +429,15 @@ ShellRoot {
             onStreamFinished: {
                 try {
                     const next = JSON.parse(text);
-                    if (next.version === 1)
+                    if (next.version === 1) {
                         root.snapshot = next;
+                        if (root.displayOverlayOpen
+                                && !next.monitors.some(monitor =>
+                                    String(monitor.name || "")
+                                        === root.displayOverlayScreenName)) {
+                            root.displayOverlayScreenName = root.focusedScreenName();
+                        }
+                    }
                 } catch (error) {
                     console.warn("cyberdock: invalid snapshot:", error);
                 }
@@ -1160,6 +1191,20 @@ ShellRoot {
                     }
                 }
             }
+        }
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        delegate: DisplayModeOverlay {
+            required property var modelData
+            targetScreen: modelData
+            overlayOpen: root.displayOverlayOpen
+            activeScreenName: root.displayOverlayScreenName
+            theme: root.theme
+            reducedMotion: root.reducedMotion
+            onCloseRequested: root.displayOverlayOpen = false
         }
     }
 

@@ -282,6 +282,7 @@ fi
 echo "==> Desktop session"
 for unit in \
   cyberdock.service \
+  desktop-display-events.service \
   xembed-sni-proxy.service; do
   check "custom user unit enabled: $unit" systemctl --user is-enabled --quiet "$unit"
 done
@@ -312,6 +313,7 @@ if systemctl --user is-active --quiet graphical-session.target; then
     wireplumber.service \
     xdg-desktop-portal-hyprland.service \
     cyberdock.service \
+    desktop-display-events.service \
     xembed-sni-proxy.service; do
     check_or_warn "user unit active after login: $unit" systemctl --user is-active --quiet "$unit"
   done
@@ -334,65 +336,79 @@ fi
 
 if command -v hyprctl >/dev/null 2>&1 && hyprctl monitors -j >/dev/null 2>&1; then
   monitor_json=$(hyprctl monitors -j)
-  if jq -e '.[] | select(.name == "eDP-1") | select(.width == 2880 and .height == 1800 and .refreshRate >= 119 and .scale == 1.5 and .x == 0 and .y == 240)' \
-    <<<"$monitor_json" >/dev/null; then
-    pass "internal display is 2880x1800@120, scale 1.5, at 0x240"
-  else
-    fail "internal display does not match the requested mode/scale/layout"
+  display_mode=unknown
+  if command -v desktop-display-mode >/dev/null 2>&1; then
+    display_status=$(desktop-display-mode status --json 2>/dev/null || true)
+    display_mode=$(jq -r '.mode // "unknown"' <<<"$display_status" 2>/dev/null || printf unknown)
   fi
-
-  if jq -e '.[] | select((.model // "") | contains("U2725QE"))' <<<"$monitor_json" >/dev/null; then
-    if jq -e '.[] | select(.model | contains("U2725QE")) | select(.width == 3840 and .height == 2160 and .refreshRate >= 119 and .scale == 1.5 and .x == 1920 and .y == 0)' \
-      <<<"$monitor_json" >/dev/null; then
-      pass "Dell U2725QE is 3840x2160@120, scale 1.5, at 1920x0"
-    else
-      fail "connected Dell U2725QE does not match the requested mode/scale/layout"
-    fi
-  fi
-
-  workspace_json=$(hyprctl workspaces -j)
-  mapfile -t external_outputs < <(
-    jq -r '
-      map(select(
-        .name != "eDP-1"
-        and (.disabled // false) == false
-        and (.mirrorOf // "none") == "none"
-      ))
-      | sort_by(.x // 0, .y // 0, .name)
-      | .[].name
-    ' <<<"$monitor_json"
-  )
-  if ((${#external_outputs[@]} > 0)); then
-    pass "${#external_outputs[@]} external display(s) are active in extended mode"
-  else
-    warn "no external display is currently active; extended output routing was checked statically"
-  fi
-  workspace_layout_ok=true
-  external_workspace_ids=(1 2 4)
-  for index in "${!external_workspace_ids[@]}"; do
-    workspace_id=${external_workspace_ids[$index]}
-    expected_output=eDP-1
-    if ((${#external_outputs[@]} > 0)); then
-      expected_output=${external_outputs[$((index % ${#external_outputs[@]}))]}
-    fi
-    actual_output=$(
-      jq -r --argjson id "$workspace_id" \
-        'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json"
-    )
-    [[ $actual_output == "$expected_output" ]] || workspace_layout_ok=false
-  done
-  for workspace_id in 3 5; do
-    actual_output=$(
-      jq -r --argjson id "$workspace_id" \
-        'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json"
-    )
-    [[ $actual_output == eDP-1 ]] || workspace_layout_ok=false
-  done
-  if [[ $workspace_layout_ok == true ]]; then
-    pass "five workspaces match the requested external/internal output map"
-  else
-    fail "workspaces do not match the requested external/internal output map"
-  fi
+  case $display_mode in
+    internal)
+      if jq -e 'length == 1 and .[0].name == "eDP-1"' <<<"$monitor_json" >/dev/null; then
+        pass "saved internal-only display mode is active"
+      else
+        fail "internal-only display mode does not have exactly one internal output"
+      fi
+      ;;
+    external)
+      if jq -e 'length == 1 and .[0].name != "eDP-1"' <<<"$monitor_json" >/dev/null; then
+        pass "saved external-only display mode is active"
+      else
+        fail "external-only display mode does not have exactly one external output"
+      fi
+      ;;
+    mirror)
+      if jq -e 'length >= 2 and any(.[]; (.mirrorOf // "none") != "none")' <<<"$monitor_json" >/dev/null; then
+        pass "saved duplicate display mode is active"
+      else
+        fail "duplicate display mode has no mirrored output"
+      fi
+      ;;
+    extend)
+      if jq -e '.[] | select(.name == "eDP-1") | select(.width == 2880 and .height == 1800 and .refreshRate >= 119 and .scale == 1.5 and .x == 0 and .y == 240)' \
+        <<<"$monitor_json" >/dev/null; then
+        pass "extended internal display uses the managed 2880x1800 seed"
+      else
+        warn "extended internal layout differs from the seed because a confirmed topology preference may be active"
+      fi
+      workspace_json=$(hyprctl workspaces -j)
+      mapfile -t external_outputs < <(
+        jq -r '
+          map(select(.name != "eDP-1" and (.mirrorOf // "none") == "none"))
+          | sort_by(.x // 0, .y // 0, .name)
+          | .[].name
+        ' <<<"$monitor_json"
+      )
+      if ((${#external_outputs[@]} > 0)); then
+        pass "${#external_outputs[@]} external display(s) are active in extended mode"
+      else
+        fail "extended mode has no external output"
+      fi
+      workspace_layout_ok=true
+      external_workspace_ids=(1 2 4)
+      if ((${#external_outputs[@]} > 0)); then
+        for index in "${!external_workspace_ids[@]}"; do
+          workspace_id=${external_workspace_ids[$index]}
+          expected_output=${external_outputs[$((index % ${#external_outputs[@]}))]}
+          actual_output=$(jq -r --argjson id "$workspace_id" \
+            'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json")
+          [[ $actual_output == "$expected_output" ]] || workspace_layout_ok=false
+        done
+      else
+        workspace_layout_ok=false
+      fi
+      for workspace_id in 3 5; do
+        actual_output=$(jq -r --argjson id "$workspace_id" \
+          'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json")
+        [[ $actual_output == eDP-1 ]] || workspace_layout_ok=false
+      done
+      if [[ $workspace_layout_ok == true ]]; then
+        pass "five workspaces match the extended output map"
+      else
+        fail "workspaces do not match the extended output map"
+      fi
+      ;;
+    *) warn "desktop-display-mode status is unavailable; live projection validation was deferred" ;;
+  esac
 
   if [[ -z $(hyprctl configerrors) ]]; then
     pass "Hyprland reports no configuration errors"
@@ -459,6 +475,10 @@ check "Cyberlauncher provides searchable app details and keyboard focus" \
   "$HOME/.config/quickshell/cyberdock/CyberLauncher.qml"
 check "desktop OSD shares the Quickshell surface" \
   test -x "$HOME/.local/bin/cyberosd-show"
+check "display projection controller is deployed" \
+  test -x "$HOME/.local/bin/desktop-display-mode"
+check "display projection overlay is deployed" \
+  test -f "$HOME/.config/quickshell/cyberdock/DisplayModeOverlay.qml"
 check "SwayNC exposes notifications and the managed quick settings" \
   jq -e '
     ."widget-config".title.text == "Notifications" and

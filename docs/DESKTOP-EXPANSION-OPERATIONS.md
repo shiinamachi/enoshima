@@ -119,6 +119,38 @@ desktop-appearance accessible
 desktop-appearance default
 ```
 
+## 디스플레이 프로젝션 모드
+
+`Super+P` 또는 SwayNC의 **Display**를 누르면 현재 focus된 출력에 프로젝션
+overlay가 열린다. 숫자 1–4, 화살표, Enter, Escape만으로도 다음 네 모드를 선택할
+수 있다.
+
+- **PC 화면만**: 내부 `eDP-1`만 활성화
+- **복제**: 두 출력이 실제로 함께 지원하는 가장 높은 해상도와 주사율을 사용
+- **확장**: topology에 저장한 배치 또는 managed seed 사용
+- **두 번째 화면만**: 외부 출력만 활성화
+
+적용 직전 layout은 `$XDG_RUNTIME_DIR/enoshima/display/`에 저장된다. 15초 안에
+**변경 내용 유지**를 누르지 않으면 `desktop-display-revert.timer`가 직전 layout을
+복원한다. 확인한 모드와 배치는 connector 이름 대신 monitor metadata로 계산한
+topology 아래 `~/.config/enoshima/user/display-topologies/`에 저장되며 chezmoi가
+덮어쓰지 않는다. hotplug와 config reload 후에는
+`desktop-display-events.service`가 해당 topology를 다시 수렴시킨다.
+
+CLI 진단과 복구 경로는 다음과 같다.
+
+```bash
+desktop-display-mode status --json
+desktop-display-mode list --json
+desktop-display-mode doctor
+desktop-display-mode revert
+desktop-display-mode import-current
+```
+
+복제 후보가 없으면 화면을 변경하지 않고 실패한다. 고급 물리 배치는 overlay의
+**고급 디스플레이 설정**에서 `nwg-displays`로 조정한 뒤
+`desktop-display-mode import-current`로 현재 topology에 저장할 수 있다.
+
 ## 권장 대화식 온보딩 순서
 
 자동 적용과 재로그인을 마친 뒤 아래 순서를 사용한다. Cloudflare One이 DNS 경로를
@@ -201,9 +233,11 @@ cyberdock-recover
 ## Quickshell Cyberdock
 
 현재 구현은 `cyberdock.service`, `shell.qml`, `cyberdock-state`,
-`cyberdock-activate`, `cyberdock-minimize`, `cyberdock-recover`로 구성된다.
-각 모니터에 동일한 pinned app과 모든 실행 창을 표시한다. pinned 순서는 Ghostty,
-Files, Zed, Google Chrome, Applications이다.
+`cyberdock-activate`, `cyberdock-minimize`, `cyberdock-recover`,
+`cyberdock-pins`로 구성된다. 각 모니터에 동일한 사용자 pin과 모든 실행 창을
+표시한다. 초기 seed는 Ghostty, Files, Zed, Google Chrome이며 Applications는 앱
+pin과 분리된 고정 system control이다. 사용자 목록은
+`~/.config/enoshima/user/cyberdock-pins.json`에 저장되고 chezmoi가 덮어쓰지 않는다.
 
 다음 동작을 확인한다.
 
@@ -215,6 +249,8 @@ Files, Zed, Google Chrome, Applications이다.
 - 창이 여러 개면 compact chooser가 표시됨
 - 다른 출력의 창을 누르면 해당 monitor/workspace로 전환됨
 - minimize 후 Dock indicator가 바뀌고 원래 위치로 restore됨
+- Launcher 또는 Dock context menu에서 pin/unpin과 좌우 이동이 즉시 반영됨
+- 미설치된 pin은 **Unavailable** 상태로 자리를 유지하고 재설치 후 복원됨
 
 keyboard에서는 `Super+N`으로 현재 창을 최소화하고 `Super+Shift+N`으로 모든
 고립된 최소화 창을 복구할 수 있다.
@@ -417,6 +453,8 @@ gimp
 - 두 출력이 scale 1.5이고 `eDP-1`에는 16:10, 외부 출력에는 16:9 wallpaper가
   표시되며 lock, bar, launcher, notification, Dock과 titlebar palette가
   일치한다.
+- `Super+P`의 네 모드를 각각 적용하고, 확인·수동 되돌리기·15초 자동 되돌리기와
+  hotplug 후 topology 복원을 확인한다.
 - OLED의 암부 뭉개짐, 120Hz에서 blur size 7/pass 2의 프레임 안정성, 40픽셀
   Waybar 모듈의 포인터 표적과 6픽셀 Dock hotspot을 확인한다.
 - `fc-match sans-serif`에서는 Pretendard가, `fc-match monospace`에서는
