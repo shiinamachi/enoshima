@@ -1,0 +1,10 @@
+[Unit]
+Description=Verify the previous desktop reboot or poweroff request
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/desktop-power verify-last-action
+
+[Install]
+WantedBy=graphical-session.target

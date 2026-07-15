@@ -189,11 +189,12 @@ jq -e '
   ."margin-left" == 14 and
   ."margin-right" == 14 and
   ."modules-left" == ["ext/workspaces"] and
-  ."modules-right" == ["custom/notification", "pulseaudio", "network", "bluetooth", "battery", "group/system"] and
+  ."modules-right" == ["custom/notification", "pulseaudio", "network", "bluetooth", "battery", "group/system", "custom/power"] and
   ."ext/workspaces"."all-outputs" == false and
   ."group/system".drawer."transition-duration" == 0 and
   ."group/system".modules == ["custom/system", "tray", "backlight", "custom/power-profile", "custom/wwan", "clock#date"] and
   ."custom/notification".tooltip == true and
+  ."custom/power"."on-click" == "desktop-power menu" and
   ."network"."on-click" == "swaync-client -t -sw" and
   ."ext/workspaces"."format-icons"."3" == "DOCS"
 ' "$waybar_config" >/dev/null
@@ -295,8 +296,8 @@ assert_contains "$dock" 'readonly property bool reducedTransparency:'
 assert_contains "$dock" 'colorCanvasOverlay: root.reducedTransparency'
 assert_contains "$dock" 'colorLauncherSurface: root.reducedTransparency'
 assert_count 8 "$dock" 'enabled: !root.reducedMotion'
-assert_count 3 "$dock" 'theme: root.theme'
-assert_count 3 "$dock" 'reducedMotion: root.reducedMotion'
+assert_count 4 "$dock" 'theme: root.theme'
+assert_count 4 "$dock" 'reducedMotion: root.reducedMotion'
 assert_contains "$dock" 'border.color: root.theme.colorQuietBorder'
 assert_contains "$dock" 'color: root.theme.colorRaisedOverlay'
 assert_contains "$dock" '? "9+"'

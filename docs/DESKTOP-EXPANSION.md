@@ -97,8 +97,8 @@ Fcitx5 Classic UI, tooltips, and session controls.
   `REMOTE`, and `MISC` workspaces; unused reserve workspaces are neither
   persistent nor displayed. It uses a 48 pixel surface, 14 pixel edge margins,
   a quiet centered date/time, and only notification, audio, network, Bluetooth,
-  battery, and system-drawer entries on the right. Tray, backlight, power
-  profile, WWAN, and the full date live in the drawer. Persistent chrome is
+  battery, system-drawer, and power entries on the right. Tray, backlight,
+  power profile, WWAN, and the full date live in the drawer. Persistent chrome is
   opaque enough to remain readable without compositor blur.
 
 ### Shell and application surfaces
@@ -122,8 +122,11 @@ Fcitx5 Classic UI, tooltips, and session controls.
 - SwayNC remains aligned below the upper-right Waybar edge. The control center
   is 460x850 pixels, preserves notification grouping and images, and uses a
   functional 3-by-2 quick-settings grid: Wi-Fi, Bluetooth, and Night Light are
-  stateful toggles; Power opens Hyprshutdown, Audio opens Hyprpwcenter, and
-  Display opens the repository-owned projection overlay. `Super+P` exposes
+  stateful toggles; Power opens the repository-owned session menu, Audio opens
+  Hyprpwcenter, and Display opens the projection overlay. The power menu routes
+  lock, logout, suspend, reboot, and poweroff through `desktop-power`; reboot and
+  poweroff first record a boot-ID checkpoint and close the session gracefully
+  through Hyprshutdown. `Super+P` exposes
   internal-only, duplicate, extend, and external-only modes; each transaction
   has a 15-second rollback timer, and confirmed preferences are stored per
   physical monitor topology. Advanced display settings remain available

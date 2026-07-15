@@ -18,6 +18,8 @@ ShellRoot {
     property string launcherScreenName: ""
     property bool displayOverlayOpen: false
     property string displayOverlayScreenName: ""
+    property bool powerMenuOpen: false
+    property string powerMenuScreenName: ""
     property bool osdVisible: false
     property string osdScreenName: ""
     property string osdKind: "volume"
@@ -276,6 +278,17 @@ ShellRoot {
         displayOverlayOpen = true;
     }
 
+    function togglePowerMenu() {
+        if (powerMenuOpen) {
+            powerMenuOpen = false;
+            return;
+        }
+        launcherOpen = false;
+        displayOverlayOpen = false;
+        powerMenuScreenName = focusedScreenName();
+        powerMenuOpen = true;
+    }
+
     function showOsd(kind, value, muted) {
         osdScreenName = focusedScreenName();
         osdKind = kind;
@@ -306,6 +319,19 @@ ShellRoot {
             root.displayOverlayOpen = true;
         }
         function close(): void { root.displayOverlayOpen = false; }
+    }
+
+    IpcHandler {
+        target: "power"
+
+        function toggle(): void { root.togglePowerMenu(); }
+        function open(): void {
+            root.launcherOpen = false;
+            root.displayOverlayOpen = false;
+            root.powerMenuScreenName = root.focusedScreenName();
+            root.powerMenuOpen = true;
+        }
+        function close(): void { root.powerMenuOpen = false; }
     }
 
     IpcHandler {
@@ -436,6 +462,12 @@ ShellRoot {
                                     String(monitor.name || "")
                                         === root.displayOverlayScreenName)) {
                             root.displayOverlayScreenName = root.focusedScreenName();
+                        }
+                        if (root.powerMenuOpen
+                                && !next.monitors.some(monitor =>
+                                    String(monitor.name || "")
+                                        === root.powerMenuScreenName)) {
+                            root.powerMenuScreenName = root.focusedScreenName();
                         }
                     }
                 } catch (error) {
@@ -1191,6 +1223,20 @@ ShellRoot {
                     }
                 }
             }
+        }
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        delegate: PowerMenu {
+            required property var modelData
+            targetScreen: modelData
+            menuOpen: root.powerMenuOpen
+            activeScreenName: root.powerMenuScreenName
+            theme: root.theme
+            reducedMotion: root.reducedMotion
+            onCloseRequested: root.powerMenuOpen = false
         }
     }
 

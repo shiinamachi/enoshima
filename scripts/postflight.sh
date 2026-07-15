@@ -283,6 +283,7 @@ echo "==> Desktop session"
 for unit in \
   cyberdock.service \
   desktop-display-events.service \
+  desktop-power-verify.service \
   xembed-sni-proxy.service; do
   check "custom user unit enabled: $unit" systemctl --user is-enabled --quiet "$unit"
 done
@@ -479,6 +480,10 @@ check "display projection controller is deployed" \
   test -x "$HOME/.local/bin/desktop-display-mode"
 check "display projection overlay is deployed" \
   test -f "$HOME/.config/quickshell/cyberdock/DisplayModeOverlay.qml"
+check "desktop power controller is deployed" \
+  test -x "$HOME/.local/bin/desktop-power"
+check "desktop power menu is deployed" \
+  test -f "$HOME/.config/quickshell/cyberdock/PowerMenu.qml"
 check "SwayNC exposes notifications and the managed quick settings" \
   jq -e '
     ."widget-config".title.text == "Notifications" and

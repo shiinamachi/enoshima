@@ -21,7 +21,8 @@
         "network",
         "bluetooth",
         "battery",
-        "group/system"
+        "group/system",
+        "custom/power"
     ],
 
     "ext/workspaces": {
@@ -163,5 +164,11 @@
         "on-click": "swaync-client -t -sw",
         "on-click-right": "swaync-client -d -sw",
         "escape": true
+    },
+
+    "custom/power": {
+        "format": "󰐥",
+        "tooltip-format": "전원 및 세션",
+        "on-click": "desktop-power menu"
     }
 }

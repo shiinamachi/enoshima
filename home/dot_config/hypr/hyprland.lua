@@ -316,8 +316,8 @@ hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("desktop-display-mode menu"), {
 })
 hl.bind(mainMod .. " + SHIFT + P", hl.dsp.window.pseudo(), { description = "Toggle pseudotiling" })
 hl.bind(mainMod .. " + T", hl.dsp.layout("togglesplit"), { description = "Toggle dwindle split" })
-hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("loginctl lock-session"), { description = "Lock session" })
-hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("hyprshutdown"), { description = "Open session menu" })
+hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("desktop-power lock"), { description = "Lock session" })
+hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("desktop-power menu"), { description = "Open power and session menu" })
 
 local directions = {
     H = { name = "left", x = -40, y = 0 },
@@ -529,6 +529,14 @@ hl.layer_rule({
 hl.layer_rule({
     name = "cyberdisplay-style",
     match = { namespace = "^cyberdisplay$" },
+    blur = true,
+    dim_around = true,
+    ignore_alpha = 0.12,
+})
+
+hl.layer_rule({
+    name = "cyberpower-style",
+    match = { namespace = "^cyberpower$" },
     blur = true,
     dim_around = true,
     ignore_alpha = 0.12,

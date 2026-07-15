@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly systemctl_bin=${DESKTOP_POWER_SYSTEMCTL:-systemctl}
+readonly loginctl_bin=${DESKTOP_POWER_LOGINCTL:-loginctl}
+readonly busctl_bin=${DESKTOP_POWER_BUSCTL:-busctl}
+readonly hyprshutdown_bin=${DESKTOP_POWER_HYPRSHUTDOWN:-hyprshutdown}
+readonly qs_bin=${DESKTOP_POWER_QS:-qs}
+readonly journalctl_bin=${DESKTOP_POWER_JOURNALCTL:-journalctl}
+readonly inhibit_bin=${DESKTOP_POWER_INHIBIT:-systemd-inhibit}
+readonly config_home=${DESKTOP_POWER_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}}
+readonly state_home=${DESKTOP_POWER_STATE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}}
+readonly state_dir=$state_home/enoshima/power
+readonly pending_file=$state_dir/pending.json
+readonly result_file=$state_dir/last-result.json
+readonly lock_file=$state_dir/controller.lock
+readonly boot_id_file=${DESKTOP_POWER_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}
+
+die() {
+  printf 'desktop-power: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat >&2 <<'EOF'
+usage: desktop-power menu
+       desktop-power status --json
+       desktop-power lock
+       desktop-power logout
+       desktop-power suspend
+       desktop-power reboot
+       desktop-power poweroff
+       desktop-power doctor
+       desktop-power verify-last-action
+EOF
+  exit 2
+}
+
+if [[ ${1:-} == menu ]]; then
+  exec "$qs_bin" -p "$config_home/quickshell/cyberdock" \
+    ipc call -- power toggle
+fi
+
+command -v jq >/dev/null 2>&1 || die 'jq is required'
+command -v flock >/dev/null 2>&1 || die 'flock is required'
+[[ ! -L $state_dir ]] || die "$state_dir must not be a symbolic link"
+install -d -m 0700 "$state_dir"
+chmod 0700 "$state_dir"
+exec 9>"$lock_file"
+chmod 0600 "$lock_file"
+flock -x 9
+
+current_boot_id() {
+  [[ -r $boot_id_file ]] || die "boot ID is unavailable: $boot_id_file"
+  tr -d '\n' <"$boot_id_file"
+}
+
+write_json() {
+  local destination=$1 content=$2 temporary
+  [[ ! -L $destination ]] || die "$destination must not be a symbolic link"
+  temporary=$(mktemp "$state_dir/.power-state.XXXXXX")
+  chmod 0600 "$temporary"
+  printf '%s\n' "$content" >"$temporary"
+  sync -f "$temporary" 2>/dev/null || true
+  mv -f -- "$temporary" "$destination"
+}
+
+can_action() {
+  local method=$1 output
+  if ! command -v "$busctl_bin" >/dev/null 2>&1; then
+    printf unknown
+    return
+  fi
+  output=$("$busctl_bin" call org.freedesktop.login1 /org/freedesktop/login1 \
+    org.freedesktop.login1.Manager "$method" 2>/dev/null || true)
+  case $output in
+    *'"yes"'*) printf yes ;;
+    *'"challenge"'*) printf challenge ;;
+    *'"no"'*) printf no ;;
+    *'"na"'*) printf na ;;
+    *) printf unknown ;;
+  esac
+}
+
+require_available() {
+  local method=$1 label=$2 availability
+  availability=$(can_action "$method")
+  case $availability in
+    no | na) die "$label is not available through systemd-logind" ;;
+  esac
+}
+
+pending_json() {
+  if [[ -f $pending_file && ! -L $pending_file ]]; then
+    jq -c -e 'select(.schema == 1 and (.action == "reboot" or .action == "poweroff"))' \
+      "$pending_file" 2>/dev/null || printf null
+  else
+    printf null
+  fi
+}
+
+status_command() {
+  local pending reboot poweroff suspend hibernate
+  pending=$(pending_json)
+  reboot=$(can_action CanReboot)
+  poweroff=$(can_action CanPowerOff)
+  suspend=$(can_action CanSuspend)
+  hibernate=$(can_action CanHibernate)
+  jq -c -n \
+    --arg reboot "$reboot" \
+    --arg poweroff "$poweroff" \
+    --arg suspend "$suspend" \
+    --arg hibernate "$hibernate" \
+    --argjson pending "$pending" \
+    '{
+      schema: 1,
+      availability: {
+        lock: "yes",
+        logout: "yes",
+        suspend: $suspend,
+        reboot: $reboot,
+        poweroff: $poweroff,
+        hibernate: $hibernate
+      },
+      pending: ($pending != null),
+      pending_action: ($pending.action // null),
+      requested_at: ($pending.requested_at // null)
+    }'
+}
+
+record_checkpoint() {
+  local action=$1 checkpoint
+  checkpoint=$(jq -c -n \
+    --arg action "$action" \
+    --arg requestedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg bootId "$(current_boot_id)" \
+    --arg session "${XDG_SESSION_ID:-unknown}" \
+    '{schema:1,action:$action,requested_at:$requestedAt,boot_id_before:$bootId,session:$session}')
+  write_json "$pending_file" "$checkpoint"
+}
+
+run_power_transition() {
+  local action=$1 method=$2 post_command=$3 status result
+  require_available "$method" "$action"
+  command -v "$hyprshutdown_bin" >/dev/null 2>&1 ||
+    die "hyprshutdown command not found: $hyprshutdown_bin"
+  record_checkpoint "$action"
+  if "$hyprshutdown_bin" --post-cmd "$post_command"; then
+    return
+  else
+    status=$?
+    result=$(jq -c --arg verifiedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg status dispatch_failed --argjson exitCode "$status" \
+      '. + {verified_at:$verifiedAt,status:$status,dispatch_exit_code:$exitCode}' "$pending_file")
+    write_json "$result_file" "$result"
+    rm -f -- "$pending_file"
+    die "failed to dispatch $action through hyprshutdown"
+  fi
+}
+
+verify_last_action() {
+  local pending before after status result
+  pending=$(pending_json)
+  if [[ $pending == null ]]; then
+    jq -c -n '{schema:1,pending:false}'
+    return
+  fi
+  before=$(jq -r '.boot_id_before' <<<"$pending")
+  after=$(current_boot_id)
+  if [[ $before != "$after" ]]; then
+    status=succeeded
+  else
+    status=not_completed
+  fi
+  result=$(jq -c \
+    --arg verifiedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg bootIdAfter "$after" \
+    --arg status "$status" \
+    '. + {verified_at:$verifiedAt,boot_id_after:$bootIdAfter,status:$status}' \
+    <<<"$pending")
+  write_json "$result_file" "$result"
+  rm -f -- "$pending_file"
+  printf '%s\n' "$result"
+  [[ $status == succeeded ]]
+}
+
+doctor_command() {
+  printf 'Boot ID: %s\n' "$(current_boot_id)"
+  printf 'Kernel: %s\n' "$(uname -sr)"
+  printf 'Reboot command: '
+  command -V reboot 2>&1 || true
+  printf 'CanReboot: %s\n' "$(can_action CanReboot)"
+  printf 'CanPowerOff: %s\n' "$(can_action CanPowerOff)"
+  printf 'CanSuspend: %s\n' "$(can_action CanSuspend)"
+  printf 'Pending checkpoint: %s\n' "$(pending_json)"
+
+  if command -v "$inhibit_bin" >/dev/null 2>&1; then
+    printf '\nInhibitors:\n'
+    "$inhibit_bin" --list --no-pager 2>&1 || true
+  fi
+  if command -v "$systemctl_bin" >/dev/null 2>&1; then
+    printf '\nFailed system units:\n'
+    "$systemctl_bin" --failed --no-pager 2>&1 || true
+    printf '\nFailed user units:\n'
+    "$systemctl_bin" --user --failed --no-pager 2>&1 || true
+  fi
+  if command -v "$journalctl_bin" >/dev/null 2>&1; then
+    printf '\nPrevious shutdown journal:\n'
+    "$journalctl_bin" -b -1 -n 80 --no-pager 2>&1 || true
+  fi
+  if command -v fwupdmgr >/dev/null 2>&1; then
+    printf '\nFirmware devices:\n'
+    fwupdmgr get-devices 2>&1 || true
+  fi
+  if command -v boltctl >/dev/null 2>&1; then
+    printf '\nThunderbolt devices:\n'
+    boltctl list 2>&1 || true
+  fi
+}
+
+case ${1:-} in
+  status)
+    [[ $# -eq 2 && $2 == --json ]] || usage
+    status_command
+    ;;
+  lock)
+    [[ $# -eq 1 ]] || usage
+    command -v "$loginctl_bin" >/dev/null 2>&1 || die "loginctl command not found: $loginctl_bin"
+    "$loginctl_bin" lock-session
+    ;;
+  logout)
+    [[ $# -eq 1 ]] || usage
+    command -v "$hyprshutdown_bin" >/dev/null 2>&1 ||
+      die "hyprshutdown command not found: $hyprshutdown_bin"
+    "$hyprshutdown_bin"
+    ;;
+  suspend)
+    [[ $# -eq 1 ]] || usage
+    require_available CanSuspend suspend
+    "$systemctl_bin" suspend
+    ;;
+  reboot)
+    [[ $# -eq 1 ]] || usage
+    run_power_transition reboot CanReboot 'systemctl reboot'
+    ;;
+  poweroff)
+    [[ $# -eq 1 ]] || usage
+    run_power_transition poweroff CanPowerOff 'systemctl poweroff'
+    ;;
+  doctor)
+    [[ $# -eq 1 ]] || usage
+    doctor_command
+    ;;
+  verify-last-action)
+    [[ $# -eq 1 ]] || usage
+    verify_last_action
+    ;;
+  *) usage ;;
+esac

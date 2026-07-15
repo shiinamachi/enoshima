@@ -151,6 +151,40 @@ desktop-display-mode import-current
 **고급 디스플레이 설정**에서 `nwg-displays`로 조정한 뒤
 `desktop-display-mode import-current`로 현재 topology에 저장할 수 있다.
 
+## 전원 및 세션 제어
+
+Waybar 우측 전원 아이콘, `Super+M`, SwayNC의 **Power**는 모두 현재 focus된
+출력에 같은 전원 메뉴를 연다. 잠금과 절전은 즉시 실행하며, 재시작과 시스템
+종료는 확인을 한 번 더 요구한다. desktop action에는 `sudo`를 사용하지 않고
+systemd-logind의 가능 여부와 polkit 인증 경로를 따른다.
+
+```bash
+desktop-power status --json
+desktop-power lock
+desktop-power logout
+desktop-power suspend
+desktop-power doctor
+```
+
+재시작과 종료는 앱을 정리하도록 Hyprshutdown을 거친 다음 각각
+`systemctl reboot`, `systemctl poweroff`를 실행한다. 요청 직전에 현재 boot ID가
+`$XDG_STATE_HOME/enoshima/power/pending.json`에 기록된다. 다음 그래픽 로그인에서
+`desktop-power-verify.service`가 boot ID 변화를 비교하고 결과를
+`last-result.json`에 저장한다. `status --json`에 pending action이 남아 있거나
+`last-result.json`의 상태가 `not_completed`이면 다음 비파괴 진단을 먼저 수집한다.
+
+```bash
+desktop-power doctor | tee /tmp/enoshima-power-doctor.txt
+journalctl -b -1 -n 200 --no-pager
+systemd-inhibit --list
+```
+
+`doctor`는 reboot command 해석, logind 가능 여부, inhibitor, 실패한 system/user
+unit, 이전 boot journal, firmware와 Thunderbolt 장치를 함께 보여준다. 원인이
+확인되기 전에는 강제 재부팅이나 `reboot=` kernel parameter를 추가하지 않는다.
+실제 완료 검증은 dock 미연결 10회와 연결 10회에서 `last-result.json`이 모두
+`succeeded`인지 확인한다.
+
 ## 권장 대화식 온보딩 순서
 
 자동 적용과 재로그인을 마친 뒤 아래 순서를 사용한다. Cloudflare One이 DNS 경로를

@@ -77,7 +77,7 @@
         {
           "label": "Power",
           "type": "normal",
-          "command": "hyprshutdown"
+          "command": "desktop-power menu"
         },
         {
           "label": "Audio",

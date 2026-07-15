@@ -79,6 +79,7 @@ window#waybar {
 #network,
 #bluetooth,
 #custom-power-profile,
+#custom-power,
 #battery,
 #tray {
     min-height: 40px;
@@ -97,6 +98,7 @@ window#waybar {
 #network:hover,
 #bluetooth:hover,
 #custom-power-profile:hover,
+#custom-power:hover,
 #battery:hover {
     background: alpha(@cyber_focus, 0.14);
 }
@@ -109,6 +111,7 @@ window#waybar {
 #network:focus,
 #bluetooth:focus,
 #custom-power-profile:focus,
+#custom-power:focus,
 #battery:focus {
     color: @cyber_text;
     box-shadow: inset 0 0 0 2px @cyber_focus;
@@ -122,6 +125,7 @@ window#waybar {
 #network:active,
 #bluetooth:active,
 #custom-power-profile:active,
+#custom-power:active,
 #battery:active {
     background: alpha(@cyber_selection_strong, 0.72);
 }
@@ -140,6 +144,12 @@ window#waybar {
 
 #custom-system {
     color: @cyber_text_muted;
+}
+
+#custom-power {
+    color: @cyber_text_muted;
+    font-size: 16px;
+    margin-right: 7px;
 }
 
 #pulseaudio,
