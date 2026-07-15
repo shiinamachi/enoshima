@@ -39,12 +39,26 @@ bootstrap 순서는 다음과 같다.
 1. `pacman -Syu` 방식의 Arch 전체 업그레이드와 bootstrap 의존성 설치
 2. 검토·고정된 로컬 PKGBUILD 설치
 3. Ansible 시스템 상태 적용
-4. 검토된 AUR allowlist 설치
+4. commit과 recipe hash가 고정된 AUR allowlist 검증·설치
 5. AUR 패키지에 의존하는 Ansible 역할 재수렴
 6. chezmoi 사용자 구성 적용
 7. 기존 통합 postflight 실행
 
 부분 업그레이드나 별도의 `pacman -Sy`를 실행하지 않는다.
+
+`packages/aur-review.lock`은 모든 AUR base의 commit, `PKGBUILD`, `.SRCINFO`
+SHA-256을 보유한다. remote HEAD가 달라지면 어떤 AUR package도 build하기 전에
+bootstrap이 중단된다. update는 전체 diff를 검토하고 다음 명령에서 `REVIEW`를
+직접 입력해 승인한다.
+
+```bash
+./scripts/review-aur.sh update PACKAGE_BASE
+```
+
+`electerm-bin`과 `pear-desktop-bin`도 같은 gate를 통과한다. 설치 후 Launcher 검색,
+Dock pin/unpin, 최소화·복원·닫기를 확인하고 `hyprctl clients -j`로 실제 class/title을
+관찰하기 전에는 앱별 window rule을 추가하지 않는다. Pear Desktop의 desktop entry와
+실행 파일 이름에는 upstream 호환성을 위해 아직 `youtube-music`이 남아 있다.
 
 `cloudflare-warp-bin`은 첫 실행에서 Ansible보다 뒤의 AUR 단계에 설치된다.
 bootstrap은 AUR 단계 직후 desktop expansion 역할을 자동으로 다시 수렴시켜

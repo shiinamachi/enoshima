@@ -31,7 +31,7 @@ The initial inventory was captured on 2026-07-13 from Arch Linux on
 | State | Owner |
 | --- | --- |
 | Native packages and root-owned configuration | Ansible |
-| AUR packages | `scripts/install-aur.sh` using paru |
+| AUR packages | review-locked AUR Git revisions built through paru |
 | User dotfiles | chezmoi (`home/`) |
 | Enabled system and user units | Ansible |
 | Exact installed versions and hardware facts | `state/tpx1c13/` |
@@ -111,6 +111,8 @@ turn a completed automated convergence into a failure.
 
 - `packages/native.txt` is the explicit native package install manifest.
 - `packages/aur.txt` contains AUR package bases to install.
+- `packages/aur-review.lock` binds every AUR base to its reviewed Git commit,
+  `PKGBUILD`, and `.SRCINFO` hashes.
 - `packages/optional-deps.txt` preserves intentionally installed optional
   dependencies with dependency install reason.
 - `packages/management.txt` contains tooling needed to reproduce the system

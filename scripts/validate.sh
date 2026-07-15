@@ -85,6 +85,7 @@ done < <(
 echo "==> Parsing YAML and checking desired-state invariants"
 /usr/bin/python - "$repo_root" <<'PY'
 from pathlib import Path
+import json
 import sys
 import xml.etree.ElementTree as ET
 import yaml
@@ -125,6 +126,18 @@ management = manifest(root / "packages" / "management.txt")
 optional = manifest(root / "packages" / "optional-deps.txt")
 absent = manifest(root / "packages" / "absent.txt")
 aur = manifest(root / "packages" / "aur.txt")
+
+aur_review = json.loads(
+    (root / "packages" / "aur-review.lock").read_text(encoding="utf-8")
+)
+assert aur_review["schema"] == 1
+review_entries = aur_review["packages"]
+assert len(review_entries) == len({entry["pkgbase"] for entry in review_entries})
+assert {entry["pkgbase"] for entry in review_entries} == aur
+for entry in review_entries:
+    assert len(entry["aur_commit"]) == 40
+    assert len(entry["pkgbuild_sha256"]) == 64
+    assert len(entry["srcinfo_sha256"]) == 64
 
 present = native | management | optional
 assert not (present & absent), (
@@ -341,6 +354,8 @@ echo "==> Testing desktop expansion behavior"
 for test_script in \
   tests/test-bootstrap-desktop-expansion.sh \
   tests/test-audio-output-control.sh \
+  tests/test-aur-desktop-apps.sh \
+  tests/test-aur-review.sh \
   tests/test-cyberpunk-library-theme.sh \
   tests/test-cyberdock-pins.sh \
   tests/test-cyberdock-state.sh \

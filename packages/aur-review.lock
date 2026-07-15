@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "reviewed_at": "2026-07-15",
+  "packages": [
+    {
+      "pkgbase": "chatgpt-desktop-bin",
+      "aur_commit": "f9d39df687c17284d2a93b192d585bcdb74f6200",
+      "pkgbuild_sha256": "1406b15a6411790c1aa8271bb1ba0873d83e3c8f0143f48b37bd3c732f85d571",
+      "srcinfo_sha256": "382a8c7ab88769ee0eecf53223386d2398586ccc387b91b94274340e1e59c96e",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "cloudflare-warp-bin",
+      "aur_commit": "40c61257d044011ab4a16b3dad429163b212056a",
+      "pkgbuild_sha256": "044638ee24912a459a97df31f986a1a93caeb0869f921db01395d8cb25c35678",
+      "srcinfo_sha256": "421ff21ea2aa1253ce43a333760af507a3d2897233c0c423a55860e7def4d80f",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "electerm-bin",
+      "aur_commit": "793664784456c5a9dc1d2424cff459f682141961",
+      "pkgbuild_sha256": "fbf648ae9c9e0aebae2d79c085ef0d97458c918236ab829a48a8046645a34482",
+      "srcinfo_sha256": "6b1b25285f748660f4cc035c5335bb74f0e2d4f6035d950857d995a87e9164aa",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "fzf-tab",
+      "aur_commit": "4b364757b069b6fafad9abf61383b9d401c3dd2c",
+      "pkgbuild_sha256": "4d6cda3bb728fe53580e4145b712c53ae99e2d5230727134fe2cef346650f93a",
+      "srcinfo_sha256": "879172bfcd682b2b1b7ec0879cc17b35c8a0a5c9c1a9b79b0c136de124224484",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "google-chrome",
+      "aur_commit": "977692f5ae4a358a38702c3eda76218dfbfd506d",
+      "pkgbuild_sha256": "4d08c95e17ddc45697ae65bade8ea755fc79c70d9faf76a87576996238c31f9e",
+      "srcinfo_sha256": "781243d80b6d0dfc70c4e790b3980c10daac8b8c4ea00a27bbcebf6675019167",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "notion-app-electron",
+      "aur_commit": "ca1cc38ddf45c6757a3a3d68bfbd8131b82d1a93",
+      "pkgbuild_sha256": "3c44d9af2ca9df6000d1731b25aae21701954a1271d557316dbffc4aed4174f9",
+      "srcinfo_sha256": "d9149b9f44676cc48da83b76981c2e455d04ac9c0fb5278c233e17a81b68e9a2",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "oh-my-zsh-git",
+      "aur_commit": "50fe45bdbabde780699a34c15b7198c6ff7732fd",
+      "pkgbuild_sha256": "388a76b5f94dcca027336787b2fbf37099f313b9fdb5f3b9aff3fa403332d212",
+      "srcinfo_sha256": "58f6647a52e8398fa099828514edba394ba0c37823fd7ca37977b0bf8322d164",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "onlyoffice-bin",
+      "aur_commit": "bccf5b407c9dfd64dd80a9b77405aa25184fbad5",
+      "pkgbuild_sha256": "7750fc953bda90698cf88b59cf50af8d6eed8c55913968331138e6858922fb6a",
+      "srcinfo_sha256": "883fcf0b09bfeca9e5529c4ef9c6d96052bf70e32a558639b6d563e2592c695e",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "parsec-bin",
+      "aur_commit": "ec92048c3a078f656256e37fc9ce1afe6bfaf3c6",
+      "pkgbuild_sha256": "57676958583c524f495d581302f85a1adc86c68ecad40c121e508dc07676e824",
+      "srcinfo_sha256": "7cf677698bd0fc1175688bc2941217e1d5cd660b5f2a1679a2754a029ed976ef",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "paru",
+      "aur_commit": "329be2113c590046cb29858c23d9b96a8d7bd586",
+      "pkgbuild_sha256": "eef27a597fef8a6c1f4f6fedc8844f592007d1ac93b7194940394937b6dd4f8b",
+      "srcinfo_sha256": "e84755034a22e0ecff5638ee4e96c69a7697f7f6a3ed781f1eeb53742d45be34",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "pear-desktop-bin",
+      "aur_commit": "6d4d1f24fa4a33b680de4b5e76d1ebc488d22050",
+      "pkgbuild_sha256": "49fd0c109f818373f04d338de524964f946aa7d09edd100c88619af12002717c",
+      "srcinfo_sha256": "4d176cec45a201d56ded5680f335fca95e1cb8c21cce29ff09635e032fee59cb",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "photogimp",
+      "aur_commit": "77e9e67e1cf4feafebb92410ab7ff2d31d318245",
+      "pkgbuild_sha256": "388deb89cabc5dd95502bbac8f32a9a4f62258d2a3675bcd9f560bc0c570094a",
+      "srcinfo_sha256": "5436bde25c61d835ef356067f0f468cc5705cb8d56afe2425467dcbfbb6c7354",
+      "reviewed_at": "2026-07-15"
+    },
+    {
+      "pkgbase": "slack-desktop",
+      "aur_commit": "f7e53742e0bdab7f23f68f94bee3b63d87e6082a",
+      "pkgbuild_sha256": "93422358981c448cd35eedf3b44bb603fe872b3143792b6950126424afc1b930",
+      "srcinfo_sha256": "f8b278a29238a1586b998248a9c9700906acf4b4e439b380d8adbc51432783df",
+      "reviewed_at": "2026-07-15"
+    }
+  ]
+}

@@ -267,9 +267,18 @@ A logout/login is required after applying the UWSM environment.
 ## Applications and trust boundaries
 
 Official Arch packages provide Ghostty, Zed, Discord, and Obsidian. Bottles is
-installed from user-scoped Flathub. Google Chrome, Slack, Parsec, and the
-requested unofficial Notion package are reviewed AUR builds. Firefox and Kitty
-are removed.
+installed from user-scoped Flathub. Google Chrome, Slack, Parsec, Electerm,
+Pear Desktop, and the requested unofficial Notion package are reviewed AUR
+builds. Firefox and Kitty are removed.
+
+The AUR review lock covers the complete allowlist, not only the two newly added
+desktop applications. Bootstrap verifies the remote head, AUR commit and recipe
+hashes before building local clones. Electerm installs the `electerm.desktop`
+entry; Pear Desktop currently retains upstream's
+`com.github.th-ch.youtube-music.desktop` ID and `youtube-music` launcher. Do not
+write Hyprland class rules from those filenames: launch each app once, inspect
+its actual `hyprctl clients -j` class/title, and test Launcher search, Dock
+pin/unpin, native minimize/restore, close and relaunch.
 
 `notion-app-electron` is not published or supported by Notion. Its PKGBUILD and
 upstream payload must be reviewed at every meaningful update. Parsec on Linux

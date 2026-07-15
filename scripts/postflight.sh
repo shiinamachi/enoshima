@@ -459,6 +459,10 @@ else
 fi
 
 echo "==> Desktop expansion"
+check "Electerm desktop entry is installed" \
+  test -f /usr/share/applications/electerm.desktop
+check "Pear Desktop entry is installed" \
+  test -f /usr/share/applications/com.github.th-ch.youtube-music.desktop
 check "managed 16:9 cyberpunk wallpaper is deployed intact" \
   sha256_matches \
   "$HOME/.local/share/backgrounds/cyberpunk-library-16x9.jpg" \
