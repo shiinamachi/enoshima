@@ -459,8 +459,16 @@ else
 fi
 
 echo "==> Desktop expansion"
-check "Electerm desktop entry is installed" \
-  test -f /usr/share/applications/electerm.desktop
+check "FileZilla executable is installed" \
+  test -x /usr/bin/filezilla
+check "FileZilla desktop entry is installed" \
+  test -f /usr/share/applications/filezilla.desktop
+if [[ -n ${WAYLAND_DISPLAY:-} || -n ${DISPLAY:-} ]]; then
+  check "FileZilla starts and reports its version" \
+    timeout 15s filezilla --version
+else
+  warn "FileZilla runtime smoke test skipped: no graphical display"
+fi
 check "Pear Desktop entry is installed" \
   test -f /usr/share/applications/com.github.th-ch.youtube-music.desktop
 check "managed 16:9 cyberpunk wallpaper is deployed intact" \

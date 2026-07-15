@@ -33,6 +33,7 @@ fcitx5-material-color
 fcitx5-qt
 fd
 file-roller
+filezilla
 flatpak
 fprintd
 fuse3

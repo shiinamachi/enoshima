@@ -462,8 +462,8 @@ application state.
 
 | Owner | Additions |
 | --- | --- |
-| Official Arch manifests | Quickshell, `adw-gtk-theme`, `capitaine-cursors`, `fcitx5-material-color`, Hyprpwcenter, nwg-displays, GIMP, Thunderbird, Proton Mail Bridge, rclone, FUSE support, office-compatible fonts, required validation utilities |
-| Reviewed AUR allowlist | `cloudflare-warp-bin`, `electerm-bin`, `onlyoffice-bin`, `pear-desktop-bin`, `photogimp` |
+| Official Arch manifests | Quickshell, `adw-gtk-theme`, `capitaine-cursors`, `fcitx5-material-color`, FileZilla, Hyprpwcenter, nwg-displays, GIMP, Thunderbird, Proton Mail Bridge, rclone, FUSE support, office-compatible fonts, required validation utilities |
+| Reviewed AUR allowlist | `cloudflare-warp-bin`, `onlyoffice-bin`, `pear-desktop-bin`, `photogimp` |
 | Pinned local packages | Pretendard/Jetendard desktop fonts and sandboxed RHWP Desktop |
 | User-scoped Flatpak | Existing Bottles |
 | chezmoi | Wallpaper, UI configuration, launch wrappers, user services, setup helpers, MIME/bookmark declarations |

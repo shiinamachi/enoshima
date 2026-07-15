@@ -17,13 +17,6 @@
       "reviewed_at": "2026-07-15"
     },
     {
-      "pkgbase": "electerm-bin",
-      "aur_commit": "793664784456c5a9dc1d2424cff459f682141961",
-      "pkgbuild_sha256": "fbf648ae9c9e0aebae2d79c085ef0d97458c918236ab829a48a8046645a34482",
-      "srcinfo_sha256": "6b1b25285f748660f4cc035c5335bb74f0e2d4f6035d950857d995a87e9164aa",
-      "reviewed_at": "2026-07-15"
-    },
-    {
       "pkgbase": "fzf-tab",
       "aur_commit": "4b364757b069b6fafad9abf61383b9d401c3dd2c",
       "pkgbuild_sha256": "4d6cda3bb728fe53580e4145b712c53ae99e2d5230727134fe2cef346650f93a",
