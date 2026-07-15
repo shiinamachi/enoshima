@@ -188,13 +188,17 @@ jq -e '
   ."margin-top" == 14 and
   ."margin-left" == 14 and
   ."margin-right" == 14 and
-  ."modules-left" == ["ext/workspaces"] and
-  ."modules-right" == ["custom/notification", "pulseaudio", "network", "bluetooth", "battery", "group/system", "custom/power"] and
+  ."modules-left" == ["ext/workspaces", "hyprland/window"] and
+  ."modules-right" == ["custom/window-minimize", "custom/window-maximize", "custom/window-close", "custom/notification", "pulseaudio", "network", "bluetooth", "battery", "group/system", "custom/power"] and
   ."ext/workspaces"."all-outputs" == false and
   ."group/system".drawer."transition-duration" == 0 and
   ."group/system".modules == ["custom/system", "tray", "backlight", "custom/power-profile", "custom/wwan", "clock#date"] and
   ."custom/notification".tooltip == true and
   ."custom/power"."on-click" == "desktop-power menu" and
+  ."hyprland/window".icon == true and
+  ."custom/window-minimize"."on-click" == "desktop-window-action minimize --active" and
+  ."custom/window-maximize"."on-click" == "desktop-window-action maximize --active" and
+  ."custom/window-close"."on-click" == "desktop-window-action close --active" and
   ."network"."on-click" == "swaync-client -t -sw" and
   ."ext/workspaces"."format-icons"."3" == "DOCS"
 ' "$waybar_config" >/dev/null

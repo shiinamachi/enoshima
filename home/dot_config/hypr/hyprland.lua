@@ -53,7 +53,7 @@ hl.config({
         gaps_in = 7,
         gaps_out = 14,
         border_size = 2,
-        extend_border_grab_area = 15,
+        extend_border_grab_area = 24,
         resize_on_border = true,
         allow_tearing = false,
         layout = "dwindle",
@@ -370,10 +370,12 @@ hl.bind(mainMod .. " + mouse_up", hl.dsp.focus({ workspace = "e-1" }))
 hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag(), {
     mouse = true,
     dont_inhibit = true,
+    description = "Move window with pointer",
 })
 hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), {
     mouse = true,
     dont_inhibit = true,
+    description = "Resize window with pointer",
 })
 
 hl.bind("XF86AudioRaiseVolume",

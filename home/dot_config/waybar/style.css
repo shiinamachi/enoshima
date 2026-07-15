@@ -71,6 +71,7 @@ window#waybar {
 }
 
 #clock,
+#window,
 #custom-notification,
 #custom-system,
 #pulseaudio,
@@ -80,6 +81,9 @@ window#waybar {
 #bluetooth,
 #custom-power-profile,
 #custom-power,
+#custom-window-minimize,
+#custom-window-maximize,
+#custom-window-close,
 #battery,
 #tray {
     min-height: 40px;
@@ -91,6 +95,9 @@ window#waybar {
 }
 
 #custom-notification:hover,
+#custom-window-minimize:hover,
+#custom-window-maximize:hover,
+#custom-window-close:hover,
 #custom-system:hover,
 #pulseaudio:hover,
 #backlight:hover,
@@ -104,6 +111,9 @@ window#waybar {
 }
 
 #custom-notification:focus,
+#custom-window-minimize:focus,
+#custom-window-maximize:focus,
+#custom-window-close:focus,
 #custom-system:focus,
 #pulseaudio:focus,
 #backlight:focus,
@@ -118,6 +128,9 @@ window#waybar {
 }
 
 #custom-notification:active,
+#custom-window-minimize:active,
+#custom-window-maximize:active,
+#custom-window-close:active,
 #custom-system:active,
 #pulseaudio:active,
 #backlight:active,
@@ -138,6 +151,18 @@ window#waybar {
     color: @cyber_text;
 }
 
+#window {
+    color: @cyber_text;
+    min-width: 120px;
+    padding-left: 14px;
+    padding-right: 14px;
+}
+
+window#waybar.empty #window {
+    min-width: 0;
+    padding: 0;
+}
+
 #custom-notification {
     color: @cyber_text_muted;
 }
@@ -150,6 +175,20 @@ window#waybar {
     color: @cyber_text_muted;
     font-size: 16px;
     margin-right: 7px;
+}
+
+#custom-window-minimize,
+#custom-window-maximize,
+#custom-window-close {
+    color: @cyber_text_muted;
+    font-size: 15px;
+    min-width: 40px;
+    padding: 0 3px;
+}
+
+#custom-window-close:hover {
+    color: @cyber_text;
+    background: alpha(@cyber_critical, 0.26);
 }
 
 #pulseaudio,

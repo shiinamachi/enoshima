@@ -252,9 +252,13 @@ Acceptance에서는 다음을 확인한다.
 
 - `Super+C`는 close, `Super+N`은 `cyberdock-minimize`
 - `Super+F`는 true fullscreen
+- Waybar에 활성 앱 icon/title과 최소화, 최대화, 닫기 controls가 표시됨
+- 빠른 focus 전환 중에도 controls가 선택한 window address만 조작함
+- Electron 앱 자체 최소화 요청이 `cyberdock-event-bridge.service`를 통해 Dock
+  최소화 상태로 이어짐
 - 앱 자체 titlebar가 compositor titlebar와 중복되지 않음
 - 최소화된 창은 `special:minimized`에 있고 Dock에서 원래 workspace/output으로
-  돌아옴
+  돌아오며 floating/maximized 상태도 복원됨
 
 최소화 상태는 `$XDG_RUNTIME_DIR/cyberdock/`에만 저장된다. Dock 문제로
 창이 보이지 않으면 다음 명령으로 모든 최소화 창을 안전한 현재 workspace로
@@ -262,13 +266,32 @@ Acceptance에서는 다음을 확인한다.
 
 ```bash
 cyberdock-recover
+desktop-window-action status --json
 ```
+
+## 마우스 창 이동과 크기 조절
+
+`Super`를 누른 채 왼쪽 버튼으로 drag하면 창을 이동하고, 오른쪽 버튼으로
+drag하면 크기를 조절한다. 창 경계 24 logical pixel 안에서는 `Super` 없이도
+resize할 수 있다. source 설정이 아니라 현재 compositor에 적용된 상태는 다음으로
+확인한다.
+
+```bash
+hypr-window-control-doctor
+hypr-window-control-doctor --json | jq
+```
+
+`healthy: false`이면 `hyprctl binds -j`, `hyprctl devices -j`, 현재 submap과
+`general:resize_on_border`를 함께 확인한다. ThinkPad에서는 touchpad physical click,
+tap-and-drag, TrackPoint 버튼, USB/Bluetooth mouse를 각각 시험한다. 실제 button
+code가 272/273과 다르다는 `wev` 증거가 있을 때만 device별 bind를 추가한다.
 
 ## Quickshell Cyberdock
 
 현재 구현은 `cyberdock.service`, `shell.qml`, `cyberdock-state`,
 `cyberdock-activate`, `cyberdock-minimize`, `cyberdock-recover`,
-`cyberdock-pins`로 구성된다. 각 모니터에 동일한 사용자 pin과 모든 실행 창을
+`desktop-window-action`, `cyberdock-event-bridge`, `cyberdock-pins`로 구성된다.
+각 모니터에 동일한 사용자 pin과 모든 실행 창을
 표시한다. 초기 seed는 Ghostty, Files, Zed, Google Chrome이며 Applications는 앱
 pin과 분리된 고정 system control이다. 사용자 목록은
 `~/.config/enoshima/user/cyberdock-pins.json`에 저장되고 chezmoi가 덮어쓰지 않는다.

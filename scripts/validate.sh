@@ -346,6 +346,8 @@ for test_script in \
   tests/test-cyberdock-state.sh \
   tests/test-desktop-display-mode.sh \
   tests/test-desktop-power.sh \
+  tests/test-desktop-window-action.sh \
+  tests/test-hypr-mouse-binds.sh \
   tests/test-desktop-shell-helpers.sh \
   tests/test-desktop-appearance.sh \
   tests/test-desktop-scaling-status.sh \
@@ -380,6 +382,7 @@ if command -v systemd-analyze >/dev/null 2>&1; then
   mkdir -- "$unit_dir"
   for unit in \
     home/dot_config/systemd/user/cyberdock.service \
+    home/dot_config/systemd/user/cyberdock-event-bridge.service \
     home/dot_config/systemd/user/desktop-display-events.service \
     home/dot_config/systemd/user/desktop-display-revert.service \
     home/dot_config/systemd/user/desktop-display-revert.timer \

@@ -7,7 +7,7 @@ if (($# > 1)); then
 fi
 
 if (($# == 1)); then
-  exec cyberdock-state minimize "$1"
+  exec desktop-window-action minimize --address "$1"
 else
-  exec cyberdock-state minimize
+  exec desktop-window-action minimize --active
 fi

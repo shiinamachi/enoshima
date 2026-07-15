@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq variables are intentionally single-quoted.
+set -euo pipefail
+
+readonly hyprctl_bin=${DESKTOP_WINDOW_HYPRCTL:-hyprctl}
+readonly state_bin=${DESKTOP_WINDOW_STATE:-cyberdock-state}
+readonly jq_bin=${DESKTOP_WINDOW_JQ:-jq}
+
+die() {
+  printf 'desktop-window-action: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat >&2 <<'EOF'
+usage: desktop-window-action status --json
+       desktop-window-action {minimize|restore|maximize|close|focus} (--active | --address ADDRESS)
+EOF
+  exit 2
+}
+
+command -v "$hyprctl_bin" >/dev/null 2>&1 || die "hyprctl command not found: $hyprctl_bin"
+command -v "$jq_bin" >/dev/null 2>&1 || die "jq command not found: $jq_bin"
+
+hypr_json() {
+  local resource=$1 output
+  output=$("$hyprctl_bin" "$resource" -j) || die "hyprctl $resource -j failed"
+  "$jq_bin" -c -e . <<<"$output" || die "hyprctl $resource returned invalid JSON"
+}
+
+valid_address() {
+  [[ $1 =~ ^0x[0-9A-Fa-f]+$ ]]
+}
+
+resolve_address() {
+  case ${1:-} in
+    --active)
+      [[ $# -eq 1 ]] || usage
+      address=$(hypr_json activewindow | "$jq_bin" -r '.address // ""')
+      ;;
+    --address)
+      [[ $# -eq 2 ]] || usage
+      address=$2
+      ;;
+    *) usage ;;
+  esac
+  valid_address "$address" || die 'no valid target window address is available'
+  clients=$(hypr_json clients)
+  "$jq_bin" -e --arg address "$address" 'any(.[]; .address == $address)' \
+    <<<"$clients" >/dev/null || die "window does not exist: $address"
+}
+
+dispatch_maximize() {
+  local address=$1
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"toggle\", window = \"address:$address\" })" \
+    >/dev/null
+}
+
+status_command() {
+  local active snapshot minimized=false
+  active=$(hypr_json activewindow)
+  if command -v "$state_bin" >/dev/null 2>&1; then
+    snapshot=$("$state_bin" snapshot 2>/dev/null || printf '{"windows":[]}')
+    minimized=$("$jq_bin" -r --arg address "$("$jq_bin" -r '.address // ""' <<<"$active")" \
+      'any(.windows[]?; .address == $address and .minimized == true)' <<<"$snapshot")
+  fi
+  "$jq_bin" -c --argjson minimized "$minimized" '
+    {
+      schema: 1,
+      address: (.address // ""),
+      title: (.title // .class // ""),
+      class: (.class // ""),
+      floating: (.floating // false),
+      fullscreen: (.fullscreen // 0),
+      minimized: $minimized,
+      actionable: ((.address // "") | test("^0x[0-9A-Fa-f]+$"))
+    }
+  ' <<<"$active"
+}
+
+case ${1:-} in
+  status)
+    [[ $# -eq 2 && $2 == --json ]] || usage
+    status_command
+    ;;
+  minimize | restore | maximize | close | focus)
+    action=$1
+    shift
+    resolve_address "$@"
+    case $action in
+      minimize) "$state_bin" minimize "$address" ;;
+      restore) "$state_bin" restore "$address" ;;
+      maximize) dispatch_maximize "$address" ;;
+      close) "$state_bin" close "$address" ;;
+      focus) "$state_bin" activate "$address" ;;
+    esac
+    ;;
+  *) usage ;;
+esac

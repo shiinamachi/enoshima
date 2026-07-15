@@ -96,9 +96,10 @@ Fcitx5 Classic UI, tooltips, and session controls.
 - Waybar remains at the top with the five purpose-led `DEV`, `WEB`, `DOCS`,
   `REMOTE`, and `MISC` workspaces; unused reserve workspaces are neither
   persistent nor displayed. It uses a 48 pixel surface, 14 pixel edge margins,
-  a quiet centered date/time, and only notification, audio, network, Bluetooth,
-  battery, system-drawer, and power entries on the right. Tray, backlight,
-  power profile, WWAN, and the full date live in the drawer. Persistent chrome is
+  an active application icon/title, a quiet centered date/time, and
+  address-scoped minimize, maximize, and close controls before the status
+  entries on the right. Tray, backlight, power profile, WWAN, and the full date
+  live in the drawer. Persistent chrome is
   opaque enough to remain readable without compositor blur.
 
 ### Shell and application surfaces
@@ -237,6 +238,20 @@ helper emulates it without killing or unmapping the client:
 Runtime state is pruned when a client closes and is never committed. A
 Quickshell crash must not strand windows: a recovery command lists every
 client in `special:minimized` and restores it to a safe current workspace.
+
+`desktop-window-action` is the shared address-scoped controller for Waybar,
+Cyberdock, keyboard shortcuts, and client minimize events. The
+`cyberdock-event-bridge.service` reads Hyprland socket2 `minimize` events and
+maps Electron/XWayland client requests to the same runtime state. Origin
+records include workspace, output, floating state, compositor and client
+fullscreen state, and focus history. Restore reapplies the geometry state
+before focusing the exact address; close events prune stale records.
+
+Mouse movement remains native compositor behavior. `Super` plus left drag moves
+a window, `Super` plus right drag resizes it, and a 24 logical-pixel border grab
+area allows direct resize without `Super`. `hypr-window-control-doctor` checks
+the effective runtime bindings and input devices instead of trusting only the
+managed Lua source.
 
 ### Native window decorations
 

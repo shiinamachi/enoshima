@@ -282,6 +282,7 @@ fi
 echo "==> Desktop session"
 for unit in \
   cyberdock.service \
+  cyberdock-event-bridge.service \
   desktop-display-events.service \
   desktop-power-verify.service \
   xembed-sni-proxy.service; do
@@ -314,6 +315,7 @@ if systemctl --user is-active --quiet graphical-session.target; then
     wireplumber.service \
     xdg-desktop-portal-hyprland.service \
     cyberdock.service \
+    cyberdock-event-bridge.service \
     desktop-display-events.service \
     xembed-sni-proxy.service; do
     check_or_warn "user unit active after login: $unit" systemctl --user is-active --quiet "$unit"
@@ -437,6 +439,11 @@ if command -v hyprctl >/dev/null 2>&1 && hyprctl monitors -j >/dev/null 2>&1; th
   else
     fail "direct pointer resizing on tiled borders is not active"
   fi
+  if hypr-window-control-doctor --json 2>/dev/null | jq -e '.healthy' >/dev/null; then
+    pass "effective pointer move/resize binds and border grab area are active"
+  else
+    fail "effective pointer window controls are incomplete"
+  fi
 else
   warn "Hyprland IPC is unavailable; display and live configuration checks were skipped"
 fi
@@ -464,7 +471,7 @@ check "Waybar uses quiet persistent status and a secondary system drawer" \
   jq -e '
     .height == 48 and
     ."margin-top" == 14 and
-    ."modules-left" == ["ext/workspaces"] and
+    ."modules-left" == ["ext/workspaces", "hyprland/window"] and
     (."modules-right" | index("group/system") != null)
   ' \
   "$HOME/.config/waybar/config.jsonc"
@@ -484,6 +491,10 @@ check "desktop power controller is deployed" \
   test -x "$HOME/.local/bin/desktop-power"
 check "desktop power menu is deployed" \
   test -f "$HOME/.config/quickshell/cyberdock/PowerMenu.qml"
+check "address-scoped desktop window actions are deployed" \
+  test -x "$HOME/.local/bin/desktop-window-action"
+check "client minimize event bridge is deployed" \
+  test -x "$HOME/.local/bin/cyberdock-event-bridge"
 check "SwayNC exposes notifications and the managed quick settings" \
   jq -e '
     ."widget-config".title.text == "Notifications" and

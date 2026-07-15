@@ -123,6 +123,22 @@ close_window() {
   hypr_dispatch "hl.dsp.window.close({ window = \"address:$address\" })"
 }
 
+set_floating() {
+  local address=$1 action=$2
+  valid_address "$address" || return 1
+  [[ $action == set || $action == unset ]] || return 1
+  hypr_dispatch \
+    "hl.dsp.window.float({ action = \"$action\", window = \"address:$address\" })"
+}
+
+set_fullscreen_state() {
+  local address=$1 internal=$2 client=$3
+  valid_address "$address" || return 1
+  [[ $internal =~ ^[0-3]$ && $client =~ ^[0-3]$ ]] || return 1
+  hypr_dispatch \
+    "hl.dsp.window.fullscreen_state({ internal = $internal, client = $client, action = \"set\", window = \"address:$address\" })"
+}
+
 prune_state() {
   local clients=$1 previous=$state
   state=$(
@@ -192,7 +208,7 @@ remove_record() {
 restore_one() {
   local address=$1 focus_after=${2:-true}
   local clients monitors workspaces client record target_workspace target_monitor saved_monitor
-  local current_workspace_monitor
+  local current_workspace_monitor desired_floating current_floating fullscreen fullscreen_client
 
   clients=$(hypr_json clients)
   prune_state "$clients"
@@ -230,6 +246,21 @@ restore_one() {
 
   if ! move_window_to_workspace "$target_workspace" "$address"; then
     return 1
+  fi
+
+  if [[ -n $record ]]; then
+    desired_floating=$("$jq_bin" -r '.floating // false' <<<"$record")
+    current_floating=$("$jq_bin" -r '.floating // false' <<<"$client")
+    if [[ $desired_floating != "$current_floating" ]]; then
+      if [[ $desired_floating == true ]]; then
+        set_floating "$address" set || true
+      else
+        set_floating "$address" unset || true
+      fi
+    fi
+    fullscreen=$("$jq_bin" -r '.fullscreen // 0' <<<"$record")
+    fullscreen_client=$("$jq_bin" -r '.fullscreenClient // .fullscreen // 0' <<<"$record")
+    set_fullscreen_state "$address" "$fullscreen" "$fullscreen_client" || true
   fi
   remove_record "$address"
 
@@ -279,6 +310,7 @@ snapshot_command() {
 
 minimize_command() {
   local address=${1:-} clients monitors client monitor_name workspace_id workspace_name recorded_at
+  local floating fullscreen fullscreen_client focus_history
   clients=$(hypr_json clients)
   prune_state "$clients"
 
@@ -294,6 +326,10 @@ minimize_command() {
 
   workspace_id=$("$jq_bin" -r '.workspace.id // -1' <<<"$client")
   workspace_name=$("$jq_bin" -r '.workspace.name // ""' <<<"$client")
+  floating=$("$jq_bin" -r '.floating // false' <<<"$client")
+  fullscreen=$("$jq_bin" -r '.fullscreen // 0' <<<"$client")
+  fullscreen_client=$("$jq_bin" -r '.fullscreenClient // .fullscreen // 0' <<<"$client")
+  focus_history=$("$jq_bin" -r '.focusHistoryID // -1' <<<"$client")
   workspace_selector "$client" >/dev/null || die 'active window is not on a restorable workspace'
 
   monitors=$(hypr_json monitors)
@@ -311,10 +347,18 @@ minimize_command() {
       --arg monitor "$monitor_name" \
       --arg workspaceName "$workspace_name" \
       --argjson workspaceId "$workspace_id" \
+      --argjson floating "$floating" \
+      --argjson fullscreen "$fullscreen" \
+      --argjson fullscreenClient "$fullscreen_client" \
+      --argjson focusHistory "$focus_history" \
       --argjson recordedAt "$recorded_at" '
         .windows[$address] = {
           workspace: {id: $workspaceId, name: $workspaceName},
           monitor: $monitor,
+          floating: $floating,
+          fullscreen: $fullscreen,
+          fullscreenClient: $fullscreenClient,
+          focusHistoryID: $focusHistory,
           recordedAt: $recordedAt
         }
       ' <<<"$state"

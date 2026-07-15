@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq variables are intentionally single-quoted.
+set -euo pipefail
+
+readonly hyprctl_bin=${HYPR_WINDOW_DOCTOR_HYPRCTL:-hyprctl}
+readonly jq_bin=${HYPR_WINDOW_DOCTOR_JQ:-jq}
+
+die() {
+  printf 'hypr-window-control-doctor: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ $# -eq 0 || ($# -eq 1 && $1 == --json) ]] ||
+  die 'usage: hypr-window-control-doctor [--json]'
+command -v "$hyprctl_bin" >/dev/null 2>&1 || die "hyprctl command not found: $hyprctl_bin"
+command -v "$jq_bin" >/dev/null 2>&1 || die "jq command not found: $jq_bin"
+
+binds=$("$hyprctl_bin" binds -j) || die 'cannot query effective binds'
+devices=$("$hyprctl_bin" devices -j) || die 'cannot query input devices'
+active=$("$hyprctl_bin" activewindow -j) || die 'cannot query active window'
+submap=$("$hyprctl_bin" submap -j 2>/dev/null || printf '"unknown"')
+resize_border=$("$hyprctl_bin" getoption general:resize_on_border -j 2>/dev/null || printf '{}')
+grab_area=$("$hyprctl_bin" getoption general:extend_border_grab_area -j 2>/dev/null || printf '{}')
+version=$("$hyprctl_bin" version 2>/dev/null | head -n1 || true)
+
+report=$("$jq_bin" -c -n \
+  --arg version "$version" \
+  --argjson binds "$binds" \
+  --argjson devices "$devices" \
+  --argjson active "$active" \
+  --argjson submap "$submap" \
+  --argjson resizeBorder "$resize_border" \
+  --argjson grabArea "$grab_area" '
+  {
+    schema: 1,
+    version: $version,
+    effective: {
+      move: any($binds[]; .mouse == true and .key == "mouse:272" and ((.modmask // 0) % 128 >= 64)),
+      resize: any($binds[]; .mouse == true and .key == "mouse:273" and ((.modmask // 0) % 128 >= 64)),
+      resize_on_border: ($resizeBorder.bool // false),
+      border_grab_area: ($grabArea.int // 0)
+    },
+    submap: $submap,
+    active_window: {
+      address: ($active.address // ""),
+      class: ($active.class // ""),
+      title: ($active.title // "")
+    },
+    mice: [
+      $devices.mice[]? | {
+        name: (.name // "unknown"),
+        address: (.address // "")
+      }
+    ],
+    healthy: (
+      any($binds[]; .mouse == true and .key == "mouse:272" and ((.modmask // 0) % 128 >= 64))
+      and any($binds[]; .mouse == true and .key == "mouse:273" and ((.modmask // 0) % 128 >= 64))
+      and ($resizeBorder.bool // false)
+      and ($grabArea.int // 0) >= 24
+    )
+  }')
+
+if [[ ${1:-} == --json ]]; then
+  printf '%s\n' "$report"
+else
+  "$jq_bin" -r '
+    "Hyprland: \(.version)",
+    "Submap: \(.submap)",
+    "Move bind (Super+left): \(.effective.move)",
+    "Resize bind (Super+right): \(.effective.resize)",
+    "Border resize: \(.effective.resize_on_border) (grab area \(.effective.border_grab_area))",
+    "Pointer devices:",
+    (.mice[] | "- \(.name) [\(.address)]"),
+    "Healthy: \(.healthy)"
+  ' <<<"$report"
+fi
+
+"$jq_bin" -e '.healthy' <<<"$report" >/dev/null

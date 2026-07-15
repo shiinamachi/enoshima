@@ -6,4 +6,4 @@ if (($# != 1)); then
   exit 2
 fi
 
-exec cyberdock-state activate "$1"
+exec desktop-window-action focus --address "$1"

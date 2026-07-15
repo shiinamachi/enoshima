@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly socat_bin=${CYBERDOCK_EVENT_SOCAT:-socat}
+readonly controller=${CYBERDOCK_EVENT_CONTROLLER:-desktop-window-action}
+readonly state_bin=${CYBERDOCK_EVENT_STATE:-cyberdock-state}
+readonly debounce_ms=${CYBERDOCK_EVENT_DEBOUNCE_MS:-250}
+
+die() {
+  printf 'cyberdock-event-bridge: %s\n' "$*" >&2
+  exit 1
+}
+
+valid_address() {
+  [[ $1 =~ ^0x[0-9A-Fa-f]+$ ]]
+}
+
+declare -A last_event_ms=()
+
+handle_minimize() {
+  local payload=$1 address state now key previous
+  address=${payload%%,*}
+  state=${payload#*,}
+  valid_address "$address" || return 0
+  [[ $state == 0 || $state == 1 ]] || return 0
+  now=$(date +%s%3N)
+  key=$address:$state
+  previous=${last_event_ms[$key]:-0}
+  if ((now - previous < debounce_ms)); then
+    return
+  fi
+  last_event_ms[$key]=$now
+  if [[ $state == 1 ]]; then
+    "$controller" minimize --address "$address" || true
+  else
+    "$controller" restore --address "$address" || true
+  fi
+}
+
+handle_event() {
+  local event=$1 payload
+  case $event in
+    minimize\>\>* | minimized\>\>*)
+      payload=${event#*>>}
+      handle_minimize "$payload"
+      ;;
+    closewindow\>\>*)
+      "$state_bin" prune >/dev/null 2>&1 || true
+      ;;
+  esac
+}
+
+if [[ ${1:-} == --stdin ]]; then
+  [[ $# -eq 1 ]] || die 'usage: cyberdock-event-bridge [--stdin]'
+  while IFS= read -r event; do handle_event "$event"; done
+  exit 0
+fi
+[[ $# -eq 0 ]] || die 'usage: cyberdock-event-bridge [--stdin]'
+command -v "$socat_bin" >/dev/null 2>&1 || die 'socat is required'
+[[ -n ${XDG_RUNTIME_DIR:-} && -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] ||
+  die 'Hyprland runtime environment is missing'
+socket=$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
+[[ -S $socket ]] || die "Hyprland event socket is unavailable: $socket"
+
+while IFS= read -r event; do
+  handle_event "$event"
+done < <("$socat_bin" - "UNIX-CONNECT:$socket")

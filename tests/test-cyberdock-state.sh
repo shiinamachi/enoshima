@@ -73,6 +73,19 @@ case ${1:-} in
         address=$(sed -nE 's/.*address:(0x[0-9A-Fa-f]+).*/\1/p' <<<"$expression")
         argument="address:$address"
         ;;
+      hl.dsp.window.float*)
+        action=$(sed -nE 's/.*action = "(set|unset)".*/\1/p' <<<"$expression")
+        address=$(sed -nE 's/.*address:(0x[0-9A-Fa-f]+).*/\1/p' <<<"$expression")
+        dispatcher=windowfloat
+        argument="$action,address:$address"
+        ;;
+      hl.dsp.window.fullscreen_state*)
+        internal=$(sed -nE 's/.*internal = ([0-3]).*/\1/p' <<<"$expression")
+        client=$(sed -nE 's/.*client = ([0-3]).*/\1/p' <<<"$expression")
+        address=$(sed -nE 's/.*address:(0x[0-9A-Fa-f]+).*/\1/p' <<<"$expression")
+        dispatcher=fullscreenstate
+        argument="$internal $client,address:$address"
+        ;;
       *)
         exit 1
         ;;
@@ -152,6 +165,26 @@ case ${1:-} in
           printf '{}\n' >"$root/activewindow.json"
         fi
         ;;
+      windowfloat)
+        action=${argument%%,*}
+        address=${argument##*,address:}
+        floating=false
+        [[ $action == set ]] && floating=true
+        jq -c --arg address "$address" --argjson floating "$floating" '
+          map(if .address == $address then .floating = $floating else . end)
+        ' "$root/clients.json" | replace_json "$root/clients.json"
+        ;;
+      fullscreenstate)
+        states=${argument%%,*}
+        internal=${states%% *}
+        client=${states#* }
+        address=${argument##*,address:}
+        jq -c --arg address "$address" --argjson internal "$internal" --argjson client "$client" '
+          map(if .address == $address then
+            .fullscreen = $internal | .fullscreenClient = $client
+          else . end)
+        ' "$root/clients.json" | replace_json "$root/clients.json"
+        ;;
       *)
         exit 1
         ;;
@@ -182,8 +215,8 @@ JSON
 JSON
   cat >"$CYBERDOCK_FAKE_ROOT/clients.json" <<'JSON'
 [
-  {"address":"0xaaa","mapped":true,"class":"dev.zed.Zed","initialClass":"dev.zed.Zed","title":"Notes","workspace":{"id":3,"name":"3"},"monitor":0,"focusHistoryID":0},
-  {"address":"0xbbb","mapped":true,"class":"google-chrome","initialClass":"google-chrome","title":"Browser","workspace":{"id":2,"name":"2"},"monitor":1,"focusHistoryID":1},
+  {"address":"0xaaa","mapped":true,"class":"dev.zed.Zed","initialClass":"dev.zed.Zed","title":"Notes","workspace":{"id":3,"name":"3"},"monitor":0,"floating":false,"fullscreen":0,"fullscreenClient":0,"focusHistoryID":0},
+  {"address":"0xbbb","mapped":true,"class":"google-chrome","initialClass":"google-chrome","title":"Browser","workspace":{"id":2,"name":"2"},"monitor":1,"floating":true,"fullscreen":1,"fullscreenClient":1,"focusHistoryID":1},
   {"address":"0xccc","mapped":true,"class":"xembed-sni-proxy","initialClass":"xembed-sni-proxy","title":"","workspace":{"id":3,"name":"3"},"monitor":0,"focusHistoryID":2},
   {"address":"0xddd","mapped":true,"class":"explorer.exe","initialClass":"explorer.exe","title":"","workspace":{"id":-98,"name":"special:tray"},"monitor":0,"focusHistoryID":3}
 ]
@@ -235,6 +268,10 @@ after=$(wc -l <"$CYBERDOCK_FAKE_ROOT/dispatch.log")
 
 printf '%s\n' '==> disconnected output recovery keeps the recorded workspace on a safe monitor'
 run_state minimize 0xbbb
+jq 'map(if .address == "0xbbb" then
+  .floating = false | .fullscreen = 0 | .fullscreenClient = 0
+else . end)' "$CYBERDOCK_FAKE_ROOT/clients.json" >"$work/clients.new"
+mv -f -- "$work/clients.new" "$CYBERDOCK_FAKE_ROOT/clients.json"
 cat >"$CYBERDOCK_FAKE_ROOT/monitors.json" <<'JSON'
 [
   {"id":0,"name":"eDP-1","focused":true,"activeWorkspace":{"id":1,"name":"1"}}
@@ -246,6 +283,8 @@ grep -Fqx $'moveworkspacetomonitor\t2 eDP-1' "$CYBERDOCK_FAKE_ROOT/dispatch.log"
   fail 'recorded workspace was not recovered to the remaining monitor'
 jq -e '.[] | select(.address == "0xbbb") | .workspace.name == "2" and .monitor == 0' \
   "$CYBERDOCK_FAKE_ROOT/clients.json" >/dev/null || fail 'disconnected-output restore was unsafe'
+jq -e '.[] | select(.address == "0xbbb") | .floating and .fullscreen == 1 and .fullscreenClient == 1' \
+  "$CYBERDOCK_FAKE_ROOT/clients.json" >/dev/null || fail 'window geometry state was not restored'
 
 printf '%s\n' '==> closed clients are pruned from runtime state'
 reset_fixture

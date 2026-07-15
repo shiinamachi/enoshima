@@ -1,0 +1,16 @@
+[Unit]
+Description=Bridge client minimize requests into Cyberdock state
+PartOf=graphical-session.target
+After=graphical-session.target cyberdock.service
+ConditionEnvironment=WAYLAND_DISPLAY
+ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/cyberdock-event-bridge
+Restart=on-failure
+RestartSec=2
+Slice=background-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target
