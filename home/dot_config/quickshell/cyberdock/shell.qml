@@ -22,22 +22,102 @@ ShellRoot {
     property int osdValue: 0
     property bool osdMuted: false
 
+    readonly property alias theme: themeTokens
+    readonly property string appearanceStateHome: {
+        const configured = Quickshell.env("XDG_STATE_HOME");
+        return configured !== ""
+            ? configured
+            : Quickshell.env("HOME") + "/.local/state";
+    }
+    readonly property string appearanceMode: {
+        const candidate = appearanceModeFile.text().trim();
+        if (["default", "reduced-motion", "reduced-transparency", "accessible"]
+                .includes(candidate))
+            return candidate;
+        return "default";
+    }
+    readonly property bool reducedMotion: appearanceMode === "reduced-motion"
+        || appearanceMode === "accessible"
+    readonly property bool reducedTransparency: appearanceMode === "reduced-transparency"
+        || appearanceMode === "accessible"
+
     // Semantic colors mirror the shared GTK palette while keeping QML free
-    // from a runtime file parser. Tests guard these values against drift.
-    readonly property color colorCanvasOverlay: "#f2050623"
-    readonly property color colorSurfaceOverlay: "#f20a0c3e"
-    readonly property color colorRaisedOverlay: "#cc161151"
-    readonly property color colorFocus: "#62d8ff"
-    readonly property color colorFocusBorder: "#cc62d8ff"
-    readonly property color colorFocusHover: "#4462d8ff"
-    readonly property color colorFocusSelected: "#3362d8ff"
-    readonly property color colorSelection: "#9a5cff"
-    readonly property color colorSelectionBorder: "#cc9a5cff"
-    readonly property color colorSelectionStrong: "#ff9a5cff"
-    readonly property color colorAccent: "#e56bff"
-    readonly property color colorText: "#f2ecff"
-    readonly property color colorInfo: "#6d8cff"
-    readonly property color colorCritical: "#ff5d8f"
+    // from a runtime palette parser. Launcher and OSD receive this same object
+    // so color, geometry, and motion roles cannot drift between shell surfaces.
+    QtObject {
+        id: themeTokens
+
+        readonly property color colorCanvas: "#050623"
+        readonly property color colorSurface: "#0a0c3e"
+        readonly property color colorRaised: "#161151"
+        readonly property color colorCanvasOverlay: root.reducedTransparency
+            ? "#ff050623" : "#f2050623"
+        readonly property color colorSurfaceOverlay: root.reducedTransparency
+            ? "#ff0a0c3e" : "#f20a0c3e"
+        readonly property color colorRaisedOverlay: root.reducedTransparency
+            ? "#ff161151" : "#f2161151"
+        readonly property color colorLauncherSurface: root.reducedTransparency
+            ? "#ff0a0c3e" : "#f70a0c3e"
+        readonly property color colorScrim: root.reducedTransparency
+            ? "#b3050623" : "#99050623"
+        readonly property color colorFooter: root.reducedTransparency
+            ? "#cc050623" : "#66050623"
+        readonly property color colorSurfaceSubtle: root.reducedTransparency
+            ? "#66161151" : "#33161151"
+        readonly property color colorRaisedSoft: root.reducedTransparency
+            ? "#dd161151" : "#88161151"
+        readonly property color colorDivider: "#556d8cff"
+        readonly property color colorQuietBorder: "#886d8cff"
+        readonly property color colorInfoBorder: "#996d8cff"
+        readonly property color colorFocus: "#62d8ff"
+        readonly property color colorFocusBorder: "#cc62d8ff"
+        readonly property color colorFocusHover: "#4462d8ff"
+        readonly property color colorFocusSelected: "#3362d8ff"
+        readonly property color colorSelection: "#9a5cff"
+        readonly property color colorSelectionSoft: "#669a5cff"
+        readonly property color colorSelectionHover: "#cc6541b8"
+        readonly property color colorSelectionBorder: "#cc9a5cff"
+        readonly property color colorSelectionStrong: "#6541b8"
+        readonly property color colorAccent: "#e56bff"
+        readonly property color colorText: "#f2ecff"
+        readonly property color colorTextMuted: "#c9bfe8"
+        readonly property color colorTextSubtle: "#b3c9bfe8"
+        readonly property color colorOnSelection: "#f2ecff"
+        readonly property color colorInfo: "#6d8cff"
+        readonly property color colorCritical: "#ff5d8f"
+        readonly property color colorSuccess: "#77e0c6"
+        readonly property color colorTrack: "#446d8cff"
+
+        readonly property int radiusPanel: 14
+        readonly property int radiusControl: 12
+        readonly property int radiusSmall: 10
+
+        readonly property int durationInstant: 90
+        readonly property int durationFast: 110
+        readonly property int durationDirect: 120
+        readonly property int durationExit: 145
+        readonly property int durationStandard: 150
+        readonly property int durationEnter: 190
+        readonly property int durationOsdVisible: 1400
+    }
+
+    FileView {
+        id: appearanceModeFile
+        path: root.appearanceStateHome + "/desktop-appearance/mode"
+        preload: true
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+    }
+
+    // The mode file is created only after the user first selects a profile.
+    // Retry only while it is absent; once loaded, FileView handles updates.
+    Timer {
+        interval: 2000
+        repeat: true
+        running: !appearanceModeFile.loaded
+        onTriggered: appearanceModeFile.reload()
+    }
 
     readonly property var pinnedApps: [
         {
@@ -125,7 +205,7 @@ ShellRoot {
 
     Timer {
         id: osdHideTimer
-        interval: 1400
+        interval: root.theme.durationOsdVisible
         repeat: false
         onTriggered: root.osdVisible = false
     }
@@ -332,9 +412,18 @@ ShellRoot {
 
                 mask: Region {
                     Region { item: hotspot }
-                    Region { item: dockWindow.revealed ? dockHitArea : null; radius: 13 }
-                    Region { item: contextMenu.visible ? contextMenu : null; radius: 16 }
-                    Region { item: chooser.visible ? chooser : null; radius: 16 }
+                    Region {
+                        item: dockWindow.revealed ? dockHitArea : null
+                        radius: root.theme.radiusPanel
+                    }
+                    Region {
+                        item: contextMenu.visible ? contextMenu : null
+                        radius: root.theme.radiusPanel
+                    }
+                    Region {
+                        item: chooser.visible ? chooser : null
+                        radius: root.theme.radiusPanel
+                    }
                 }
 
                 onPointerInInteractiveAreaChanged: {
@@ -355,6 +444,7 @@ ShellRoot {
 
                 function showChooser(app) {
                     clearContextMenu();
+                    clearTooltip();
                     chooserTitle = app.name;
                     chooserWindows = root.recentWindows(app.windows);
                     reveal();
@@ -446,6 +536,18 @@ ShellRoot {
                     refreshSoon.restart();
                 }
 
+                function performPrimaryAction(app) {
+                    clearContextMenu();
+                    const windows = app.windows || [];
+                    if (windows.length === 0) {
+                        root.launchApp(app);
+                    } else if (windows.length > 1) {
+                        showChooser(app);
+                    } else if (windows[0].address !== root.snapshot.activeAddress) {
+                        root.activateWindow(windows[0].address);
+                    }
+                }
+
                 Timer {
                     id: hideTimer
                     interval: 420
@@ -482,10 +584,13 @@ ShellRoot {
                     width: 42
                     height: 3
                     radius: 1.5
-                    color: root.colorSelection
+                    color: root.theme.colorSelection
                     opacity: dockWindow.revealed ? 0 : 0.72
 
-                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                    Behavior on opacity {
+                        enabled: !root.reducedMotion
+                        NumberAnimation { duration: root.theme.durationDirect }
+                    }
                 }
 
                 Item {
@@ -506,31 +611,42 @@ ShellRoot {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: dockWindow.dockBottomMargin
-                    width: Math.min(parent.width - 17, Math.max(68, dockRow.implicitWidth + 17))
+                    width: Math.min(parent.width - 28, Math.max(72, dockRow.implicitWidth + 24))
                     height: 58
-                    radius: 15
-                    color: root.colorSurfaceOverlay
+                    radius: root.theme.radiusPanel
+                    color: root.theme.colorSurfaceOverlay
                     border.width: 1
-                    border.color: root.colorFocusBorder
+                    border.color: root.theme.colorQuietBorder
                     opacity: dockWindow.revealed ? 1 : 0
                     scale: dockWindow.revealed ? 1 : 0.985
 
                     transform: Translate {
                         y: dockWindow.revealed ? 0 : 13
                         Behavior on y {
+                            enabled: !root.reducedMotion
                             NumberAnimation {
-                                duration: dockWindow.revealed ? 190 : 145
+                                duration: dockWindow.revealed
+                                    ? root.theme.durationEnter
+                                    : root.theme.durationExit
                                 easing.type: dockWindow.revealed ? Easing.OutCubic : Easing.InCubic
                             }
                         }
                     }
 
                     Behavior on opacity {
-                        NumberAnimation { duration: dockWindow.revealed ? 150 : 115 }
+                        enabled: !root.reducedMotion
+                        NumberAnimation {
+                            duration: dockWindow.revealed
+                                ? root.theme.durationStandard
+                                : root.theme.durationFast
+                        }
                     }
                     Behavior on scale {
+                        enabled: !root.reducedMotion
                         NumberAnimation {
-                            duration: dockWindow.revealed ? 190 : 145
+                            duration: dockWindow.revealed
+                                ? root.theme.durationEnter
+                                : root.theme.durationExit
                             easing.type: dockWindow.revealed ? Easing.OutCubic : Easing.InCubic
                         }
                     }
@@ -547,7 +663,7 @@ ShellRoot {
                         Row {
                             id: dockRow
                             height: parent.height
-                            spacing: 5
+                            spacing: 8
 
                             Repeater {
                                 model: dockWindow.dockApps
@@ -563,6 +679,23 @@ ShellRoot {
 
                                     width: app.id === "launcher" ? 54 : 44
                                     height: 46
+                                    scale: appMouse.pressed ? 0.97 : 1
+
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: app.name
+                                    Accessible.description: appItem.active
+                                        ? "현재 활성화된 애플리케이션"
+                                        : (appItem.running
+                                            ? "실행 중인 애플리케이션"
+                                            : "애플리케이션 열기")
+                                    Accessible.pressed: appMouse.pressed
+                                    Accessible.onPressAction:
+                                        dockWindow.performPrimaryAction(appItem.app)
+
+                                    Behavior on scale {
+                                        enabled: !root.reducedMotion
+                                        NumberAnimation { duration: root.theme.durationFast }
+                                    }
 
                                     Rectangle {
                                         visible: appItem.app.id === "launcher"
@@ -571,17 +704,19 @@ ShellRoot {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 1
                                         height: 28
-                                        color: root.colorSelectionBorder
+                                        color: root.theme.colorSelectionBorder
                                     }
 
                                     Rectangle {
                                         anchors.fill: parent
-                                        radius: 11
+                                        radius: root.theme.radiusControl
                                         color: appMouse.containsMouse
-                                            ? root.colorFocusHover
-                                            : (appItem.active ? root.colorFocusSelected : "transparent")
+                                            ? root.theme.colorFocusHover
+                                            : (appItem.active
+                                                ? root.theme.colorFocusSelected
+                                                : "transparent")
                                         border.width: appItem.active ? 1 : 0
-                                        border.color: root.colorSelectionStrong
+                                        border.color: root.theme.colorSelectionBorder
                                     }
 
                                     IconImage {
@@ -594,7 +729,10 @@ ShellRoot {
                                             "application-x-executable")
                                         opacity: appItem.minimized ? 0.62 : 1
                                         scale: appMouse.containsMouse ? 1.09 : 1
-                                        Behavior on scale { NumberAnimation { duration: 110 } }
+                                        Behavior on scale {
+                                            enabled: !root.reducedMotion
+                                            NumberAnimation { duration: root.theme.durationFast }
+                                        }
                                     }
 
                                     Rectangle {
@@ -604,23 +742,30 @@ ShellRoot {
                                         width: appItem.running ? (appItem.active ? 16 : 7) : 0
                                         height: 3
                                         radius: 1.5
-                                        color: appItem.minimized ? root.colorAccent : root.colorFocus
-                                        Behavior on width { NumberAnimation { duration: 120 } }
+                                        color: appItem.minimized
+                                            ? root.theme.colorAccent
+                                            : root.theme.colorFocus
+                                        Behavior on width {
+                                            enabled: !root.reducedMotion
+                                            NumberAnimation { duration: root.theme.durationDirect }
+                                        }
                                     }
 
                                     Rectangle {
                                         visible: appItem.app.windows.length > 1
                                         anchors.right: parent.right
                                         anchors.top: parent.top
-                                        width: 15
+                                        width: appItem.app.windows.length > 9 ? 20 : 15
                                         height: 15
                                         radius: 7.5
-                                        color: root.colorSelectionStrong
+                                        color: root.theme.colorSelectionStrong
 
                                         Text {
                                             anchors.centerIn: parent
-                                            text: appItem.app.windows.length
-                                            color: root.colorText
+                                            text: appItem.app.windows.length > 9
+                                                ? "9+"
+                                                : appItem.app.windows.length
+                                            color: root.theme.colorOnSelection
                                             font.family: "Pretendard"
                                             font.pixelSize: 11
                                             font.bold: true
@@ -637,14 +782,8 @@ ShellRoot {
                                         onClicked: mouse => {
                                             if (mouse.button === Qt.RightButton) {
                                                 dockWindow.showContextMenu(appItem.app, appItem);
-                                            } else if (!appItem.running) {
-                                                dockWindow.clearContextMenu();
-                                                root.launchApp(appItem.app);
-                                            } else if (appItem.app.windows.length > 1) {
-                                                dockWindow.showChooser(appItem.app);
                                             } else {
-                                                dockWindow.clearContextMenu();
-                                                root.activateWindow(appItem.app.windows[0].address);
+                                                dockWindow.performPrimaryAction(appItem.app);
                                             }
                                         }
                                     }
@@ -664,20 +803,27 @@ ShellRoot {
                     anchors.bottomMargin: 8
                     width: Math.min(parent.width - 16, tooltipLabel.implicitWidth + 22)
                     height: 32
-                    radius: 9
-                    color: root.colorCanvasOverlay
+                    radius: root.theme.radiusSmall
+                    color: root.theme.colorCanvasOverlay
                     border.width: 1
-                    border.color: root.colorFocusBorder
+                    border.color: root.theme.colorFocusBorder
                     opacity: visible ? 1 : 0
                     z: 12
 
-                    Behavior on opacity { NumberAnimation { duration: 90 } }
+                    Behavior on opacity {
+                        enabled: !root.reducedMotion
+                        NumberAnimation { duration: root.theme.durationInstant }
+                    }
 
                     Text {
                         id: tooltipLabel
-                        anchors.centerIn: parent
+                        anchors.fill: parent
+                        anchors.leftMargin: 11
+                        anchors.rightMargin: 11
+                        verticalAlignment: Text.AlignVCenter
+                        horizontalAlignment: Text.AlignHCenter
                         text: dockWindow.tooltipText
-                        color: root.colorText
+                        color: root.theme.colorText
                         font.family: "Pretendard"
                         font.pixelSize: 12
                         font.bold: true
@@ -694,10 +840,10 @@ ShellRoot {
                     anchors.bottomMargin: 10
                     width: 244
                     height: contextColumn.implicitHeight + 16
-                    radius: 14
-                    color: root.colorCanvasOverlay
+                    radius: root.theme.radiusPanel
+                    color: root.theme.colorRaisedOverlay
                     border.width: 1
-                    border.color: root.colorSelectionBorder
+                    border.color: root.theme.colorSelectionBorder
                     z: 14
 
                     HoverHandler {
@@ -719,7 +865,7 @@ ShellRoot {
                             leftPadding: 8
                             rightPadding: 8
                             text: dockWindow.menuApp ? dockWindow.menuApp.name : ""
-                            color: root.colorFocus
+                            color: root.theme.colorFocus
                             font.family: "Pretendard"
                             font.pixelSize: 13
                             font.bold: true
@@ -729,7 +875,7 @@ ShellRoot {
                         Rectangle {
                             width: parent.width
                             height: 1
-                            color: root.colorSelectionBorder
+                            color: root.theme.colorSelectionBorder
                         }
 
                         Repeater {
@@ -739,8 +885,18 @@ ShellRoot {
                                 required property var modelData
                                 width: contextColumn.width
                                 height: 40
-                                radius: 9
-                                color: contextActionMouse.containsMouse ? root.colorFocusHover : "transparent"
+                                radius: root.theme.radiusSmall
+                                color: contextActionMouse.pressed
+                                    ? root.theme.colorFocusSelected
+                                    : (contextActionMouse.containsMouse
+                                        ? root.theme.colorFocusHover
+                                        : "transparent")
+
+                                Accessible.role: Accessible.Button
+                                Accessible.name: modelData.label
+                                Accessible.pressed: contextActionMouse.pressed
+                                Accessible.onPressAction:
+                                    dockWindow.performContextAction(modelData.id)
 
                                 Text {
                                     anchors.fill: parent
@@ -748,7 +904,9 @@ ShellRoot {
                                     anchors.rightMargin: 9
                                     verticalAlignment: Text.AlignVCenter
                                     text: modelData.label
-                                    color: modelData.destructive ? root.colorCritical : root.colorText
+                                    color: modelData.destructive
+                                        ? root.theme.colorCritical
+                                        : root.theme.colorText
                                     font.family: "Pretendard"
                                     font.pixelSize: 12
                                     elide: Text.ElideRight
@@ -773,10 +931,10 @@ ShellRoot {
                     anchors.bottomMargin: 10
                     width: visible ? Math.min(parent.width - 32, 420) : 0
                     height: visible ? Math.min(258, chooserList.contentHeight + 48) : 0
-                    radius: 16
-                    color: root.colorCanvasOverlay
+                    radius: root.theme.radiusPanel
+                    color: root.theme.colorRaisedOverlay
                     border.width: 1
-                    border.color: root.colorSelectionBorder
+                    border.color: root.theme.colorSelectionBorder
                     clip: true
 
                     HoverHandler {
@@ -791,7 +949,7 @@ ShellRoot {
                         anchors.top: parent.top
                         anchors.margins: 12
                         text: dockWindow.chooserTitle
-                        color: root.colorFocus
+                        color: root.theme.colorFocus
                         font.family: "Pretendard"
                         font.pixelSize: 14
                         font.bold: true
@@ -813,9 +971,21 @@ ShellRoot {
                             required property var modelData
                             width: ListView.view.width
                             height: 42
-                            radius: 10
-                            color: chooserItemMouse.containsMouse
-                                ? root.colorFocusHover : root.colorRaisedOverlay
+                            radius: root.theme.radiusControl
+                            color: chooserItemMouse.pressed
+                                ? root.theme.colorFocusSelected
+                                : (chooserItemMouse.containsMouse
+                                    ? root.theme.colorFocusHover
+                                    : root.theme.colorSurfaceSubtle)
+
+                            Accessible.role: Accessible.Button
+                            Accessible.name: root.windowTitle(modelData)
+                            Accessible.description: stateLabel.text
+                            Accessible.pressed: chooserItemMouse.pressed
+                            Accessible.onPressAction: {
+                                root.activateWindow(modelData.address);
+                                dockWindow.clearChooser();
+                            }
 
                             Text {
                                 anchors.left: parent.left
@@ -824,7 +994,7 @@ ShellRoot {
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 8
                                 text: root.windowTitle(modelData)
-                                color: root.colorText
+                                color: root.theme.colorText
                                 font.family: "Pretendard"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
@@ -838,7 +1008,9 @@ ShellRoot {
                                 text: modelData.minimized
                                     ? "MINIMIZED"
                                     : String(modelData.workspace && modelData.workspace.name || "")
-                                color: modelData.minimized ? root.colorAccent : root.colorInfo
+                                color: modelData.minimized
+                                    ? root.theme.colorAccent
+                                    : root.theme.colorInfo
                                 font.family: "Pretendard"
                                 font.pixelSize: 10
                                 font.bold: true
@@ -868,6 +1040,8 @@ ShellRoot {
             targetScreen: modelData
             launcherOpen: root.launcherOpen
             activeScreenName: root.launcherScreenName
+            theme: root.theme
+            reducedMotion: root.reducedMotion
             onCloseRequested: root.launcherOpen = false
         }
     }
@@ -883,6 +1057,8 @@ ShellRoot {
             osdKind: root.osdKind
             osdValue: root.osdValue
             osdMuted: root.osdMuted
+            theme: root.theme
+            reducedMotion: root.reducedMotion
         }
     }
 }
