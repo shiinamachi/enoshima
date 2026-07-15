@@ -323,6 +323,22 @@ update. `kakaotalk-profile rollback` restores the previous locally selected
 profile. Voice/video calls and screen sharing are out of scope. Wine and
 KakaoTalk updates can still regress otherwise working behavior.
 
+`kakaotalk-focus-guard.service` listens to Hyprland's event socket. When focus
+enters an exact `kakaotalk.exe` XWayland address it briefly uses a transparent
+Wayland focus sentinel and returns focus to that same address. The manual
+equivalents are **Super+Ctrl+K** and the Dock action **입력 포커스 복구**.
+
+The static `explorer.exe` empty-title rule is intentionally absent. After the
+first XWayland configure round, only a surface whose class is `explorer.exe`,
+geometry is at most 32×32, and process `WINEPREFIX` belongs to the KakaoTalk
+bottle is moved to `special:tray`. Larger notification and conversation
+surfaces remain visible and clickable on the focused monitor. Diagnose the
+whole profile, IME, tray and focus path without exposing window titles with:
+
+```bash
+kakaotalk-doctor --json
+```
+
 ## Network preference
 
 NetworkManager stores SIM, APN, and Wi-Fi credentials outside Git. The fallback

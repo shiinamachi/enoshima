@@ -285,6 +285,7 @@ for unit in \
   cyberdock-event-bridge.service \
   desktop-display-events.service \
   desktop-power-verify.service \
+  kakaotalk-focus-guard.service \
   xembed-sni-proxy.service; do
   check "custom user unit enabled: $unit" systemctl --user is-enabled --quiet "$unit"
 done
@@ -317,6 +318,7 @@ if systemctl --user is-active --quiet graphical-session.target; then
     cyberdock.service \
     cyberdock-event-bridge.service \
     desktop-display-events.service \
+    kakaotalk-focus-guard.service \
     xembed-sni-proxy.service; do
     check_or_warn "user unit active after login: $unit" systemctl --user is-active --quiet "$unit"
   done
@@ -450,6 +452,8 @@ fi
 
 if [[ -d $HOME/.var/app/com.usebottles.bottles/data/bottles/bottles/KakaoTalk ]]; then
   pass "KakaoTalk Bottles prefix exists"
+  check_or_warn "KakaoTalk profile, IME, tray and focus integration is healthy" bash -c \
+    'kakaotalk-doctor --json | jq -e .healthy'
 else
   warn "KakaoTalk bottle is not provisioned; run kakaotalk-setup interactively"
 fi
@@ -495,6 +499,10 @@ check "address-scoped desktop window actions are deployed" \
   test -x "$HOME/.local/bin/desktop-window-action"
 check "client minimize event bridge is deployed" \
   test -x "$HOME/.local/bin/cyberdock-event-bridge"
+# HOME is intentionally expanded by the child Bash used for the compound check.
+# shellcheck disable=SC2016
+check "KakaoTalk focus repair and surface guard are deployed" bash -c \
+  'test -x "$HOME/.local/bin/kakaotalk-focus-repair" && test -x "$HOME/.local/bin/kakaotalk-focus-guard"'
 check "SwayNC exposes notifications and the managed quick settings" \
   jq -e '
     ."widget-config".title.text == "Notifications" and

@@ -454,6 +454,18 @@ runner 변경이나 회귀 발생 시 `kakaotalk-profile rollback`으로 이전 
 bottle runner를 함께 복원한다. 채팅, clipboard와 파일 송수신도 별도로 검증한다.
 voice/video call과 screen sharing은 acceptance 대상이 아니다.
 
+키보드 입력 전체가 끊긴 경우 Dock의 **입력 포커스 복구** 또는
+`Super+Ctrl+K`를 사용한다. `kakaotalk-focus-guard.service`는 Hyprland event
+socket에서 정확한 `kakaotalk.exe` 주소로 전환되는 순간 투명 Wayland sentinel을
+90ms 활성화한 뒤 같은 주소로 focus를 되돌린다. 2초 rate limit으로 입력 도중
+반복 실행되는 것을 막는다.
+
+빈 title의 모든 `explorer.exe`를 숨기는 정적 rule은 사용하지 않는다. 최초 configure
+후 32×32 이하이고 해당 PID의 `WINEPREFIX`가 KakaoTalk bottle인 surface만 주소
+단위로 `special:tray`에 옮긴다. 크기가 큰 알림·대화 surface는 현재 monitor에 남아
+클릭할 수 있다. `kakaotalk-doctor --json`으로 runner, `InputStyle`, Fcitx,
+tray proxy, focus guard와 비민감 window metadata를 함께 확인할 수 있다.
+
 ## ONLYOFFICE와 RHWP Desktop
 
 ONLYOFFICE는 DOCX, XLSX, PPTX 기본 앱으로 배포된다. PDF 기본 앱은 기존 정책을

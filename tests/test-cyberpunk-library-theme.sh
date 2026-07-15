@@ -428,7 +428,8 @@ PY
 
 hyprland=home/dot_config/hypr/hyprland.lua
 assert_contains "$hyprland" 'name = "hide-xembed-tray-host"'
-assert_contains "$hyprland" 'name = "hide-wine-shell-surface"'
+assert_contains "$hyprland" 'name = "route-kakaotalk-main"'
+assert_not_contains "$hyprland" 'name = "hide-wine-shell-surface"'
 assert_contains "$hyprland" 'workspace = "special:tray silent"'
 assert_contains "$hyprland" 'no_focus = true'
 

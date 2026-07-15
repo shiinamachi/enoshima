@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly socat_bin=${KAKAOTALK_GUARD_SOCAT:-socat}
+readonly hyprctl_bin=${KAKAOTALK_GUARD_HYPRCTL:-hyprctl}
+readonly repair_bin=${KAKAOTALK_GUARD_REPAIR:-kakaotalk-focus-repair}
+readonly rate_limit_ms=${KAKAOTALK_GUARD_RATE_LIMIT_MS:-2000}
+readonly proc_root=${KAKAOTALK_GUARD_PROC_ROOT:-/proc}
+
+die() {
+  printf 'kakaotalk-focus-guard: %s\n' "$*" >&2
+  exit 1
+}
+
+valid_address() {
+  [[ $1 =~ ^0x[0-9A-Fa-f]+$ ]]
+}
+
+client_for_address() {
+  local address=$1
+  "$hyprctl_bin" clients -j 2>/dev/null | jq -c --arg address "$address" \
+    'first(.[] | select(.address == $address)) // null'
+}
+
+is_kakaotalk() {
+  jq -e '
+    . != null and .mapped == true and .xwayland == true and
+    ((.class // "") | ascii_downcase) == "kakaotalk.exe"
+  ' >/dev/null <<<"$1"
+}
+
+is_tiny_tray_helper() {
+  jq -e '
+    . != null and .mapped == true and .xwayland == true and
+    ((.class // "") | ascii_downcase) == "explorer.exe" and
+    (.title // "") == "" and
+    (.size[0] // 99999) >= 0 and (.size[0] // 99999) <= 32 and
+    (.size[1] // 99999) >= 0 and (.size[1] // 99999) <= 32
+  ' >/dev/null <<<"$1"
+}
+
+belongs_to_kakaotalk_bottle() {
+  local client=$1 pid environment_file
+  pid=$(jq -r '.pid // 0' <<<"$client")
+  [[ $pid =~ ^[1-9][0-9]*$ ]] || return 1
+  environment_file=$proc_root/$pid/environ
+  [[ -r $environment_file ]] || return 1
+  tr '\0' '\n' <"$environment_file" |
+    grep -Eiq '^WINEPREFIX=.*[/]KakaoTalk(/|$)'
+}
+
+last_repair_ms=0
+
+repair_if_kakao() {
+  local address=$1 client now
+  valid_address "$address" || return 0
+  client=$(client_for_address "$address")
+  is_kakaotalk "$client" || return 0
+  now=$(date +%s%3N)
+  if ((now - last_repair_ms < rate_limit_ms)); then
+    return
+  fi
+  last_repair_ms=$now
+  "$repair_bin" --address "$address" >/dev/null 2>&1 || true
+}
+
+classify_new_surface() {
+  local address=$1 client
+  valid_address "$address" || return 0
+  # XWayland surfaces can report a temporary 0x0 size at open time. Query only
+  # after the first configure round so a real Kakao popup is never mistaken for
+  # the Wine tray host merely because it has not been sized yet.
+  sleep 0.15
+  client=$(client_for_address "$address")
+  is_tiny_tray_helper "$client" || return 0
+  belongs_to_kakaotalk_bottle "$client" || return 0
+  "$hyprctl_bin" dispatch movetoworkspacesilent \
+    "special:tray,address:$address" >/dev/null 2>&1 || true
+}
+
+handle_event() {
+  local event=$1 payload address
+  case $event in
+    activewindowv2\>\>*)
+      repair_if_kakao "${event#*>>}"
+      ;;
+    openwindow\>\>* | windowtitlev2\>\>*)
+      payload=${event#*>>}
+      address=${payload%%,*}
+      classify_new_surface "$address"
+      ;;
+  esac
+}
+
+command -v jq >/dev/null 2>&1 || die 'jq is required'
+command -v "$hyprctl_bin" >/dev/null 2>&1 || die 'hyprctl is required'
+if [[ ${1:-} == --stdin ]]; then
+  [[ $# -eq 1 ]] || die 'usage: kakaotalk-focus-guard [--stdin]'
+  while IFS= read -r event; do handle_event "$event"; done
+  exit 0
+fi
+[[ $# -eq 0 ]] || die 'usage: kakaotalk-focus-guard [--stdin]'
+command -v "$socat_bin" >/dev/null 2>&1 || die 'socat is required'
+[[ -n ${XDG_RUNTIME_DIR:-} && -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] ||
+  die 'Hyprland runtime environment is missing'
+socket=$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
+[[ -S $socket ]] || die "Hyprland event socket is unavailable: $socket"
+
+while IFS= read -r event; do
+  handle_event "$event"
+done < <("$socat_bin" - "UNIX-CONNECT:$socket")

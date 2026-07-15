@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq variables are intentionally single-quoted.
+set -euo pipefail
+
+readonly flatpak_bin=${KAKAOTALK_DOCTOR_FLATPAK:-flatpak}
+readonly hyprctl_bin=${KAKAOTALK_DOCTOR_HYPRCTL:-hyprctl}
+readonly systemctl_bin=${KAKAOTALK_DOCTOR_SYSTEMCTL:-systemctl}
+readonly profile_bin=${KAKAOTALK_DOCTOR_PROFILE:-kakaotalk-profile}
+readonly app_id=com.usebottles.bottles
+readonly bottle_name=KakaoTalk
+
+[[ $# -eq 0 || ($# -eq 1 && $1 == --json) ]] || {
+  printf 'usage: kakaotalk-doctor [--json]\n' >&2
+  exit 2
+}
+command -v jq >/dev/null 2>&1 || exit 1
+
+profile='null'
+profile_verified=false
+if command -v "$profile_bin" >/dev/null 2>&1; then
+  profile=$($profile_bin current --json 2>/dev/null || printf null)
+  if $profile_bin verify >/dev/null 2>&1; then profile_verified=true; fi
+fi
+
+bottles='{}'
+bottles_version=unavailable
+flatpak_commit=unavailable
+input_style_root=false
+if command -v "$flatpak_bin" >/dev/null 2>&1 &&
+  "$flatpak_bin" info --user "$app_id" >/dev/null 2>&1; then
+  bottles_version=$("$flatpak_bin" run --command=bottles-cli "$app_id" --version 2>/dev/null || printf unavailable)
+  flatpak_commit=$("$flatpak_bin" info --user --show-commit "$app_id" 2>/dev/null || printf unavailable)
+  bottles=$("$flatpak_bin" run --command=bottles-cli "$app_id" --json list bottles 2>/dev/null || printf '{}')
+  registry_output=$("$flatpak_bin" run --command=bottles-cli "$app_id" shell \
+    -b "$bottle_name" -i 'wine reg query "HKCU\Software\Wine\AppDefaults\kakaotalk.exe\X11 Driver" /v InputStyle' \
+    2>/dev/null || true)
+  if grep -Eiq 'InputStyle[[:space:]]+REG_SZ[[:space:]]+root' <<<"$registry_output"; then
+    input_style_root=true
+  fi
+fi
+
+clients='[]'
+active_address=''
+if command -v "$hyprctl_bin" >/dev/null 2>&1; then
+  raw_clients=$("$hyprctl_bin" clients -j 2>/dev/null || printf '[]')
+  clients=$(jq -c '[.[] | select(((.class // "") | test("^(kakaotalk(\\.exe)?|kakao.*)$"; "i"))) | {
+    address, class, pid, size, workspace, monitor, xwayland, mapped, hidden,
+    has_title: ((.title // "") != "")
+  }]' <<<"$raw_clients")
+  active_address=$("$hyprctl_bin" activewindow -j 2>/dev/null | jq -r '.address // ""' || true)
+fi
+
+fcitx_reachable=false
+if command -v fcitx5-remote >/dev/null 2>&1 && fcitx5-remote >/dev/null 2>&1; then
+  fcitx_reachable=true
+fi
+tray_proxy_active=false
+focus_guard_active=false
+if command -v "$systemctl_bin" >/dev/null 2>&1; then
+  "$systemctl_bin" --user --quiet is-active xembed-sni-proxy.service && tray_proxy_active=true
+  "$systemctl_bin" --user --quiet is-active kakaotalk-focus-guard.service && focus_guard_active=true
+fi
+
+report=$(jq -c -n \
+  --arg bottlesVersion "$bottles_version" \
+  --arg flatpakCommit "$flatpak_commit" \
+  --arg activeAddress "$active_address" \
+  --arg xmodifiers "${XMODIFIERS:-}" \
+  --argjson profile "$profile" \
+  --argjson profileVerified "$profile_verified" \
+  --argjson bottles "$bottles" \
+  --argjson clients "$clients" \
+  --argjson inputStyle "$input_style_root" \
+  --argjson fcitx "$fcitx_reachable" \
+  --argjson tray "$tray_proxy_active" \
+  --argjson guard "$focus_guard_active" '
+  {
+    schema: 1,
+    profile: $profile,
+    profile_verified: $profileVerified,
+    bottles_version: $bottlesVersion,
+    flatpak_commit: $flatpakCommit,
+    bottle: ($bottles.KakaoTalk // null),
+    input_style_root: $inputStyle,
+    xmodifiers: $xmodifiers,
+    fcitx_reachable: $fcitx,
+    tray_proxy_active: $tray,
+    focus_guard_active: $guard,
+    active_address: $activeAddress,
+    windows: $clients,
+    healthy: ($profileVerified and $inputStyle and $fcitx and $tray and $guard)
+  }')
+
+if [[ ${1:-} == --json ]]; then
+  printf '%s\n' "$report"
+else
+  jq -r '
+    "Profile: \(.profile.id // "unavailable") (verified=\(.profile_verified))",
+    "Runner: \(.bottle.Runner // .bottle.runner // "unavailable")",
+    "Bottles: \(.bottles_version) [\(.flatpak_commit)]",
+    "InputStyle=root: \(.input_style_root)",
+    "XMODIFIERS: \(.xmodifiers)",
+    "Fcitx reachable: \(.fcitx_reachable)",
+    "Tray proxy active: \(.tray_proxy_active)",
+    "Focus guard active: \(.focus_guard_active)",
+    "Kakao windows: \(.windows | length)",
+    "Healthy: \(.healthy)"
+  ' <<<"$report"
+fi

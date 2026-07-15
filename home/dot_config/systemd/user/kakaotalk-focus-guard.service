@@ -1,0 +1,16 @@
+[Unit]
+Description=Classify KakaoTalk XWayland surfaces and repair keyboard focus
+PartOf=graphical-session.target
+After=graphical-session.target cyberdock.service xembed-sni-proxy.service
+ConditionEnvironment=WAYLAND_DISPLAY
+ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/kakaotalk-focus-guard
+Restart=on-failure
+RestartSec=2
+Slice=background-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

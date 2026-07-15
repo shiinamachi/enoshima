@@ -317,6 +317,9 @@ hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("desktop-display-mode menu"), {
 hl.bind(mainMod .. " + SHIFT + P", hl.dsp.window.pseudo(), { description = "Toggle pseudotiling" })
 hl.bind(mainMod .. " + T", hl.dsp.layout("togglesplit"), { description = "Toggle dwindle split" })
 hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("desktop-power lock"), { description = "Lock session" })
+hl.bind(mainMod .. " + CTRL + K", hl.dsp.exec_cmd("kakaotalk-focus-repair"), {
+    description = "Repair KakaoTalk input focus",
+})
 hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("desktop-power menu"), { description = "Open power and session menu" })
 
 local directions = {
@@ -415,7 +418,7 @@ local applicationRoutes = {
     },
     {
         name = "route-document",
-        class = [[(?i)^(discord|slack|com\.slack\.slack|thunderbird|org\.mozilla\.thunderbird|obsidian|md\.obsidian|.*notion.*|kakaotalk(\.exe)?|kakao.*|onlyoffice.*|desktopeditors|rhwp(-desktop)?|.*rhwp.*)$]],
+        class = [[(?i)^(discord|slack|com\.slack\.slack|thunderbird|org\.mozilla\.thunderbird|obsidian|md\.obsidian|.*notion.*|onlyoffice.*|desktopeditors|rhwp(-desktop)?|.*rhwp.*)$]],
         workspace = "3 silent",
     },
     {
@@ -438,31 +441,26 @@ for _, route in ipairs(applicationRoutes) do
     })
 end
 
--- Legacy tray bridges use tiny X11 helper windows. Keep those implementation
--- surfaces mapped for icon forwarding without exposing them on the desktop.
-for _, traySurface in ipairs({
-    {
-        name = "hide-xembed-tray-host",
-        class = [[(?i)^xembed-sni-proxy$]],
-        title = nil,
+-- Route only the verified KakaoTalk main window. Notification and conversation
+-- popups stay on the focused monitor instead of being swept to DOCUMENT.
+hl.window_rule({
+    name = "route-kakaotalk-main",
+    match = {
+        class = [[(?i)^kakaotalk\.exe$]],
+        title = "^카카오톡$",
     },
-    {
-        name = "hide-wine-shell-surface",
-        class = [[(?i)^explorer\.exe$]],
-        title = "^$",
-    },
-}) do
-    local match = { class = traySurface.class }
-    if traySurface.title ~= nil then
-        match.title = traySurface.title
-    end
-    hl.window_rule({
-        name = traySurface.name,
-        match = match,
-        workspace = "special:tray silent",
-        no_focus = true,
-    })
-end
+    workspace = "3 silent",
+})
+
+-- Keep the bridge's own X11 implementation surface out of the desktop. Wine's
+-- explorer.exe surfaces are classified by exact address and geometry at
+-- runtime; a broad empty-title rule would also hide real Kakao notifications.
+hl.window_rule({
+    name = "hide-xembed-tray-host",
+    match = { class = [[(?i)^xembed-sni-proxy$]] },
+    workspace = "special:tray silent",
+    no_focus = true,
+})
 
 hl.window_rule({
     name = "float-system-tools",

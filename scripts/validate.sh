@@ -353,6 +353,7 @@ for test_script in \
   tests/test-desktop-scaling-status.sh \
   tests/test-graphics-workflow.sh \
   tests/test-kakaotalk-connectivity.sh \
+  tests/test-kakaotalk-desktop-integration.sh \
   tests/test-kakaotalk-profile.sh \
   tests/test-mise-runtimes.sh \
   tests/test-rclone-user-units.sh \
@@ -368,6 +369,7 @@ if [[ -x /usr/lib/qt6/bin/qmllint ]]; then
     home/dot_config/quickshell/cyberdock/shell.qml \
     home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml \
     home/dot_config/quickshell/cyberdock/PowerMenu.qml \
+    home/dot_config/quickshell/cyberdock/FocusSentinel.qml \
     home/dot_config/quickshell/cyberdock/CyberLauncher.qml \
     home/dot_config/quickshell/cyberdock/CyberOsd.qml
   /usr/lib/qt6/bin/qmllint --max-warnings 0 \
@@ -389,6 +391,7 @@ if command -v systemd-analyze >/dev/null 2>&1; then
     home/dot_config/systemd/user/desktop-display-revert.timer \
     home/dot_config/systemd/user/desktop-power-verify.service \
     home/dot_config/systemd/user/hyprsunset-quick.service \
+    home/dot_config/systemd/user/kakaotalk-focus-guard.service \
     home/dot_config/systemd/user/protonmail-bridge.service \
     home/dot_config/systemd/user/rclone-google-drive.service \
     home/dot_config/systemd/user/rclone-proton-drive.service; do

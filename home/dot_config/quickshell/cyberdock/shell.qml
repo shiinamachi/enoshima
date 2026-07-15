@@ -20,6 +20,9 @@ ShellRoot {
     property string displayOverlayScreenName: ""
     property bool powerMenuOpen: false
     property string powerMenuScreenName: ""
+    property bool kakaoFocusPulseActive: false
+    property string kakaoFocusScreenName: ""
+    property string kakaoFocusTargetAddress: ""
     property bool osdVisible: false
     property string osdScreenName: ""
     property string osdKind: "volume"
@@ -332,6 +335,19 @@ ShellRoot {
             root.powerMenuOpen = true;
         }
         function close(): void { root.powerMenuOpen = false; }
+    }
+
+    IpcHandler {
+        target: "kakaofocus"
+
+        function pulse(address: string): void {
+            if (!/^0x[0-9A-Fa-f]+$/.test(address))
+                return;
+            root.kakaoFocusPulseActive = false;
+            root.kakaoFocusScreenName = root.focusedScreenName();
+            root.kakaoFocusTargetAddress = address;
+            Qt.callLater(() => root.kakaoFocusPulseActive = true);
+        }
     }
 
     IpcHandler {
@@ -657,6 +673,14 @@ ShellRoot {
                             "id": "show",
                             "label": app.windows.length > 1 ? "Show Windows…" : "Show Window"
                         });
+                        if (app.windows.some(window =>
+                                /^(kakaotalk(\.exe)?|kakao.*)$/i.test(
+                                    root.windowClass(window)))) {
+                            actions.push({
+                                "id": "repair-kakao-focus",
+                                "label": "입력 포커스 복구"
+                            });
+                        }
                         if (app.windows.some(window => !window.minimized)) {
                             actions.push({
                                 "id": "minimize",
@@ -704,6 +728,8 @@ ShellRoot {
                     } else if (actionId === "close") {
                         for (const window of app.windows)
                             root.closeWindow(window.address);
+                    } else if (actionId === "repair-kakao-focus") {
+                        Quickshell.execDetached(["kakaotalk-focus-repair"]);
                     } else if (actionId === "pin") {
                         root.runPinAction(["add", app.desktopId]);
                     } else if (actionId === "unpin") {
@@ -1237,6 +1263,19 @@ ShellRoot {
             theme: root.theme
             reducedMotion: root.reducedMotion
             onCloseRequested: root.powerMenuOpen = false
+        }
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        delegate: FocusSentinel {
+            required property var modelData
+            targetScreen: modelData
+            pulseActive: root.kakaoFocusPulseActive
+            activeScreenName: root.kakaoFocusScreenName
+            targetAddress: root.kakaoFocusTargetAddress
+            onPulseCompleted: root.kakaoFocusPulseActive = false
         }
     }
 

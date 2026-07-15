@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly hyprctl_bin=${KAKAOTALK_FOCUS_HYPRCTL:-hyprctl}
+readonly qs_bin=${KAKAOTALK_FOCUS_QS:-qs}
+readonly window_action=${KAKAOTALK_FOCUS_WINDOW_ACTION:-desktop-window-action}
+readonly config_path=${KAKAOTALK_FOCUS_QUICKSHELL_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/cyberdock}
+
+die() {
+  printf 'kakaotalk-focus-repair: %s\n' "$*" >&2
+  exit 1
+}
+
+valid_address() {
+  [[ $1 =~ ^0x[0-9A-Fa-f]+$ ]]
+}
+
+[[ $# -eq 0 || ($# -eq 2 && $1 == --address) ]] ||
+  die 'usage: kakaotalk-focus-repair [--address ADDRESS]'
+command -v jq >/dev/null 2>&1 || die 'jq is required'
+command -v "$hyprctl_bin" >/dev/null 2>&1 || die 'hyprctl is required'
+
+clients=$("$hyprctl_bin" clients -j 2>/dev/null) || die 'Hyprland clients are unavailable'
+requested=${2:-}
+if [[ -n $requested ]]; then
+  valid_address "$requested" || die "invalid window address: $requested"
+  address=$(jq -r --arg address "$requested" '
+    first(.[] | select(
+      .address == $address and .xwayland == true and
+      ((.class // "") | ascii_downcase) == "kakaotalk.exe"
+    ) | .address) // ""
+  ' <<<"$clients")
+else
+  active=$("$hyprctl_bin" activewindow -j 2>/dev/null | jq -r '.address // ""' || true)
+  address=$(jq -r --arg active "$active" '
+    [
+      .[] | select(
+        .mapped == true and .xwayland == true and
+        ((.class // "") | ascii_downcase) == "kakaotalk.exe"
+      ) | . + {area: ((.size[0] // 0) * (.size[1] // 0))}
+    ]
+    | sort_by(if .address == $active then 1e18 else .area end)
+    | last.address // ""
+  ' <<<"$clients")
+fi
+[[ -n $address ]] || die 'no mapped KakaoTalk XWayland window was found'
+
+if command -v "$window_action" >/dev/null 2>&1; then
+  "$window_action" restore --address "$address" >/dev/null 2>&1 || true
+fi
+
+pulsed=false
+if command -v "$qs_bin" >/dev/null 2>&1 &&
+  "$qs_bin" -p "$config_path" ipc call -- kakaofocus pulse "$address" \
+    >/dev/null 2>&1; then
+  pulsed=true
+  sleep 0.2
+fi
+
+active=$("$hyprctl_bin" activewindow -j 2>/dev/null | jq -r '.address // ""' || true)
+if [[ $active != "$address" ]]; then
+  # This is also the fallback when the Quickshell sentinel has not started.
+  # The exact address prevents another Kakao popup or unrelated window from
+  # receiving the focus repair.
+  "$hyprctl_bin" dispatch focuswindow "address:$address" >/dev/null
+fi
+
+active=$("$hyprctl_bin" activewindow -j 2>/dev/null | jq -r '.address // ""' || true)
+[[ $active == "$address" ]] || die "failed to focus KakaoTalk window $address"
+
+if command -v fcitx5-remote >/dev/null 2>&1; then
+  fcitx5-remote >/dev/null 2>&1 ||
+    printf 'kakaotalk-focus-repair: Fcitx is not reachable\n' >&2
+fi
+if [[ $pulsed == true ]]; then
+  printf 'KakaoTalk input focus repaired through the Wayland sentinel.\n'
+else
+  printf 'KakaoTalk input focus repaired with the compositor fallback.\n'
+fi
