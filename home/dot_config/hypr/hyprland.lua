@@ -162,14 +162,14 @@ hl.curve("quick", {
     points = { { 0.15, 0 }, { 0.1, 1 } },
 })
 
-hl.animation({ leaf = "global", enabled = true, speed = 8, bezier = "easeOutQuint" })
-hl.animation({ leaf = "border", enabled = true, speed = 6, bezier = "easeOutQuint" })
-hl.animation({ leaf = "windows", enabled = true, speed = 6, bezier = "easeOutQuint" })
-hl.animation({ leaf = "windowsIn", enabled = true, speed = 6, bezier = "easeOutQuint", style = "popin 92%" })
-hl.animation({ leaf = "windowsOut", enabled = true, speed = 5, bezier = "quick", style = "popin 92%" })
-hl.animation({ leaf = "fade", enabled = true, speed = 5, bezier = "quick" })
-hl.animation({ leaf = "layers", enabled = true, speed = 5, bezier = "easeOutQuint" })
-hl.animation({ leaf = "workspaces", enabled = true, speed = 5, bezier = "easeInOutCubic", style = "slide" })
+hl.animation({ leaf = "global", enabled = true, speed = 1.8, bezier = "easeOutQuint" })
+hl.animation({ leaf = "border", enabled = true, speed = 1.1, bezier = "easeOutQuint" })
+hl.animation({ leaf = "windows", enabled = true, speed = 1.8, bezier = "easeOutQuint" })
+hl.animation({ leaf = "windowsIn", enabled = true, speed = 1.8, bezier = "easeOutQuint", style = "popin 92%" })
+hl.animation({ leaf = "windowsOut", enabled = true, speed = 1.2, bezier = "quick", style = "popin 92%" })
+hl.animation({ leaf = "fade", enabled = true, speed = 1.4, bezier = "quick" })
+hl.animation({ leaf = "layers", enabled = true, speed = 1.8, bezier = "easeOutQuint" })
+hl.animation({ leaf = "workspaces", enabled = true, speed = 2.0, bezier = "easeInOutCubic", style = "slide" })
 
 -- The official hyprfocus plugin is optional at parse time. Hyprpm loads it
 -- after Hyprland starts and schedules a reload; the native active border stays
@@ -205,8 +205,8 @@ local function configureHyprfocus()
         return
     end
 
-    hl.animation({ leaf = "hyprfocusIn", enabled = true, speed = 12, bezier = "quick" })
-    hl.animation({ leaf = "hyprfocusOut", enabled = true, speed = 10, bezier = "easeOutQuint" })
+    hl.animation({ leaf = "hyprfocusIn", enabled = true, speed = 1.6, bezier = "easeOutQuint" })
+    hl.animation({ leaf = "hyprfocusOut", enabled = true, speed = 1.1, bezier = "quick" })
 end
 
 configureHyprfocus()
