@@ -51,6 +51,7 @@ grep -Fq 'Version ABI string:' "$bootstrap"
 grep -Fq 'tests/test-cyberdock-state.sh' "$validate"
 grep -Fq 'tests/test-cyberpunk-library-theme.sh' "$validate"
 grep -Fq 'tests/test-desktop-appearance.sh' "$validate"
+grep -Fq 'tests/test-swaync-quick-setting.sh' "$validate"
 grep -Fq 'env -u HYPRLAND_INSTANCE_SIGNATURE' "$validate"
 grep -Fq '/usr/lib/qt6/bin/qmllint --max-warnings 0' "$validate"
 if grep -Fq 'command -v qmllint' "$validate"; then

@@ -47,6 +47,17 @@ sha256_matches() {
   [[ ${actual%% *} == "$expected" ]]
 }
 
+swaync_quick_settings_callable() {
+  local helper=$HOME/.local/bin/swaync-quick-setting
+  local setting state
+  [[ -x $helper ]] || return 1
+
+  for setting in wifi bluetooth night-light; do
+    state=$("$helper" status "$setting") || return 1
+    [[ $state == true || $state == false ]] || return 1
+  done
+}
+
 lenovo_sar_run_succeeded() {
   local invocation result exit_status
   invocation=$(systemctl show lenovo-cfgservice.service \
@@ -448,12 +459,14 @@ check "Cyberlauncher provides searchable app details and keyboard focus" \
   "$HOME/.config/quickshell/cyberdock/CyberLauncher.qml"
 check "desktop OSD shares the Quickshell surface" \
   test -x "$HOME/.local/bin/cyberosd-show"
-check "SwayNC exposes notifications and functional quick settings" \
+check "SwayNC exposes notifications and the managed quick settings" \
   jq -e '
     ."widget-config".title.text == "Notifications" and
     (.widgets | index("buttons-grid#quick-settings") != null)
   ' \
   "$HOME/.config/swaync/config.json"
+check "SwayNC quick-setting helper is executable and reports valid state" \
+  swaync_quick_settings_callable
 check "desktop GTK surfaces share the semantic palette" \
   test -f "$HOME/.config/cyberpunk-library/palette.css"
 check "Ghostty enforces WCAG contrast" \
@@ -473,10 +486,17 @@ check "Fcitx candidate UI uses the managed deep-purple theme" \
   "$HOME/.config/fcitx5/conf/classicui.conf"
 check "cyberpunk SDDM theme payload is installed" \
   test -f /usr/share/sddm/themes/cyberpunk/Main.qml
-check "cyberpunk SDDM wallpaper is installed" \
-  test -f /usr/share/sddm/themes/cyberpunk/background.jpg
-check "superseded SDDM wallpaper was removed" \
-  test ! -e /usr/share/sddm/themes/cyberpunk/background.png
+check "cyberpunk SDDM 16:9 wallpaper is installed intact" \
+  sha256_matches \
+  /usr/share/sddm/themes/cyberpunk/background-16x9.jpg \
+  5b96bdca2bfc912164e2dec3ec5aec6f360e3c7ba6dabc7136afe39b618ce1cc
+check "cyberpunk SDDM 16:10 wallpaper is installed intact" \
+  sha256_matches \
+  /usr/share/sddm/themes/cyberpunk/background-16x10.jpg \
+  784c66002966e57a2ab0e5ae2413c3faee7b93a8c656d203899d41b25faffafb
+check "superseded SDDM wallpaper assets were removed" \
+  bash -c \
+  '[[ ! -e /usr/share/sddm/themes/cyberpunk/background.jpg && ! -e /usr/share/sddm/themes/cyberpunk/background.png ]]'
 
 if [[ -f /etc/sddm.conf.d/20-cyberpunk-theme.conf ]]; then
   check "gated cyberpunk SDDM theme is selected" \

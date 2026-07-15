@@ -350,6 +350,7 @@ for test_script in \
   tests/test-kakaotalk-connectivity.sh \
   tests/test-mise-runtimes.sh \
   tests/test-rclone-user-units.sh \
+  tests/test-swaync-quick-setting.sh \
   tests/test-zsh-shell.sh \
   tests/test-workspace-output-route.sh; do
   "$repo_root/$test_script"
