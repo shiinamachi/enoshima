@@ -63,8 +63,9 @@ systemctl --user status cyberdock.service --no-pager
 `cyberdock.service`는 Quickshell Dock을 실행하며 비정상 종료나 stop 뒤에
 `cyberdock-recover`를 호출한다. Dock 설정은
 `~/.config/quickshell/cyberdock/shell.qml`이고, 모든 출력에 6픽셀 하단 hotspot과
-숨김 상태의 짧은 reveal indicator, 작업 영역을 예약하지 않는 Dock을 만든다.
-Dock은 58픽셀 높이, 44x46 앱 표적, 420ms 숨김 지연을 사용한다.
+숨김 상태의 짧은 reveal indicator를 만든다. 평시에는 74픽셀 작업 영역을
+예약한 채 표시되고 CyberLauncher 또는 true fullscreen에서만 숨는다. Dock은
+58픽셀 높이, 44x46 앱 표적, 420ms fullscreen 숨김 지연을 사용한다.
 
 bootstrap이 적용하는 테마 자산은 다음과 같다.
 
@@ -74,8 +75,9 @@ bootstrap이 적용하는 테마 자산은 다음과 같다.
   (2880x1800)
 
 Hyprpaper와 Hyprlock은 두 자산을 같은 모니터 규칙으로 사용한다. Waybar는 상단
-14픽셀 여백과 48픽셀 높이를 사용하고, 8픽셀 간격 뒤인 상단 70픽셀에서
-SwayNC가 시작한다. Waybar의 network leader에 pointer를 올리면 WWAN과 Bluetooth
+14픽셀 여백과 48픽셀 높이를 사용한다. SwayNC의 8픽셀 top margin은 Waybar의
+exclusive zone 뒤에 적용되어 화면 상단 약 70픽셀에서 panel을 시작한다.
+Waybar의 network leader에 pointer를 올리면 WWAN과 Bluetooth
 상태가 drawer로 나타나며, SwayNC에는 Wi-Fi, Bluetooth, Night Light, volume,
 brightness의 실제 제어만 표시된다.
 
@@ -144,7 +146,7 @@ cyberpunk theme 활성화를 거부한다. 이 작업은 기존 SDDM PAM과 fing
 
 활성화 전 다음을 세션 안에서 먼저 검증한다.
 
-- Hyprpaper, Waybar, SwayNC, Hyprlauncher, Hyprlock, Dock과 앱 자체 titlebar의 색·글꼴
+- Hyprpaper, Waybar, SwayNC, CyberLauncher, Hyprlock, Dock과 앱 자체 titlebar의 색·글꼴
 - 내부·외부 출력의 배경 crop과 가독성
 - Hyprlock의 비밀번호와 fingerprint 인증
 - TTY 로그인과 root 셸 접근 가능성
@@ -157,7 +159,8 @@ desktop_expansion_sddm_theme_enabled: true
 desktop_expansion_sddm_fallback_theme: maya
 ```
 
-재부팅 전 `/usr/share/sddm/themes/cyberpunk/background.jpg`와
+재부팅 전 `/usr/share/sddm/themes/cyberpunk/background-16x9.jpg`,
+`/usr/share/sddm/themes/cyberpunk/background-16x10.jpg`와
 `/etc/sddm.conf.d/20-cyberpunk-theme.conf`를 확인한다. SDDM에서 비밀번호 로그인,
 빈 비밀번호 제출을 통한 fingerprint 로그인, 세션 선택, Suspend, Reboot,
 Power Off와 실패 후 재입력을 모두 시험한다.
@@ -199,14 +202,14 @@ cyberdock-recover
 
 현재 구현은 `cyberdock.service`, `shell.qml`, `cyberdock-state`,
 `cyberdock-activate`, `cyberdock-minimize`, `cyberdock-recover`로 구성된다.
-각 모니터에 동일한 pinned app과 모든 실행 창을 표시한다. pinned 순서는 Thunar,
-Chrome, Ghostty, Zed, KakaoTalk, Thunderbird, Obsidian, Bottles, PhotoGIMP,
-ONLYOFFICE, RHWP Desktop이다.
+각 모니터에 동일한 pinned app과 모든 실행 창을 표시한다. pinned 순서는 Ghostty,
+Files, Zed, Google Chrome, Applications이다.
 
 다음 동작을 확인한다.
 
-- 기본은 숨김이고 각 출력의 최하단 3픽셀에서 reveal됨
-- pointer가 Dock과 hotspot을 떠나면 다시 숨김
+- 평시에는 작업 영역을 예약하고 지속 표시됨
+- true fullscreen에서는 숨고 각 출력의 최하단 6픽셀에서 reveal됨
+- CyberLauncher가 열린 동안에는 modal surface와 경쟁하지 않도록 숨음
 - 정지된 pinned app은 실행되고, 실행 중인 app은 최근 창으로 이동
 - 이미 focus된 단일 창을 다시 클릭해도 상태가 바뀌지 않음
 - 창이 여러 개면 compact chooser가 표시됨
@@ -424,6 +427,12 @@ gimp
   렌더링된다.
 - Dock reveal/hide, multi-window chooser, cross-monitor focus, minimize/restore와
   crash recovery가 모두 동작한다.
+- CyberLauncher가 두 출력에서 bar와 Dock을 포함한 전체 scrim을 소유하고,
+  화면 비율에 맞는 크기와 네 개 quick-app label을 유지한다.
+- SwayNC의 40픽셀 notification close target이 timestamp를 가리지 않고, panel이
+  Waybar 아래 약 8픽셀 간격에서 시작한다.
+- `desktop-appearance reduced-motion`, `reduced-transparency`, `accessible`을 각각
+  적용해 공간 전환과 투명도 대체가 해당 profile 계약대로 동작한다.
 - close, minimize, maximize/restore와 true fullscreen이 tiled·floating 창에서
   중복 titlebar 없이 동작한다.
 

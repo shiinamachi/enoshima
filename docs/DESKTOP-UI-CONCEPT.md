@@ -51,7 +51,9 @@ scrim and moves the complete authentication hierarchy into one lower-left
 card. Time, date, session state, the focused password field, and fingerprint
 readiness follow one reading path without placing fictional controls over the
 character or the library signage. The managed Hyprlock layout uses the same
-placement, palette, focus edge, and biometric status model.
+placement, palette, focus edge, and biometric status model. The ratio-aware
+SDDM greeter extends that hierarchy with username, session, and available
+power actions while retaining complete keyboard navigation.
 
 ## Shared visual language
 
@@ -61,8 +63,10 @@ placement, palette, focus edge, and biometric status model.
 | Surface | `#0a0c3e` | persistent bar and control-center surfaces |
 | Raised surface | `#161151` | notifications, menus, focused rows |
 | Focus / information | `#62d8ff` | keyboard focus, connected state, active edge |
-| Selection | `#9a5cff` | active workspace, selected control |
-| Expressive accent | `#e56bff` | sparse visual accent and unread badge |
+| Selection accent | `#9a5cff` | selected edge and non-text violet accent |
+| Filled selection | `#6541b8` | active workspace, checked control, compact badge |
+| On selection | `#f2ecff` | text and glyphs on filled selection |
+| Expressive accent | `#e56bff` | sparse visual accent and minimized-state cue |
 | Text | `#f2ecff` | primary content |
 | Success | `#77e0c6` | healthy and completed state |
 | Warning | `#ffb86b` | degraded but recoverable state |
@@ -76,6 +80,8 @@ All components use the same behavioral tokens:
 - near-opaque persistent chrome, with blur reserved for transient overlays;
 - one focus cue per interaction, never simultaneous competing glows;
 - 110--190 ms direct-manipulation transitions and no continuous pulsing;
+- spatial motion stays instant on shell surfaces that cannot consume the
+  reduced-motion profile dynamically;
 - text plus shape or icon changes for critical state, not color alone.
 
 ## Implementation mapping
@@ -91,7 +97,7 @@ All components use the same behavioral tokens:
 | Volume and brightness feedback | `home/dot_config/quickshell/cyberdock/CyberOsd.qml` and shell IPC helpers |
 | GTK 3/4 application surfaces | managed `settings.ini` and semantic `gtk.css` in `home/dot_config/gtk-3.0/` and `home/dot_config/gtk-4.0/` |
 | Cursor, file chooser, and input-method continuity | UWSM/Hyprland cursor exports, `home/dot_config/xdg-desktop-portal/`, and managed Fcitx5 Classic UI settings |
-| Authentication hierarchy | `home/dot_config/hypr/hyprlock.conf` |
+| Authentication hierarchy | `home/dot_config/hypr/hyprlock.conf` and the ratio-aware SDDM theme under `ansible/roles/desktop_expansion/` |
 
 Concept art is deliberately advisory. It must not introduce controls that the
 managed component cannot actually operate, duplicate application-owned title
@@ -101,3 +107,5 @@ theme, cursor, Fcitx5 material theme, Audio panel, and Display panel also
 depend on their declared Arch packages being installed through a complete
 bootstrap/full upgrade; the repository does not perform a partial pacman
 transaction merely to preview the theme.
+Default, reduced-motion, reduced-transparency, and accessible appearance modes
+must all be included in that display review.

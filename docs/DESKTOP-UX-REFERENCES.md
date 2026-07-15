@@ -233,8 +233,9 @@ Dock은 앱의 위치 기억과 실행 상태를 지원한다.
 - focus와 running 상태가 색 하나에만 의존하지 않게 한다.
 - 단일 클릭과 우클릭 동작을 tooltip 또는 context menu로 설명한다.
 - 같은 앱의 여러 창은 chooser에서 제목과 현재 작업공간을 구분해 표시한다.
-- Dock layer 자체는 pointer 중심이며 keyboard focus를 받지 않는다. 같은 핵심
-  동작의 keyboard 경로는 CyberLauncher와 Hyprland 단축키로 제공한다.
+- Dock layer 자체는 keyboard focus를 받지 않는다. 표준 assistive-technology
+  press action과 같은 핵심 동작의 keyboard 경로는 CyberLauncher와 Hyprland
+  단축키로 제공한다.
 
 ### 4.3 CyberLauncher
 
@@ -244,6 +245,10 @@ Dock은 앱의 위치 기억과 실행 상태를 지원한다.
   이어지는 두 열 hierarchy를 유지한다.
 - 검색어가 없을 때는 검토된 desktop entry를 우선하고 최대 4개의 quick app을
   별도 제공한다.
+- 두 출력에서 화면 폭의 약 62%, 높이의 약 64%를 목표로 하되 지나친
+  full-screen dashboard가 되지 않도록 상한을 둔다.
+- compositor의 bar·dock 예약 영역을 무시하는 modal overlay가 전체 화면 scrim과
+  pointer 차단을 소유한다.
 - 선택된 행은 violet selection surface와 cyan focus edge처럼 중복된 단서로
   표시한다.
 - 아이콘 크기와 텍스트 baseline을 정렬한다.
@@ -325,7 +330,9 @@ Microsoft는 알림의 목적이 명확하고, 가치가 있으며, 과도하게
 | surface | `#0a0c3e` | bar, dock, 기본 panel |
 | raised surface | `#161151` | 선택 카드, flyout, notification |
 | focus / info | `#62d8ff` | keyboard focus, 링크, 진행 상태 |
-| selection | `#9a5cff` | 선택된 workspace와 행 |
+| selection accent | `#9a5cff` | 선택 edge와 비텍스트 violet 강조 |
+| filled selection | `#6541b8` | 선택된 workspace, checked control, badge |
+| on selection | `#f2ecff` | filled selection 위의 text와 icon |
 | expressive accent | `#e56bff` | 제한적인 강조 |
 | primary text | `#f2ecff` | 본문과 중요 label |
 | success | `#77e0c6` | 완료·연결 |
@@ -336,6 +343,8 @@ Microsoft는 알림의 목적이 명확하고, 가치가 있으며, 과도하게
 
 - cyan은 focus와 정보, violet은 selection, magenta는 강한 강조 또는 critical
   인접 상태로 역할을 분리한다.
+- 밝은 violet은 edge와 비텍스트 accent에, AA 대비를 확보한 어두운 violet과
+  밝은 전경 조합은 채워진 선택 상태에 사용한다.
 - 같은 의미에 구성요소마다 다른 accent를 쓰지 않는다.
 - wallpaper에 이미 네온이 많으므로 셸 표면의 대부분은 저채도 navy로
   유지한다.
@@ -363,6 +372,8 @@ Reduce Motion과 Reduce Transparency 같은 시스템 수준의 대안을 제공
 - motion을 끄더라도 상태 변화가 border, icon, text로 남아야 한다.
 - reduced-motion profile에서는 workspace, window, panel 애니메이션과 focus
   플러그인을 끈다.
+- QML은 mode 파일을 직접 감시한다. 같은 파일을 조건부로 소비할 수 없는 Waybar
+  drawer와 SwayNC panel의 공간 전환은 항상 0ms로 유지한다.
 - reduced-transparency profile에서는 blur를 끄고 surface alpha를 높인다.
 - 확대 또는 fractional scaling에서 텍스트가 잘리거나 hit target이 줄지
   않는지 확인한다.
@@ -590,11 +601,14 @@ state에 대한 방어적 구성이다.
 - 주요 기능은 키보드만으로 접근 가능하다.
 - CyberLauncher는 열릴 때 검색창에 focus되고 Up/Down, Enter, Escape가
   동작하며 결과가 7개를 넘지 않는다.
+- CyberLauncher scrim은 Waybar와 Dock의 예약 영역까지 덮고 두 출력에서
+  responsive clamp를 유지한다.
 - Cyberdock은 일반 창 모드에서 작업 영역을 예약한 채 노출되고 launcher와
   true fullscreen에서만 숨는다. fullscreen에서는 6px 하단 reveal을 확인한다.
 - CyberOSD는 음량·밝기 변경 후 focus를 빼앗지 않고 현재 값 또는 mute 상태를
   보여준다.
 - SwayNC의 여섯 quick setting이 실제 상태 또는 관리 도구와 연결된다.
+- SwayNC notification의 40px close target이 timestamp를 덮지 않는다.
 - focus는 색, edge 또는 motion 중 최소 두 가지 단서로 구분되며 motion을 꺼도
   남는다.
 - 일반·warning·critical 상태는 색 외 icon 또는 text를 포함한다.

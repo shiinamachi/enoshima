@@ -60,7 +60,9 @@ The visual palette is sampled conceptually from the asset:
 | Surface high | `#1a1472` |
 | Neon cyan | `#62d8ff` |
 | Electric blue | `#6d8cff` |
-| Neon violet | `#9a5cff` |
+| Neon violet / selection accent | `#9a5cff` |
+| Filled selection | `#6541b8` |
+| On selection | `#f2ecff` |
 | Neon magenta | `#e56bff` |
 | Pink | `#ff72bd` |
 | Primary text | `#f2ecff` |
@@ -83,6 +85,9 @@ Fcitx5 Classic UI, tooltips, and session controls.
   blur pass, and places the time, date, password/fingerprint status, and input
   field in a 600x360 lower-left authentication card. Success, failure, and
   lock-key states use distinct success, critical, and warning colors.
+- SDDM installs both managed ratios, selects the closest composition at
+  runtime, and keeps username, password, session, status, and available power
+  actions in one keyboard-navigable lower-left card.
 - SDDM receives a matching theme only after the session theme is validated.
   The theme must not alter the existing PAM and fingerprint authentication
   policy, and SDDM must retain a known-good fallback theme.
@@ -482,7 +487,7 @@ resulting account state.
 | Area | Required result |
 | --- | --- |
 | Theme | Ratio-specific managed wallpapers on both outputs; coherent bar, lock, CyberLauncher, CyberOSD, notifications, Dock, GTK 3/4 apps, Fcitx5, cursor, terminal, editor, native app titlebars, and login palette |
-| Shell | CyberLauncher has immediate search focus, keyboard selection/cancel, real desktop-entry launch actions, and a maximum seven-result hierarchy; volume and brightness helpers display CyberOSD without taking focus |
+| Shell | CyberLauncher owns a full-screen modal scrim, keeps a responsive two-column hierarchy, has immediate search focus, four labeled quick apps, keyboard selection/cancel, real desktop-entry launch actions, and at most seven search results; volume and brightness helpers display CyberOSD without taking focus |
 | Dock | Persistent and non-overlapping on both outputs during windowed use; hidden for launcher/true fullscreen; six-pixel fullscreen recovery; approved click behavior; crash recovery for minimized clients |
 | Quick settings | SwayNC shows six functional actions in two rows; toggle state tracks Wi-Fi, Bluetooth, and Night Light; Power, Audio, and Display open their managed tools |
 | Window controls | Close, minimize, and true fullscreen work for tiled and floating clients without compositor-owned duplicate titlebars |
