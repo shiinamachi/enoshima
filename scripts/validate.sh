@@ -158,6 +158,110 @@ if state.exists():
         assert (state / required).is_file(), f"missing observed-state file: {required}"
 PY
 
+echo "==> Checking repository-local design skills"
+/usr/bin/python - "$repo_root" <<'PY'
+from hashlib import sha256
+import json
+from pathlib import Path
+import sys
+import yaml
+
+root = Path(sys.argv[1])
+skills_root = root / ".agents" / "skills"
+sources_path = skills_root / "sources.json"
+
+expected = {
+    "design-taste-frontend": {
+        "repository": "https://github.com/Leonxlnx/taste-skill",
+        "commit": "b17742737e796305d829b3ad39eda3add0d79060",
+        "source_tree": "a6d128e53b4ec0238baee751dde33bf707adb5ec",
+        "source_skill_sha256": (
+            "aa194351b246b8b4799099d4ed7b033d29eab6e6e3d58d8d2172978be7b3ec89"
+        ),
+    },
+    "ui-ux-pro-max": {
+        "repository": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+        "commit": "f8ac5e1266dba8354ea96e19994d9f4345e7ec31",
+        "source_tree": "e36b015761c3bd5e2b6977323db9b105b4cd8d5f",
+        "source_skill_sha256": (
+            "305a7527fcb2f5b6e4129ab22cd839b5172d26df7f14d3324bfdec8fc1763560"
+        ),
+    },
+}
+
+sources = json.loads(sources_path.read_text(encoding="utf-8"))
+assert sources["schema"] == 1
+assert sources["reviewed_at"] == "2026-07-15"
+source_by_name = {entry["name"]: entry for entry in sources["skills"]}
+assert set(source_by_name) == set(expected)
+
+active_skill_files = sorted(skills_root.glob("*/SKILL.md"))
+assert [path.parent.name for path in active_skill_files] == sorted(expected)
+assert sorted(skills_root.rglob("SKILL.md")) == active_skill_files, (
+    "nested active skill found"
+)
+
+for name, source_expectation in expected.items():
+    skill_dir = skills_root / name
+    skill_path = skill_dir / "SKILL.md"
+    raw_skill = skill_path.read_text(encoding="utf-8")
+    assert raw_skill.startswith("---\n")
+    _, frontmatter_text, body = raw_skill.split("---", 2)
+    frontmatter = yaml.safe_load(frontmatter_text)
+    assert frontmatter["name"] == name
+    assert isinstance(frontmatter["description"], str)
+    assert frontmatter["description"].strip()
+    assert body.strip()
+
+    metadata = yaml.safe_load(
+        (skill_dir / "agents" / "openai.yaml").read_text(encoding="utf-8")
+    )
+    interface = metadata["interface"]
+    assert interface["display_name"].strip()
+    assert 25 <= len(interface["short_description"]) <= 64
+    assert f"${name}" in interface["default_prompt"]
+    assert (skill_dir / "LICENSE").read_text(encoding="utf-8").startswith(
+        "MIT License\n"
+    )
+
+    source = source_by_name[name]
+    for key, value in source_expectation.items():
+        assert source[key] == value
+    assert source["license"] == "MIT"
+
+for path in skills_root.rglob("*"):
+    assert not path.is_symlink(), f"repository design skill must not be a symlink: {path}"
+
+taste_reference = (
+    skills_root
+    / "design-taste-frontend"
+    / "references"
+    / "taste-skill-v2.md"
+)
+reference_prefix = (
+    "<!-- Vendored upstream reference; project-specific routing lives in "
+    "../SKILL.md. -->\n\n"
+)
+reference_text = taste_reference.read_text(encoding="utf-8")
+assert reference_text.startswith(reference_prefix)
+reference_hash = sha256(reference_text[len(reference_prefix) :].encode()).hexdigest()
+assert reference_hash == expected["design-taste-frontend"]["source_skill_sha256"]
+
+ui_skill = (skills_root / "ui-ux-pro-max" / "SKILL.md").read_text(encoding="utf-8")
+assert "CLAUDE_PLUGIN_ROOT" not in ui_skill
+assert ".agents/skills/ui-ux-pro-max/scripts/search.py" in ui_skill
+assert "Do not pass `--persist`" in ui_skill
+PY
+
+PYTHONDONTWRITEBYTECODE=1 /usr/bin/python \
+  .agents/skills/ui-ux-pro-max/scripts/validate_data.py
+PYTHONDONTWRITEBYTECODE=1 /usr/bin/python -m unittest discover \
+  -s .agents/skills/ui-ux-pro-max/scripts/tests
+PYTHONDONTWRITEBYTECODE=1 /usr/bin/python \
+  .agents/skills/ui-ux-pro-max/scripts/search.py \
+  "desktop shell keyboard focus reduced motion contrast" \
+  --domain ux -n 1 >/dev/null
+
 echo "==> Parsing Lua and JSON configuration"
 while IFS= read -r -d '' lua_file; do
   luac -p "$lua_file"

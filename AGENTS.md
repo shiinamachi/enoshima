@@ -32,6 +32,35 @@
   tokens, VM disk images, caches, or mutable user documents.
 - Preserve Arch Linux's full-upgrade model; never automate a partial upgrade.
 
+## Design changes
+
+- Before modifying or reviewing user-visible appearance or interaction, invoke
+  and follow both repository-scoped skills: `$design-taste-frontend` and
+  `$ui-ux-pro-max`.
+- Design work includes color, typography, spacing, hierarchy, layout,
+  iconography, animation, interaction feedback, navigation, accessibility,
+  concept assets, and the QML, GTK CSS, Waybar, SwayNC, Hyprlock, SDDM, or
+  Hyprland configuration that controls those qualities.
+- Read the affected implementation and tests together with
+  `docs/DESKTOP-UI-CONCEPT.md`, `docs/DESKTOP-UX-REFERENCES.md`, and any more
+  specific design document before editing. Explicit user direction and these
+  repository contracts take precedence over generic skill recommendations.
+- Use Taste Skill for audit-first visual direction, hierarchy, consistency,
+  anti-pattern review, and final polish. Use UI/UX Pro Max for local evidence
+  searches covering accessibility, interaction, typography, color, layout,
+  and purposeful motion. Treat generated recommendations as candidates, not
+  desired state.
+- The current stack is Hyprland, QML, GTK CSS, Waybar, SwayNC, Hyprlock, and
+  SDDM. Do not default to HTML/Tailwind or add web frameworks, design-system
+  packages, remote fonts, CDNs, or generated assets merely because a skill
+  suggests them. Do not create a parallel persisted design system.
+- Do not invoke these skills for changes with no user-visible presentation or
+  interaction impact, such as package declarations, services, network logic,
+  inventory, or non-visual scripts.
+- Validate design changes with the affected focused tests and
+  `scripts/validate.sh`; retain documented internal/external display review as
+  the final gate for visual behavior that static checks cannot prove.
+
 ## Entrypoints
 
 - Extend the existing `bootstrap.sh`, `scripts/validate.sh`, and

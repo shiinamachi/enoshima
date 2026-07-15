@@ -12,6 +12,8 @@ The desktop's Windows/macOS usability research and the reviewed Cyberpunk
 Library interface studies are kept in
 [docs/DESKTOP-UX-REFERENCES.md](docs/DESKTOP-UX-REFERENCES.md) and
 [docs/DESKTOP-UI-CONCEPT.md](docs/DESKTOP-UI-CONCEPT.md).
+The pinned, repository-only AI design workflow and its review rationale are
+documented in [docs/DESIGN-SKILLS.md](docs/DESIGN-SKILLS.md).
 
 The initial inventory was captured on 2026-07-13 from Arch Linux on
 `tpx1c13`:
@@ -41,6 +43,7 @@ Do not manage the same file with both Ansible and chezmoi.
 
 ```text
 .
+├── .agents/skills/         # repository-only Codex design skills
 ├── .chezmoiroot            # points chezmoi at home/
 ├── ansible/                # system desired state
 ├── docs/                   # design, scope and installation notes
