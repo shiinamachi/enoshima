@@ -1,4 +1,4 @@
-# my-arch-configurations
+# enoshima
 
 Arch Linux desired-state monorepo for the `tpx1c13` laptop. It combines
 Ansible for system state, chezmoi for user configuration, and package/state
@@ -61,8 +61,8 @@ After those prerequisites, the same command is used for both a new Arch
 installation and every later configuration update:
 
 ```bash
-git clone <repository-url> ~/src/my-arch-configurations
-cd ~/src/my-arch-configurations
+git clone <repository-url> ~/src/enoshima
+cd ~/src/enoshima
 ./bootstrap.sh
 ```
 
@@ -74,7 +74,7 @@ installs only missing or changed local/AUR packages, converges Ansible state,
 applies non-conflicting or selected dotfile state, and runs postflight checks.
 
 The default conflict policy stores preserved files beneath
-`~/.my-arch-configurations/backups/`. For unattended use, select a
+`~/.enoshima/backups/`. For unattended use, select a
 policy without a prompt:
 
 ```bash

@@ -126,11 +126,22 @@ printf 'repository local child\n' >"$source_dir/dot_local/dot_child"
 printf 'local-only data\n' >"$destination/.local/local-only"
 chmod 0700 "$destination/.local"
 run_subject_with_defaults --apply backup >/dev/null
-default_backup_dir=$(find "$destination/.my-arch-configurations/backups" \
+default_backup_dir=$(find "$destination/.enoshima/backups" \
   -mindepth 1 -maxdepth 1 -type d -print -quit)
 [[ -n $default_backup_dir ]] || fail "default backup policy did not preserve the .local conflict"
 assert_contents "$default_backup_dir/home/.local/local-only" "local-only data"
 assert_contents "$destination/.local/.child" "repository local child"
+
+echo "==> the previous project state directory migrates to the enoshima namespace"
+new_fixture project-state-rename
+legacy_control_home=$destination/.my-arch-configurations
+mkdir -p -- "$legacy_control_home/backups"
+printf 'preserved backup marker\n' >"$legacy_control_home/backups/marker"
+run_subject_with_defaults --apply keep >/dev/null
+[[ ! -e $legacy_control_home ]] || fail "legacy project state directory was not removed"
+assert_contents "$destination/.enoshima/backups/marker" "preserved backup marker"
+[[ -f $destination/.enoshima/chezmoi-state.boltdb ]] ||
+  fail "migrated project state does not contain the chezmoi database"
 
 echo "==> keep records an identical pre-existing target as its baseline"
 new_fixture identical

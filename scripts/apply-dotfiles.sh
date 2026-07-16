@@ -4,7 +4,8 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 source_dir=${DOTFILES_SOURCE:-$repo_root}
 destination=${CHEZMOI_DESTINATION:-$HOME}
-control_home=${ARCH_CONFIG_STATE_HOME:-$destination/.my-arch-configurations}
+control_home=${ENOSHIMA_STATE_HOME:-$destination/.enoshima}
+legacy_control_home=$destination/.my-arch-configurations
 persistent_state=${CHEZMOI_PERSISTENT_STATE:-$control_home/chezmoi-state.boltdb}
 backup_base=${DOTFILES_BACKUP_ROOT:-$control_home/backups}
 legacy_state=${CHEZMOI_LEGACY_STATE:-$destination/.config/chezmoi/chezmoistate.boltdb}
@@ -65,9 +66,20 @@ command -v findmnt >/dev/null 2>&1 || die "findmnt is required"
 canonical_destination=$(realpath -e -- "$destination")
 [[ $canonical_destination == "$destination" ]] ||
   die "CHEZMOI_DESTINATION must be a canonical, non-symlink path: $destination"
-[[ $control_home == "$destination/"* ]] || die "ARCH_CONFIG_STATE_HOME must be inside $destination"
+[[ $control_home == "$destination/"* ]] || die "ENOSHIMA_STATE_HOME must be inside $destination"
 [[ ! -L $control_home && (! -e $control_home || -d $control_home) ]] ||
   die "reserved state path is not a real directory: $control_home"
+
+if [[ -z ${ENOSHIMA_STATE_HOME+x} && ! -e $control_home &&
+  (-e $legacy_control_home || -L $legacy_control_home) ]]; then
+  [[ -d $legacy_control_home && ! -L $legacy_control_home ]] ||
+    die "legacy state path is not a real directory: $legacy_control_home"
+  if findmnt --kernel --mountpoint "$legacy_control_home" >/dev/null 2>&1; then
+    die "refusing to migrate a mounted legacy state path: $legacy_control_home"
+  fi
+  mv -- "$legacy_control_home" "$control_home"
+  echo "Migrated the previous project state into $control_home."
+fi
 
 mkdir -p -- "$control_home" "$(dirname -- "$persistent_state")"
 chmod 0700 -- "$control_home"

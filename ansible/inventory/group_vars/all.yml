@@ -17,7 +17,7 @@ manage_pacman_config: true
 manage_boot_config: false
 manage_empty_fstab: false
 apply_boot_artifacts: false
-boot_artifact_state_file: /var/lib/my-arch-configurations/boot-artifacts-applied
+boot_artifact_state_file: /var/lib/enoshima/boot-artifacts-applied
 snapper_configure_root: false
 
 subordinate_id_start: 100000

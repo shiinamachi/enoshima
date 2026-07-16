@@ -86,8 +86,8 @@ if [[ $keyring_has_password != true ]]; then
   [[ -n $password ]] || die 'failed to generate the rclone config password'
   if ! printf '%s' "$password" |
     /usr/bin/secret-tool store \
-      --label='my-arch-configurations rclone config' \
-      application my-arch-configurations \
+      --label='enoshima rclone config' \
+      application enoshima \
       purpose rclone-config; then
     unset password
     die 'could not store the rclone config password in GNOME Keyring'

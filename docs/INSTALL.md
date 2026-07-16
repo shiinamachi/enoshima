@@ -48,10 +48,17 @@ Before any system configuration is changed, the command asks once for a
 run-wide chezmoi user-file conflict policy:
 
 - `backup` (default): preserve every conflict under
-  `~/.my-arch-configurations/backups/`, then apply the repository.
+  `~/.enoshima/backups/`, then apply the repository.
 - `overwrite`: apply the repository without making conflict backups.
 - `keep`: preserve all conflicting local targets and apply everything else.
 - `abort`: stop before Ansible if any user-file conflict exists.
+
+The first run after the rename to enoshima moves the earlier
+`~/.my-arch-configurations/` project state into `~/.enoshima/`. The managed
+rclone password helper likewise moves an existing legacy GNOME Keyring entry
+to the `enoshima` application label before returning the secret. Both
+migrations preserve the existing state and remove the superseded entry after
+the replacement has been verified.
 
 Recursive conflict handling never follows symlinks or crosses a mount beneath
 the home directory. `keep` preserves a mounted tree. `backup` and `overwrite`

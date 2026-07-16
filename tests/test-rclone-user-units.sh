@@ -2,6 +2,20 @@
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+password_helper=$repo_root/home/dot_local/bin/executable_rclone-cloud-password
+setup_helper=$repo_root/home/dot_local/bin/executable_rclone-cloud-setup
+
+grep -Fq -- "--label='enoshima rclone config'" "$setup_helper" || {
+  printf 'FAIL: rclone setup does not use the enoshima Keyring label\n' >&2
+  exit 1
+}
+for helper in "$password_helper" "$setup_helper"; do
+  grep -Fq 'application enoshima' "$helper" || {
+    printf 'FAIL: %s does not use the enoshima Keyring application\n' \
+      "$(basename -- "$helper")" >&2
+    exit 1
+  }
+done
 
 for unit in \
   "$repo_root/home/dot_config/systemd/user/rclone-google-drive.service" \

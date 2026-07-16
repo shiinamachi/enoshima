@@ -3,7 +3,7 @@ SHELL := /usr/bin/bash
 
 PROFILE ?= tpx1c13
 ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
-CHEZMOI_STATE := $(HOME)/.my-arch-configurations/chezmoi-state.boltdb
+CHEZMOI_STATE := $(HOME)/.enoshima/chezmoi-state.boltdb
 export ANSIBLE_CONFIG
 
 .PHONY: audit validate postflight chezmoi-diff ansible-check apply bootstrap

@@ -50,7 +50,7 @@ chezmoi owns only selected configuration beneath the user's home directory.
 The `.chezmoiroot` file isolates it to `home/`, allowing the rest of the Git
 repository to coexist without ignore rules for every top-level directory.
 Its persistent state is isolated under the reserved, non-managed
-`~/.my-arch-configurations/` directory. Pre-existing targets and edits made
+`~/.enoshima/` directory. Pre-existing targets and edits made
 after the last apply are classified before privileged changes whenever the
 bootstrap tools already exist, or immediately after installing those tools on
 a fresh system. One run-wide backup/overwrite/keep/abort policy handles all of
