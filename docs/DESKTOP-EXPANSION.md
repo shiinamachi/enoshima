@@ -242,7 +242,11 @@ client in `special:minimized` and restores it to a safe current workspace.
 `desktop-window-action` is the shared address-scoped controller for Waybar,
 Cyberdock, keyboard shortcuts, and client minimize events. The
 `cyberdock-event-bridge.service` reads Hyprland socket2 `minimize` events and
-maps Electron/XWayland client requests to the same runtime state. Origin
+maps Electron/XWayland client requests to the same runtime state. It also
+atomically tracks the socket2 `activewindowv2` address beneath
+`$XDG_RUNTIME_DIR/cyberdock/`, so Waybar window controls act on the window that
+was active when the bar received the event instead of re-resolving focus after
+the click. Origin
 records include workspace, output, floating state, compositor and client
 fullscreen state, and focus history. Restore reapplies the geometry state
 before focusing the exact address; close events prune stale records.

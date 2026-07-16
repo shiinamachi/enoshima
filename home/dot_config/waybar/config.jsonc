@@ -190,18 +190,18 @@
     "custom/window-minimize": {
         "format": "󰖰",
         "tooltip-format": "최소화",
-        "on-click": "desktop-window-action minimize --active"
+        "on-click": "desktop-window-action minimize --tracked"
     },
 
     "custom/window-maximize": {
         "format": "󰖯",
         "tooltip-format": "최대화 / 복원",
-        "on-click": "desktop-window-action maximize --active"
+        "on-click": "desktop-window-action maximize --tracked"
     },
 
     "custom/window-close": {
         "format": "󰅖",
         "tooltip-format": "닫기",
-        "on-click": "desktop-window-action close --active"
+        "on-click": "desktop-window-action close --tracked"
     }
 }

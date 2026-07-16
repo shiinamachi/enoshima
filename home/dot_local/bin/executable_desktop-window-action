@@ -5,6 +5,11 @@ set -euo pipefail
 readonly hyprctl_bin=${DESKTOP_WINDOW_HYPRCTL:-hyprctl}
 readonly state_bin=${DESKTOP_WINDOW_STATE:-cyberdock-state}
 readonly jq_bin=${DESKTOP_WINDOW_JQ:-jq}
+tracked_address_file=${DESKTOP_WINDOW_TRACKED_FILE:-}
+if [[ -z $tracked_address_file && -n ${XDG_RUNTIME_DIR:-} ]]; then
+  tracked_address_file=$XDG_RUNTIME_DIR/cyberdock/active-window-address
+fi
+readonly tracked_address_file
 
 die() {
   printf 'desktop-window-action: %s\n' "$*" >&2
@@ -14,7 +19,7 @@ die() {
 usage() {
   cat >&2 <<'EOF'
 usage: desktop-window-action status --json
-       desktop-window-action {minimize|restore|maximize|close|focus} (--active | --address ADDRESS)
+       desktop-window-action {minimize|restore|maximize|close|focus} (--tracked | --active | --address ADDRESS)
 EOF
   exit 2
 }
@@ -34,6 +39,14 @@ valid_address() {
 
 resolve_address() {
   case ${1:-} in
+    --tracked)
+      [[ $# -eq 1 ]] || usage
+      [[ -n $tracked_address_file ]] || die 'tracked window address path is unavailable'
+      [[ -f $tracked_address_file && ! -L $tracked_address_file ]] ||
+        die 'no tracked active window address is available'
+      IFS= read -r address <"$tracked_address_file" ||
+        die 'failed to read the tracked active window address'
+      ;;
     --active)
       [[ $# -eq 1 ]] || usage
       address=$(hypr_json activewindow | "$jq_bin" -r '.address // ""')

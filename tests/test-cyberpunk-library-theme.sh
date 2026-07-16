@@ -196,9 +196,9 @@ jq -e '
   ."custom/notification".tooltip == true and
   ."custom/power"."on-click" == "desktop-power menu" and
   ."hyprland/window".icon == true and
-  ."custom/window-minimize"."on-click" == "desktop-window-action minimize --active" and
-  ."custom/window-maximize"."on-click" == "desktop-window-action maximize --active" and
-  ."custom/window-close"."on-click" == "desktop-window-action close --active" and
+  ."custom/window-minimize"."on-click" == "desktop-window-action minimize --tracked" and
+  ."custom/window-maximize"."on-click" == "desktop-window-action maximize --tracked" and
+  ."custom/window-close"."on-click" == "desktop-window-action close --tracked" and
   ."network"."on-click" == "swaync-client -t -sw" and
   ."ext/workspaces"."format-icons"."3" == "DOCS"
 ' "$waybar_config" >/dev/null
