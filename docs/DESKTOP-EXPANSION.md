@@ -14,8 +14,9 @@ mutable results are intentionally not committed.
 
 1. Turn the current Hyprland session into a coherent cyberpunk desktop based
    on the user-supplied wallpaper.
-2. Add a macOS-like dock and usable close, minimize, and fullscreen controls
-   while preserving application-native titlebars.
+2. Add a macOS-like dock while keeping close, minimize, maximize/restore, and
+   fullscreen available through application-native controls and Hyprland
+   keyboard paths.
 3. Make the requested communication, cloud, mail, graphics, and office tools
    reproducible without committing account or document data.
 4. Correct HiDPI behavior where an application has a safe native or per-app
@@ -96,10 +97,10 @@ Fcitx5 Classic UI, tooltips, and session controls.
 - Waybar remains at the top with the five purpose-led `DEV`, `WEB`, `DOCS`,
   `REMOTE`, and `MISC` workspaces; unused reserve workspaces are neither
   persistent nor displayed. It uses a 48 pixel surface, 14 pixel edge margins,
-  an active application icon/title, a quiet centered date/time, and
-  address-scoped minimize, maximize, and close controls before the status
-  entries on the right. Tray, backlight, power profile, WWAN, and the full date
-  live in the drawer. Persistent chrome is
+  a quiet centered date/time, and notification, connectivity, audio, battery,
+  system-drawer, and power status on the right. It does not display an active
+  application title or application window controls. Tray, backlight, power
+  profile, WWAN, and the full date live in the drawer. Persistent chrome is
   opaque enough to remain readable without compositor blur.
 
 ### Shell and application surfaces
@@ -141,7 +142,10 @@ Fcitx5 Classic UI, tooltips, and session controls.
   newer input-aware schema, where pointer focus remains unanimated;
   reduced-motion profiles neutralize or disable the plugin accordingly. The
   retired `hyprbars` state is removed because compositor-owned
-  titlebars duplicate GTK, Qt, and Electron client-side decorations.
+  titlebars duplicate GTK, Qt, and Electron client-side decorations. The
+  official `hyprbars:no_bar` window rule disables a globally enabled bar for
+  matching windows; it is not an application allowlist and does not change the
+  default decision to keep the plugin disabled.
 - Ghostty uses the shared 16-color ANSI palette, `minimum-contrast = 4.5`, 94%
   opacity, and balanced 12x10 padding. Compositor blur remains authoritative.
 - Zed retains its built-in One Dark syntax and Command Palette behavior while
@@ -246,17 +250,15 @@ Runtime state is pruned when a client closes and is never committed. A
 Quickshell crash must not strand windows: a recovery command lists every
 client in `special:minimized` and restores it to a safe current workspace.
 
-`desktop-window-action` is the shared address-scoped controller for Waybar,
-Cyberdock, keyboard shortcuts, and client minimize events. The
-`cyberdock-event-bridge.service` reads Hyprland socket2 `minimize` events and
-maps Electron/XWayland client requests to the same runtime state. It also
-atomically tracks the socket2 `activewindowv2` address beneath
-`$XDG_RUNTIME_DIR/cyberdock/`, so Waybar window controls act on the window that
-was active when the bar received the event instead of re-resolving focus after
-the click. Origin
-records include workspace, output, floating state, compositor and client
-fullscreen state, and focus history. Restore reapplies the geometry state
-before focusing the exact address; close events prune stale records.
+`desktop-window-action` is the shared controller for explicit-address
+Cyberdock actions, focus repair, client minimize events, and intentional
+active-window commands. The `cyberdock-event-bridge.service` reads Hyprland
+socket2 `minimize`/`minimized` events and maps Electron/XWayland client
+requests to the same runtime state. It does not track the active window or
+create a Waybar side channel. Origin records include workspace, output,
+floating state, compositor and client fullscreen state, and focus history.
+Restore reapplies the geometry state before focusing the exact address; close
+events prune stale records.
 
 Mouse movement remains native compositor behavior. `Super` plus left drag moves
 a window, `Super` plus right drag resizes it, and a 24 logical-pixel border grab
@@ -271,6 +273,13 @@ decorations, supported Electron clients explicitly enable Wayland window
 decorations, and Ghostty uses its automatic native GTK decoration mode. A
 compositor cannot reliably infer whether every toolkit has a complete native
 titlebar, so no common fallback bar is overlaid on all windows.
+
+Waybar is an output-level status surface, not an application decoration. It
+does not show the active application title or provide minimize,
+maximize/restore, or close buttons. `hyprbars` remains disabled by default;
+fallback decoration can be reconsidered only after an undecorated required app
+is reproduced and recorded in `WINDOW-DECORATIONS.md` with a reason, runtime
+class/backend evidence, validation date, and complete CSD exclusion plan.
 
 Window management remains available independently of decorations: `Super+C`
 closes, `Super+N` minimizes through Cyberdock, and `Super+F` toggles true
@@ -507,7 +516,7 @@ not combine all work at the end of a session.
 2. `feat(fonts): package and apply desktop font roles`
 3. `feat(theme): add cyberpunk wallpaper and desktop surfaces`
 4. `feat(dock): add Quickshell dock and minimized window state`
-5. `feat(hyprland): add titlebar window controls`
+5. `docs(gui): define native window-decoration ownership policy`
 6. `fix(hidpi): move supported desktop apps to native Wayland`
 7. `feat(cloud): add encrypted rclone mount workflow`
 8. `feat(mail): add Thunderbird and official Proton Bridge`
@@ -528,7 +537,7 @@ resulting account state.
 | Shell | CyberLauncher owns a full-screen modal scrim, keeps a responsive two-column hierarchy, has immediate search focus, four labeled quick apps, keyboard selection/cancel, real desktop-entry launch actions, and at most seven search results; volume and brightness helpers display CyberOSD without taking focus |
 | Dock | Persistent and non-overlapping on both outputs during windowed use; hidden for launcher/true fullscreen; six-pixel fullscreen recovery; approved click behavior; crash recovery for minimized clients |
 | Quick settings | SwayNC shows six functional actions in two rows; toggle state tracks Wi-Fi, Bluetooth, and Night Light; Power, Audio, and Display open their managed tools |
-| Window controls | Close, minimize, and true fullscreen work for tiled and floating clients without compositor-owned duplicate titlebars |
+| Window controls | Required apps own native titlebars and close, minimize, and maximize/restore paths; Hyprland keyboard controls and true fullscreen remain available without Waybar or compositor-owned duplicate titlebars |
 | Fonts | Pretendard wins global sans matching, Jetendard wins mono matching, and Korean, Nerd Font, emoji, and office fallbacks render correctly |
 | Electron HiDPI | Discord and Slack report `xwayland=false` and match Chrome/Obsidian sizing at scale 1.5 |
 | Parsec | Remains XWayland, sharp, functional, and intentionally small in its management UI |

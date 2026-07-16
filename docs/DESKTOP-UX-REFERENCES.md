@@ -209,6 +209,8 @@ Waybar는 항상 보이는 얇은 맥락 계층이다.
 - 좌측: 현재 작업공간과 실제 사용하는 1–5 작업공간
 - 중앙: 시간 또는 현재 핵심 맥락
 - 우측: 알림, 연결, 오디오, 전원처럼 즉시 확인할 가치가 있는 상태
+- 활성 앱 제목과 최소화·최대화/복원·닫기 버튼은 표시하지 않는다. 앱 창 장식은
+  각 애플리케이션이 소유한다.
 - WWAN, Bluetooth, backlight처럼 상황에 따라 필요한 상태는 connectivity
   또는 hardware drawer로 묶는다.
 - 클릭, 우클릭, 스크롤 동작이 있으면 tooltip에 드러낸다.
@@ -444,9 +446,11 @@ title bar와 control 위치를 만들 가능성이 높다.
 
 출처: [hyprbars configuration](https://github.com/hyprwm/hyprland-plugins/tree/main/hyprbars)
 
-따라서 stale `hyprbars` enable 상태를 제거하고 전역 사용하지 않는다. 장차
-server-side decoration이 전혀 없는 특정 앱에 필요해질 경우에만 명시적인
-window rule로 제한해 재평가한다.
+따라서 stale `hyprbars` enable 상태를 제거하고 전역 사용하지 않는다. 공식
+`hyprbars:no_bar` window rule은 일치하는 창에서 bar를 끄는 exclude 규칙이지,
+특정 앱에서만 켜는 allowlist가 아니다. 장식 없는 필수 앱이 실제로 확인되면
+class/backend, 누락 증거, 검증일, 모든 CSD 앱의 제외 계획을 먼저 기록한 뒤에만
+유지보수 비용과 중복 장식 위험을 재평가한다.
 
 ### 7.4 미채택: borders-plus-plus
 
@@ -567,6 +571,7 @@ state에 대한 방어적 구성이다.
 - 정상 상태에서도 끊임없이 pulse하거나 flicker하는 요소
 - battery critical 상태를 빨간색 하나로만 표현하는 것
 - Waybar, dock, launcher가 모두 앱 실행과 창 전환을 중복 제공하는 것
+- Waybar에 활성 창 제목과 전역 최소화·최대화/복원·닫기 버튼을 배치하는 것
 - 3px hotspot, 작은 icon 등 pointer로 찾기 어려운 목표
 - hover나 우클릭으로만 발견할 수 있는 핵심 기능
 - 앱 자체 title bar 위에 전역 hyprbars를 중복 표시하는 것
@@ -618,6 +623,9 @@ state에 대한 방어적 구성이다.
 - blur는 주로 transient overlay에 제한된다.
 - `hyprfocus`가 로드되지 않아도 session과 기본 focus 이동이 정상이다.
 - stale `hyprbars`는 비활성화된다.
+- Waybar에는 활성 창 제목과 창 제어 버튼이 없다.
+- 필수 앱은 자체 장식과 최소화·최대화/복원·닫기 경로를 제공하며, 실제
+  class/backend와 수동 결과는 `WINDOW-DECORATIONS.md`에 기록한다.
 - 100%, fractional scaling, multi-monitor에서 panel clipping과 hit target을
   확인한다.
 - GTK 3/4, cursor, portal file chooser, Fcitx5 theme은 선언된 패키지를 완전한

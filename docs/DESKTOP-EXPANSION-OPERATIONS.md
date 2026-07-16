@@ -92,6 +92,8 @@ bootstrap이 적용하는 테마 자산은 다음과 같다.
 Hyprpaper와 Hyprlock은 두 자산을 같은 모니터 규칙으로 사용한다. Waybar는 상단
 14픽셀 여백과 48픽셀 높이를 사용한다. SwayNC의 8픽셀 top margin은 Waybar의
 exclusive zone 뒤에 적용되어 화면 상단 약 70픽셀에서 panel을 시작한다.
+Waybar는 출력 단위의 전역 상태만 표시하며 활성 앱 title과 앱 창 control을
+표시하지 않는다.
 Waybar의 network leader에 pointer를 올리면 WWAN과 Bluetooth
 상태가 drawer로 나타나며, SwayNC에는 Wi-Fi, Bluetooth, Night Light, volume,
 brightness의 실제 제어만 표시된다.
@@ -265,14 +267,18 @@ sudo rm -f /etc/sddm.conf.d/20-cyberpunk-theme.conf
 
 공통 compositor titlebar는 사용하지 않는다. GTK·Electron 등 자체 장식을 지원하는
 앱은 client-side titlebar를 사용하고, Ghostty도 `window-decoration = auto`로 이를
-명시한다. 앱이 자체 titlebar를 제공하지 않더라도 keyboard와 Dock 제어는 유지된다.
+명시한다. Waybar는 앱별 titlebar가 아니므로 활성 앱 title이나
+최소화·최대화/복원·닫기 control을 제공하지 않는다. 앱이 자체 titlebar를 제공하지
+않더라도 keyboard와 Dock 제어는 유지된다. 앱별 class/backend, 장식 소유권과 검증
+상태는 `WINDOW-DECORATIONS.md`에서 관리한다.
 
 Acceptance에서는 다음을 확인한다.
 
 - `Super+C`는 close, `Super+N`은 `cyberdock-minimize`
 - `Super+F`는 true fullscreen
-- Waybar에 활성 앱 icon/title과 최소화, 최대화, 닫기 controls가 표시됨
-- 빠른 focus 전환 중에도 controls가 선택한 window address만 조작함
+- Waybar에 활성 앱 title과 최소화, 최대화/복원, 닫기 controls가 없음
+- 각 필수 앱의 자체 titlebar가 창과 함께 이동하고 네이티브 controls가 그 창만
+  조작함
 - Electron 앱 자체 최소화 요청이 `cyberdock-event-bridge.service`를 통해 Dock
   최소화 상태로 이어짐
 - 앱 자체 titlebar가 compositor titlebar와 중복되지 않음
@@ -577,8 +583,9 @@ gimp
   Waybar 아래 약 8픽셀 간격에서 시작한다.
 - `desktop-appearance reduced-motion`, `reduced-transparency`, `accessible`을 각각
   적용해 공간 전환과 투명도 대체가 해당 profile 계약대로 동작한다.
-- close, minimize, maximize/restore와 true fullscreen이 tiled·floating 창에서
-  중복 titlebar 없이 동작한다.
+- 대표 GTK, Electron, Qt, XWayland 앱에서 자체 close, minimize,
+  maximize/restore가 해당 창만 조작하고, Hyprland true fullscreen이
+  tiled·floating 창에서 중복 titlebar 없이 동작한다.
 
 ### HiDPI와 입력
 
