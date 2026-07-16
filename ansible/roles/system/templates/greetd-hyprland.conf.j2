@@ -14,7 +14,6 @@ input {
 }
 
 cursor {
-    default_monitor = eDP-1
     hide_on_key_press = false
 }
 
@@ -25,4 +24,7 @@ misc {
     force_default_wallpaper = 0
 }
 
-exec-once = regreet; hyprctl dispatch exit
+bindl = , switch:on:Lid Switch, exec, /usr/local/lib/enoshima/greetd-session lid-closed
+bindl = , switch:off:Lid Switch, exec, /usr/local/lib/enoshima/greetd-session lid-open
+
+exec-once = /usr/local/lib/enoshima/greetd-session start

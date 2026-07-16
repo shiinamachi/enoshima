@@ -60,6 +60,23 @@
     mode: "0644"
     backup: true
 
+- name: Ensure the Enoshima runtime helper directory exists
+  ansible.builtin.file:
+    path: /usr/local/lib/enoshima
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the ReGreet lid-aware session helper
+  ansible.builtin.template:
+    src: greetd-session.sh.j2
+    dest: /usr/local/lib/enoshima/greetd-session
+    owner: root
+    group: root
+    mode: "0755"
+    backup: true
+
 - name: Ensure the local Wayland session directory exists
   ansible.builtin.file:
     path: /usr/local/share/wayland-sessions

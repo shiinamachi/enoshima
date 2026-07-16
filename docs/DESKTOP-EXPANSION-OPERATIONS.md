@@ -253,6 +253,8 @@ grep -F 'Exec=uwsm start -- hyprland.desktop' \
 각각 수행한다.
 
 - eDP는 2880x1800 scale 2.0, Dell은 3840x2160 scale 1.5로 표시된다.
+- lid가 닫힐 때 활성 외장 출력이 있으면 eDP만 비활성화되고 ReGreet가 외장
+  출력으로 이동한다. 외장 출력이 없으면 마지막 eDP를 끄지 않는다.
 - `Enoshima Hyprland` 세션이 선택되고 비밀번호 로그인에 성공한다.
 - 빈 비밀번호 제출 후 fingerprint 인증에 성공한다.
 - 실패 메시지, 긴 사용자명, session dropdown과 power controls가 잘리지 않는다.

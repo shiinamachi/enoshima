@@ -245,6 +245,8 @@ check "ReGreet mixed-DPI compositor configuration parses" \
   Hyprland --verify-config -c /etc/greetd/hyprland.conf
 check "ReGreet configuration is installed" test -f /etc/greetd/regreet.toml
 check "ReGreet semantic stylesheet is installed" test -f /etc/greetd/regreet.css
+check "ReGreet lid-aware session helper is executable" \
+  test -x /usr/local/lib/enoshima/greetd-session
 check "ReGreet crop-safe wallpaper is installed intact" sha256_matches \
   /etc/greetd/background-16x10.jpg \
   784c66002966e57a2ab0e5ae2413c3faee7b93a8c656d203899d41b25faffafb

@@ -1,0 +1,56 @@
+#!/usr/bin/env sh
+set -u
+
+internal_output=eDP-1
+internal_rule='eDP-1,2880x1800@120,0x540,2'
+hyprctl_command=${GREETD_HYPRCTL:-hyprctl}
+jq_command=${GREETD_JQ:-jq}
+regreet_command=${GREETD_REGREET:-regreet}
+lid_state_root=${GREETD_LID_STATE_ROOT:-/proc/acpi/button/lid}
+
+has_external_output() {
+  # The jq variable is intentionally expanded by jq, not the shell.
+  # shellcheck disable=SC2016
+  "$hyprctl_command" -j monitors |
+    "$jq_command" -e --arg internal "$internal_output" \
+      'any(.[]; .name != $internal)' >/dev/null
+}
+
+lid_is_closed() {
+  for state_file in "$lid_state_root"/*/state; do
+    [ -r "$state_file" ] || continue
+    grep -Eqs '^state:[[:space:]]*closed[[:space:]]*$' "$state_file" && return 0
+  done
+  return 1
+}
+
+disable_internal_if_safe() {
+  has_external_output || return 0
+  "$hyprctl_command" keyword monitor "$internal_output,disable"
+}
+
+enable_internal() {
+  "$hyprctl_command" keyword monitor "$internal_rule"
+}
+
+case ${1:-start} in
+  start)
+    if lid_is_closed; then
+      disable_internal_if_safe
+    fi
+    "$regreet_command"
+    status=$?
+    "$hyprctl_command" dispatch exit >/dev/null 2>&1 || true
+    exit "$status"
+    ;;
+  lid-closed)
+    disable_internal_if_safe
+    ;;
+  lid-open)
+    enable_internal
+    ;;
+  *)
+    printf 'greetd-session: unknown action: %s\n' "$1" >&2
+    exit 64
+    ;;
+esac

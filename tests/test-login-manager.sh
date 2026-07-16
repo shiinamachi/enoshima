@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_root"
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
 
 fail() {
   printf 'Login manager test failed: %s\n' "$*" >&2
@@ -26,6 +28,7 @@ host_vars=ansible/inventory/host_vars/tpx1c13.yml
 login_tasks=ansible/roles/system/tasks/login-manager.yml
 greetd_config=ansible/roles/system/templates/greetd-config.toml.j2
 greetd_hyprland=ansible/roles/system/templates/greetd-hyprland.conf.j2
+greetd_session=ansible/roles/system/templates/greetd-session.sh.j2
 regreet_config=ansible/roles/system/templates/regreet.toml.j2
 regreet_css=ansible/roles/system/templates/regreet.css.j2
 session_entry=ansible/roles/system/templates/enoshima-hyprland-uwsm.desktop.j2
@@ -69,12 +72,73 @@ for contract in \
   'monitor = ,preferred,auto-right,auto' \
   'env = GTK_USE_PORTAL,0' \
   'env = GDK_DEBUG,no-portals' \
-  'exec-once = regreet; hyprctl dispatch exit'; do
+  'bindl = , switch:on:Lid Switch, exec, /usr/local/lib/enoshima/greetd-session lid-closed' \
+  'bindl = , switch:off:Lid Switch, exec, /usr/local/lib/enoshima/greetd-session lid-open' \
+  'exec-once = /usr/local/lib/enoshima/greetd-session start'; do
   assert_contains "$greetd_hyprland" "$contract"
 done
+assert_not_contains "$greetd_hyprland" 'default_monitor = eDP-1'
 assert_not_contains "$greetd_hyprland" 'waybar'
 assert_not_contains "$greetd_hyprland" 'quickshell'
 assert_not_contains "$greetd_hyprland" 'cyberdock'
+# These contracts intentionally match literal shell variables in the template.
+# shellcheck disable=SC2016
+for contract in \
+  'has_external_output()' \
+  'lid_is_closed()' \
+  '"$hyprctl_command" keyword monitor "$internal_output,disable"' \
+  '"$hyprctl_command" keyword monitor "$internal_rule"' \
+  '"$regreet_command"' \
+  '"$hyprctl_command" dispatch exit'; do
+  assert_contains "$greetd_session" "$contract"
+done
+assert_contains "$login_tasks" 'dest: /usr/local/lib/enoshima/greetd-session'
+assert_contains "$login_tasks" 'mode: "0755"'
+
+mkdir -p "$work/bin" "$work/lid/LID"
+cat >"$work/bin/hyprctl" <<'SH'
+#!/usr/bin/env sh
+set -u
+if [ "${1:-}" = -j ] && [ "${2:-}" = monitors ]; then
+  printf '%s\n' "${GREETD_TEST_MONITORS:?}"
+  exit 0
+fi
+printf 'hyprctl %s\n' "$*" >>"${GREETD_TEST_LOG:?}"
+SH
+cat >"$work/bin/regreet" <<'SH'
+#!/usr/bin/env sh
+printf 'regreet\n' >>"${GREETD_TEST_LOG:?}"
+exit "${GREETD_TEST_REGREET_STATUS:-0}"
+SH
+chmod 0755 "$work/bin/hyprctl" "$work/bin/regreet"
+
+run_greetd_session() {
+  env \
+    GREETD_HYPRCTL="$work/bin/hyprctl" \
+    GREETD_REGREET="$work/bin/regreet" \
+    GREETD_LID_STATE_ROOT="$work/lid" \
+    GREETD_TEST_LOG="$work/session.log" \
+    GREETD_TEST_MONITORS="$1" \
+    sh "$greetd_session" "${2:-start}"
+}
+
+printf '%s\n' 'state:      closed' >"$work/lid/LID/state"
+: >"$work/session.log"
+run_greetd_session '[{"name":"eDP-1"},{"name":"DP-1"}]'
+grep -Fxq 'hyprctl keyword monitor eDP-1,disable' "$work/session.log" ||
+  fail 'closed-lid startup did not disable eDP when an external output existed'
+grep -Fxq regreet "$work/session.log" || fail 'startup did not run ReGreet'
+grep -Fxq 'hyprctl dispatch exit' "$work/session.log" ||
+  fail 'ReGreet exit did not stop the isolated compositor'
+
+: >"$work/session.log"
+run_greetd_session '[{"name":"eDP-1"}]' lid-closed
+[[ ! -s $work/session.log ]] || fail 'lid close disabled the only active output'
+
+: >"$work/session.log"
+run_greetd_session '[{"name":"DP-1"}]' lid-open
+grep -Fxq 'hyprctl keyword monitor eDP-1,2880x1800@120,0x540,2' \
+  "$work/session.log" || fail 'lid open did not restore the balanced eDP rule'
 
 printf '%s\n' '==> ReGreet preserves the desktop accessibility and visual contracts'
 assert_contains "$regreet_config" 'fit = "Cover"'
@@ -88,6 +152,7 @@ assert_contains "$login_tasks" 'dest: /etc/greetd/background-16x10.jpg'
 assert_contains scripts/postflight.sh 'greetd is the boot display manager'
 assert_contains scripts/postflight.sh 'fallback SDDM is disabled'
 assert_contains scripts/postflight.sh 'ReGreet mixed-DPI compositor configuration parses'
+assert_contains scripts/postflight.sh 'ReGreet lid-aware session helper is executable'
 
 printf '%s\n' '==> UWSM session entry is valid'
 grep -Eq '^\[Desktop Entry\]$' "$session_entry" || fail 'session entry header is invalid'
