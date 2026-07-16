@@ -47,6 +47,23 @@ sha256_matches() {
   [[ ${actual%% *} == "$expected" ]]
 }
 
+filezilla_version_reports() {
+  local output status
+
+  output=$(timeout 15s filezilla --version 2>&1)
+  status=$?
+
+  # FileZilla 3.70.6 on Arch currently reports a valid version and then exits
+  # with wxWidgets' generic failure code. Treat that known exit as healthy only
+  # when the expected version banner was actually emitted.
+  case $status in
+    0 | 255) ;;
+    *) return "$status" ;;
+  esac
+
+  grep -Eq '^FileZilla [0-9]+([.][0-9]+)+([,[:space:]]|$)' <<<"$output"
+}
+
 swaync_quick_settings_callable() {
   local helper=$HOME/.local/bin/swaync-quick-setting
   local setting state
@@ -496,7 +513,7 @@ check "FileZilla desktop entry is installed" \
   test -f /usr/share/applications/filezilla.desktop
 if [[ -n ${WAYLAND_DISPLAY:-} || -n ${DISPLAY:-} ]]; then
   check "FileZilla starts and reports its version" \
-    timeout 15s filezilla --version
+    filezilla_version_reports
 else
   warn "FileZilla runtime smoke test skipped: no graphical display"
 fi
