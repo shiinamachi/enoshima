@@ -199,13 +199,18 @@ One dock instance is rendered on every connected monitor. Each instance:
 - switches to the owning monitor/workspace when a window on another output is
   selected.
 
-The deliberately short pinned set, in order, is:
+The deliberately short initial pinned set, in order, is:
 
 1. Ghostty
 2. Files (Thunar)
 3. Zed
 4. Google Chrome
 5. Applications (CyberLauncher)
+
+The first four entries seed the user-owned pin file only once. Users can add
+or remove entries from CyberLauncher and can reorder pinned applications by
+dragging them directly in the Dock or with the Dock context menu. Applications
+remains a separate system control and cannot be reordered into the user list.
 
 Communication, office, graphics, and Wine applications are intentionally not
 pinned merely because they are managed by this repository. They appear

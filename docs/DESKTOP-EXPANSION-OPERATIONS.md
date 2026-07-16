@@ -322,6 +322,8 @@ pin과 분리된 고정 system control이다. 사용자 목록은
 - 다른 출력의 창을 누르면 해당 monitor/workspace로 전환됨
 - minimize 후 Dock indicator가 바뀌고 원래 위치로 restore됨
 - Launcher 또는 Dock context menu에서 pin/unpin과 좌우 이동이 즉시 반영됨
+- Dock의 pinned app을 가로로 drag하면 놓은 위치에 순서가 저장되고, 같은 동작을
+  context menu의 **Move Left / Move Right**로도 수행할 수 있음
 - 미설치된 pin은 **Unavailable** 상태로 자리를 유지하고 재설치 후 복원됨
 
 keyboard에서는 `Super+N`으로 현재 창을 최소화하고 `Super+Shift+N`으로 모든

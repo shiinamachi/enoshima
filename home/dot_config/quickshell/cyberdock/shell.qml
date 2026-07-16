@@ -237,6 +237,28 @@ ShellRoot {
         return -1;
     }
 
+    function reorderPinnedFromDrag(id, offsetX, slotWidth) {
+        const currentIndex = pinPosition(id);
+        if (currentIndex < 0 || pinIds.length < 2)
+            return;
+
+        const normalizedSlot = Math.max(1, Number(slotWidth || 1));
+        const rawDelta = Number(offsetX || 0) / normalizedSlot;
+        const delta = rawDelta >= 0
+            ? Math.floor(rawDelta + 0.5)
+            : Math.ceil(rawDelta - 0.5);
+        const targetIndex = Math.max(0,
+            Math.min(pinIds.length - 1, currentIndex + delta));
+        if (targetIndex === currentIndex)
+            return;
+
+        runPinAction([
+            "move", id,
+            targetIndex < currentIndex ? "--before" : "--after",
+            pinIds[targetIndex]
+        ]);
+    }
+
     function pinnedMetadata(id) {
         const entry = desktopEntryById(id);
         const fallbackName = String(id).replace(/\.desktop$/i, "");
@@ -536,6 +558,7 @@ ShellRoot {
                 property real tooltipCenterX: width / 2
                 property var menuApp: null
                 property real menuCenterX: width / 2
+                property bool pinDragActive: false
                 readonly property int dockBottomMargin: 7
                 readonly property var monitorState: (root.snapshot.monitors || []).find(monitor =>
                     String(monitor.name || "") === String(modelData.name || "")) || null
@@ -874,6 +897,7 @@ ShellRoot {
                         contentHeight: height
                         boundsBehavior: Flickable.StopAtBounds
                         flickableDirection: Flickable.HorizontalFlick
+                        interactive: !dockWindow.pinDragActive
                         clip: true
 
                         Row {
@@ -892,10 +916,15 @@ ShellRoot {
                                     readonly property bool minimized: app.windows.some(window => window.minimized)
                                     readonly property bool active: app.windows.some(window =>
                                         window.address === root.snapshot.activeAddress)
+                                    property real dragOffsetX: 0
+                                    property bool dragWasActive: false
 
                                     width: app.id === "launcher" ? 54 : 44
                                     height: 46
-                                    scale: appMouse.pressed ? 0.97 : 1
+                                    scale: pinDrag.active ? 1.04 : (appMouse.pressed ? 0.97 : 1)
+                                    z: pinDrag.active ? 2 : 0
+
+                                    transform: Translate { x: appItem.dragOffsetX }
 
                                     Accessible.role: Accessible.Button
                                     Accessible.name: app.name
@@ -928,13 +957,17 @@ ShellRoot {
                                     Rectangle {
                                         anchors.fill: parent
                                         radius: root.theme.radiusControl
-                                        color: appMouse.containsMouse
+                                        color: pinDrag.active
+                                            ? root.theme.colorSelectionSoft
+                                            : (appMouse.containsMouse
                                             ? root.theme.colorFocusHover
                                             : (appItem.active
                                                 ? root.theme.colorFocusSelected
-                                                : "transparent")
-                                        border.width: appItem.active ? 1 : 0
-                                        border.color: root.theme.colorSelectionBorder
+                                                : "transparent"))
+                                        border.width: pinDrag.active || appItem.active ? 1 : 0
+                                        border.color: pinDrag.active
+                                            ? root.theme.colorFocus
+                                            : root.theme.colorSelectionBorder
                                     }
 
                                     IconImage {
@@ -1004,6 +1037,40 @@ ShellRoot {
                                                 dockWindow.showContextMenu(appItem.app, appItem);
                                             } else {
                                                 dockWindow.performPrimaryAction(appItem.app);
+                                            }
+                                        }
+                                    }
+
+                                    DragHandler {
+                                        id: pinDrag
+                                        enabled: appItem.app.pinned
+                                            && !appItem.app.systemControl
+                                        target: null
+                                        acceptedButtons: Qt.LeftButton
+                                        xAxis.enabled: true
+                                        yAxis.enabled: false
+                                        grabPermissions: PointerHandler.CanTakeOverFromItems
+                                            | PointerHandler.ApprovesTakeOverByAnything
+
+                                        onTranslationChanged: {
+                                            if (active)
+                                                appItem.dragOffsetX = activeTranslation.x;
+                                        }
+                                        onActiveChanged: {
+                                            if (active) {
+                                                appItem.dragWasActive = true;
+                                                dockWindow.pinDragActive = true;
+                                                dockWindow.hideTimer.stop();
+                                                dockWindow.clearContextMenu();
+                                                dockWindow.clearTooltip();
+                                            } else if (appItem.dragWasActive) {
+                                                root.reorderPinnedFromDrag(
+                                                    appItem.app.desktopId,
+                                                    appItem.dragOffsetX,
+                                                    appItem.width + dockRow.spacing);
+                                                appItem.dragOffsetX = 0;
+                                                appItem.dragWasActive = false;
+                                                dockWindow.pinDragActive = false;
                                             }
                                         }
                                     }
