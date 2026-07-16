@@ -45,6 +45,10 @@ bootstrap 순서는 다음과 같다.
 7. 기존 통합 postflight 실행
 
 부분 업그레이드나 별도의 `pacman -Sy`를 실행하지 않는다.
+실행 전 host·사용자·profile·policy 검증을 통과한 뒤에는 각 단계를 독립적으로
+시도한다. 실패한 단계는 즉시 `FAILURE`로 기록하지만 AUR, chezmoi, plugin,
+postflight를 포함한 실행 가능한 후속 단계는 계속한다. 마지막 요약에 실패가
+하나라도 남으면 전체 종료 코드는 non-zero이며 성공 문구를 출력하지 않는다.
 
 `packages/aur.txt` 자체가 AUR package base 승인 목록이다. 목록에 있는 package는
 현재 upstream revision을 별도 commit/hash 승인 없이 설치한다. 한 package 설치가

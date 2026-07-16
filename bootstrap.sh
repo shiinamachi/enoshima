@@ -12,6 +12,8 @@ sudo_keepalive_pid=
 runtime_dir=
 dotfile_preflight_complete=false
 mise_config_source="$repo_root/home/dot_config/mise/config.toml"
+# shellcheck source=scripts/lib/bootstrap-failures.sh
+source "$repo_root/scripts/lib/bootstrap-failures.sh"
 
 # Bootstrap is intentionally non-interactive after the explicit conflict-policy
 # and sudo gates.  Do not let package helpers, Git, or systemd inherit a desktop
@@ -59,8 +61,8 @@ refresh_sudo_credentials() {
     return
   fi
 
-  echo "==> Refreshing sudo authentication for the next privileged phase"
-  /usr/bin/sudo -v
+  echo "Error: the run-wide sudo credential is no longer available" >&2
+  return 1
 }
 
 hyprpm_state() {
@@ -146,6 +148,87 @@ converge_hyprland_plugins() {
     hyprpm reload
     hyprctl reload config-only
   fi
+}
+
+install_bootstrap_dependencies() {
+  "$SUDO_COMMAND_WRAPPER" pacman \
+    --config "$repo_root/ansible/roles/packages/templates/pacman.conf.j2" \
+    -Syu --needed --noconfirm \
+    ansible-core \
+    base-devel \
+    chezmoi \
+    git \
+    jq \
+    lua \
+    mise \
+    ripgrep \
+    rustup
+}
+
+install_ansible_collection() {
+  ansible-galaxy collection install \
+    --requirements-file "$repo_root/ansible/collections/requirements.yml"
+}
+
+install_mise_runtimes() {
+  MISE_CONFIG_FILE="$mise_config_source" mise install --yes
+}
+
+install_local_packages() {
+  local rust_toolchain
+
+  rust_toolchain=$(
+    MISE_CONFIG_FILE="$mise_config_source" mise ls --current --json |
+      jq -r '.rust[0].version // empty'
+  )
+  if [[ ! $rust_toolchain =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: mise did not resolve the managed Rust toolchain" >&2
+    return 1
+  fi
+
+  # Keep Arch's /usr/bin/python ahead of the global mise Python here: local
+  # PKGBUILDs consume pacman-provided Python build modules. Select only the
+  # Rust toolchain through rustup's standard environment contract.
+  RUSTUP_TOOLCHAIN="$rust_toolchain" \
+    "$repo_root/scripts/install-local-packages.sh"
+}
+
+apply_ansible_desired_state() {
+  refresh_sudo_credentials
+  # Ansible Core 2.21 isolates workers with setsid() by default. Keep workers
+  # in this terminal session so sudo's TTY-scoped timestamp remains available.
+  ANSIBLE_BECOME_ASK_PASS=false \
+    ANSIBLE_WORKER_SESSION_ISOLATION=false \
+    ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" \
+    ansible-playbook \
+    --inventory "$inventory" \
+    "$repo_root/ansible/site.yml" \
+    --limit "$profile" \
+    --extra-vars "ansible_become_exe=$SUDO_COMMAND_WRAPPER perform_full_upgrade=false apply_boot_artifacts=$apply_boot_artifacts"
+}
+
+apply_desktop_expansion() {
+  refresh_sudo_credentials
+  # This second convergence needs the same TTY-scoped sudo credential behavior.
+  ANSIBLE_BECOME_ASK_PASS=false \
+    ANSIBLE_WORKER_SESSION_ISOLATION=false \
+    ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" \
+    ansible-playbook \
+    --inventory "$inventory" \
+    "$repo_root/ansible/site.yml" \
+    --limit "$profile" \
+    --tags desktop-expansion \
+    --extra-vars "ansible_become_exe=$SUDO_COMMAND_WRAPPER perform_full_upgrade=false apply_boot_artifacts=$apply_boot_artifacts"
+}
+
+apply_user_configuration() {
+  "$repo_root/scripts/apply-dotfiles.sh" --apply "$conflict_policy"
+  echo "==> Cyberpunk Library session theme applied; SDDM selection remains acceptance-gated"
+}
+
+converge_hyprland_plugins_step() {
+  refresh_sudo_credentials
+  converge_hyprland_plugins
 }
 
 cleanup() {
@@ -279,116 +362,90 @@ case $apply_boot_artifacts in
 esac
 
 if command -v chezmoi >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-  echo "==> Checking user-file conflicts before privileged changes"
-  "$repo_root/scripts/apply-dotfiles.sh" --check "$conflict_policy"
-  dotfile_preflight_complete=true
+  bootstrap_run_step \
+    "Checking user-file conflicts before privileged changes" \
+    "$repo_root/scripts/apply-dotfiles.sh" --check "$conflict_policy"
+  if ((bootstrap_last_step_status == 0)); then
+    dotfile_preflight_complete=true
+  fi
 fi
 
-echo "==> Authenticating sudo once for the complete run"
-/usr/bin/sudo -v
+bootstrap_run_step "Authenticating sudo once for the complete run" /usr/bin/sudo -v
 unset SUDO_REAL_COMMAND
 
-runtime_dir=$(mktemp -d)
-ln -s -- "$repo_root/scripts/sudo-noninteractive" "$runtime_dir/sudo"
-export PATH="$runtime_dir:$PATH"
-export SUDO_COMMAND_WRAPPER="$runtime_dir/sudo"
-
-(
-  while /usr/bin/sudo -n -v >/dev/null 2>&1; do
-    sleep 30
-  done
-) &
-sudo_keepalive_pid=$!
-
-echo "==> Installing bootstrap dependencies with a full Arch upgrade"
-sudo pacman --config "$repo_root/ansible/roles/packages/templates/pacman.conf.j2" \
-  -Syu --needed --noconfirm \
-  ansible-core \
-  base-devel \
-  chezmoi \
-  git \
-  jq \
-  lua \
-  mise \
-  ripgrep \
-  rustup
-
-echo "==> Installing the pinned Ansible collection"
-ansible-galaxy collection install \
-  --requirements-file "$repo_root/ansible/collections/requirements.yml"
-
-echo "==> Validating repository and rendering Ansible templates"
-"$repo_root/scripts/validate.sh"
-
-if [[ $dotfile_preflight_complete != true ]]; then
-  echo "==> Checking user-file conflicts after installing the required tools"
-  "$repo_root/scripts/apply-dotfiles.sh" --check "$conflict_policy"
+echo "==> Preparing non-interactive sudo execution"
+sudo_wrapper_status=0
+if runtime_dir=$(mktemp -d) &&
+  ln -s -- "$repo_root/scripts/sudo-noninteractive" "$runtime_dir/sudo"; then
+  export PATH="$runtime_dir:$PATH"
+  export SUDO_COMMAND_WRAPPER="$runtime_dir/sudo"
+  echo "SUCCESS: Preparing non-interactive sudo execution"
+else
+  sudo_wrapper_status=$?
+  export SUDO_COMMAND_WRAPPER=/usr/bin/false
+  bootstrap_record_failure \
+    "Preparing non-interactive sudo execution" "$sudo_wrapper_status"
 fi
 
-echo "==> Installing the managed development runtimes with mise"
-MISE_CONFIG_FILE="$mise_config_source" mise install --yes
+if ((sudo_wrapper_status == 0)); then
+  (
+    while /usr/bin/sudo -n -v >/dev/null 2>&1; do
+      sleep 30
+    done
+  ) &
+  sudo_keepalive_pid=$!
+fi
+
+bootstrap_run_step \
+  "Installing bootstrap dependencies with a full Arch upgrade" \
+  install_bootstrap_dependencies
+bootstrap_run_step "Installing the pinned Ansible collection" install_ansible_collection
+bootstrap_run_step \
+  "Validating repository and rendering Ansible templates" \
+  "$repo_root/scripts/validate.sh"
+
+if [[ $dotfile_preflight_complete != true ]]; then
+  bootstrap_run_step \
+    "Checking user-file conflicts after installing the required tools" \
+    "$repo_root/scripts/apply-dotfiles.sh" --check "$conflict_policy"
+fi
+
+bootstrap_run_step \
+  "Installing the managed development runtimes with mise" \
+  install_mise_runtimes
 
 if [[ $skip_local != true ]]; then
-  echo "==> Building local packages with the mise-managed Rust toolchain"
-  rust_toolchain=$(
-    MISE_CONFIG_FILE="$mise_config_source" mise ls --current --json |
-      jq -r '.rust[0].version // empty'
-  )
-  [[ $rust_toolchain =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
-    die "mise did not resolve the managed Rust toolchain"
-  # Keep Arch's /usr/bin/python ahead of the global mise Python here: local
-  # PKGBUILDs consume pacman-provided Python build modules. Select only the
-  # Rust toolchain through rustup's standard environment contract.
-  RUSTUP_TOOLCHAIN="$rust_toolchain" \
-    "$repo_root/scripts/install-local-packages.sh"
+  bootstrap_run_step \
+    "Building local packages with the mise-managed Rust toolchain" \
+    install_local_packages
 else
   echo "==> Skipping local packages because SKIP_LOCAL=true"
 fi
 
-echo "==> Applying Ansible desired state for $profile"
-refresh_sudo_credentials
-# Ansible Core 2.21 isolates workers with setsid() by default. Keep workers in
-# this terminal session so sudo's TTY-scoped timestamp remains available.
-ANSIBLE_BECOME_ASK_PASS=false \
-  ANSIBLE_WORKER_SESSION_ISOLATION=false \
-  ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" \
-  ansible-playbook \
-  --inventory "$inventory" \
-  "$repo_root/ansible/site.yml" \
-  --limit "$profile" \
-  --extra-vars "ansible_become_exe=$SUDO_COMMAND_WRAPPER perform_full_upgrade=false apply_boot_artifacts=$apply_boot_artifacts"
-
-echo "==> Re-running full validation with the desired toolset installed"
-"$repo_root/scripts/validate.sh"
+bootstrap_run_step "Applying Ansible desired state for $profile" apply_ansible_desired_state
+bootstrap_run_step \
+  "Re-running full validation with the desired toolset installed" \
+  "$repo_root/scripts/validate.sh"
 
 if [[ $skip_aur != true ]]; then
-  "$repo_root/scripts/install-aur.sh"
+  bootstrap_run_step \
+    "Installing approved AUR package bases" \
+    "$repo_root/scripts/install-aur.sh"
 else
   echo "==> Skipping AUR packages because SKIP_AUR=true"
 fi
 
-echo "==> Converging desktop expansion after the AUR phase"
-refresh_sudo_credentials
-# This second convergence needs the same TTY-scoped sudo credential behavior.
-ANSIBLE_BECOME_ASK_PASS=false \
-  ANSIBLE_WORKER_SESSION_ISOLATION=false \
-  ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" \
-  ansible-playbook \
-  --inventory "$inventory" \
-  "$repo_root/ansible/site.yml" \
-  --limit "$profile" \
-  --tags desktop-expansion \
-  --extra-vars "ansible_become_exe=$SUDO_COMMAND_WRAPPER perform_full_upgrade=false apply_boot_artifacts=$apply_boot_artifacts"
+bootstrap_run_step \
+  "Converging desktop expansion after the AUR phase" \
+  apply_desktop_expansion
+bootstrap_run_step \
+  "Applying user configuration with policy: $conflict_policy" \
+  apply_user_configuration
+bootstrap_run_step \
+  "Converging official Hyprland plugins" \
+  converge_hyprland_plugins_step
+bootstrap_run_step \
+  "Running integrated postflight checks" \
+  "$repo_root/scripts/postflight.sh"
 
-echo "==> Applying user configuration with policy: $conflict_policy"
-"$repo_root/scripts/apply-dotfiles.sh" --apply "$conflict_policy"
-echo "==> Cyberpunk Library session theme applied; SDDM selection remains acceptance-gated"
-
-echo "==> Converging official Hyprland plugins"
-refresh_sudo_credentials
-converge_hyprland_plugins
-
-echo "==> Running integrated postflight checks"
-"$repo_root/scripts/postflight.sh"
-
-echo "==> Arch Linux configuration converged successfully"
+bootstrap_finish

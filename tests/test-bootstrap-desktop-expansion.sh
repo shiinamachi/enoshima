@@ -18,11 +18,11 @@ line_number() {
   printf '%s\n' "${match%%:*}"
 }
 
-aur_line=$(line_number "$bootstrap" "\"\$repo_root/scripts/install-aur.sh\"")
-converge_line=$(line_number "$bootstrap" '==> Converging desktop expansion after the AUR phase')
-apply_line=$(line_number "$bootstrap" "\"\$repo_root/scripts/apply-dotfiles.sh\" --apply")
-plugins_line=$(line_number "$bootstrap" '==> Converging official Hyprland plugins')
-postflight_line=$(line_number "$bootstrap" "\"\$repo_root/scripts/postflight.sh\"")
+aur_line=$(line_number "$bootstrap" '"Installing approved AUR package bases"')
+converge_line=$(line_number "$bootstrap" '"Converging desktop expansion after the AUR phase"')
+apply_line=$(line_number "$bootstrap" "\"Applying user configuration with policy: \$conflict_policy\"")
+plugins_line=$(line_number "$bootstrap" '"Converging official Hyprland plugins"')
+postflight_line=$(line_number "$bootstrap" '"Running integrated postflight checks"')
 ((aur_line < converge_line && converge_line < apply_line)) || {
   printf 'Desktop expansion must converge after AUR and before dotfile apply.\n' >&2
   exit 1
@@ -48,6 +48,8 @@ grep -Fq 'hyprpm disable hyprbars' "$bootstrap"
 grep -Fq 'hyprpm enable hyprfocus' "$bootstrap"
 grep -Fq 'hyprctl reload config-only' "$bootstrap"
 grep -Fq 'Version ABI string:' "$bootstrap"
+grep -Fq "source \"\$repo_root/scripts/lib/bootstrap-failures.sh\"" "$bootstrap"
+grep -Fq 'bootstrap_finish' "$bootstrap"
 grep -Fq 'tests/test-cyberdock-state.sh' "$validate"
 grep -Fq 'tests/test-cyberdock-pins.sh' "$validate"
 grep -Fq 'tests/test-desktop-display-mode.sh' "$validate"

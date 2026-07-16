@@ -51,7 +51,8 @@ run-wide chezmoi user-file conflict policy:
   `~/.enoshima/backups/`, then apply the repository.
 - `overwrite`: apply the repository without making conflict backups.
 - `keep`: preserve all conflicting local targets and apply everything else.
-- `abort`: stop before Ansible if any user-file conflict exists.
+- `abort`: refuse conflicting user-file application and report it as a failed
+  step while the remaining independent bootstrap stages continue.
 
 The first run after the rename to enoshima moves the earlier
 `~/.my-arch-configurations/` project state into `~/.enoshima/`. The managed
@@ -68,8 +69,9 @@ after reviewing it, or choose `keep` for the run.
 For a non-interactive run, pass `--conflict-policy <policy>` or set
 `CONFLICT_POLICY`. The command then requests sudo authentication once, refreshes
 that credential in the background, and forces all child privilege escalation
-to be non-interactive. If the credential cannot be refreshed, the run fails
-instead of asking for a second password.
+to be non-interactive. If the credential cannot be refreshed, each affected
+privileged stage reports `FAILURE` instead of asking for a second password;
+unprivileged and otherwise independent later stages are still attempted.
 
 Local PKGBUILDs are reviewed and pinned in this repository. `packages/aur.txt`
 is instead the approval allowlist for AUR package bases: each listed base is
@@ -90,6 +92,13 @@ is required. The next graphical login is still required for UWSM to import a
 new input-method environment and for XDG autostart entries to take effect;
 session-dependent postflight checks are warnings when no graphical session is
 active.
+
+After the profile, conflict-policy, target-user, and platform safety gates have
+passed, bootstrap runs every independent convergence stage even when an earlier
+stage fails. Each failure is printed immediately as `FAILURE`, retained in the
+final summary, and causes a non-zero final exit status. A successful later step
+does not hide an earlier failure, and the success banner is printed only when
+the summary is empty.
 
 ## Secure Boot and TPM2
 

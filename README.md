@@ -74,6 +74,10 @@ sudo to authenticate once and keeps that credential alive without allowing any
 later password prompt. The command performs a supported full Arch upgrade,
 installs only missing or changed local/AUR packages, converges Ansible state,
 applies non-conflicting or selected dotfile state, and runs postflight checks.
+After its safety gates pass, a failed convergence stage is recorded as
+`FAILURE` while independent later stages continue. The command reports the
+aggregate failures and returns non-zero only after every stage has been
+attempted.
 
 The default conflict policy stores preserved files beneath
 `~/.enoshima/backups/`. For unattended use, select a
