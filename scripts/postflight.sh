@@ -250,9 +250,21 @@ check "ReGreet lid-aware session helper is executable" \
 check "ReGreet crop-safe wallpaper is installed intact" sha256_matches \
   /etc/greetd/background-16x10.jpg \
   784c66002966e57a2ab0e5ae2413c3faee7b93a8c656d203899d41b25faffafb
-check "UWSM Hyprland login session is installed" grep -Fq \
-  'Exec=uwsm start -- hyprland.desktop' \
-  /usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop
+# The inner expression is intentionally evaluated by bash -c.
+# shellcheck disable=SC2016
+check "enoshima Desktop login session is the only visible Hyprland session" \
+  bash -c '
+    entry=/usr/local/share/wayland-sessions/enoshima-desktop.desktop
+    legacy=/usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop
+    [[ ! -e $legacy ]] &&
+      grep -Fxq "Name=enoshima Desktop" "$entry" &&
+      grep -Fxq "Exec=uwsm start -e -D Hyprland hyprland.desktop" "$entry" &&
+      for override in hyprland.desktop hyprland-uwsm.desktop; do
+        path=/usr/local/share/wayland-sessions/$override
+        grep -Fxq "Hidden=true" "$path" &&
+          grep -Fxq "NoDisplay=true" "$path" || exit 1
+      done
+  '
 check "vi resolves to Vim" bash -c \
   "[[ \$(readlink -f /usr/local/bin/vi) == /usr/bin/vim ]]"
 # The inner expression is intentionally evaluated by bash -c.

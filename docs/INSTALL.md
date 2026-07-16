@@ -168,7 +168,7 @@ tradeoff and the reason a login manager is not replaced by Hyprlock.
 
 After a reboot and password login:
 
-1. In ReGreet, select **Enoshima Hyprland**. The
+1. In ReGreet, select **enoshima Desktop**. The
    UWSM session is required for the managed environment, graphical user units,
    and XDG autostart applications.
 2. Connect the Dell U2725QE and verify its EDID selector, scale, geometry and

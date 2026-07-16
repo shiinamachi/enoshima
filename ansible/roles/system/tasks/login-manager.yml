@@ -85,10 +85,30 @@
     group: root
     mode: "0755"
 
-- name: Install the UWSM-managed Hyprland session entry
+- name: Remove the superseded Enoshima Hyprland session entry
+  ansible.builtin.file:
+    path: /usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop
+    state: absent
+
+- name: Hide package-provided Hyprland sessions from ReGreet
   ansible.builtin.template:
-    src: enoshima-hyprland-uwsm.desktop.j2
-    dest: /usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop
+    src: hidden-wayland-session.desktop.j2
+    dest: "/usr/local/share/wayland-sessions/{{ item.filename }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - filename: hyprland.desktop
+      name: Hyprland
+    - filename: hyprland-uwsm.desktop
+      name: Hyprland (uwsm-managed)
+  loop_control:
+    label: "{{ item.filename }}"
+
+- name: Install the enoshima Desktop UWSM session entry
+  ansible.builtin.template:
+    src: enoshima-desktop.desktop.j2
+    dest: /usr/local/share/wayland-sessions/enoshima-desktop.desktop
     owner: root
     group: root
     mode: "0644"

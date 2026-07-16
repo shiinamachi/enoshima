@@ -31,7 +31,8 @@ greetd_hyprland=ansible/roles/system/templates/greetd-hyprland.conf.j2
 greetd_session=ansible/roles/system/templates/greetd-session.sh.j2
 regreet_config=ansible/roles/system/templates/regreet.toml.j2
 regreet_css=ansible/roles/system/templates/regreet.css.j2
-session_entry=ansible/roles/system/templates/enoshima-hyprland-uwsm.desktop.j2
+session_entry=ansible/roles/system/templates/enoshima-desktop.desktop.j2
+hidden_session_entry=ansible/roles/system/templates/hidden-wayland-session.desktop.j2
 sddm_config=ansible/roles/system/templates/sddm-hidpi.conf.j2
 sddm_qml=ansible/roles/desktop_expansion/files/sddm-cyberpunk/Main.qml
 
@@ -157,8 +158,27 @@ assert_contains scripts/postflight.sh 'ReGreet lid-aware session helper is execu
 printf '%s\n' '==> UWSM session entry is valid'
 grep -Eq '^\[Desktop Entry\]$' "$session_entry" || fail 'session entry header is invalid'
 grep -Eq '^Type=Application$' "$session_entry" || fail 'session entry type is invalid'
-assert_contains "$session_entry" 'Exec=uwsm start -- hyprland.desktop'
+assert_contains "$session_entry" 'Name=enoshima Desktop'
+assert_contains "$session_entry" 'Exec=uwsm start -e -D Hyprland hyprland.desktop'
 assert_contains "$session_entry" 'TryExec=uwsm'
+assert_contains "$login_tasks" 'path: /usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop'
+assert_contains "$login_tasks" 'state: absent'
+assert_contains "$login_tasks" 'dest: "/usr/local/share/wayland-sessions/{{ item.filename }}"'
+assert_contains "$login_tasks" 'filename: hyprland.desktop'
+assert_contains "$login_tasks" 'filename: hyprland-uwsm.desktop'
+assert_contains "$hidden_session_entry" 'Hidden=true'
+assert_contains "$hidden_session_entry" 'NoDisplay=true'
+assert_contains "$hidden_session_entry" 'Exec=/usr/bin/false'
+assert_contains scripts/postflight.sh \
+  'enoshima Desktop login session is the only visible Hyprland session'
+
+if command -v desktop-file-validate >/dev/null 2>&1; then
+  cp -- "$session_entry" "$work/enoshima-desktop.desktop"
+  sed 's/{{ item.name }}/Hyprland/' "$hidden_session_entry" >"$work/hyprland.desktop"
+  desktop-file-validate \
+    "$work/enoshima-desktop.desktop" \
+    "$work/hyprland.desktop"
+fi
 
 printf '%s\n' '==> greetd and fallback SDDM retain password-first fingerprint PAM'
 for pam_template in \

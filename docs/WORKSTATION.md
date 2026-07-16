@@ -399,7 +399,7 @@ is carrying a remote administration session.
    package-base allowlist is acceptable as an automatic trust boundary.
 2. Run `./bootstrap.sh` from the target desktop user. Validation and postflight
    are included.
-3. Reboot, select **Enoshima Hyprland** in ReGreet, then log in once with the
+3. Reboot, select **enoshima Desktop** in ReGreet, then log in once with the
    password so the UWSM environment and login keyring are initialized.
 4. Keep a root shell open and test ReGreet, Hyprlock, `sudo`, and the documented
    TTY rollback to SDDM.
