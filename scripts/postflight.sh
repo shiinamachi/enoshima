@@ -559,10 +559,13 @@ check "desktop power controller is deployed" \
   test -x "$HOME/.local/bin/desktop-power"
 check "desktop power menu is deployed" \
   test -f "$HOME/.config/quickshell/cyberdock/PowerMenu.qml"
-check "address-scoped desktop window actions are deployed" \
-  test -x "$HOME/.local/bin/desktop-window-action"
-check "client minimize event bridge is deployed" \
-  test -x "$HOME/.local/bin/cyberdock-event-bridge"
+# HOME is intentionally expanded by the child Bash used for these compound checks.
+# shellcheck disable=SC2016
+check "desktop window actions have no tracked Waybar target" bash -c \
+  'test -x "$HOME/.local/bin/desktop-window-action" && ! grep -Fq -- "--tracked" "$HOME/.local/bin/desktop-window-action"'
+# shellcheck disable=SC2016
+check "client minimize bridge has no active-window side channel" bash -c \
+  'test -x "$HOME/.local/bin/cyberdock-event-bridge" && ! grep -Eq "active-window-address|activewindowv2" "$HOME/.local/bin/cyberdock-event-bridge"'
 # HOME is intentionally expanded by the child Bash used for the compound check.
 # shellcheck disable=SC2016
 check "KakaoTalk focus repair and surface guard are deployed" bash -c \

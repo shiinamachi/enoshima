@@ -384,6 +384,7 @@ for test_script in \
   tests/test-desktop-display-mode.sh \
   tests/test-desktop-power.sh \
   tests/test-desktop-window-action.sh \
+  tests/test-window-decoration-policy.sh \
   tests/test-hypr-mouse-binds.sh \
   tests/test-desktop-shell-helpers.sh \
   tests/test-desktop-appearance.sh \

@@ -87,4 +87,3 @@ fallback을 추가하려면 다음 정보를 같은 변경에 기록하고 focus
 - 기존 및 향후 CSD 앱에서 중복 bar를 막는 전체 exclude 계획
 - 앱 update, Hyprland ABI 변경, multi-monitor, scaling 재검증 절차
 - 한 커밋으로 되돌릴 수 있는 rollback
-
