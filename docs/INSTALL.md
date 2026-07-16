@@ -166,8 +166,9 @@ After a reboot and password login:
    120 Hz mode with `hyprctl monitors all` if it was disconnected during the
    integrated postflight.
 3. Inspect and enroll the intended Thunderbolt/USB4 device with `boltctl`.
-4. Run `kakaotalk-setup`, complete the official KakaoTalk installer and login,
-   then create a Bottles snapshot. Run `kakaotalk-smoke-test`; promote the
+4. Run `kakaotalk-setup`; an existing bottle receives a private pre-profile
+   snapshot automatically. Complete the official KakaoTalk installer and login,
+   then create a post-login Bottles snapshot. Run `kakaotalk-smoke-test`; promote the
    checksum-pinned candidate only after its acceptance report passes.
 5. Test Wi-Fi to WWAN handoff locally. Do not disconnect the link carrying a
    remote session.

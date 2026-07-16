@@ -333,7 +333,9 @@ clear connectivity preflight and retry path:
    root XIM input style;
 5. allow only Downloads, Documents, and Pictures;
 6. download the installer from Kakao's official CDN;
-7. leave installer acceptance, login, and snapshot creation interactive; and
+7. create a private Bottles recovery snapshot before mutating an existing
+   bottle, while leaving installer acceptance, login, and the post-login
+   acceptance snapshot interactive; and
 8. verify chat, Korean composition, clipboard, files, tray restoration, and
    notifications.
 

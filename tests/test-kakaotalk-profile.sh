@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/home/dot_local/bin/executable_kakaotalk-profile
+setup_helper=$repo_root/home/dot_local/bin/executable_kakaotalk-setup
 test_root=$(mktemp -d)
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -131,5 +132,15 @@ if run_profile promote wine-11.8-staging-candidate \
   printf 'An insufficient acceptance report was promoted.\n' >&2
   exit 1
 fi
+
+snapshot_call=$(grep -nF '  create_profile_snapshot' "$setup_helper" | cut -d: -f1)
+compatibility_call=$(grep -nF "printf 'Configuring the KakaoTalk Wine runner" \
+  "$setup_helper" | cut -d: -f1)
+[[ -n $snapshot_call && -n $compatibility_call && $snapshot_call -lt $compatibility_call ]] || {
+  printf 'An existing bottle is not snapshotted before profile changes.\n' >&2
+  exit 1
+}
+grep -Fq 'manager.versioning_manager.create_state(' "$setup_helper"
+grep -Fq "'wineserver -k; wineserver -w'" "$setup_helper"
 
 printf 'KakaoTalk profile tests passed.\n'

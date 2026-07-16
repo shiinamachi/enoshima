@@ -337,8 +337,10 @@ complete. Wine's `InputStyle=root` is scoped to `kakaotalk.exe`, so Fcitx owns
 the visible preedit and KakaoTalk receives committed Hangul without the
 one-composition cursor lag. Other applications retain their normal preedit.
 
-After the first successful login, create a Bottles snapshot and run
-`kakaotalk-smoke-test`. It records runner, Bottles, KakaoTalk, Fcitx and
+When setup reuses an existing bottle, it stops KakaoTalk and creates a private
+**Before enoshima profile** Bottles snapshot before changing the runner,
+dependencies, or registry. After the first successful login, create another
+Bottles snapshot and run `kakaotalk-smoke-test`. It records runner, Bottles, KakaoTalk, Fcitx and
 Hyprland versions in a private state report. Promote the candidate only when
 the report passes all Hangul, paste, focus, tray and relogin gates:
 
@@ -347,8 +349,9 @@ kakaotalk-profile promote wine-11.8-staging-candidate --report REPORT.json
 ```
 
 Keep the known-good runner instead of changing it during an urgent KakaoTalk
-update. `kakaotalk-profile rollback` restores the previous locally selected
-profile. Voice/video calls and screen sharing are out of scope. Wine and
+update. `kakaotalk-profile rollback` restores a previous locally selected
+managed profile; restoring the initial pre-profile state uses the Bottles
+snapshot named above. Voice/video calls and screen sharing are out of scope. Wine and
 KakaoTalk updates can still regress otherwise working behavior.
 
 `kakaotalk-focus-guard.service` listens to Hyprland's event socket. When focus
