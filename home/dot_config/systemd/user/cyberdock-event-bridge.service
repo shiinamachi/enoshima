@@ -1,5 +1,5 @@
 [Unit]
-Description=Bridge client minimize requests into Cyberdock state
+Description=Synchronize native Hyprland minimize events with Cyberdock
 PartOf=graphical-session.target
 After=graphical-session.target cyberdock.service
 ConditionEnvironment=WAYLAND_DISPLAY
@@ -9,7 +9,9 @@ ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
 Type=simple
 ExecStart=%h/.local/bin/cyberdock-event-bridge
 Restart=always
-RestartSec=2
+RestartSec=1
+StandardOutput=journal
+StandardError=journal
 Slice=background-graphical.slice
 
 [Install]

@@ -10,10 +10,9 @@ trap 'rm -rf -- "$work"' EXIT
 
 export DESKTOP_WINDOW_HYPRCTL=$work/bin/hyprctl
 export DESKTOP_WINDOW_STATE=$work/bin/cyberdock-state
-export DESKTOP_WINDOW_TRACKED_FILE=$work/runtime/cyberdock/active-window-address
 export WINDOW_TEST_ROOT=$work/state
 export WINDOW_TEST_LOG=$work/commands.log
-mkdir -p "$work/bin" "$WINDOW_TEST_ROOT" "$(dirname -- "$DESKTOP_WINDOW_TRACKED_FILE")"
+mkdir -p "$work/bin" "$WINDOW_TEST_ROOT"
 
 fail() {
   printf 'test-desktop-window-action: %s\n' "$*" >&2
@@ -66,6 +65,13 @@ run_action() {
   bash "$helper" "$@"
 }
 
+if grep -Fq -- '--tracked' "$helper"; then
+  fail 'desktop-window-action still exposes the retired tracked address mode'
+fi
+if grep -Eq 'active-window-address|activewindowv2' "$bridge"; then
+  fail 'event bridge still maintains the retired active-window side channel'
+fi
+
 printf '%s\n' '==> status exposes the exact active window address and state'
 jq -e '
   .schema == 1 and .address == "0xaaa" and .title == "Editor" and
@@ -82,12 +88,6 @@ grep -Fxq 'state restore 0xbbb' "$WINDOW_TEST_LOG" || fail 'restore lost its add
 grep -Fxq 'state activate 0xbbb' "$WINDOW_TEST_LOG" || fail 'focus lost its address'
 grep -Fxq 'state close 0xaaa' "$WINDOW_TEST_LOG" || fail 'close lost its address'
 
-printf '%s\n' '==> tracked actions use the event-time address rather than the current focus'
-printf '0xbbb\n' >"$DESKTOP_WINDOW_TRACKED_FILE"
-run_action close --tracked
-grep -Fxq 'state close 0xbbb' "$WINDOW_TEST_LOG" ||
-  fail 'tracked close did not preserve the event-time address'
-
 printf '%s\n' '==> maximize uses an address-scoped compositor dispatcher'
 run_action maximize --address 0xbbb
 grep -Fq 'window = "address:0xbbb"' "$WINDOW_TEST_LOG" ||
@@ -103,9 +103,8 @@ fi
 if run_action minimize --address 'class:.*' 2>/dev/null; then
   fail 'non-address selector unexpectedly succeeded'
 fi
-printf '0xccc\n' >"$DESKTOP_WINDOW_TRACKED_FILE"
 if run_action close --tracked 2>/dev/null; then
-  fail 'stale tracked address unexpectedly succeeded'
+  fail 'retired tracked address mode unexpectedly succeeded'
 fi
 after=$(wc -l <"$WINDOW_TEST_LOG")
 [[ $before -eq $after ]] || fail 'invalid target dispatched a window action'
@@ -114,7 +113,6 @@ printf '%s\n' '==> socket events bridge native client minimize requests once'
 export CYBERDOCK_EVENT_CONTROLLER=$work/bin/event-controller
 export CYBERDOCK_EVENT_STATE=$work/bin/event-state
 export CYBERDOCK_EVENT_DEBOUNCE_MS=100000
-export CYBERDOCK_EVENT_RUNTIME_DIR=$work/event-runtime/cyberdock
 cat >"$CYBERDOCK_EVENT_CONTROLLER" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -146,17 +144,17 @@ grep -Fxq 'event-controller minimize --address 0xbbb' "$WINDOW_TEST_LOG" ||
   fail 'compatibility minimize event was not bridged'
 grep -Fxq 'event-state prune' "$WINDOW_TEST_LOG" ||
   fail 'close event did not prune runtime state'
-[[ $(<"$CYBERDOCK_EVENT_RUNTIME_DIR/active-window-address") == 0xbbb ]] ||
-  fail 'active window event was not persisted for Waybar actions'
-[[ $(stat -c '%a' "$CYBERDOCK_EVENT_RUNTIME_DIR/active-window-address") == 600 ]] ||
-  fail 'tracked active window address is not private'
 printf '%s\n' 'closewindow>>0xbbb' | bash "$bridge" --stdin
-[[ ! -e $CYBERDOCK_EVENT_RUNTIME_DIR/active-window-address ]] ||
-  fail 'closing the tracked window retained a stale address'
 # shellcheck disable=SC2016 # Match the literal command in the managed helper.
 grep -Fq '"$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT' "$bridge" ||
   fail 'event bridge still closes its socket when service stdin reaches EOF'
 grep -Fxq 'Restart=always' "$bridge_service" ||
   fail 'event bridge does not reconnect after a compositor socket closes'
+grep -Fxq 'RestartSec=1' "$bridge_service" ||
+  fail 'event bridge reconnect delay is not bounded to one second'
+grep -Fxq 'StandardOutput=journal' "$bridge_service" ||
+  fail 'event bridge output is not explicitly routed to the journal'
+grep -Fxq 'StandardError=journal' "$bridge_service" ||
+  fail 'event bridge errors are not explicitly routed to the journal'
 
 printf 'Desktop window action tests passed.\n'

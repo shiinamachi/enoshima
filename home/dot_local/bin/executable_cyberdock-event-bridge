@@ -5,13 +5,6 @@ readonly socat_bin=${CYBERDOCK_EVENT_SOCAT:-socat}
 readonly controller=${CYBERDOCK_EVENT_CONTROLLER:-desktop-window-action}
 readonly state_bin=${CYBERDOCK_EVENT_STATE:-cyberdock-state}
 readonly debounce_ms=${CYBERDOCK_EVENT_DEBOUNCE_MS:-250}
-readonly jq_bin=${CYBERDOCK_EVENT_JQ:-jq}
-runtime_dir=${CYBERDOCK_EVENT_RUNTIME_DIR:-}
-if [[ -z $runtime_dir && -n ${XDG_RUNTIME_DIR:-} ]]; then
-  runtime_dir=$XDG_RUNTIME_DIR/cyberdock
-fi
-readonly runtime_dir
-readonly active_address_file=$runtime_dir/active-window-address
 
 die() {
   printf 'cyberdock-event-bridge: %s\n' "$*" >&2
@@ -20,35 +13,6 @@ die() {
 
 valid_address() {
   [[ $1 =~ ^0x[0-9A-Fa-f]+$ ]]
-}
-
-prepare_runtime() {
-  [[ -n $runtime_dir ]] || die 'runtime directory is unavailable'
-  umask 077
-  mkdir -p -- "$runtime_dir"
-  chmod 0700 -- "$runtime_dir"
-}
-
-write_active_address() {
-  local address=$1 temporary
-
-  if [[ -z $address ]]; then
-    rm -f -- "$active_address_file"
-    return
-  fi
-  valid_address "$address" || return 0
-
-  temporary=$(mktemp "$runtime_dir/.active-window-address.XXXXXX")
-  printf '%s\n' "$address" >"$temporary"
-  chmod 0600 -- "$temporary"
-  mv -f -- "$temporary" "$active_address_file"
-}
-
-seed_active_address() {
-  local address
-  address=$("$controller" status --json 2>/dev/null |
-    "$jq_bin" -r '.address // ""') || return 0
-  write_active_address "$address"
 }
 
 declare -A last_event_ms=()
@@ -76,20 +40,11 @@ handle_minimize() {
 handle_event() {
   local event=$1 payload
   case $event in
-    activewindowv2\>\>*)
-      payload=${event#*>>}
-      write_active_address "$payload"
-      ;;
     minimize\>\>* | minimized\>\>*)
       payload=${event#*>>}
       handle_minimize "$payload"
       ;;
     closewindow\>\>*)
-      payload=${event#*>>}
-      if [[ -f $active_address_file && ! -L $active_address_file ]] &&
-        [[ $(<"$active_address_file") == "$payload" ]]; then
-        write_active_address ""
-      fi
       "$state_bin" prune >/dev/null 2>&1 || true
       ;;
   esac
@@ -97,17 +52,13 @@ handle_event() {
 
 if [[ ${1:-} == --stdin ]]; then
   [[ $# -eq 1 ]] || die 'usage: cyberdock-event-bridge [--stdin]'
-  prepare_runtime
   while IFS= read -r event; do handle_event "$event"; done
   exit 0
 fi
 [[ $# -eq 0 ]] || die 'usage: cyberdock-event-bridge [--stdin]'
 command -v "$socat_bin" >/dev/null 2>&1 || die 'socat is required'
-command -v "$jq_bin" >/dev/null 2>&1 || die 'jq is required'
 [[ -n ${XDG_RUNTIME_DIR:-} && -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] ||
   die 'Hyprland runtime environment is missing'
-prepare_runtime
-seed_active_address
 socket=$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
 [[ -S $socket ]] || die "Hyprland event socket is unavailable: $socket"
 
