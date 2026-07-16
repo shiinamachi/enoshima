@@ -262,8 +262,8 @@ jq -e '[.[] | select(.disabled == false)] | length == 2' \
 printf '%s\n' '==> projection overlay reports apply failures in context'
 grep -Fq 'id: applyProcess' "$overlay_qml" ||
   fail 'projection overlay does not track the apply process'
-grep -Fq 'stderr: StdioCollector { id: applyErrorCollector }' "$overlay_qml" ||
-  fail 'projection overlay does not capture apply errors'
+grep -Fq 'id: applyResultCollector' "$overlay_qml" ||
+  fail 'projection overlay does not capture apply results'
 grep -Fq 'Accessible.role: Accessible.AlertMessage' "$overlay_qml" ||
   fail 'projection overlay error is not exposed to accessibility clients'
 grep -Fq '호환되는 복제 모드가 없습니다.' "$overlay_qml" ||

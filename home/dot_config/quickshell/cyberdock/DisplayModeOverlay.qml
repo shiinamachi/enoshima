@@ -66,6 +66,9 @@ PanelWindow {
         applyError = "";
         applying = true;
         applyProcess.exec([
+            "bash", "-c",
+            "output=$(\"$@\" 2>&1); exit_code=$?; printf '%s\\n%s' \"$exit_code\" \"$output\"",
+            "cyberdisplay-apply",
             "desktop-display-mode", "apply", choices[selectedIndex].id
         ]);
     }
@@ -130,19 +133,25 @@ PanelWindow {
 
     Process {
         id: applyProcess
-        stderr: StdioCollector { id: applyErrorCollector }
-        onExited: (exitCode, exitStatus) => {
-            overlay.applying = false;
-            if (exitCode === 0) {
-                overlay.applyError = "";
-            } else {
-                overlay.applyError = overlay.applyFailureMessage(
-                    applyErrorCollector.text);
-                console.warn("cyberdisplay: apply failed:", exitCode,
-                    exitStatus, applyErrorCollector.text.trim());
+        stdout: StdioCollector {
+            id: applyResultCollector
+            onStreamFinished: {
+                const separator = text.indexOf("\n");
+                const exitCode = Number(separator >= 0
+                    ? text.slice(0, separator) : text);
+                const detail = separator >= 0
+                    ? text.slice(separator + 1) : "";
+                overlay.applying = false;
+                if (exitCode === 0) {
+                    overlay.applyError = "";
+                } else {
+                    overlay.applyError = overlay.applyFailureMessage(detail);
+                    console.warn("cyberdisplay: apply failed:", exitCode,
+                        detail.trim());
+                }
+                if (!statusProcess.running)
+                    statusProcess.running = true;
             }
-            if (!statusProcess.running)
-                statusProcess.running = true;
         }
     }
 
