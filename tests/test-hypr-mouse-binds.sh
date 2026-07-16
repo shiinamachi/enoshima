@@ -22,8 +22,8 @@ case ${1:-} in
     [[ ${2:-} == -j ]]
     cat <<'JSON'
 [
-  {"mouse":true,"modmask":64,"key":"mouse:272","description":"Move window with pointer"},
-  {"mouse":true,"modmask":64,"key":"mouse:273","description":"Resize window with pointer"}
+  {"mouse":false,"modmask":64,"key":"mouse:272","dispatcher":"__lua","has_description":true,"description":"Move window with pointer"},
+  {"mouse":false,"modmask":64,"key":"mouse:273","dispatcher":"__lua","has_description":true,"description":"Resize window with pointer"}
 ]
 JSON
     ;;

@@ -31,12 +31,25 @@ report=$("$jq_bin" -c -n \
   --argjson submap "$submap" \
   --argjson resizeBorder "$resize_border" \
   --argjson grabArea "$grab_area" '
+  def effective_mouse_bind($key; $description):
+    any($binds[];
+      .key == $key and ((.modmask // 0) % 128 >= 64) and
+      (
+        (.mouse // false) == true or
+        (
+          .dispatcher == "__lua" and
+          (.has_description // false) == true and
+          .description == $description
+        )
+      )
+    );
+
   {
     schema: 1,
     version: $version,
     effective: {
-      move: any($binds[]; .mouse == true and .key == "mouse:272" and ((.modmask // 0) % 128 >= 64)),
-      resize: any($binds[]; .mouse == true and .key == "mouse:273" and ((.modmask // 0) % 128 >= 64)),
+      move: effective_mouse_bind("mouse:272"; "Move window with pointer"),
+      resize: effective_mouse_bind("mouse:273"; "Resize window with pointer"),
       resize_on_border: ($resizeBorder.bool // false),
       border_grab_area: ($grabArea.int // 0)
     },
@@ -53,8 +66,8 @@ report=$("$jq_bin" -c -n \
       }
     ],
     healthy: (
-      any($binds[]; .mouse == true and .key == "mouse:272" and ((.modmask // 0) % 128 >= 64))
-      and any($binds[]; .mouse == true and .key == "mouse:273" and ((.modmask // 0) % 128 >= 64))
+      effective_mouse_bind("mouse:272"; "Move window with pointer")
+      and effective_mouse_bind("mouse:273"; "Resize window with pointer")
       and ($resizeBorder.bool // false)
       and ($grabArea.int // 0) >= 24
     )
