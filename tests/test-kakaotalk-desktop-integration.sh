@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 repair=$repo_root/home/dot_local/bin/executable_kakaotalk-focus-repair
 guard=$repo_root/home/dot_local/bin/executable_kakaotalk-focus-guard
+guard_service=$repo_root/home/dot_config/systemd/user/kakaotalk-focus-guard.service
 doctor=$repo_root/home/dot_local/bin/executable_kakaotalk-doctor
 hyprland=$repo_root/home/dot_config/hypr/hyprland.lua
 shell_qml=$repo_root/home/dot_config/quickshell/cyberdock/shell.qml
@@ -168,5 +169,8 @@ if grep -Fq 'name = "hide-wine-shell-surface"' "$hyprland"; then
 fi
 grep -Fq 'target: "kakaofocus"' "$shell_qml"
 grep -Fq '"label": "입력 포커스 복구"' "$shell_qml"
+# shellcheck disable=SC2016 # Match the literal command in the managed helper.
+grep -Fq '"$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT' "$guard"
+grep -Fxq 'Restart=always' "$guard_service"
 
 printf 'KakaoTalk desktop integration tests passed.\n'

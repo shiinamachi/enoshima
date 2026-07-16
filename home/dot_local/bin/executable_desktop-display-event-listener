@@ -19,7 +19,7 @@ socket=$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
   exit 1
 }
 
-"$socat_bin" - "UNIX-CONNECT:$socket" | while IFS= read -r event; do
+"$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT | while IFS= read -r event; do
   case $event in
     monitoradded* | monitorremoved* | monitorlayoutchanged* | configreloaded*)
       # Hotplug often emits several adjacent layout events. A short blocking

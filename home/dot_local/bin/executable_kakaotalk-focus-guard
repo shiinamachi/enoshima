@@ -108,4 +108,4 @@ socket=$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
 
 while IFS= read -r event; do
   handle_event "$event"
-done < <("$socat_bin" - "UNIX-CONNECT:$socket")
+done < <("$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT)

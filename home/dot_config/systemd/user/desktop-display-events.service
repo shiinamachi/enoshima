@@ -8,7 +8,7 @@ ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
 [Service]
 Type=simple
 ExecStart=%h/.local/bin/desktop-display-event-listener
-Restart=on-failure
+Restart=always
 RestartSec=2
 Slice=background-graphical.slice
 

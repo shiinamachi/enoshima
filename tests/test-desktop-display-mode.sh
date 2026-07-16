@@ -4,6 +4,8 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/home/dot_local/bin/executable_desktop-display-mode
 overlay_qml=$repo_root/home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
+event_listener=$repo_root/home/dot_local/bin/executable_desktop-display-event-listener
+event_service=$repo_root/home/dot_config/systemd/user/desktop-display-events.service
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
@@ -268,5 +270,10 @@ grep -Fq 'Accessible.role: Accessible.AlertMessage' "$overlay_qml" ||
   fail 'projection overlay error is not exposed to accessibility clients'
 grep -Fq '호환되는 복제 모드가 없습니다.' "$overlay_qml" ||
   fail 'projection overlay lacks the duplicate-mode recovery message'
+# shellcheck disable=SC2016 # Match the literal command in the managed helper.
+grep -Fq '"$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT' "$event_listener" ||
+  fail 'display listener still closes its socket when service stdin reaches EOF'
+grep -Fxq 'Restart=always' "$event_service" ||
+  fail 'display listener does not reconnect after a compositor socket closes'
 
 printf 'Desktop display mode tests passed.\n'

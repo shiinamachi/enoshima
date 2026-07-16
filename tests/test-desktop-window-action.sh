@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/home/dot_local/bin/executable_desktop-window-action
 bridge=$repo_root/home/dot_local/bin/executable_cyberdock-event-bridge
+bridge_service=$repo_root/home/dot_config/systemd/user/cyberdock-event-bridge.service
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
@@ -152,5 +153,10 @@ grep -Fxq 'event-state prune' "$WINDOW_TEST_LOG" ||
 printf '%s\n' 'closewindow>>0xbbb' | bash "$bridge" --stdin
 [[ ! -e $CYBERDOCK_EVENT_RUNTIME_DIR/active-window-address ]] ||
   fail 'closing the tracked window retained a stale address'
+# shellcheck disable=SC2016 # Match the literal command in the managed helper.
+grep -Fq '"$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT' "$bridge" ||
+  fail 'event bridge still closes its socket when service stdin reaches EOF'
+grep -Fxq 'Restart=always' "$bridge_service" ||
+  fail 'event bridge does not reconnect after a compositor socket closes'
 
 printf 'Desktop window action tests passed.\n'
