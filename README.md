@@ -1,4 +1,4 @@
-![Enoshima Arch Linux desired-state repository in a neon library workstation](docs/assets/branding/enoshima-readme-header.png)
+![Enoshima, a calm, coherent, accessible, keyboard-first Cyberpunk Arch Linux remix](docs/assets/branding/enoshima-readme-header.png)
 
 # enoshima
 
