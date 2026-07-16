@@ -209,6 +209,7 @@ restore_one() {
   local address=$1 focus_after=${2:-true}
   local clients monitors workspaces client record target_workspace target_monitor saved_monitor
   local current_workspace_monitor desired_floating current_floating fullscreen fullscreen_client
+  local currently_minimized
 
   clients=$(hypr_json clients)
   prune_state "$clients"
@@ -222,6 +223,10 @@ restore_one() {
   workspaces=$(hypr_json workspaces)
   fallback_context "$monitors"
   record=$("$jq_bin" -c --arg address "$address" '.windows[$address] // empty' <<<"$state")
+  currently_minimized=$("$jq_bin" -r '.workspace.name == "special:minimized"' <<<"$client")
+  if [[ -z $record && $currently_minimized != true ]]; then
+    return 0
+  fi
 
   target_workspace=$fallback_workspace
   target_monitor=$fallback_monitor

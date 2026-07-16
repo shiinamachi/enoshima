@@ -70,6 +70,30 @@ hyprctl clients -j |
 - 확대와 fractional scaling에서도 control이 잘리거나 pointer target이 지나치게
   작아지지 않는다.
 
+Electron CSD 최소화 경로를 확인할 때는 별도 터미널에서 Hyprland의 문서화된
+`minimized` 이벤트만 관찰한다. title이 포함되는 다른 이벤트는 기록하지 않는다.
+
+```bash
+socat -u \
+  UNIX-CONNECT:"$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" - |
+  stdbuf -oL grep -E '^(minimized|fullscreen)>>'
+```
+
+필요하면 테스트용 profile로 앱 하나를 실행하고 `WAYLAND_DEBUG=client`에서
+`xdg_toplevel.set_minimized()`와 `set_maximized()` 요청을 확인한다. 이 로그에는
+업무 데이터가 포함될 수 있으므로 저장소나 공유 보고서에 원문을 남기지 않는다.
+
+`cyberdock-event-bridge`는 시간 기반 debounce나 문서화되지 않은 `minimize`
+이벤트에 의존하지 않는다. 이벤트마다 현재 Cyberdock snapshot을 비교해 다음
+전이만 허용한다.
+
+| 현재 상태 | 이벤트 | 결과 |
+| --- | --- | --- |
+| 일반 | `minimized(...,1)` | 원래 workspace/output/창 상태를 기록하고 최소화 |
+| 최소화 | `minimized(...,1)` | no-op |
+| 최소화 | `minimized(...,0)` | 기록된 상태로 복원 |
+| 일반 | `minimized(...,0)` | no-op |
+
 자동 회귀 검사는 정책과 관리 설정을 검증하지만 실제 titlebar hit target,
 dragging, dialog, multi-monitor 동작을 증명하지 않는다. 수동 통과 결과는 이 표의
 `검증 상태`를 실제 날짜와 함께 갱신한다.

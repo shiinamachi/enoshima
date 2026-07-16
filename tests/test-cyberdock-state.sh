@@ -245,6 +245,10 @@ jq -e '.windows["0xaaa"].workspace.name == "3" and .windows["0xaaa"].monitor == 
 snapshot=$(run_state snapshot)
 jq -e '.windows[] | select(.address == "0xaaa") | .minimized and .originalWorkspace.name == "3"' \
   <<<"$snapshot" >/dev/null || fail 'snapshot did not expose minimized state'
+before=$(wc -l <"$CYBERDOCK_FAKE_ROOT/dispatch.log")
+run_state minimize 0xaaa
+after=$(wc -l <"$CYBERDOCK_FAKE_ROOT/dispatch.log")
+[[ $before -eq $after ]] || fail 'duplicate minimize dispatched another transition'
 
 printf '%s\n' '==> activation restores the original workspace, output, and focus'
 run_state activate 0xaaa
@@ -254,6 +258,10 @@ jq -e '.windows | length == 0' "$XDG_RUNTIME_DIR/cyberdock/minimized.json" >/dev
   fail 'restore record was not removed'
 jq -e '.address == "0xaaa"' "$CYBERDOCK_FAKE_ROOT/activewindow.json" >/dev/null ||
   fail 'restored window was not focused'
+before=$(wc -l <"$CYBERDOCK_FAKE_ROOT/dispatch.log")
+run_state restore 0xaaa
+after=$(wc -l <"$CYBERDOCK_FAKE_ROOT/dispatch.log")
+[[ $before -eq $after ]] || fail 'duplicate restore moved an already restored window'
 
 printf '%s\n' '==> activation crosses monitors and is a no-op for the focused window'
 run_state activate 0xbbb

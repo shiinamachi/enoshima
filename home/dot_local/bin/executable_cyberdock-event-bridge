@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq variables intentionally use single quotes.
 set -euo pipefail
 
 readonly socat_bin=${CYBERDOCK_EVENT_SOCAT:-socat}
 readonly controller=${CYBERDOCK_EVENT_CONTROLLER:-desktop-window-action}
 readonly state_bin=${CYBERDOCK_EVENT_STATE:-cyberdock-state}
-readonly debounce_ms=${CYBERDOCK_EVENT_DEBOUNCE_MS:-250}
+readonly jq_bin=${CYBERDOCK_EVENT_JQ:-jq}
 
 die() {
   printf 'cyberdock-event-bridge: %s\n' "$*" >&2
@@ -15,32 +16,36 @@ valid_address() {
   [[ $1 =~ ^0x[0-9A-Fa-f]+$ ]]
 }
 
-declare -A last_event_ms=()
+window_is_minimized() {
+  local address=$1 snapshot
+  snapshot=$("$state_bin" snapshot 2>/dev/null) || return 2
+  "$jq_bin" -e --arg address "$address" \
+    'any(.windows[]?; .address == $address and .minimized == true)' \
+    <<<"$snapshot" >/dev/null
+}
 
 handle_minimize() {
-  local payload=$1 address state now key previous
+  local payload=$1 address state current_state=0
   address=${payload%%,*}
   state=${payload#*,}
   valid_address "$address" || return 0
   [[ $state == 0 || $state == 1 ]] || return 0
-  now=$(date +%s%3N)
-  key=$address:$state
-  previous=${last_event_ms[$key]:-0}
-  if ((now - previous < debounce_ms)); then
-    return
+  window_is_minimized "$address" || current_state=$?
+  if [[ $current_state -eq 2 ]]; then
+    printf 'cyberdock-event-bridge: unable to inspect state for %s\n' "$address" >&2
+    return 0
   fi
-  last_event_ms[$key]=$now
   if [[ $state == 1 ]]; then
-    "$controller" minimize --address "$address" || true
+    [[ $current_state -eq 0 ]] || "$controller" minimize --address "$address" || true
   else
-    "$controller" restore --address "$address" || true
+    [[ $current_state -ne 0 ]] || "$controller" restore --address "$address" || true
   fi
 }
 
 handle_event() {
   local event=$1 payload
   case $event in
-    minimize\>\>* | minimized\>\>*)
+    minimized\>\>*)
       payload=${event#*>>}
       handle_minimize "$payload"
       ;;
@@ -50,6 +55,7 @@ handle_event() {
   esac
 }
 
+command -v "$jq_bin" >/dev/null 2>&1 || die 'jq is required'
 if [[ ${1:-} == --stdin ]]; then
   [[ $# -eq 1 ]] || die 'usage: cyberdock-event-bridge [--stdin]'
   while IFS= read -r event; do handle_event "$event"; done
