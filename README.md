@@ -1,3 +1,5 @@
+![Enoshima Arch Linux desired-state repository in a neon library workstation](docs/assets/branding/enoshima-readme-header.png)
+
 # enoshima
 
 Arch Linux desired-state monorepo for the `tpx1c13` laptop. It combines
