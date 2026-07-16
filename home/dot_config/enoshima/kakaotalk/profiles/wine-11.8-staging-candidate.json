@@ -26,7 +26,8 @@
     "XMODIFIERS": "@im=fcitx"
   },
   "registry": {
-    "input_style": "root"
+    "use_xim": true,
+    "input_style": "callbacks"
   },
   "acceptance": {
     "direct_hangul_inputs": 30,

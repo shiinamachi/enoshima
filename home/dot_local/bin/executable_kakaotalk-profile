@@ -76,7 +76,7 @@ load_profile() {
       .bottle.dxvk == false and .bottle.vkd3d == false and
       (.dependencies | type == "array") and
       all(.dependencies[]; (.id | type == "string") and (.winetricks | test("^[a-z0-9._-]+$"))) and
-      .registry.input_style == "root" and
+      .registry.use_xim == true and .registry.input_style == "callbacks" and
       .acceptance.direct_hangul_inputs >= 30 and
       .acceptance.paste_trials >= 10 and
       .acceptance.focus_transitions >= 100

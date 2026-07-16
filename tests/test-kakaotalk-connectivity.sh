@@ -77,7 +77,7 @@ if [[ ${1:-} == run && $* == *--command=bottles-cli* ]]; then
   elif [[ $* == *'--json programs'* ]]; then
     printf '[{"name":"KakaoTalk","path":"C:\\\\KakaoTalk.exe"}]\n'
   elif [[ $* == *'reg query'* ]]; then
-    printf 'InputStyle    REG_SZ    root\n'
+    printf 'UseXIM    REG_SZ    Y\n'
   elif [[ $* == *' new '* ]]; then
     : >"${FAKE_BOTTLE_CREATED:?}"
   fi
@@ -246,7 +246,8 @@ assert_contains "$test_root/setup-calls.log" '00000412'
 assert_contains "$test_root/setup-calls.log" '"ACP", "949"'
 assert_contains "$test_root/setup-calls.log" '"Graphics", "x11"'
 assert_contains "$test_root/setup-calls.log" 'AppDefaults\kakaotalk.exe\X11 Driver'
-assert_contains "$test_root/setup-calls.log" '"InputStyle", "root"'
+assert_contains "$test_root/setup-calls.log" '"UseXIM", "Y"'
+assert_contains "$test_root/setup-calls.log" 'wine_registry.remove(kakaotalk_x11, "InputStyle")'
 assert_contains "$test_root/setup-calls.log" \
   'manager.dependency_manager.install(config, [dependency, manifest])'
 

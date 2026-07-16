@@ -333,9 +333,10 @@ Visual C++ runtime and rich-edit dependencies, grants only
 Downloads/Documents/Pictures, exports Fcitx XIM, applies 144 DPI, launches the
 official Kakao installer, and registers the installed executable. The
 `kakaotalk` wrapper and login autostart remain silent until provisioning is
-complete. Wine's `InputStyle=root` is scoped to `kakaotalk.exe`, so Fcitx owns
-the visible preedit and KakaoTalk receives committed Hangul without the
-one-composition cursor lag. Other applications retain their normal preedit.
+complete. The dedicated bottle enables XIM and removes legacy `InputStyle=root`
+overrides. Wine 11.8 then uses callback preedit, allowing KakaoTalk to receive
+the current Hangul composition instead of displaying only the previously
+committed syllable. Other applications retain their normal preedit.
 
 When setup reuses an existing bottle, it stops KakaoTalk and creates a private
 **Before enoshima profile** Bottles snapshot before changing the runner,

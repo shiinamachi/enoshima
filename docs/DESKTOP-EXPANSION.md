@@ -308,10 +308,13 @@ Right Alt handling is converged in both native Wayland and XWayland state:
 - Right Alt is no longer available as an Alt modifier; and
 - F9 remains the Hanja key.
 
-KakaoTalk receives an app-specific Wine XIM `InputStyle=root`. Fcitx therefore
-renders the in-progress composition and commits completed Hangul to KakaoTalk,
-avoiding its delayed handling of Wine's callback preedit without changing the
-preedit behavior of native applications.
+KakaoTalk explicitly enables Wine XIM but does not set `InputStyle`. Wine 11.8
+therefore uses its default callback preedit and forwards the in-progress Hangul
+composition instead of waiting for the next syllable to commit it. Legacy
+per-application and bottle-wide `InputStyle=root` overrides are removed. The
+Wine 11.8 source selects callback preedit by default, and the merged Wine
+[IME message-order fix](https://gitlab.winehq.org/wine/wine/-/merge_requests/7827)
+places composition updates between start/end messages.
 
 Implementation still performs a physical-key acceptance test with `wev`,
 Fcitx state inspection, a native Wayland editor, Electron, and KakaoTalk.
@@ -331,8 +334,8 @@ clear connectivity preflight and retry path:
 2. run the check again after Cloudflare One enrollment because WARP replaces
    the active DNS path;
 3. create a dedicated 64-bit application bottle;
-4. retain X11/Wine, 144 DPI, `XMODIFIERS=@im=fcitx`, and the KakaoTalk-only
-   root XIM input style;
+4. retain X11/Wine, 144 DPI, `XMODIFIERS=@im=fcitx`, and Wine 11.8's fixed
+   callback XIM preedit;
 5. allow only Downloads, Documents, and Pictures;
 6. download the installer from Kakao's official CDN;
 7. create a private Bottles recovery snapshot before mutating an existing

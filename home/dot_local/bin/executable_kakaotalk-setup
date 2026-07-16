@@ -339,13 +339,14 @@ def add(key, value, data):
 # Hangul composition, clipboard integration, and stable popup placement.
 add(r"HKEY_CURRENT_USER\Software\Wine\Drivers", "Graphics", "x11")
 
-# KakaoTalk mishandles Wine's default XIM callback preedit and can display
-# composed Hangul one step behind the cursor. Wine's per-process root style
-# leaves preedit rendering to Fcitx and sends only committed text to the app.
+# Wine 11.8's default callback preedit forwards in-progress composition to the
+# application. Root preedit sends only committed syllables and makes KakaoTalk
+# appear one composition behind. Keep XIM enabled and remove legacy InputStyle
+# overrides so the fixed callback message ordering is used.
 kakaotalk_x11 = (
     r"HKEY_CURRENT_USER\Software\Wine\AppDefaults\kakaotalk.exe\X11 Driver"
 )
-add(kakaotalk_x11, "InputStyle", "root")
+add(kakaotalk_x11, "UseXIM", "Y")
 
 international = r"HKEY_CURRENT_USER\Control Panel\International"
 add(international, "Locale", "00000412")
@@ -406,7 +407,10 @@ font_substitutes = (
 for face in ("MS Shell Dlg", "MS Shell Dlg 2", *font_faces):
     add(font_substitutes, face, "Pretendard")
 
-Reg(config).bulk_add(registry)
+wine_registry = Reg(config)
+wine_registry.bulk_add(registry)
+wine_registry.remove(kakaotalk_x11, "InputStyle")
+wine_registry.remove(r"HKEY_CURRENT_USER\Software\Wine\X11 Driver", "InputStyle")
 PYTHON
   )
 
@@ -699,10 +703,18 @@ jq -e \
   die 'the KakaoTalk bottle did not converge to the selected profile'
 
 registry_output=$("${bottles_cli[@]}" shell -b "$bottle_name" -i \
-  'reg query "HKCU\Software\Wine\AppDefaults\kakaotalk.exe\X11 Driver" /v InputStyle')
-grep -Eiq 'InputStyle[[:space:]]+REG_SZ[[:space:]]+root' \
-  <<<"$registry_output" ||
-  die 'the KakaoTalk InputStyle registry setting was not applied'
+  'reg query "HKCU\Software\Wine\AppDefaults\kakaotalk.exe\X11 Driver" /v UseXIM')
+grep -Eiq 'UseXIM[[:space:]]+REG_SZ[[:space:]]+Y' <<<"$registry_output" ||
+  die 'the KakaoTalk XIM registry setting was not applied'
+for registry_key in \
+  'HKCU\Software\Wine\AppDefaults\kakaotalk.exe\X11 Driver' \
+  'HKCU\Software\Wine\X11 Driver'; do
+  registry_output=$("${bottles_cli[@]}" shell -b "$bottle_name" -i \
+    "reg query \"$registry_key\" /v InputStyle" 2>/dev/null || true)
+  if grep -Eiq 'InputStyle[[:space:]]+REG_SZ' <<<"$registry_output"; then
+    die "legacy Wine InputStyle override remains under $registry_key"
+  fi
+done
 
 cat <<'EOF'
 

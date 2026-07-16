@@ -85,7 +85,7 @@ elif [[ $* == *'--version'* ]]; then
 elif [[ $* == *'--json list bottles'* ]]; then
   printf '{"KakaoTalk":{"Runner":"wine-test","Installed_Dependencies":["test-dependency"]}}\n'
 elif [[ $* == *'reg query'* ]]; then
-  printf 'InputStyle    REG_SZ    root\n'
+  printf 'UseXIM    REG_SZ    Y\n'
 fi
 EOF
 
@@ -156,7 +156,7 @@ doctor_json=$(env \
   KAKAOTALK_DOCTOR_PROFILE="$fake_bin/kakaotalk-profile" \
   bash "$doctor" --json)
 jq -e '
-  .healthy and .profile_verified and .input_style_root and
+  .healthy and .profile_verified and .xim_callbacks and
   .dependencies_verified and
   .tray_proxy_active and .focus_guard_active and
   (.windows | length) == 1 and .windows[0].address == "0xaaa"

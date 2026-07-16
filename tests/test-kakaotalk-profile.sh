@@ -47,7 +47,7 @@ jq -n --arg sha "$archive_sha" '
       {id:"riched20",winetricks:"riched20"},
       {id:"msftedit",winetricks:"msftedit"}
     ],
-    registry: {input_style:"root"},
+    registry: {use_xim:true,input_style:"callbacks"},
     acceptance: {
       direct_hangul_inputs:30,paste_trials:10,focus_transitions:100,
       requires_relogin:true,requires_tray_notification:true
@@ -149,6 +149,8 @@ grep -Fq 'manager.dependency_manager.install(config, [dependency, manifest])' \
   "$setup_helper"
 grep -Fq 'the KakaoTalk bottle did not converge to the selected profile' \
   "$setup_helper"
+grep -Fq 'wine_registry.remove(kakaotalk_x11, "InputStyle")' "$setup_helper"
+grep -Fq 'add(kakaotalk_x11, "UseXIM", "Y")' "$setup_helper"
 grep -Fq 'Uninstall\KakaoTalk" /v DisplayVersion' "$smoke_helper"
 if grep -Fq "'wine powershell" "$smoke_helper"; then
   printf 'The smoke test tries to nest the Wine launcher inside a Bottles shell.\n' >&2
