@@ -103,6 +103,7 @@ ShellRoot {
         readonly property color colorInfo: "#6d8cff"
         readonly property color colorCritical: "#ff5d8f"
         readonly property color colorSuccess: "#77e0c6"
+        readonly property color colorWarning: "#ffb86b"
         readonly property color colorTrack: "#446d8cff"
 
         readonly property int radiusPanel: 14
