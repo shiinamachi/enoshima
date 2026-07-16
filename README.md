@@ -109,6 +109,10 @@ such as fingerprint enrollment, APN credentials, a disconnected monitor, or a
 KakaoTalk login, or a failed third-party session unit. Those warnings do not
 turn a completed automated convergence into a failure.
 
+The desired login stack now uses greetd with ReGreet on an isolated,
+mixed-DPI Hyprland compositor. SDDM remains installed and responsively themed
+for a one-release rollback window; it is not the enabled display manager.
+
 ## Desired versus observed packages
 
 - `packages/native.txt` is the explicit native package install manifest.

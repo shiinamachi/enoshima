@@ -29,8 +29,7 @@ zram_size_expression: min(ram / 4, 8192)
 zram_compression_algorithm: zstd
 zram_swap_priority: 100
 
-sddm_scale_factor: 1.5
-sddm_font_dpi: 144
+desktop_login_manager: greetd
 desktop_expansion_sddm_theme_enabled: true
 wwan_route_metric: 700
 
@@ -42,7 +41,6 @@ system_units_started:
   - NetworkManager-wait-online.service
   - NetworkManager.service
   - rtkit-daemon.service
-  - sddm.service
   - systemd-timesyncd.service
   - systemd-userdbd.socket
   - tlp.service

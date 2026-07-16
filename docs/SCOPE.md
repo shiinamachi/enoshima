@@ -10,7 +10,7 @@
 - pacman, mkinitcpio, systemd zram, kernel command line and UKI presets
 - LUKS initramfs mapping metadata and Btrfs/ESP hardware facts
 - Hyprland, Hypridle, Hyprlock, Hyprpaper, Waybar and Fcitx5 settings
-- SDDM and sudo service-specific fingerprint PAM policy
+- greetd, fallback SDDM, and sudo service-specific fingerprint PAM policy
 - TLP profile policy, s2idle selection and NetworkManager WWAN fallback logic
 - User-scoped Flathub/Bottles installation and KakaoTalk launch helpers
 - Pinned local PKGBUILDs for the Lenovo Gen 13 SAR omission and Wine tray bridge

@@ -108,6 +108,9 @@
 - name: Configure local desktop integration
   ansible.builtin.import_tasks: desktop.yml
 
+- name: Select and configure the login manager
+  ansible.builtin.import_tasks: login-manager.yml
+
 - name: Configure WWAN fallback policy
   ansible.builtin.import_tasks: network.yml
 

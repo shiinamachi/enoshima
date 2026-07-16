@@ -45,6 +45,8 @@ ghostty
 git
 gnome-keyring
 gptfdisk
+greetd
+greetd-regreet
 grim
 gvfs
 hypridle

@@ -1,0 +1,61 @@
+@define-color cyber_canvas #050623;
+@define-color cyber_surface #0a0c3e;
+@define-color cyber_surface_raised #161151;
+@define-color cyber_focus #62d8ff;
+@define-color cyber_selection #9a5cff;
+@define-color cyber_text #f2ecff;
+@define-color cyber_muted #c9bfe8;
+@define-color cyber_critical #ff5d8f;
+
+window {
+  background-color: alpha(@cyber_canvas, 0.74);
+  color: @cyber_text;
+}
+
+label {
+  color: @cyber_text;
+}
+
+entry,
+button,
+dropdown {
+  min-height: 44px;
+  border: 1px solid alpha(@cyber_focus, 0.48);
+  border-radius: 10px;
+  background-color: alpha(@cyber_surface_raised, 0.96);
+  color: @cyber_text;
+}
+
+entry:focus,
+button:focus,
+dropdown:focus {
+  outline: 2px solid @cyber_focus;
+  outline-offset: 2px;
+  border-color: @cyber_focus;
+}
+
+button:hover,
+dropdown:hover {
+  background-color: alpha(@cyber_selection, 0.72);
+}
+
+button:active {
+  background-color: @cyber_selection;
+}
+
+button:disabled {
+  color: alpha(@cyber_muted, 0.62);
+  background-color: alpha(@cyber_surface, 0.82);
+}
+
+error,
+.error {
+  color: @cyber_critical;
+}
+
+popover > contents {
+  border: 1px solid alpha(@cyber_focus, 0.48);
+  border-radius: 10px;
+  background-color: @cyber_surface;
+  color: @cyber_text;
+}

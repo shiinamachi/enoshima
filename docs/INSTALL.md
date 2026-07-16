@@ -145,7 +145,8 @@ was not readable during the initial capture.
 
 ## PAM safety
 
-The host profile changes only `/etc/pam.d/sddm` and `/etc/pam.d/sudo`. Ansible
+The host profile changes only `/etc/pam.d/greetd`, `/etc/pam.d/sddm`, and
+`/etc/pam.d/sudo`. Ansible
 creates backups, but a malformed PAM stack can still prevent authentication.
 Keep an authenticated root shell open during the first apply. Before rebooting,
 test both paths:
@@ -157,16 +158,16 @@ sudo -v
 hyprlock
 ```
 
-At the SDDM and sudo prompts, a normal password is checked first. Submit an
-empty field to start fingerprint authentication. See
+At the ReGreet, fallback SDDM, and sudo prompts, a normal password is checked
+first. Submit an empty field to start fingerprint authentication. See
 [WORKSTATION.md](WORKSTATION.md) for the accepted sudo fingerprint security
-tradeoff and the reason SDDM is not replaced by Hyprlock.
+tradeoff and the reason a login manager is not replaced by Hyprlock.
 
 ## Interactive workstation completion
 
 After a reboot and password login:
 
-1. In SDDM, select **Hyprland (uwsm-managed)** rather than plain Hyprland. The
+1. In ReGreet, select **Enoshima Hyprland**. The
    UWSM session is required for the managed environment, graphical user units,
    and XDG autostart applications.
 2. Connect the Dell U2725QE and verify its EDID selector, scale, geometry and

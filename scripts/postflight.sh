@@ -223,11 +223,34 @@ check "no TLP charge threshold is configured" bash -c \
 echo "==> Authentication and login"
 check_or_warn "fingerprint enrolled for the current user (manual enrollment if absent)" \
   fprintd-list "${USER:-$(id -un)}"
-for pam_file in /etc/pam.d/sddm /etc/pam.d/sudo; do
+for pam_file in /etc/pam.d/greetd /etc/pam.d/sddm /etc/pam.d/sudo; do
   check "$pam_file has fingerprint authentication" grep -q pam_fprintd.so "$pam_file"
   check "$pam_file keeps password-first authentication" grep -q 'pam_unix.so.*try_first_pass.*likeauth' "$pam_file"
 done
-check "SDDM remains the boot display manager" systemctl is-enabled --quiet sddm.service
+check "greetd is the boot display manager" systemctl is-enabled --quiet greetd.service
+check "fallback SDDM is disabled" bash -c \
+  '! systemctl is-enabled --quiet sddm.service'
+# The inner expression is intentionally evaluated by bash -c.
+# shellcheck disable=SC2016
+check "display-manager alias selects greetd" bash -c \
+  '[[ $(readlink -f /etc/systemd/system/display-manager.service) == /usr/lib/systemd/system/greetd.service ]]'
+check "greetd uses the isolated ReGreet compositor" grep -Fq \
+  'command = "dbus-run-session start-hyprland -- -c /etc/greetd/hyprland.conf"' \
+  /etc/greetd/config.toml
+# The inner expression is intentionally evaluated by bash -c.
+# shellcheck disable=SC2016
+check "greetd configuration is world-readable but root-owned" bash -c \
+  '[[ $(stat -c "%U:%G:%a" /etc/greetd/config.toml) == root:root:644 ]]'
+check "ReGreet mixed-DPI compositor configuration parses" \
+  Hyprland --verify-config -c /etc/greetd/hyprland.conf
+check "ReGreet configuration is installed" test -f /etc/greetd/regreet.toml
+check "ReGreet semantic stylesheet is installed" test -f /etc/greetd/regreet.css
+check "ReGreet crop-safe wallpaper is installed intact" sha256_matches \
+  /etc/greetd/background-16x10.jpg \
+  784c66002966e57a2ab0e5ae2413c3faee7b93a8c656d203899d41b25faffafb
+check "UWSM Hyprland login session is installed" grep -Fq \
+  'Exec=uwsm start -- hyprland.desktop' \
+  /usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop
 check "vi resolves to Vim" bash -c \
   "[[ \$(readlink -f /usr/local/bin/vi) == /usr/bin/vim ]]"
 # The inner expression is intentionally evaluated by bash -c.
@@ -595,7 +618,7 @@ check "desktop cursor uses the managed macOS-inspired theme" \
 check "Fcitx candidate UI uses the managed deep-purple theme" \
   grep -Fq 'Theme=Material-Color-DeepPurple' \
   "$HOME/.config/fcitx5/conf/classicui.conf"
-check "cyberpunk SDDM theme payload is installed" \
+check "fallback cyberpunk SDDM theme payload is installed" \
   test -f /usr/share/sddm/themes/cyberpunk/Main.qml
 check "cyberpunk SDDM 16:9 wallpaper is installed intact" \
   sha256_matches \
@@ -610,7 +633,7 @@ check "superseded SDDM wallpaper assets were removed" \
   '[[ ! -e /usr/share/sddm/themes/cyberpunk/background.jpg && ! -e /usr/share/sddm/themes/cyberpunk/background.png ]]'
 
 if [[ -f /etc/sddm.conf.d/20-cyberpunk-theme.conf ]]; then
-  check "gated cyberpunk SDDM theme is selected" \
+  check "fallback cyberpunk SDDM theme is selected" \
     grep -Eq '^[[:space:]]*Current=cyberpunk[[:space:]]*$' \
     /etc/sddm.conf.d/20-cyberpunk-theme.conf
 else
@@ -761,6 +784,6 @@ else
 fi
 
 printf '\nPostflight result: %d failure(s), %d warning(s).\n' "$failures" "$warnings"
-printf 'Manual checks still required: sudo fingerprint, SDDM fingerprint, Hyprlock, Wi-Fi/WWAN handoff, Kakao login/files/clipboard/tray, and Parsec input/video.\n'
+printf 'Manual checks still required: sudo/ReGreet fingerprint, fallback SDDM rollback, Hyprlock, Wi-Fi/WWAN handoff, Kakao login/files/clipboard/tray, and Parsec input/video.\n'
 
 ((failures == 0))

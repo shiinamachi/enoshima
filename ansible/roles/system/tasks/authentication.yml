@@ -8,6 +8,15 @@
     mode: "0644"
     backup: true
 
+- name: Configure password-first fingerprint authentication for greetd
+  ansible.builtin.template:
+    src: pam-greetd.j2
+    dest: /etc/pam.d/greetd
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
 - name: Configure password-first fingerprint authentication for sudo
   ansible.builtin.template:
     src: pam-sudo.j2

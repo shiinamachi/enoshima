@@ -27,6 +27,13 @@ system_units_started: []
 system_units_enabled_only: []
 user_units_started: []
 
+# The selected display manager is enabled for the next boot. An explicit
+# apply-now override is reserved for TTY maintenance because stopping the
+# active display manager terminates every graphical session.
+desktop_login_manager: sddm
+desktop_login_manager_apply_now: false
+sddm_scale_factor: 1.5
+
 flatpak_user_remotes:
   - name: flathub
     url: https://dl.flathub.org/repo/flathub.flatpakrepo

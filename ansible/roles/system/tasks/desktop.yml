@@ -7,7 +7,7 @@
     group: root
     mode: "0755"
 
-- name: Configure the SDDM greeter for 1.5x scaling
+- name: Configure the fallback SDDM greeter with one geometry scale
   ansible.builtin.template:
     src: sddm-hidpi.conf.j2
     dest: /etc/sddm.conf.d/10-hidpi.conf

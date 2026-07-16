@@ -710,7 +710,12 @@ for focus_contract in \
   'powerOff.activeFocus ? 2 : 0'; do
   assert_contains "$sddm_qml" "$focus_contract"
 done
-assert_count 3 "$sddm_qml" 'height: 44'
+assert_count 8 "$sddm_qml" 'height: root.controlHeight'
+assert_contains "$sddm_qml" 'readonly property int panelWidth:'
+assert_contains "$sddm_qml" 'readonly property int safeMargin:'
+assert_contains "$sddm_qml" 'readonly property int controlHeight:'
+assert_not_contains "$sddm_qml" '    width: 1920'
+assert_not_contains "$sddm_qml" '    height: 1080'
 assert_contains "$sddm_qml" 'visible: root.greeter.canSuspend'
 assert_contains "$sddm_qml" 'visible: root.greeter.canReboot'
 assert_contains "$sddm_qml" 'visible: root.greeter.canPowerOff'

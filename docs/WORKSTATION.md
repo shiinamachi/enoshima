@@ -27,15 +27,19 @@ providing the active camera path.
 
 ## Login and fingerprint model
 
-SDDM remains the boot-time display manager. Hyprlock is a session locker and
-does not create a login session, so SDDM autologin followed by Hyprlock is not
-treated as an equivalent security boundary. The repository does not enable
-autologin.
+greetd with ReGreet is the boot-time display manager. ReGreet runs as the
+unprivileged `greeter` user inside a dedicated minimal Hyprland compositor and
+starts the selected user session through the local UWSM desktop entry.
+Hyprlock remains a session locker and does not create a login session, so
+autologin followed by Hyprlock is not treated as an equivalent security
+boundary. The repository does not enable autologin. SDDM remains installed but
+disabled as a one-release rollback path.
 
 Authentication behavior is deliberately service-specific:
 
-- SDDM: type the password normally, or submit an empty password field and then
-  scan the enrolled finger.
+- ReGreet/greetd: type the password normally, or submit an empty password field
+  and then scan the enrolled finger.
+- fallback SDDM: retains the same password-first fingerprint branch.
 - Hyprlock: its native fingerprint support runs alongside the PAM password
   path.
 - `sudo`: type the password normally, or submit an empty prompt and then scan.
@@ -46,7 +50,7 @@ The service-specific password/fingerprint branch retains Arch's shell,
 does not bypass those checks.
 
 GNOME Keyring supplies the Secret Service used by Zed, Chrome, and Slack. A
-password login lets the SDDM PAM session unlock the login keyring. Fingerprint
+password login lets the greetd PAM session unlock the login keyring. Fingerprint
 authentication cannot provide that password, so after a fingerprint-only login
 the keyring may remain locked until it is unlocked interactively.
 
@@ -56,8 +60,8 @@ a fingerprint interaction. This is an explicit convenience-versus-security
 decision for this profile.
 
 Keep an authenticated root shell open while testing PAM after the first apply.
-Test `sudo -k && sudo -v`, SDDM, and Hyprlock before relying on fingerprint-only
-access.
+Test `sudo -k && sudo -v`, ReGreet, Hyprlock, and the TTY rollback to SDDM
+before relying on fingerprint-only access.
 
 ## Displays and HiDPI
 
@@ -395,9 +399,10 @@ is carrying a remote administration session.
    package-base allowlist is acceptable as an automatic trust boundary.
 2. Run `./bootstrap.sh` from the target desktop user. Validation and postflight
    are included.
-3. Reboot, select **Hyprland (uwsm-managed)** in SDDM (not plain Hyprland),
-   then log in once with the password so the new UWSM environment is imported.
-4. Keep a root shell open and test SDDM, Hyprlock, and `sudo` fingerprint paths.
+3. Reboot, select **Enoshima Hyprland** in ReGreet, then log in once with the
+   password so the UWSM environment and login keyring are initialized.
+4. Keep a root shell open and test ReGreet, Hyprlock, `sudo`, and the documented
+   TTY rollback to SDDM.
 5. Connect the Dell by USB-C and inspect `hyprctl monitors all` if it was absent
    during convergence.
 6. Enroll the Dell/Thunderbolt device with `boltctl` only after confirming its

@@ -1,0 +1,102 @@
+---
+- name: Validate the selected login manager
+  ansible.builtin.assert:
+    that:
+      - desktop_login_manager in ['greetd', 'sddm']
+    fail_msg: >-
+      desktop_login_manager must be either greetd or sddm, not
+      {{ desktop_login_manager }}.
+
+- name: Ensure the greetd configuration directory exists
+  ansible.builtin.file:
+    path: /etc/greetd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure greetd to launch the isolated ReGreet compositor
+  ansible.builtin.template:
+    src: greetd-config.toml.j2
+    dest: /etc/greetd/config.toml
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Configure the minimal mixed-DPI Hyprland greeter session
+  ansible.builtin.template:
+    src: greetd-hyprland.conf.j2
+    dest: /etc/greetd/hyprland.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Configure ReGreet appearance and session controls
+  ansible.builtin.template:
+    src: regreet.toml.j2
+    dest: /etc/greetd/regreet.toml
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Install the Cyberpunk Library ReGreet stylesheet
+  ansible.builtin.template:
+    src: regreet.css.j2
+    dest: /etc/greetd/regreet.css
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Install the crop-safe ReGreet wallpaper
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../home/dot_local/share/backgrounds/cyberpunk-library-16x10.jpg"
+    dest: /etc/greetd/background-16x10.jpg
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Ensure the local Wayland session directory exists
+  ansible.builtin.file:
+    path: /usr/local/share/wayland-sessions
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the UWSM-managed Hyprland session entry
+  ansible.builtin.template:
+    src: enoshima-hyprland-uwsm.desktop.j2
+    dest: /usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Disable the inactive login manager
+  ansible.builtin.systemd_service:
+    name: "{{ 'sddm.service' if desktop_login_manager == 'greetd' else 'greetd.service' }}"
+    enabled: false
+    daemon_reload: true
+
+- name: Enable the selected login manager for the next boot
+  ansible.builtin.systemd_service:
+    name: "{{ desktop_login_manager }}.service"
+    enabled: true
+    daemon_reload: true
+
+- name: Stop the inactive login manager during explicit TTY activation
+  ansible.builtin.systemd_service:
+    name: "{{ 'sddm.service' if desktop_login_manager == 'greetd' else 'greetd.service' }}"
+    state: stopped
+  when: desktop_login_manager_apply_now | bool
+
+- name: Start the selected login manager during explicit TTY activation
+  ansible.builtin.systemd_service:
+    name: "{{ desktop_login_manager }}.service"
+    state: started
+  when: desktop_login_manager_apply_now | bool

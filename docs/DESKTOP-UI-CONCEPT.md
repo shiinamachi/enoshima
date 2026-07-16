@@ -51,9 +51,10 @@ scrim and moves the complete authentication hierarchy into one lower-left
 card. Time, date, session state, the focused password field, and fingerprint
 readiness follow one reading path without placing fictional controls over the
 character or the library signage. The managed Hyprlock layout uses the same
-placement, palette, focus edge, and biometric status model. The ratio-aware
-SDDM greeter extends that hierarchy with username, session, and available
-power actions while retaining complete keyboard navigation.
+placement, palette, focus edge, and biometric status model. ReGreet extends
+that hierarchy to initial login with user, session, and power actions on an
+isolated mixed-DPI Hyprland compositor. The responsive SDDM theme preserves
+the same hierarchy only as a tested rollback surface.
 
 ## Shared visual language
 
@@ -97,7 +98,7 @@ All components use the same behavioral tokens:
 | Volume and brightness feedback | `home/dot_config/quickshell/cyberdock/CyberOsd.qml` and shell IPC helpers |
 | GTK 3/4 application surfaces | managed `settings.ini` and semantic `gtk.css` in `home/dot_config/gtk-3.0/` and `home/dot_config/gtk-4.0/` |
 | Cursor, file chooser, and input-method continuity | UWSM/Hyprland cursor exports, `home/dot_config/xdg-desktop-portal/`, and managed Fcitx5 Classic UI settings |
-| Authentication hierarchy | `home/dot_config/hypr/hyprlock.conf` and the ratio-aware SDDM theme under `ansible/roles/desktop_expansion/` |
+| Authentication hierarchy | `home/dot_config/hypr/hyprlock.conf`, ReGreet under `ansible/roles/system/`, and the fallback SDDM theme under `ansible/roles/desktop_expansion/` |
 
 Concept art is deliberately advisory. It must not introduce controls that the
 managed component cannot actually operate, duplicate application-owned title

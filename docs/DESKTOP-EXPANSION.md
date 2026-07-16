@@ -4,11 +4,13 @@
 
 Approved and implemented in the repository, with the Cyberpunk Library visual
 refinement completed on 2026-07-14. Declarative package, service, desktop, and
-validation state is complete. This host opts into the managed SDDM theme, which
-is installed by the complete bootstrap rather than by a preview-time partial
-upgrade. Account enrollment and the visual/interactive acceptance items remain
-explicit manual gates documented in `DESKTOP-EXPANSION-OPERATIONS.md`; their
-mutable results are intentionally not committed.
+validation state is complete. This host selects greetd with ReGreet as its
+Wayland-native login manager and retains the managed responsive SDDM theme for
+a one-release rollback window. Both are installed by the complete bootstrap,
+never by a preview-time partial upgrade. Account enrollment and the
+visual/interactive acceptance items remain explicit manual gates documented in
+`DESKTOP-EXPANSION-OPERATIONS.md`; their mutable results are intentionally not
+committed.
 
 ## Goals
 
@@ -73,7 +75,7 @@ The visual palette is sampled conceptually from the asset:
 | Success | `#77e0c6` |
 
 The following surfaces share these tokens instead of defining unrelated
-themes: Hyprland borders, Hyprpaper, Hyprlock, SDDM, Waybar, the Quickshell
+themes: Hyprland borders, Hyprpaper, Hyprlock, ReGreet, fallback SDDM, Waybar, the Quickshell
 Cyberdock/CyberLauncher/CyberOSD shell, SwayNC, GTK 3/4 application surfaces,
 Fcitx5 Classic UI, tooltips, and session controls.
 
@@ -83,15 +85,20 @@ Fcitx5 Classic UI, tooltips, and session controls.
   3840x2160 composition as the fallback for external and newly attached
   outputs. Both use `cover` behavior.
 - Hyprlock mirrors that routing, applies brightness `0.62` with one restrained
-  blur pass, and places the time, date, password/fingerprint status, and input
-  field in a 600x360 lower-left authentication card. Success, failure, and
-  lock-key states use distinct success, critical, and warning colors.
-- SDDM installs both managed ratios, selects the closest composition at
-  runtime, and keeps username, password, session, status, and available power
-  actions in one keyboard-navigable lower-left card.
-- SDDM receives a matching theme only after the session theme is validated.
-  The theme must not alter the existing PAM and fingerprint authentication
-  policy, and SDDM must retain a known-good fallback theme.
+  blur pass, and keeps time, date, password/fingerprint status, and input in a
+  lower-left authentication card whose position and vertical geometry adapt to
+  each logical output. Success, failure, and lock-key states use distinct
+  success, critical, and warning colors.
+- greetd runs ReGreet as the `greeter` user inside a dedicated minimal
+  Hyprland config. It applies the same eDP 2.0 / Dell 1.5 output policy without
+  starting Waybar, Quickshell, portals, clipboard history, or user services.
+- ReGreet provides the initial login boundary; Hyprlock remains only the
+  authenticated-session locker. The explicit local session entry starts
+  Hyprland through UWSM.
+- SDDM remains installed but disabled for one release. Its responsive QML has
+  no fixed 1920x1080 root, uses one Qt geometry scale without `QT_FONT_DPI`, and
+  keeps a package theme plus the managed Cyberpunk Library theme as rollback
+  choices.
 - Hyprland uses 7/14 pixel gaps, 12 pixel rounding, a calm cyan-violet active
   border, and an Intel iGPU-conscious blur ceiling of size 7 and two passes.
 - Waybar remains at the top with the five purpose-led `DEV`, `WEB`, `DOCS`,
@@ -496,12 +503,12 @@ application state.
 
 | Owner | Additions |
 | --- | --- |
-| Official Arch manifests | Quickshell, `adw-gtk-theme`, `capitaine-cursors`, `fcitx5-material-color`, FileZilla, Hyprpwcenter, nwg-displays, GIMP, Thunderbird, Proton Mail Bridge, rclone, FUSE support, office-compatible fonts, required validation utilities |
+| Official Arch manifests | greetd, ReGreet, fallback SDDM, Quickshell, `adw-gtk-theme`, `capitaine-cursors`, `fcitx5-material-color`, FileZilla, Hyprpwcenter, nwg-displays, GIMP, Thunderbird, Proton Mail Bridge, rclone, FUSE support, office-compatible fonts, required validation utilities |
 | Reviewed AUR allowlist | `cloudflare-warp-bin`, `onlyoffice-bin`, `pear-desktop-bin`, `photogimp` |
 | Pinned local packages | Pretendard/Jetendard desktop fonts and sandboxed RHWP Desktop |
 | User-scoped Flatpak | Existing Bottles |
 | chezmoi | Wallpaper, UI configuration, launch wrappers, user services, setup helpers, MIME/bookmark declarations |
-| Ansible | System packages, SDDM theme/config, Cloudflare daemon enablement, root-owned package/runtime configuration |
+| Ansible | System packages, greetd/ReGreet and fallback SDDM configuration, Cloudflare daemon enablement, root-owned package/runtime configuration |
 
 ## Secret and mutable-data boundary
 

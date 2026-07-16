@@ -393,6 +393,7 @@ for test_script in \
   tests/test-kakaotalk-connectivity.sh \
   tests/test-kakaotalk-desktop-integration.sh \
   tests/test-kakaotalk-profile.sh \
+  tests/test-login-manager.sh \
   tests/test-mise-runtimes.sh \
   tests/test-rclone-user-units.sh \
   tests/test-swaync-quick-setting.sh \
