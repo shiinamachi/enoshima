@@ -554,6 +554,10 @@ check "Hyprpaper routes the 16:10 composition to eDP-1" \
   grep -Fq 'cyberpunk-library-16x10.jpg' "$HOME/.config/hypr/hyprpaper.conf"
 check "Hyprlock keeps password and fingerprint authentication" \
   grep -Fq 'fingerprint {' "$HOME/.config/hypr/hyprlock.conf"
+# HOME is intentionally expanded by the child Bash used for this compound check.
+# shellcheck disable=SC2016
+check "Hyprlock uses mixed-DPI responsive geometry" bash -c \
+  'grep -Fq "fractional_scaling = 2" "$HOME/.config/hypr/hyprlock.conf" && grep -Fq "size = 600, 30%" "$HOME/.config/hypr/hyprlock.conf"'
 check "Waybar uses quiet persistent status and a secondary system drawer" \
   jq -e '
     .height == 48 and

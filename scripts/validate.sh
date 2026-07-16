@@ -386,6 +386,7 @@ for test_script in \
   tests/test-desktop-window-action.sh \
   tests/test-window-decoration-policy.sh \
   tests/test-hypr-mouse-binds.sh \
+  tests/test-hyprlock-responsive.sh \
   tests/test-desktop-shell-helpers.sh \
   tests/test-desktop-appearance.sh \
   tests/test-desktop-scaling-status.sh \
