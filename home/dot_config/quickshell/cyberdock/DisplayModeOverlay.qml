@@ -22,6 +22,7 @@ PanelWindow {
 
     property int selectedIndex: 0
     property bool applying: false
+    property string applyError: ""
     property var displayStatus: ({
         "mode": "none",
         "pending": false,
@@ -62,11 +63,20 @@ PanelWindow {
     function applySelected() {
         if (!choiceAvailable(selectedIndex) || applying)
             return;
+        applyError = "";
         applying = true;
-        Quickshell.execDetached([
+        applyProcess.exec([
             "desktop-display-mode", "apply", choices[selectedIndex].id
         ]);
-        refreshAfterApply.restart();
+    }
+
+    function applyFailureMessage(detail) {
+        const normalized = String(detail || "").toLowerCase();
+        if (normalized.includes("no compatible duplicate mode"))
+            return "호환되는 복제 모드가 없습니다. 고급 디스플레이 설정에서 해상도를 확인하세요.";
+        if (normalized.includes("no external output"))
+            return "연결된 외부 화면을 찾지 못했습니다. 케이블 연결을 확인한 뒤 다시 시도하세요.";
+        return "디스플레이 설정을 적용하지 못했습니다. 다시 시도하거나 고급 설정을 여세요.";
     }
 
     function confirm() {
@@ -97,10 +107,8 @@ PanelWindow {
             onStreamFinished: {
                 try {
                     const next = JSON.parse(text);
-                    if (next.schema === 1) {
+                    if (next.schema === 1)
                         overlay.displayStatus = next;
-                        overlay.applying = false;
-                    }
                 } catch (error) {
                     console.warn("cyberdisplay: invalid status:", error);
                 }
@@ -120,11 +128,19 @@ PanelWindow {
         }
     }
 
-    Timer {
-        id: refreshAfterApply
-        interval: 300
-        repeat: false
-        onTriggered: {
+    Process {
+        id: applyProcess
+        stderr: StdioCollector { id: applyErrorCollector }
+        onExited: (exitCode, exitStatus) => {
+            overlay.applying = false;
+            if (exitCode === 0) {
+                overlay.applyError = "";
+            } else {
+                overlay.applyError = overlay.applyFailureMessage(
+                    applyErrorCollector.text);
+                console.warn("cyberdisplay: apply failed:", exitCode,
+                    exitStatus, applyErrorCollector.text.trim());
+            }
             if (!statusProcess.running)
                 statusProcess.running = true;
         }
@@ -133,6 +149,7 @@ PanelWindow {
     onVisibleChanged: {
         if (visible) {
             applying = false;
+            applyError = "";
             selectedIndex = Math.max(0, choices.findIndex(choice =>
                 choice.id === displayStatus.mode));
             Qt.callLater(() => keyHandler.forceActiveFocus());
@@ -348,6 +365,28 @@ PanelWindow {
                     }
                 }
             }
+        }
+
+        Text {
+            id: applyErrorText
+            visible: !confirmation.visible && text !== ""
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: advancedButton.top
+            anchors.leftMargin: 28
+            anchors.rightMargin: 28
+            anchors.bottomMargin: 10
+            text: overlay.applyError
+            color: overlay.theme.colorCritical
+            font.family: "Pretendard"
+            font.pixelSize: 12
+            font.bold: true
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: text
         }
 
         Rectangle {

@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/home/dot_local/bin/executable_desktop-display-mode
+overlay_qml=$repo_root/home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
@@ -257,5 +258,15 @@ jq -e '[.[] | select(.disabled == false)] | length == 2' \
   fail 'timer failure did not restore the original layout'
 [[ ! -e $XDG_RUNTIME_DIR/enoshima/display/pending.json ]] ||
   fail 'timer failure retained a pending transaction'
+
+printf '%s\n' '==> projection overlay reports apply failures in context'
+grep -Fq 'id: applyProcess' "$overlay_qml" ||
+  fail 'projection overlay does not track the apply process'
+grep -Fq 'stderr: StdioCollector { id: applyErrorCollector }' "$overlay_qml" ||
+  fail 'projection overlay does not capture apply errors'
+grep -Fq 'Accessible.role: Accessible.AlertMessage' "$overlay_qml" ||
+  fail 'projection overlay error is not exposed to accessibility clients'
+grep -Fq '호환되는 복제 모드가 없습니다.' "$overlay_qml" ||
+  fail 'projection overlay lacks the duplicate-mode recovery message'
 
 printf 'Desktop display mode tests passed.\n'
