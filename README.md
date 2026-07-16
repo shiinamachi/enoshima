@@ -1,4 +1,4 @@
-![Enoshima, a calm, coherent, accessible, keyboard-first Cyberpunk Arch Linux remix](docs/assets/branding/enoshima-readme-header.png)
+![Enoshima, a ready-to-work, easy-to-use, productivity-first Arch Linux desktop remix](docs/assets/branding/enoshima-readme-header.png)
 
 # enoshima
 
