@@ -82,8 +82,8 @@ if [[ $* == *'--show-commit'* ]]; then
 elif [[ $* == *'--version'* ]]; then
   printf 'Bottles test\n'
 elif [[ $* == *'--json list bottles'* ]]; then
-  printf '{"KakaoTalk":{"Runner":"wine-test"}}\n'
-elif [[ $* == *'wine reg query'* ]]; then
+  printf '{"KakaoTalk":{"Runner":"wine-test","Installed_Dependencies":["test-dependency"]}}\n'
+elif [[ $* == *'reg query'* ]]; then
   printf 'InputStyle    REG_SZ    root\n'
 fi
 EOF
@@ -156,6 +156,7 @@ doctor_json=$(env \
   bash "$doctor" --json)
 jq -e '
   .healthy and .profile_verified and .input_style_root and
+  .dependencies_verified and
   .tray_proxy_active and .focus_guard_active and
   (.windows | length) == 1 and .windows[0].address == "0xaaa"
 ' <<<"$doctor_json" >/dev/null

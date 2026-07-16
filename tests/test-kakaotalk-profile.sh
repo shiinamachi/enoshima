@@ -141,6 +141,12 @@ compatibility_call=$(grep -nF "printf 'Configuring the KakaoTalk Wine runner" \
   exit 1
 }
 grep -Fq 'manager.versioning_manager.create_state(' "$setup_helper"
-grep -Fq "'wineserver -k; wineserver -w'" "$setup_helper"
+grep -Fq 'timeout --foreground --signal=TERM --kill-after=5s 20s' "$setup_helper"
+grep -Fq "'taskkill /IM KakaoTalk.exe /T'" "$setup_helper"
+grep -Fq "flatpak kill \"\$app_id\"" "$setup_helper"
+grep -Fq 'manager.dependency_manager.install(config, [dependency, manifest])' \
+  "$setup_helper"
+grep -Fq 'the KakaoTalk bottle did not converge to the selected profile' \
+  "$setup_helper"
 
 printf 'KakaoTalk profile tests passed.\n'

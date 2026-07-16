@@ -24,6 +24,7 @@ require_command curl
 require_command jq
 require_command kakaotalk-connectivity-check
 require_command kakaotalk-profile
+require_command timeout
 require_command xdg-user-dir
 
 [[ -t 0 ]] || die 'run this helper interactively from a terminal'
@@ -78,8 +79,9 @@ readonly -a bottles_cli=(
 profile_json=$(kakaotalk-profile current --json)
 profile_id=$(jq -r '.id' <<<"$profile_json")
 profile_runner=$(jq -r '.runner.name' <<<"$profile_json")
-mapfile -t profile_dependencies < <(jq -r '.dependencies[].winetricks' <<<"$profile_json")
-((${#profile_dependencies[@]} > 0)) || die 'the selected profile has no compatibility dependencies'
+mapfile -t profile_dependencies < <(jq -r '.dependencies[].id' <<<"$profile_json")
+((${#profile_dependencies[@]} > 0)) ||
+  die 'the selected profile has no compatibility dependencies'
 printf 'Installing the pinned KakaoTalk runner profile: %s\n' "$profile_id"
 kakaotalk-profile install "$profile_id"
 
@@ -459,6 +461,86 @@ PYTHON
     "$bottle_name" "Before enoshima profile $profile_id"
 }
 
+install_profile_dependencies() {
+  local python_source
+
+  python_source=$(
+    cat <<'PYTHON'
+import sys
+
+sys.path.insert(1, "/app/share/bottles")
+
+import gi
+
+gi.require_version("Xdp", "1.0")
+
+from gi.repository import Gio
+
+from bottles.backend.state import EventManager, Events
+from bottles.backend.utils.threading import RunAsync
+
+
+original_run_async_init = RunAsync.__init__
+
+
+def cli_run_async_init(self, *args, **kwargs):
+    kwargs["callback_in_main_loop"] = False
+    original_run_async_init(self, *args, **kwargs)
+
+
+RunAsync.__init__ = cli_run_async_init
+
+from bottles.backend.managers.manager import Manager
+from bottles.frontend.params import APP_ID
+
+
+def fail(message):
+    print(f"kakaotalk-setup: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+name, *dependencies = sys.argv[1:]
+manager = Manager(g_settings=Gio.Settings.new(APP_ID), is_cli=True)
+manager.check_bottles()
+if name not in manager.local_bottles:
+    fail("the KakaoTalk bottle could not be loaded for dependency installation")
+
+manager.organize_dependencies()
+EventManager.wait(Events.DependenciesOrganizing)
+config = manager.local_bottles[name]
+
+for dependency in dependencies:
+    if dependency in config.Installed_Dependencies:
+        print(f"Dependency already installed: {dependency}", flush=True)
+        continue
+    manifest = manager.supported_dependencies.get(dependency)
+    if manifest is None:
+        fail(f"Bottles has no dependency manifest for {dependency}")
+    result = manager.dependency_manager.install(config, [dependency, manifest])
+    if not result.status:
+        fail(result.message or f"Bottles failed to install {dependency}")
+    print(f"Dependency installed: {dependency}", flush=True)
+PYTHON
+  )
+
+  flatpak run --user --command=python3 "$app_id" \
+    -c "$python_source" \
+    "$bottle_name" "${profile_dependencies[@]}"
+}
+
+stop_existing_bottle() {
+  if timeout --foreground --signal=TERM --kill-after=5s 20s \
+    "${bottles_cli[@]}" shell -b "$bottle_name" -i \
+    'taskkill /IM KakaoTalk.exe /T'; then
+    flatpak kill "$app_id" 2>/dev/null || true
+    return 0
+  fi
+
+  printf '%s\n' \
+    'KakaoTalk did not stop within 20 seconds; stopping its Bottles sandbox.' >&2
+  flatpak kill "$app_id" 2>/dev/null || true
+}
+
 bottles_json=$("${bottles_cli[@]}" --json list bottles)
 if jq -e --arg name "$bottle_name" 'has($name)' >/dev/null <<<"$bottles_json"; then
   existing_arch=$(
@@ -479,8 +561,7 @@ if jq -e --arg name "$bottle_name" 'has($name)' >/dev/null <<<"$bottles_json"; t
 
   printf 'Reusing the existing KakaoTalk bottle.\n'
   printf 'Stopping KakaoTalk before creating a private recovery snapshot.\n'
-  "${bottles_cli[@]}" shell -b "$bottle_name" -i \
-    'wineserver -k; wineserver -w'
+  stop_existing_bottle
   create_profile_snapshot
 else
   printf 'Creating the dedicated KakaoTalk bottle. This may download a Wine runner.\n'
@@ -506,12 +587,7 @@ printf 'Configuring the KakaoTalk bottle for Korean text and locale.\n'
 configure_korean_bottle
 
 printf 'Installing the pinned KakaoTalk compatibility dependencies.\n'
-dependency_command='winetricks -q'
-for dependency in "${profile_dependencies[@]}"; do
-  [[ $dependency =~ ^[a-z0-9._-]+$ ]] || die "unsafe profile dependency: $dependency"
-  dependency_command+=" $dependency"
-done
-"${bottles_cli[@]}" shell -b "$bottle_name" -i "$dependency_command"
+install_profile_dependencies
 
 # XIM is required for Hangul composition in Wine/XWayland. A 144-DPI Wine
 # desktop matches the 1.5 compositor scale (96 * 1.5).
@@ -604,6 +680,29 @@ jq -e --arg name "$program_name" \
   '[.[] | select(.name == $name)] | length > 0' \
   >/dev/null <<<"$programs_json" ||
   die 'KakaoTalk was installed but could not be registered as a Bottles program'
+
+configured_bottles=$("${bottles_cli[@]}" --json list bottles)
+jq -e \
+  --arg name "$bottle_name" \
+  --arg runner "$profile_runner" \
+  --argjson required "$(jq -c '[.dependencies[].id]' <<<"$profile_json")" '
+    .[$name] as $bottle
+    | ($bottle.Runner // "") == $runner
+      and ($bottle.Parameters.wayland == false)
+      and ($bottle.Parameters.dxvk == false)
+      and ($bottle.Parameters.vkd3d == false)
+      and ($bottle.Environment_Variables.XMODIFIERS == "@im=fcitx")
+      and ($bottle.Language == "ko_KR")
+      and all($required[]; . as $dependency
+        | ($bottle.Installed_Dependencies | index($dependency)) != null)
+  ' >/dev/null <<<"$configured_bottles" ||
+  die 'the KakaoTalk bottle did not converge to the selected profile'
+
+registry_output=$("${bottles_cli[@]}" shell -b "$bottle_name" -i \
+  'reg query "HKCU\Software\Wine\AppDefaults\kakaotalk.exe\X11 Driver" /v InputStyle')
+grep -Eiq 'InputStyle[[:space:]]+REG_SZ[[:space:]]+root' \
+  <<<"$registry_output" ||
+  die 'the KakaoTalk InputStyle registry setting was not applied'
 
 cat <<'EOF'
 

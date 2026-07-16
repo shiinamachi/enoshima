@@ -43,6 +43,13 @@ if [[ ${1:-} == run && $* == *--command=python3* ]]; then
     exit 0
   fi
 
+  if [[ $* == *'manager.dependency_manager.install'* ||
+    $* == *'manager.versioning_manager.create_state'* ||
+    $* == *'config.Language = "ko_KR"'* ||
+    $* == *'Using KakaoTalk-compatible runner'* ]]; then
+    exit 0
+  fi
+
   if [[ $* == *--env=RES_OPTIONS=single-request-reopen* ]]; then
     probe_state=${FAKE_RESOLVER_COMPAT_HTTPS:-${FAKE_SANDBOX_HTTPS:-ok}}
   else
@@ -66,9 +73,11 @@ if [[ ${1:-} == run && $* == *--command=bottles-cli* ]]; then
       printf '{}\n'
       exit 0
     fi
-    printf '{"KakaoTalk":{"Arch":"win64","Environment":"application","Runner":"wine-11.8-staging-amd64"}}\n'
+    printf '%s\n' '{"KakaoTalk":{"Arch":"win64","Environment":"application","Runner":"wine-11.8-staging-amd64","Language":"ko_KR","Parameters":{"wayland":false,"dxvk":false,"vkd3d":false},"Environment_Variables":{"XMODIFIERS":"@im=fcitx"},"Installed_Dependencies":["cjkfonts","vcredist2022","riched20","msftedit"]}}'
   elif [[ $* == *'--json programs'* ]]; then
     printf '[{"name":"KakaoTalk","path":"C:\\\\KakaoTalk.exe"}]\n'
+  elif [[ $* == *'reg query'* ]]; then
+    printf 'InputStyle    REG_SZ    root\n'
   elif [[ $* == *' new '* ]]; then
     : >"${FAKE_BOTTLE_CREATED:?}"
   fi
@@ -239,7 +248,7 @@ assert_contains "$test_root/setup-calls.log" '"Graphics", "x11"'
 assert_contains "$test_root/setup-calls.log" 'AppDefaults\kakaotalk.exe\X11 Driver'
 assert_contains "$test_root/setup-calls.log" '"InputStyle", "root"'
 assert_contains "$test_root/setup-calls.log" \
-  'shell -b KakaoTalk -i winetricks -q cjkfonts vcrun2022 riched20 msftedit'
+  'manager.dependency_manager.install(config, [dependency, manifest])'
 
 new_setup_output=$test_root/new-setup.out
 new_connectivity_count=$test_root/new-connectivity-count
