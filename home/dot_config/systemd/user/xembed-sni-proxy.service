@@ -1,6 +1,7 @@
 [Unit]
 Description=Expose legacy XEmbed tray icons as StatusNotifierItems
 PartOf=graphical-session.target waybar.service
+BindsTo=waybar.service
 Wants=waybar.service
 After=graphical-session.target waybar.service
 ConditionEnvironment=DISPLAY

@@ -13,11 +13,13 @@ export XDG_SESSION_ID=test-session
 export DESKTOP_POWER_STATE_HOME=$XDG_STATE_HOME
 export DESKTOP_POWER_BOOT_ID_FILE=$work/boot-id
 export DESKTOP_POWER_SYSTEMCTL=$work/bin/systemctl
+export DESKTOP_POWER_SYSTEMD_RUN=$work/bin/systemd-run
 export DESKTOP_POWER_LOGINCTL=$work/bin/loginctl
 export DESKTOP_POWER_BUSCTL=$work/bin/busctl
 export DESKTOP_POWER_HYPRSHUTDOWN=$work/bin/hyprshutdown
 export DESKTOP_POWER_JOURNALCTL=$work/bin/journalctl
 export DESKTOP_POWER_INHIBIT=$work/bin/systemd-inhibit
+export DESKTOP_POWER_SELF=$helper
 export POWER_TEST_LOG=$work/commands.log
 mkdir -p "$HOME" "$work/bin"
 printf 'boot-a\n' >"$DESKTOP_POWER_BOOT_ID_FILE"
@@ -44,7 +46,7 @@ esac
 printf 's "%s"\n' "$answer"
 FAKE
 
-for command in systemctl loginctl journalctl systemd-inhibit; do
+for command in systemctl loginctl journalctl systemd-inhibit systemd-run; do
   cat >"$work/bin/$command" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -52,6 +54,9 @@ name=${0##*/}
 printf '%s' "$name" >>"${POWER_TEST_LOG:?}"
 for argument in "$@"; do printf ' %q' "$argument" >>"$POWER_TEST_LOG"; done
 printf '\n' >>"$POWER_TEST_LOG"
+if [[ $name == systemd-run && ${POWER_SYSTEMD_RUN_FAIL:-false} == true ]]; then
+  exit 1
+fi
 FAKE
 done
 
@@ -99,13 +104,21 @@ reset_log
 run_power reboot
 pending=$XDG_STATE_HOME/enoshima/power/pending.json
 jq -e '
-  .schema == 1 and .action == "reboot" and
+  .schema == 1 and .action == "reboot" and .phase == "requested" and
   .boot_id_before == "boot-a" and .session == "test-session"
 ' "$pending" >/dev/null || fail 'reboot checkpoint is invalid'
-grep -Fxq 'hyprshutdown --post-cmd systemctl\ reboot' "$POWER_TEST_LOG" ||
-  fail 'reboot did not use the expected hyprshutdown post command'
+grep -Fq 'systemd-run --user --quiet --collect --unit=enoshima-desktop-power-reboot --property=Type=exec --property=Slice=background.slice -- ' "$POWER_TEST_LOG" ||
+  fail 'reboot did not use an independent user systemd unit'
+grep -Fq 'hyprshutdown --no-fork --verbose --post-cmd ' "$POWER_TEST_LOG" ||
+  fail 'reboot did not request a foreground graceful shutdown'
 
-printf '%s\n' '==> the next boot proves a reboot by changing boot ID'
+printf '%s\n' '==> the post command records systemctl dispatch before rebooting'
+run_power finalize-transition reboot
+jq -e '.phase == "systemctl_dispatched" and (.systemctl_dispatched_at | type == "string")' \
+  "$pending" >/dev/null || fail 'systemctl dispatch was not checkpointed'
+grep -Fxq 'systemctl reboot' "$POWER_TEST_LOG" || fail 'reboot did not reach systemctl'
+
+printf '%s\n' '==> the next boot proves a dispatched reboot by changing boot ID'
 printf 'boot-b\n' >"$DESKTOP_POWER_BOOT_ID_FILE"
 jq -e '.status == "succeeded" and .boot_id_after == "boot-b"' \
   < <(run_power verify-last-action) >/dev/null || fail 'successful reboot was not verified'
@@ -123,9 +136,20 @@ jq -e '.status == "not_completed" and .action == "poweroff"' \
   "$XDG_STATE_HOME/enoshima/power/last-result.json" >/dev/null ||
   fail 'incomplete poweroff was not recorded'
 
+printf '%s\n' '==> an unrelated boot change is not mistaken for a successful reboot'
+printf 'boot-b\n' >"$DESKTOP_POWER_BOOT_ID_FILE"
+run_power reboot
+printf 'boot-c\n' >"$DESKTOP_POWER_BOOT_ID_FILE"
+if run_power verify-last-action >/dev/null; then
+  fail 'boot change without systemctl dispatch unexpectedly succeeded'
+fi
+jq -e '.status == "boot_changed_without_dispatch" and .phase == "requested"' \
+  "$XDG_STATE_HOME/enoshima/power/last-result.json" >/dev/null ||
+  fail 'boot change without dispatch was not identified'
+
 printf '%s\n' '==> dispatch failure is explicit and does not retain a stale checkpoint'
-if POWER_HYPRSHUTDOWN_FAIL=true run_power reboot 2>/dev/null; then
-  fail 'failed hyprshutdown dispatch unexpectedly succeeded'
+if POWER_HYPRSHUTDOWN_FAIL=true POWER_SYSTEMD_RUN_FAIL=true run_power reboot 2>/dev/null; then
+  fail 'failed systemd-run dispatch unexpectedly succeeded'
 fi
 [[ ! -e $pending ]] || fail 'dispatch failure retained a pending checkpoint'
 jq -e '.status == "dispatch_failed" and .dispatch_exit_code == 1 and .action == "reboot"' \

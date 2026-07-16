@@ -181,12 +181,16 @@ desktop-power suspend
 desktop-power doctor
 ```
 
-재시작과 종료는 앱을 정리하도록 Hyprshutdown을 거친 다음 각각
-`systemctl reboot`, `systemctl poweroff`를 실행한다. 요청 직전에 현재 boot ID가
-`$XDG_STATE_HOME/enoshima/power/pending.json`에 기록된다. 다음 그래픽 로그인에서
-`desktop-power-verify.service`가 boot ID 변화를 비교하고 결과를
-`last-result.json`에 저장한다. `status --json`에 pending action이 남아 있거나
-`last-result.json`의 상태가 `not_completed`이면 다음 비파괴 진단을 먼저 수집한다.
+재시작과 종료는 그래픽 메뉴 프로세스와 독립된 user systemd unit에서
+Hyprshutdown을 foreground로 실행해 앱과 Hyprland를 정리한 다음 각각
+`systemctl reboot`, `systemctl poweroff`를 실행한다. 요청 직전에 현재 boot ID와
+`requested` phase가 `$XDG_STATE_HOME/enoshima/power/pending.json`에 기록되고,
+실제 systemctl 호출 직전에 phase가 `systemctl_dispatched`로 바뀐다. 다음 그래픽
+로그인에서 `desktop-power-verify.service`는 boot ID 변화와 dispatch phase를 모두
+비교해 `last-result.json`에 저장한다. 따라서 전원 버튼 종료처럼 boot ID만 바뀐
+경우는 `boot_changed_without_dispatch`로 기록된다. `status --json`에 pending
+action이 남아 있거나 결과가 `succeeded`가 아니면 다음 비파괴 진단을 먼저
+수집한다.
 
 ```bash
 desktop-power doctor | tee /tmp/enoshima-power-doctor.txt
