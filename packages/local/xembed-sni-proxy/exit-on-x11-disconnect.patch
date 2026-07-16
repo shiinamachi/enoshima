@@ -1,0 +1,17 @@
+diff --git a/src/main.rs b/src/main.rs
+index a77fb9b..61c6149 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -98 +98 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+-    loop {
++    'event_loop: loop {
+@@ -113,4 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+                                 Err(e) => {
+-                                    error!("failed to poll for X11 event: {}", e);
+-                                    break;
++                                    error!(
++                                        "failed to poll for X11 event, shutting down: {}",
++                                        e
++                                    );
++                                    break 'event_loop;
+                                 }

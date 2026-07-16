@@ -308,8 +308,9 @@ The two local PKGBUILDs have narrow purposes:
 
 - Lenovo WWAN unlock repackages Lenovo's official release while recursively
   including the Gen 13 `cs25` SAR data omitted by the current AUR recipe.
-- `xembed-sni-proxy` is pinned to a reviewed upstream commit and translates
-  legacy Wine tray icons to the StatusNotifier protocol used by Waybar.
+- `xembed-sni-proxy` is pinned to a reviewed upstream commit, carries a narrow
+  downstream fix that exits when Xwayland disconnects, and translates legacy
+  Wine tray icons to the StatusNotifier protocol used by Waybar.
 
 Neither proprietary Lenovo blobs nor built packages are committed to Git.
 

@@ -6,6 +6,8 @@ repair=$repo_root/home/dot_local/bin/executable_kakaotalk-focus-repair
 guard=$repo_root/home/dot_local/bin/executable_kakaotalk-focus-guard
 guard_service=$repo_root/home/dot_config/systemd/user/kakaotalk-focus-guard.service
 tray_service=$repo_root/home/dot_config/systemd/user/xembed-sni-proxy.service
+tray_pkgbuild=$repo_root/packages/local/xembed-sni-proxy/PKGBUILD
+tray_disconnect_patch=$repo_root/packages/local/xembed-sni-proxy/exit-on-x11-disconnect.patch
 doctor=$repo_root/home/dot_local/bin/executable_kakaotalk-doctor
 hyprland=$repo_root/home/dot_config/hypr/hyprland.lua
 shell_qml=$repo_root/home/dot_config/quickshell/cyberdock/shell.qml
@@ -175,5 +177,10 @@ grep -Fq '"label": "입력 포커스 복구"' "$shell_qml"
 grep -Fq '"$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT' "$guard"
 grep -Fxq 'Restart=always' "$guard_service"
 grep -Fxq 'BindsTo=waybar.service' "$tray_service"
+grep -Fq "'exit-on-x11-disconnect.patch'" "$tray_pkgbuild"
+# shellcheck disable=SC2016 # Match the literal PKGBUILD source directory variable.
+grep -Fq 'patch -Np1 -i "$srcdir/exit-on-x11-disconnect.patch"' "$tray_pkgbuild"
+grep -Fq "+    'event_loop: loop {" "$tray_disconnect_patch"
+grep -Fq "+                                    break 'event_loop;" "$tray_disconnect_patch"
 
 printf 'KakaoTalk desktop integration tests passed.\n'

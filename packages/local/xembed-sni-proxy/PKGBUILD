@@ -1,6 +1,6 @@
 pkgname=xembed-sni-proxy
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 _commit=dcb8facf1105d2085fa391821501205492abdd83
 pkgdesc='Lightweight XEmbed-to-SNI proxy for Wayland compositors'
 arch=('x86_64')
@@ -14,13 +14,16 @@ makedepends=('rust')
 options=('!debug')
 source=(
   "$pkgname-$_commit.tar.gz::$url/archive/$_commit.tar.gz"
+  'exit-on-x11-disconnect.patch'
 )
 sha256sums=(
   'bc88449bf03be7950d34746d84de1ba2c4370d18168a8381e3a82bd430394149'
+  'be0fb34e1eac3369d9c05d7df81838e4ff982ab4a575b5efcd9e0bb2be597fb5'
 )
 
 prepare() {
   cd "$srcdir/$pkgname"
+  patch -Np1 -i "$srcdir/exit-on-x11-disconnect.patch"
   export CARGO_HOME="$srcdir/cargo-home"
   cargo fetch --locked
 }
