@@ -39,7 +39,7 @@ jq -n --arg sha "$archive_sha" '
     },
     bottle: {
       architecture: "win64", environment: "application", graphics: "x11",
-      dxvk: false, vkd3d: false, dpi: 144
+      dxvk: false, vkd3d: false, dpi: 192
     },
     dependencies: [
       {id:"cjkfonts",winetricks:"cjkfonts"},

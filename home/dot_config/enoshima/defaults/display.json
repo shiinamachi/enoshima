@@ -1,7 +1,23 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "display_policy_revision": 2,
   "internal_output": "eDP-1",
+  "known_external_description_pattern": "U2725QE",
   "confirmation_timeout_seconds": 15,
-  "internal_scale": 1.5,
-  "external_scale": "auto"
+  "default_profile": "balanced",
+  "fallback_external_scale": "auto",
+  "profiles": {
+    "balanced": {
+      "internal_scale": 2.0,
+      "internal_position": "0x540",
+      "known_external_scale": 1.5,
+      "known_external_position": "1440x0"
+    },
+    "matched": {
+      "internal_scale": 2.25,
+      "internal_position": "0x640",
+      "known_external_scale": 1.5,
+      "known_external_position": "1280x0"
+    }
+  }
 }

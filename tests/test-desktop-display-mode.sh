@@ -6,6 +6,7 @@ helper=$repo_root/home/dot_local/bin/executable_desktop-display-mode
 overlay_qml=$repo_root/home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
 event_listener=$repo_root/home/dot_local/bin/executable_desktop-display-event-listener
 event_service=$repo_root/home/dot_config/systemd/user/desktop-display-events.service
+hyprland_config=$repo_root/home/dot_config/hypr/hyprland.lua
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
@@ -157,17 +158,41 @@ run_display() {
   bash "$helper" "$@"
 }
 
+printf '%s\n' '==> managed seed and profile registry describe the HiDPI policy'
+jq -e '
+  .schema == 2 and .display_policy_revision == 2 and .default_profile == "balanced"
+  and .profiles.balanced.internal_scale == 2
+  and .profiles.balanced.internal_position == "0x540"
+  and .profiles.balanced.known_external_scale == 1.5
+  and .profiles.balanced.known_external_position == "1440x0"
+  and .profiles.matched.internal_scale == 2.25
+  and .profiles.matched.internal_position == "0x640"
+  and .profiles.matched.known_external_position == "1280x0"
+' "$DESKTOP_DISPLAY_DEFAULTS_FILE" >/dev/null || fail 'managed profile registry is wrong'
+for contract in \
+  'position = "0x540"' \
+  'scale = 2' \
+  'position = "1440x0"' \
+  'scale = 1.5'; do
+  grep -Fq -- "$contract" "$hyprland_config" || fail "Hyprland seed is missing: $contract"
+done
+
 printf '%s\n' '==> status and availability describe the connected topology'
 reset_fixture
-jq -e '.mode == "extend" and .external_count == 1 and (.pending | not)' \
+jq -e '.schema == 2 and .mode == "extend" and .external_count == 1 and
+  .default_profile == "balanced" and (.pending | not)' \
   < <(run_display status --json) >/dev/null || fail 'initial status is wrong'
-jq -e '.modes | all(.available)' < <(run_display list --json) >/dev/null ||
+jq -e '.schema == 2 and .default_profile == "balanced" and
+  .profiles == ["balanced", "matched"] and (.modes | all(.available))' \
+  < <(run_display list --json) >/dev/null ||
   fail 'all projection modes should be available'
 
 printf '%s\n' '==> internal-only enables its safe target before disabling externals'
 run_display apply internal
 jq -e '[.[] | select(.disabled == false)] | map(.name) == ["eDP-1"]' \
   "$DISPLAY_TEST_ROOT/monitors.json" >/dev/null || fail 'internal-only mode is wrong'
+jq -e '.[] | select(.name == "eDP-1") | .scale == 2 and .x == 0 and .y == 0' \
+  "$DISPLAY_TEST_ROOT/monitors.json" >/dev/null || fail 'internal-only HiDPI policy is wrong'
 [[ $(sed -n '1p' "$DISPLAY_TEST_ROOT/calls.log") == single ]] ||
   fail 'target output was not enabled before the disable batch'
 jq -e '.pending and .target_mode == "internal" and .seconds_remaining > 0' \
@@ -177,7 +202,10 @@ grep -Fq -- '--user restart desktop-display-revert.timer' "$DISPLAY_TEST_ROOT/sy
 
 printf '%s\n' '==> revert restores every output from the transaction snapshot'
 run_display revert
-jq -e '[.[] | select(.disabled == false)] | length == 2' \
+jq -e '
+  ([.[] | select(.disabled == false)] | length == 2)
+  and (.[] | select(.name == "eDP-1") | .scale == 1.5 and .x == 0 and .y == 240)
+' \
   "$DISPLAY_TEST_ROOT/monitors.json" >/dev/null || fail 'revert did not restore both outputs'
 jq -e '.pending | not' < <(run_display status --json) >/dev/null ||
   fail 'revert retained the pending transaction'
@@ -189,7 +217,7 @@ jq -e '[.[] | select(.disabled == false)] | map(.name) == ["DP-1"]' \
   "$DISPLAY_TEST_ROOT/monitors.json" >/dev/null || fail 'external-only mode is wrong'
 profile_count=$(find "$XDG_CONFIG_HOME/enoshima/user/display-topologies" -name '*.json' -type f | wc -l)
 [[ $profile_count -eq 1 ]] || fail 'confirmed topology profile was not stored'
-jq -e '.schema == 1 and .mode == "external"' \
+jq -e '.schema == 2 and .policy_revision == 2 and .mode == "external" and .profile == "balanced"' \
   "$XDG_CONFIG_HOME"/enoshima/user/display-topologies/*.json >/dev/null ||
   fail 'stored topology profile is invalid'
 
@@ -205,6 +233,72 @@ jq -e '
   ([.[] | select(.disabled == false)] | map(.name)) == ["DP-9"]
 ' "$DISPLAY_TEST_ROOT/monitors.json" >/dev/null ||
   fail 'saved physical output did not follow its renamed connector'
+
+printf '%s\n' '==> balanced and matched profiles use integer logical sizes and bottom alignment'
+reset_fixture
+run_display apply extend
+jq -e '
+  (.[] | select(.name == "eDP-1") |
+    .scale == 2 and .x == 0 and .y == 540 and (.width / .scale) == 1440 and (.height / .scale) == 900)
+  and (.[] | select(.name == "DP-1") |
+    .scale == 1.5 and .x == 1440 and .y == 0 and (.width / .scale) == 2560 and (.height / .scale) == 1440)
+' "$DISPLAY_TEST_ROOT/monitors.json" >/dev/null || fail 'balanced profile is wrong'
+run_display revert
+
+run_display apply-profile matched
+jq -e '
+  (.[] | select(.name == "eDP-1") |
+    .scale == 2.25 and .x == 0 and .y == 640 and (.width / .scale) == 1280 and (.height / .scale) == 800)
+  and (.[] | select(.name == "DP-1") |
+    .scale == 1.5 and .x == 1280 and .y == 0 and (.width / .scale) == 2560 and (.height / .scale) == 1440)
+' "$DISPLAY_TEST_ROOT/monitors.json" >/dev/null || fail 'matched profile is wrong'
+run_display revert
+
+printf '%s\n' '==> legacy managed defaults migrate while custom topology remains untouched'
+reset_fixture
+topology=$(run_display status --json | jq -r '.topology')
+profile_dir=$XDG_CONFIG_HOME/enoshima/user/display-topologies
+mkdir -p -- "$profile_dir"
+cat >"$profile_dir/$topology.json" <<'JSON'
+{
+  "schema": 1,
+  "mode": "extend",
+  "monitors": [
+    {"name":"eDP-1","mode":"2880x1800@120","position":"0x240","scale":1.5,"transform":0,"mirror":"none","fingerprint":"Samsung|ATNA40|INT1|Internal OLED"},
+    {"name":"DP-1","mode":"3840x2160@120","position":"1920x0","scale":1.5,"transform":0,"mirror":"none","fingerprint":"Dell|U2725QE|EXT1|Dell U2725QE"}
+  ]
+}
+JSON
+run_display reconcile
+jq -e '
+  (.[] | select(.name == "eDP-1") | .scale == 2 and .x == 0 and .y == 540)
+  and (.[] | select(.name == "DP-1") | .scale == 1.5 and .x == 1440 and .y == 0)
+' "$DISPLAY_TEST_ROOT/monitors.json" >/dev/null || fail 'legacy managed profile was not migrated'
+jq -e '.schema == 2 and .policy_revision == 2 and .profile == "balanced"' \
+  "$profile_dir/$topology.json" >/dev/null || fail 'migrated profile was not persisted as schema 2'
+
+reset_fixture
+topology=$(run_display status --json | jq -r '.topology')
+profile_dir=$XDG_CONFIG_HOME/enoshima/user/display-topologies
+mkdir -p -- "$profile_dir"
+cat >"$profile_dir/$topology.json" <<'JSON'
+{
+  "schema": 1,
+  "mode": "extend",
+  "monitors": [
+    {"name":"eDP-1","mode":"2880x1800@120","position":"0x100","scale":1.75,"transform":0,"mirror":"none","fingerprint":"Samsung|ATNA40|INT1|Internal OLED"},
+    {"name":"DP-1","mode":"3840x2160@120","position":"1646x0","scale":1.25,"transform":0,"mirror":"none","fingerprint":"Dell|U2725QE|EXT1|Dell U2725QE"}
+  ]
+}
+JSON
+before=$(sha256sum "$profile_dir/$topology.json" | cut -d' ' -f1)
+run_display reconcile
+after=$(sha256sum "$profile_dir/$topology.json" | cut -d' ' -f1)
+[[ $before == "$after" ]] || fail 'custom schema 1 profile was rewritten'
+jq -e '
+  (.[] | select(.name == "eDP-1") | .scale == 1.75 and .x == 0 and .y == 100)
+  and (.[] | select(.name == "DP-1") | .scale == 1.25 and .x == 1646 and .y == 0)
+' "$DISPLAY_TEST_ROOT/monitors.json" >/dev/null || fail 'custom schema 1 profile was not preserved'
 
 printf '%s\n' '==> duplicate mode chooses a real common resolution and refresh rate'
 reset_fixture

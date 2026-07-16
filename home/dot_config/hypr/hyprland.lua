@@ -10,13 +10,14 @@ local browser = "google-chrome-stable"
 local fileManager = "thunar"
 local launcher = "cyberlauncher-toggle"
 
--- Monitor coordinates are logical pixels after applying the 1.5 scale.
--- The Dell is physically to the upper-right of the laptop panel.
+-- The balanced HiDPI profile keeps the internal OLED readable at 2x while
+-- retaining a 1.5x 2560x1440 workspace on the 27-inch Dell. Coordinates are
+-- logical pixels and bottom-align the two panels.
 hl.monitor({
     output = internalMonitor,
     mode = "2880x1800@120",
-    position = "0x240",
-    scale = 1.5,
+    position = "0x540",
+    scale = 2,
     bitdepth = 8,
     cm = "srgb",
     vrr = 0,
@@ -25,7 +26,7 @@ hl.monitor({
 hl.monitor({
     output = knownDellMonitor,
     mode = "3840x2160@120",
-    position = "1920x0",
+    position = "1440x0",
     scale = 1.5,
     bitdepth = 8,
     cm = "srgb",

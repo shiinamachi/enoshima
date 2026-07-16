@@ -279,7 +279,7 @@ EOF
   uwsm app -- photogimp --new-instance >/dev/null 2>&1 &
   cat <<'EOF'
 Verify PhotoGIMP has a Photoshop-like single-window layout, bracket brush-size
-shortcuts, correct 1.5-scale sizing, and Korean text composition. Quit it
+shortcuts, correct output-local scaling, and Korean text composition. Quit it
 completely before continuing.
 EOF
   read -r -p 'Did PhotoGIMP pass those checks? [y/N] ' answer

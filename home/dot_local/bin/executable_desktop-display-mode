@@ -28,6 +28,7 @@ usage: desktop-display-mode menu
        desktop-display-mode status --json
        desktop-display-mode list --json
        desktop-display-mode apply {internal|extend|mirror|external}
+       desktop-display-mode apply-profile {balanced|matched}
        desktop-display-mode confirm
        desktop-display-mode revert
        desktop-display-mode reconcile
@@ -50,10 +51,21 @@ command -v flock >/dev/null 2>&1 || die 'flock is required'
 [[ -f $defaults_file && ! -L $defaults_file ]] || die "managed defaults are missing: $defaults_file"
 defaults=$("$jq_bin" -c -e '
   select(
-    .schema == 1
+    .schema == 2
+    and .display_policy_revision == 2
     and (.internal_output | type == "string")
+    and (.known_external_description_pattern | type == "string")
     and (.confirmation_timeout_seconds | type == "number")
     and .confirmation_timeout_seconds >= 5
+    and (.default_profile | type == "string")
+    and (.fallback_external_scale | type == "string" or type == "number")
+    and (.profiles | type == "object")
+    and (.profiles[.default_profile] | type == "object")
+    and all(.profiles[];
+      (.internal_scale | type == "number")
+      and (.internal_position | type == "string")
+      and (.known_external_scale | type == "number")
+      and (.known_external_position | type == "string"))
   )
 ' "$defaults_file") || die 'managed display defaults are invalid'
 
@@ -68,9 +80,22 @@ chmod 0600 "$lock_file"
 flock -x 9
 
 internal_output=$("$jq_bin" -r '.internal_output' <<<"$defaults")
+known_external_pattern=$("$jq_bin" -r '.known_external_description_pattern' <<<"$defaults")
 confirm_timeout=$("$jq_bin" -r '.confirmation_timeout_seconds | floor' <<<"$defaults")
-internal_scale=$("$jq_bin" -r '.internal_scale // 1.5' <<<"$defaults")
-external_scale=$("$jq_bin" -r '.external_scale // "auto"' <<<"$defaults")
+default_profile=$("$jq_bin" -r '.default_profile' <<<"$defaults")
+fallback_external_scale=$("$jq_bin" -r '.fallback_external_scale' <<<"$defaults")
+policy_revision=$("$jq_bin" -r '.display_policy_revision' <<<"$defaults")
+
+profile_value() {
+  local profile=$1 key=$2
+  "$jq_bin" -r --arg profile "$profile" --arg key "$key" \
+    '.profiles[$profile][$key] // empty' <<<"$defaults"
+}
+
+valid_profile() {
+  "$jq_bin" -e --arg profile "$1" '.profiles[$profile] != null' \
+    <<<"$defaults" >/dev/null
+}
 
 monitors_all() {
   local output
@@ -102,9 +127,11 @@ topology_hash() {
 capture_snapshot() {
   local monitors=$1 captured_at
   captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  "$jq_bin" -c --arg capturedAt "$captured_at" '
+  "$jq_bin" -c --arg capturedAt "$captured_at" \
+    --argjson policyRevision "$policy_revision" '
     {
-      schema: 1,
+      schema: 2,
+      policy_revision: $policyRevision,
       captured_at: $capturedAt,
       monitors: [
         .[]
@@ -169,24 +196,85 @@ apply_batch() {
   "$hyprctl_bin" --batch "$batch" >/dev/null
 }
 
-current_rule() {
-  local monitor=$1 default_position=$2 default_scale=$3
+managed_rule() {
+  local monitor=$1 position=$2 scale=$3
   "$jq_bin" -r \
-    --arg position "$default_position" \
-    --arg scale "$default_scale" '
+    --arg position "$position" \
+    --arg scale "$scale" '
       if (.disabled // false) == false and (.width // 0) > 0 then
         [
           .name,
           ((.width | tostring) + "x" + (.height | tostring)
             + "@" + ((.refreshRate // 60) | tostring)),
-          ((.x // 0 | tostring) + "x" + (.y // 0 | tostring)),
-          ((.scale // ($scale | tonumber? // $scale)) | tostring),
+          $position,
+          $scale,
           ((.transform // 0) | tostring)
         ] | @tsv
       else
         [.name, "preferred", $position, $scale, "0"] | @tsv
       end
     ' <<<"$monitor"
+}
+
+is_known_external() {
+  local monitor=$1
+  "$jq_bin" -e --arg pattern "$known_external_pattern" \
+    '((.description // "") | test($pattern; "i"))' <<<"$monitor" >/dev/null
+}
+
+apply_managed_extend() {
+  local profile=$1 monitors=$2 internal external row name mode position scale transform
+  local internal_position internal_scale known_position known_scale has_known=false
+  local -a target_rules=()
+
+  valid_profile "$profile" || die "unknown display profile: $profile"
+  internal=$("$jq_bin" -c -e --arg internal "$internal_output" \
+    '.[] | select(.name == $internal)' <<<"$monitors") ||
+    die "internal output is not connected: $internal_output"
+  internal_position=$(profile_value "$profile" internal_position)
+  internal_scale=$(profile_value "$profile" internal_scale)
+  known_position=$(profile_value "$profile" known_external_position)
+  known_scale=$(profile_value "$profile" known_external_scale)
+
+  while IFS= read -r row; do
+    [[ -n $row ]] || continue
+    external=$("$jq_bin" -c -e --arg name "$row" \
+      '.[] | select(.name == $name)' <<<"$monitors")
+    if is_known_external "$external"; then
+      has_known=true
+      break
+    fi
+  done < <("$jq_bin" -r --arg internal "$internal_output" \
+    '.[] | select(.name != $internal) | .name' <<<"$monitors")
+
+  [[ $("$jq_bin" -r --arg internal "$internal_output" \
+    '[.[] | select(.name != $internal)] | length' <<<"$monitors") -gt 0 ]] ||
+    die 'no external output is connected'
+  if [[ $has_known != true ]]; then
+    internal_position=0x0
+  fi
+  IFS=$'\t' read -r name mode position scale transform < <(
+    managed_rule "$internal" "$internal_position" "$internal_scale"
+  )
+  target_rules+=("$(rule_for_monitor "$name" "$mode" "$position" "$scale" "$transform")")
+
+  while IFS= read -r row; do
+    [[ -n $row ]] || continue
+    external=$("$jq_bin" -c -e --arg name "$row" \
+      '.[] | select(.name == $name)' <<<"$monitors")
+    position=auto-right
+    scale=$fallback_external_scale
+    if is_known_external "$external"; then
+      position=$known_position
+      scale=$known_scale
+    fi
+    IFS=$'\t' read -r name mode position scale transform < <(
+      managed_rule "$external" "$position" "$scale"
+    )
+    target_rules+=("$(rule_for_monitor "$name" "$mode" "$position" "$scale" "$transform")")
+  done < <("$jq_bin" -r --arg internal "$internal_output" \
+    '.[] | select(.name != $internal) | .name' <<<"$monitors")
+  apply_batch "${target_rules[@]}"
 }
 
 common_mirror_mode() {
@@ -302,11 +390,39 @@ restore_snapshot() {
 }
 
 save_profile() {
-  local monitors=$1 mode=$2 topology profile
+  local monitors=$1 mode=$2 selected_profile=${3:-custom} topology profile
   topology=$(topology_hash "$monitors")
-  profile=$(capture_snapshot "$monitors" | "$jq_bin" -c --arg topology "$topology" --arg mode "$mode" \
-    '. + {topology: $topology, mode: $mode}')
+  profile=$(capture_snapshot "$monitors" | "$jq_bin" -c \
+    --arg topology "$topology" --arg mode "$mode" --arg profile "$selected_profile" \
+    '. + {topology: $topology, mode: $mode, profile: $profile}')
   write_json "$user_dir/$topology.json" "$profile"
+}
+
+legacy_managed_default() {
+  local profile=$1
+  "$jq_bin" -e --arg internal "$internal_output" --arg external "$known_external_pattern" '
+    select(.schema == 1)
+    | if .mode == "internal" then
+        (.monitors | length) == 1
+        and any(.monitors[];
+          .name == $internal
+          and (.scale == 1.5)
+          and (.position == "0x0"))
+      elif .mode == "extend" then
+        (.monitors | length) == 2
+        and any(.monitors[];
+          .name == $internal
+          and (.mode | startswith("2880x1800@"))
+          and (.position == "0x240")
+          and (.scale == 1.5))
+        and any(.monitors[];
+          ((.fingerprint // "") | test($external; "i"))
+          and (.mode | startswith("3840x2160@"))
+          and (.position == "1920x0")
+          and (.scale == 1.5))
+      else false
+      end
+  ' <<<"$profile" >/dev/null
 }
 
 arm_revert() {
@@ -318,9 +434,9 @@ cancel_revert() {
 }
 
 apply_mode() {
-  local target=$1 require_confirmation=${2:-true}
+  local target=$1 require_confirmation=${2:-true} selected_profile=${3:-$default_profile}
   local monitors internal external mirror_mode snapshot topology transaction deadline pending
-  local row name mode position scale transform
+  local row name mode position scale transform external_scale
   local -a connected_names=() externals=() target_rules=() disable_rules=()
 
   monitors=$(monitors_all)
@@ -333,14 +449,21 @@ apply_mode() {
 
   case $target in
     internal)
-      IFS=$'\t' read -r name mode position scale transform < <(current_rule "$internal" 0x0 "$internal_scale")
+      valid_profile "$selected_profile" || die "unknown display profile: $selected_profile"
+      scale=$(profile_value "$selected_profile" internal_scale)
+      IFS=$'\t' read -r name mode position scale transform < <(managed_rule "$internal" 0x0 "$scale")
       apply_rule "$(rule_for_monitor "$name" "$mode" 0x0 "$scale" "$transform")"
       for name in "${externals[@]}"; do disable_rules+=("$name,disable"); done
       apply_batch "${disable_rules[@]}"
       ;;
     external)
       [[ -n $external ]] || die 'no external output is connected'
-      IFS=$'\t' read -r name mode position scale transform < <(current_rule "$external" 0x0 "$external_scale")
+      valid_profile "$selected_profile" || die "unknown display profile: $selected_profile"
+      external_scale=$fallback_external_scale
+      if is_known_external "$external"; then
+        external_scale=$(profile_value "$selected_profile" known_external_scale)
+      fi
+      IFS=$'\t' read -r name mode position scale transform < <(managed_rule "$external" 0x0 "$external_scale")
       apply_rule "$(rule_for_monitor "$name" "$mode" 0x0 "$scale" "$transform")"
       for row in "${connected_names[@]}"; do
         [[ $row == "$name" ]] || disable_rules+=("$row,disable")
@@ -348,15 +471,7 @@ apply_mode() {
       apply_batch "${disable_rules[@]}"
       ;;
     extend)
-      [[ -n $external ]] || die 'no external output is connected'
-      IFS=$'\t' read -r name mode position scale transform < <(current_rule "$internal" 0x0 "$internal_scale")
-      target_rules+=("$(rule_for_monitor "$name" "$mode" "$position" "$scale" "$transform")")
-      for row in "${externals[@]}"; do
-        external=$("$jq_bin" -c -e --arg name "$row" '.[] | select(.name == $name)' <<<"$monitors")
-        IFS=$'\t' read -r name mode position scale transform < <(current_rule "$external" auto-right "$external_scale")
-        target_rules+=("$(rule_for_monitor "$name" "$mode" "$position" "$scale" "$transform")")
-      done
-      apply_batch "${target_rules[@]}"
+      apply_managed_extend "$selected_profile" "$monitors"
       ;;
     mirror)
       [[ -n $external ]] || die 'no external output is connected'
@@ -386,9 +501,10 @@ apply_mode() {
       --arg transaction "$transaction" \
       --arg target "$target" \
       --arg topology "$topology" \
+      --arg profile "$selected_profile" \
       --argjson deadline "$deadline" \
       --argjson snapshot "$snapshot" \
-      '{schema:1,transaction:$transaction,target_mode:$target,topology:$topology,deadline:$deadline,snapshot:$snapshot}')
+      '{schema:2,transaction:$transaction,target_mode:$target,target_profile:$profile,topology:$topology,deadline:$deadline,snapshot:$snapshot}')
     write_json "$pending_file" "$pending"
     if ! arm_revert; then
       restore_snapshot "$snapshot"
@@ -406,7 +522,7 @@ status_command() {
   external_count=$("$jq_bin" -r --arg internal "$internal_output" \
     '[.[] | select(.name != $internal)] | length' <<<"$monitors")
   if [[ -f $pending_file && ! -L $pending_file ]]; then
-    pending=$("$jq_bin" -c -e 'select(.schema == 1 and (.snapshot.monitors | length > 0))' "$pending_file" 2>/dev/null || printf null)
+    pending=$("$jq_bin" -c -e 'select((.schema == 1 or .schema == 2) and (.snapshot.monitors | length > 0))' "$pending_file" 2>/dev/null || printf null)
     if [[ $pending != null ]]; then
       now=$(date +%s)
       remaining=$(($("$jq_bin" -r '.deadline' <<<"$pending") - now))
@@ -414,9 +530,10 @@ status_command() {
     fi
   fi
   "$jq_bin" -c -n --arg mode "$mode" --arg topology "$topology" \
+    --arg defaultProfile "$default_profile" \
     --argjson remaining "$remaining" --argjson pending "$pending" \
     --argjson externalCount "$external_count" \
-    '{schema:1,mode:$mode,topology:$topology,pending:($pending != null),seconds_remaining:$remaining,target_mode:($pending.target_mode // null),external_count:$externalCount}'
+    '{schema:2,mode:$mode,topology:$topology,pending:($pending != null),seconds_remaining:$remaining,target_mode:($pending.target_mode // null),target_profile:($pending.target_profile // null),default_profile:$defaultProfile,external_count:$externalCount}'
 }
 
 case ${1:-} in
@@ -429,7 +546,9 @@ case ${1:-} in
     monitors=$(monitors_all)
     external_count=$("$jq_bin" -r --arg internal "$internal_output" '[.[] | select(.name != $internal)] | length' <<<"$monitors")
     "$jq_bin" -c -n --argjson externalCount "$external_count" \
-      '{schema:1,modes:[
+      --arg defaultProfile "$default_profile" \
+      --argjson profiles "$("$jq_bin" -c '[.profiles | keys[]]' <<<"$defaults")" \
+      '{schema:2,default_profile:$defaultProfile,profiles:$profiles,modes:[
         {id:"internal",available:true},
         {id:"mirror",available:($externalCount > 0)},
         {id:"extend",available:($externalCount > 0)},
@@ -438,20 +557,27 @@ case ${1:-} in
     ;;
   apply)
     [[ $# -eq 2 ]] || usage
-    apply_mode "$2" true
+    apply_mode "$2" true "$default_profile"
+    ;;
+  apply-profile)
+    [[ $# -eq 2 ]] || usage
+    valid_profile "$2" || die "unknown display profile: $2"
+    apply_mode extend true "$2"
     ;;
   confirm)
     [[ $# -eq 1 ]] || usage
     [[ -f $pending_file && ! -L $pending_file ]] || exit 0
-    pending=$("$jq_bin" -c -e 'select(.schema == 1)' "$pending_file") || die 'pending transaction is invalid'
-    save_profile "$(monitors_all)" "$("$jq_bin" -r '.target_mode' <<<"$pending")"
+    pending=$("$jq_bin" -c -e 'select(.schema == 1 or .schema == 2)' "$pending_file") || die 'pending transaction is invalid'
+    save_profile "$(monitors_all)" \
+      "$("$jq_bin" -r '.target_mode' <<<"$pending")" \
+      "$("$jq_bin" -r '.target_profile // "custom"' <<<"$pending")"
     rm -f -- "$pending_file"
     cancel_revert
     ;;
   revert)
     [[ $# -eq 1 ]] || usage
     [[ -f $pending_file && ! -L $pending_file ]] || exit 0
-    pending=$("$jq_bin" -c -e 'select(.schema == 1 and (.snapshot.monitors | length > 0))' "$pending_file") ||
+    pending=$("$jq_bin" -c -e 'select((.schema == 1 or .schema == 2) and (.snapshot.monitors | length > 0))' "$pending_file") ||
       die 'pending transaction is invalid'
     restore_snapshot "$("$jq_bin" -c '.snapshot' <<<"$pending")"
     rm -f -- "$pending_file"
@@ -464,10 +590,15 @@ case ${1:-} in
     topology=$(topology_hash "$monitors")
     profile=$user_dir/$topology.json
     if [[ -f $profile && ! -L $profile ]]; then
-      profile_json=$("$jq_bin" -c -e 'select(.schema == 1 and (.monitors | length > 0))' "$profile") || exit 0
+      profile_json=$("$jq_bin" -c -e 'select((.schema == 1 or .schema == 2) and (.monitors | length > 0))' "$profile") || exit 0
       mode=$("$jq_bin" -r '.mode' <<<"$profile_json")
       snapshot=$(capture_snapshot "$monitors")
-      restore_snapshot "$("$jq_bin" -c '{schema,monitors}' <<<"$profile_json")"
+      if legacy_managed_default "$profile_json"; then
+        apply_mode "$mode" false "$default_profile"
+        save_profile "$(monitors_all)" "$mode" "$default_profile"
+      else
+        restore_snapshot "$("$jq_bin" -c '{schema,policy_revision,monitors}' <<<"$profile_json")"
+      fi
       if ! verify_mode "$mode"; then
         restore_snapshot "$snapshot"
         die 'saved topology verification failed; the current layout was restored'
@@ -486,7 +617,7 @@ case ${1:-} in
   import-current)
     [[ $# -eq 1 ]] || usage
     monitors=$(monitors_all)
-    save_profile "$monitors" "$(mode_from_monitors "$monitors")"
+    save_profile "$monitors" "$(mode_from_monitors "$monitors")" custom
     ;;
   doctor)
     [[ $# -eq 1 ]] || usage

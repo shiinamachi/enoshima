@@ -1,49 +1,161 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq programs intentionally use single quotes.
 set -euo pipefail
 
-command -v hyprctl >/dev/null 2>&1 || {
-  printf 'desktop-scaling-status: hyprctl is unavailable\n' >&2
-  exit 1
-}
-command -v jq >/dev/null 2>&1 || {
-  printf 'desktop-scaling-status: jq is unavailable\n' >&2
+readonly hyprctl_bin=${DESKTOP_SCALING_HYPRCTL:-hyprctl}
+readonly jq_bin=${DESKTOP_SCALING_JQ:-jq}
+readonly config_home=${DESKTOP_SCALING_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}}
+readonly policy_file=${DESKTOP_SCALING_POLICY_FILE:-$config_home/enoshima/app-display-policy.json}
+readonly proc_root=${DESKTOP_SCALING_PROC_ROOT:-/proc}
+
+die() {
+  printf 'desktop-scaling-status: %s\n' "$*" >&2
   exit 1
 }
 
-clients=$(hyprctl clients -j)
+command -v "$hyprctl_bin" >/dev/null 2>&1 || die "hyprctl is unavailable: $hyprctl_bin"
+command -v "$jq_bin" >/dev/null 2>&1 || die "jq is unavailable: $jq_bin"
+[[ -f $policy_file && ! -L $policy_file ]] || die "policy is unavailable: $policy_file"
+policy=$("$jq_bin" -c -e '
+  select(
+    .schema == 1
+    and (.monitors | type == "array")
+    and (.applications | type == "array")
+    and (.forbidden_compositor_scale_environment | type == "array")
+    and (.forbidden_compositor_scale_arguments | type == "array")
+    and all(.monitors[];
+      (.label | type == "string")
+      and (.expected_scale | type == "number")
+      and ((.name_pattern // .description_pattern) | type == "string"))
+    and all(.applications[];
+      (.label | type == "string")
+      and (.class_pattern | type == "string")
+      and (.expected_backend == "wayland" or .expected_backend == "xwayland")
+      and (.scaling | type == "string")
+      and (.required_for_acceptance | type == "boolean"))
+  )
+' "$policy_file") || die 'policy is invalid'
+
+hypr_json() {
+  local resource=$1 output
+  output=$("$hyprctl_bin" "$resource" -j) || die "hyprctl $resource -j failed"
+  "$jq_bin" -c -e 'select(type == "array")' <<<"$output" ||
+    die "hyprctl $resource returned invalid JSON"
+}
+
+clients=$(hypr_json clients)
+monitors=$(hypr_json monitors)
 failures=0
 missing=0
 
-check_backend() {
-  local label=$1
-  local class_pattern=$2
-  local expected_xwayland=$3
-  local matches
-  matches=$(jq -c --arg pattern "$class_pattern" \
-    '[.[] | select((.class // "") | test($pattern; "i")) | {class, xwayland}]' \
-    <<<"$clients")
-
-  if [[ $(jq 'length' <<<"$matches") -eq 0 ]]; then
-    printf 'DEFER  %-12s not running\n' "$label"
-    ((missing += 1))
-    return
+while IFS= read -r monitor_policy; do
+  label=$("$jq_bin" -r '.label' <<<"$monitor_policy")
+  name_pattern=$("$jq_bin" -r '.name_pattern // ".*"' <<<"$monitor_policy")
+  description_pattern=$("$jq_bin" -r '.description_pattern // ".*"' <<<"$monitor_policy")
+  expected_scale=$("$jq_bin" -r '.expected_scale' <<<"$monitor_policy")
+  matches=$("$jq_bin" -c \
+    --arg namePattern "$name_pattern" \
+    --arg descriptionPattern "$description_pattern" '
+      [
+        .[]
+        | select(((.name // "") | test($namePattern; "i")))
+        | select(((.description // "") | test($descriptionPattern; "i")))
+        | {name, scale}
+      ]
+    ' <<<"$monitors")
+  if [[ $("$jq_bin" -r 'length' <<<"$matches") -eq 0 ]]; then
+    printf 'DEFER  %-16s output not connected\n' "$label"
+    continue
   fi
-
-  if jq -e --argjson expected "$expected_xwayland" \
-    'all(.[]; .xwayland == $expected)' <<<"$matches" >/dev/null; then
-    printf 'PASS   %-12s xwayland=%s\n' "$label" "$expected_xwayland"
+  if "$jq_bin" -e --argjson expected "$expected_scale" \
+    'all(.[]; (((.scale // 0) - $expected) | fabs) < 0.01)' \
+    <<<"$matches" >/dev/null; then
+    printf 'PASS   %-16s scale=%s\n' "$label" "$expected_scale"
   else
-    printf 'FAIL   %-12s expected xwayland=%s, observed %s\n' \
-      "$label" "$expected_xwayland" \
-      "$(jq -c '[.[] | {class, xwayland}]' <<<"$matches")"
-    ((failures += 1))
+    printf 'FAIL   %-16s expected scale=%s, observed %s\n' \
+      "$label" "$expected_scale" \
+      "$("$jq_bin" -c '[.[] | {name, scale}]' <<<"$matches")"
+    failures=$((failures + 1))
   fi
+done < <("$jq_bin" -c '.monitors[]' <<<"$policy")
+
+process_has_environment() {
+  local pid=$1 variable=$2 environment_file
+  environment_file=$proc_root/$pid/environ
+  [[ -r $environment_file ]] || return 1
+  tr '\0' '\n' <"$environment_file" | cut -d= -f1 | grep -Fxq -- "$variable"
 }
 
-check_backend Discord '^(discord)$' false
-check_backend Slack '^(slack|com\\.slack\\.Slack)$' false
-check_backend Thunderbird '^(thunderbird|org\\.mozilla\\.Thunderbird)$' false
-check_backend Parsec '^(parsec|parsecd|com\\.parsecgaming\\.parsec)$' true
+process_has_argument() {
+  local pid=$1 argument=$2 command_file
+  command_file=$proc_root/$pid/cmdline
+  [[ -r $command_file ]] || return 1
+  tr '\0' '\n' <"$command_file" | grep -Eq -- "^${argument//./\\.}(=|$)"
+}
+
+while IFS= read -r app_policy; do
+  label=$("$jq_bin" -r '.label' <<<"$app_policy")
+  class_pattern=$("$jq_bin" -r '.class_pattern' <<<"$app_policy")
+  backend=$("$jq_bin" -r '.expected_backend' <<<"$app_policy")
+  scaling=$("$jq_bin" -r '.scaling' <<<"$app_policy")
+  required=$("$jq_bin" -r '.required_for_acceptance' <<<"$app_policy")
+  expected_xwayland=false
+  [[ $backend == xwayland ]] && expected_xwayland=true
+  matches=$("$jq_bin" -c \
+    --arg pattern "$class_pattern" --argjson monitors "$monitors" '
+      [
+        .[]
+        | select((.class // "") | test($pattern; "i"))
+        | . as $client
+        | {
+            class,
+            xwayland,
+            pid: (.pid // null),
+            monitor: (
+              $monitors
+              | map(select(.id == ($client.monitor // -1)))[0].name
+                // "disconnected"
+            )
+          }
+      ]
+    ' <<<"$clients")
+
+  if [[ $("$jq_bin" -r 'length' <<<"$matches") -eq 0 ]]; then
+    printf 'DEFER  %-16s not running\n' "$label"
+    [[ $required == true ]] && missing=$((missing + 1))
+    continue
+  fi
+
+  if "$jq_bin" -e --argjson expected "$expected_xwayland" \
+    'all(.[]; .xwayland == $expected)' <<<"$matches" >/dev/null; then
+    printf 'PASS   %-16s backend=%s monitors=%s\n' \
+      "$label" "$backend" \
+      "$("$jq_bin" -c '[.[].monitor] | unique' <<<"$matches")"
+  else
+    printf 'FAIL   %-16s expected backend=%s, observed %s\n' \
+      "$label" "$backend" \
+      "$("$jq_bin" -c '[.[] | {class, xwayland, monitor}]' <<<"$matches")"
+    failures=$((failures + 1))
+  fi
+
+  if [[ $scaling == compositor ]]; then
+    while IFS= read -r pid; do
+      [[ $pid =~ ^[1-9][0-9]*$ ]] || continue
+      while IFS= read -r variable; do
+        if process_has_environment "$pid" "$variable"; then
+          printf 'FAIL   %-16s pid=%s exports forbidden %s\n' "$label" "$pid" "$variable"
+          failures=$((failures + 1))
+        fi
+      done < <("$jq_bin" -r '.forbidden_compositor_scale_environment[]' <<<"$policy")
+      while IFS= read -r argument; do
+        if process_has_argument "$pid" "$argument"; then
+          printf 'FAIL   %-16s pid=%s uses forbidden %s\n' "$label" "$pid" "$argument"
+          failures=$((failures + 1))
+        fi
+      done < <("$jq_bin" -r '.forbidden_compositor_scale_arguments[]' <<<"$policy")
+    done < <("$jq_bin" -r '.[].pid // empty' <<<"$matches")
+  fi
+done < <("$jq_bin" -c '.applications[]' <<<"$policy")
 
 ((failures == 0)) || exit 1
 ((missing == 0)) || exit 2

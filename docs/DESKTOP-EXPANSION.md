@@ -287,25 +287,34 @@ fullscreen.
 
 ## HiDPI and input design
 
-Both known displays stay at scale `1.5`. Hyprland
-`xwayland.force_zero_scaling=true` remains enabled to preserve sharp
-XWayland/Wine content.
+The default `balanced` display profile uses scale `2.0` on the 2880x1800
+internal OLED and `1.5` on the 27-inch 4K Dell. The optional `matched` profile
+uses `2.25` internally so both displays have nearly equal physical UI density,
+at the cost of reducing the internal logical workspace from 1440x900 to
+1280x800. Hyprland `xwayland.force_zero_scaling=true` remains enabled to
+preserve sharp XWayland/Wine content.
 
 - Chrome, Notion, Obsidian, Discord, Slack, RHWP Desktop, and any other
   compatible Electron application use native Wayland, Wayland window
   decorations, Fcitx Wayland IME, and text-input-v3 through per-app flag files
   or managed launch wrappers.
-- Discord and Slack are the new correction targets. Their runtime class and
+- Discord and Slack are correction targets. Their runtime class and
   `xwayland` value must be verified after launch; success means native Wayland
-  and correct 1.5 compositor scaling without a forced Electron device scale.
+  and output-local compositor scaling without a forced Electron device scale.
 - Thunderbird uses its native Wayland path.
 - GIMP/PhotoGIMP and GTK utilities rely on native Wayland scaling.
-- KakaoTalk stays XWayland/Wine and uses 144 DPI inside its bottle.
+- KakaoTalk stays XWayland/Wine, remains routed to the internal output, and
+  uses 192 DPI inside its bottle to match the internal 2x profile.
 - Parsec stays XWayland with zero scaling. Its small UI is an approved
   exception; no Gamescope wrapper or global blurry scaling will be added.
 - ONLYOFFICE receives an isolated wrapper adjustment only if its installed
-  build fails the 1.5-scale smoke test. A global Qt/GDK scale override is not
+  build fails the mixed-scale smoke test. A global Qt/GDK scale override is not
   allowed.
+
+`home/dot_config/enoshima/app-display-policy.json` is the declarative backend
+and scaling registry. `desktop-scaling-status` compares it with monitor scale,
+client backend and monitor assignment, and process argument/environment names.
+It deliberately omits titles and scale variable values from diagnostics.
 
 Right Alt handling is converged in both native Wayland and XWayland state:
 
@@ -343,7 +352,7 @@ clear connectivity preflight and retry path:
 2. run the check again after Cloudflare One enrollment because WARP replaces
    the active DNS path;
 3. create a dedicated 64-bit application bottle;
-4. retain X11/Wine, 144 DPI, `XMODIFIERS=@im=fcitx`, and Wine 11.8's fixed
+4. retain X11/Wine, 192 DPI, `XMODIFIERS=@im=fcitx`, and Wine 11.8's fixed
    callback XIM preedit;
 5. allow only Downloads, Documents, and Pictures;
 6. download the installer from Kakao's official CDN;
@@ -539,7 +548,7 @@ resulting account state.
 | Quick settings | SwayNC shows six functional actions in two rows; toggle state tracks Wi-Fi, Bluetooth, and Night Light; Power, Audio, and Display open their managed tools |
 | Window controls | Required apps own native titlebars and close, minimize, and maximize/restore paths; Hyprland keyboard controls and true fullscreen remain available without Waybar or compositor-owned duplicate titlebars |
 | Fonts | Pretendard wins global sans matching, Jetendard wins mono matching, and Korean, Nerd Font, emoji, and office fallbacks render correctly |
-| Electron HiDPI | Discord and Slack report `xwayland=false` and match Chrome/Obsidian sizing at scale 1.5 |
+| Electron HiDPI | Discord and Slack report `xwayland=false` and match Chrome/Obsidian sizing on both 2.0 and 1.5 outputs without a fixed app scale |
 | Parsec | Remains XWayland, sharp, functional, and intentionally small in its management UI |
 | Fcitx | Physical Right Alt immediately toggles Korean/English in native Wayland, Electron, and KakaoTalk |
 | Drives | Both mounts survive reconnect/relogin, enforce 50 GiB caches, perform create/read/rename/delete tests, and expose no secret in Git |

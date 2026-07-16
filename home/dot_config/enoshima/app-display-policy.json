@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "monitors": [
+    {
+      "label": "Internal OLED",
+      "name_pattern": "^eDP-1$",
+      "expected_scale": 2.0
+    },
+    {
+      "label": "Dell U2725QE",
+      "description_pattern": "U2725QE",
+      "expected_scale": 1.5
+    }
+  ],
+  "forbidden_compositor_scale_environment": [
+    "GDK_SCALE",
+    "GDK_DPI_SCALE",
+    "QT_SCALE_FACTOR",
+    "QT_FONT_DPI"
+  ],
+  "forbidden_compositor_scale_arguments": [
+    "--force-device-scale-factor"
+  ],
+  "applications": [
+    {
+      "label": "Chrome",
+      "class_pattern": "^(google-chrome(-stable)?|com\\.google\\.Chrome)$",
+      "expected_backend": "wayland",
+      "scaling": "compositor",
+      "required_for_acceptance": false
+    },
+    {
+      "label": "Notion",
+      "class_pattern": ".*notion.*",
+      "expected_backend": "wayland",
+      "scaling": "compositor",
+      "required_for_acceptance": false
+    },
+    {
+      "label": "Discord",
+      "class_pattern": "^discord$",
+      "expected_backend": "wayland",
+      "scaling": "compositor",
+      "required_for_acceptance": true
+    },
+    {
+      "label": "Slack",
+      "class_pattern": "^(slack|com\\.slack\\.Slack)$",
+      "expected_backend": "wayland",
+      "scaling": "compositor",
+      "required_for_acceptance": true
+    },
+    {
+      "label": "Obsidian",
+      "class_pattern": "^(obsidian|md\\.obsidian)$",
+      "expected_backend": "wayland",
+      "scaling": "compositor",
+      "required_for_acceptance": false
+    },
+    {
+      "label": "Thunderbird",
+      "class_pattern": "^(thunderbird|org\\.mozilla\\.Thunderbird)$",
+      "expected_backend": "wayland",
+      "scaling": "compositor",
+      "required_for_acceptance": true
+    },
+    {
+      "label": "KakaoTalk",
+      "class_pattern": "^kakaotalk\\.exe$",
+      "expected_backend": "xwayland",
+      "scaling": "application-192-dpi-internal",
+      "required_for_acceptance": false
+    },
+    {
+      "label": "Parsec",
+      "class_pattern": "^(parsec|parsecd|com\\.parsecgaming\\.parsec)$",
+      "expected_backend": "xwayland",
+      "scaling": "zero-scaled-sharp-exception",
+      "required_for_acceptance": true
+    }
+  ]
+}
