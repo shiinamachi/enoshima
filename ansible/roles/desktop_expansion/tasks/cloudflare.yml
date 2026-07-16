@@ -44,6 +44,6 @@
 - name: Defer Cloudflare One daemon activation until the package exists
   ansible.builtin.debug:
     msg: >-
-      cloudflare-warp-bin is installed after Ansible by the reviewed AUR
+      cloudflare-warp-bin is installed after Ansible by the approved AUR
       phase. Re-run Ansible after that phase to enable warp-svc.service.
   when: cloudflare_warp_package.rc != 0

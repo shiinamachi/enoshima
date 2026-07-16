@@ -1,15 +1,34 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-manifest="$repo_root/packages/aur.txt"
-review_helper="$repo_root/scripts/review-aur.sh"
+manifest=${AUR_MANIFEST:-$repo_root/packages/aur.txt}
+paru_url=${AUR_PARU_URL:-https://aur.archlinux.org/paru.git}
 sudo_command=${SUDO_COMMAND_WRAPPER:-sudo}
+bootstrap_dir=
+
+cleanup() {
+  if [[ -n $bootstrap_dir ]]; then
+    rm -rf -- "$bootstrap_dir"
+  fi
+}
+trap cleanup EXIT
+
+declare -a failures=()
+record_failure() {
+  local label=$1 status=$2
+  failures+=("$label (exit $status)")
+  printf 'FAILURE: %s exited with status %s; continuing.\n' "$label" "$status" >&2
+}
 
 if [[ $EUID -eq 0 ]]; then
   echo "AUR packages must be built as an unprivileged user." >&2
   exit 1
 fi
+[[ -f $manifest && ! -L $manifest ]] || {
+  echo "AUR approval manifest is missing or unsafe: $manifest" >&2
+  exit 1
+}
 
 mapfile -t aur_packages < <(
   sed -E \
@@ -18,63 +37,93 @@ mapfile -t aur_packages < <(
     "$manifest"
 )
 
+declare -A approved=()
+for package in "${aur_packages[@]}"; do
+  if [[ ! $package =~ ^[a-z0-9@._+-]+$ ]]; then
+    echo "Invalid AUR package base in approval manifest: $package" >&2
+    exit 1
+  fi
+  if [[ -v approved["$package"] ]]; then
+    echo "Duplicate AUR package base in approval manifest: $package" >&2
+    exit 1
+  fi
+  approved["$package"]=1
+done
+
 if ((${#aur_packages[@]} == 0)); then
-  echo "No AUR packages are declared."
+  echo "No AUR packages are approved."
   exit 0
 fi
 
-echo "==> Converging declared AUR package bases"
+echo "==> Converging approved AUR package bases at their current revisions"
 printf '  %s\n' "${aur_packages[@]}"
 
-review_dir=$(mktemp -d)
-trap 'rm -rf -- "$review_dir"' EXIT
-"$review_helper" verify --destination "$review_dir"
+bootstrap_paru() {
+  local makepkg_config status
 
-expected_version() {
-  local directory=$1 epoch pkgver pkgrel
-  epoch=$(awk -F ' = ' '$1 ~ /^[[:space:]]*epoch$/ {print $2; exit}' "$directory/.SRCINFO")
-  pkgver=$(awk -F ' = ' '$1 ~ /^[[:space:]]*pkgver$/ {print $2; exit}' "$directory/.SRCINFO")
-  pkgrel=$(awk -F ' = ' '$1 ~ /^[[:space:]]*pkgrel$/ {print $2; exit}' "$directory/.SRCINFO")
-  [[ -n $pkgver && -n $pkgrel ]] || return 1
-  if [[ -n $epoch ]]; then printf '%s:%s-%s\n' "$epoch" "$pkgver" "$pkgrel"; else printf '%s-%s\n' "$pkgver" "$pkgrel"; fi
-}
+  bootstrap_dir=$(mktemp -d)
+  if git clone --quiet --depth 1 "$paru_url" "$bootstrap_dir/paru"; then
+    :
+  else
+    status=$?
+    record_failure "bootstrap paru clone" "$status"
+    return 1
+  fi
 
-package_base_is_current() {
-  local directory=$1 version pkgname installed found=false
-  version=$(expected_version "$directory") || return 1
-  while IFS= read -r pkgname; do
-    [[ -n $pkgname ]] || continue
-    found=true
-    installed=$(pacman -Q "$pkgname" 2>/dev/null | awk '{print $2}') || return 1
-    [[ $installed == "$version" ]] || return 1
-  done < <(awk -F ' = ' '$1 ~ /^[[:space:]]*pkgname$/ {print $2}' "$directory/.SRCINFO")
-  [[ $found == true ]]
+  makepkg_config=$bootstrap_dir/makepkg.conf
+  if cp -- /etc/makepkg.conf "$makepkg_config"; then
+    :
+  else
+    status=$?
+    record_failure "bootstrap paru makepkg configuration" "$status"
+    return 1
+  fi
+  printf '\nPACMAN_AUTH=(%q)\n' "$sudo_command" >>"$makepkg_config"
+
+  if (
+    cd "$bootstrap_dir/paru"
+    makepkg --config "$makepkg_config" --install --noconfirm --syncdeps
+  ); then
+    :
+  else
+    status=$?
+    record_failure "bootstrap paru build" "$status"
+    return 1
+  fi
 }
 
 if ! command -v paru >/dev/null 2>&1 || ! paru --version >/dev/null 2>&1; then
-  echo "==> Bootstrapping paru from its reviewed, exact AUR revision"
-  makepkg_config=$review_dir/makepkg.conf
-  cp -- /etc/makepkg.conf "$makepkg_config"
-  printf '\nPACMAN_AUTH=(%q)\n' "$sudo_command" >>"$makepkg_config"
-  (
-    cd "$review_dir/paru"
-    makepkg --config "$makepkg_config" --install --noconfirm --syncdeps
-  )
+  echo "==> Bootstrapping paru from its currently approved AUR package base"
+  bootstrap_paru || true
 fi
 
-for package in "${aur_packages[@]}"; do
-  if package_base_is_current "$review_dir/$package"; then
-    printf '==> AUR package base is current: %s\n' "$package"
-    continue
-  fi
-  printf '==> Building reviewed AUR package base: %s\n' "$package"
-  paru \
-    --sudo "$sudo_command" \
-    --noupgrademenu \
-    --nosudoloop \
-    --pgpfetch \
-    --noconfirm \
-    --build \
-    --install \
-    -- "$review_dir/$package"
-done
+if ! command -v paru >/dev/null 2>&1 || ! paru --version >/dev/null 2>&1; then
+  record_failure "AUR package convergence: paru is unavailable" 127
+else
+  for package in "${aur_packages[@]}"; do
+    printf '==> Installing approved AUR package base: %s\n' "$package"
+    if paru \
+      --sudo "$sudo_command" \
+      --noupgrademenu \
+      --nosudoloop \
+      --skipreview \
+      --pgpfetch \
+      --noconfirm \
+      --needed \
+      -S \
+      -- "$package"; then
+      printf 'SUCCESS: approved AUR package base converged: %s\n' "$package"
+    else
+      status=$?
+      record_failure "AUR package base $package" "$status"
+    fi
+  done
+fi
+
+if ((${#failures[@]} > 0)); then
+  printf 'AUR convergence completed with %d FAILURE(S):\n' "${#failures[@]}" >&2
+  printf '  %s\n' "${failures[@]}" >&2
+  exit 1
+fi
+
+echo "Approved AUR package convergence completed successfully."

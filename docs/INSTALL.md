@@ -71,20 +71,12 @@ that credential in the background, and forces all child privilege escalation
 to be non-interactive. If the credential cannot be refreshed, the run fails
 instead of asking for a second password.
 
-Local PKGBUILDs are reviewed and pinned in this repository. Every AUR package
-base also has an exact AUR commit plus `PKGBUILD` and `.SRCINFO` hashes in
-`packages/aur-review.lock`. Bootstrap materializes those reviewed commits and
-builds the resulting local directories; it stops before any build when the AUR
-head or either hash differs. Review an update and record the new revision with:
-
-```bash
-./scripts/review-aur.sh update PACKAGE_BASE
-```
-
-The command displays the complete AUR Git diff and accepts only the literal
-`REVIEW` response. Move a recipe under `packages/local/` when its upstream
-payload also needs a repository-owned content pin. The package phases do not
-stop for individual approval after the review gate. `SKIP_LOCAL=true` and
+Local PKGBUILDs are reviewed and pinned in this repository. `packages/aur.txt`
+is instead the approval allowlist for AUR package bases: each listed base is
+installed from its current upstream revision without a per-revision review
+gate. Move a recipe under `packages/local/` when its upstream payload also
+needs a repository-owned content pin. A failure in one AUR package is reported
+and the remaining approved bases are still attempted. `SKIP_LOCAL=true` and
 `SKIP_AUR=true` remain available for partial recovery, but the complete
 `tpx1c13` profile requires both phases. Local
 packages are built only when the declared version differs from the installed

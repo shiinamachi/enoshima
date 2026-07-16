@@ -39,23 +39,18 @@ bootstrap 순서는 다음과 같다.
 1. `pacman -Syu` 방식의 Arch 전체 업그레이드와 bootstrap 의존성 설치
 2. 검토·고정된 로컬 PKGBUILD 설치
 3. Ansible 시스템 상태 적용
-4. commit과 recipe hash가 고정된 AUR allowlist 검증·설치
+4. `packages/aur.txt`에 승인된 최신 AUR package base 설치
 5. AUR 패키지에 의존하는 Ansible 역할 재수렴
 6. chezmoi 사용자 구성 적용
 7. 기존 통합 postflight 실행
 
 부분 업그레이드나 별도의 `pacman -Sy`를 실행하지 않는다.
 
-`packages/aur-review.lock`은 모든 AUR base의 commit, `PKGBUILD`, `.SRCINFO`
-SHA-256을 보유한다. remote HEAD가 달라지면 어떤 AUR package도 build하기 전에
-bootstrap이 중단된다. update는 전체 diff를 검토하고 다음 명령에서 `REVIEW`를
-직접 입력해 승인한다.
+`packages/aur.txt` 자체가 AUR package base 승인 목록이다. 목록에 있는 package는
+현재 upstream revision을 별도 commit/hash 승인 없이 설치한다. 한 package 설치가
+실패하면 `FAILURE`로 기록하고 다음 승인 package 설치를 계속한다.
 
-```bash
-./scripts/review-aur.sh update PACKAGE_BASE
-```
-
-`pear-desktop-bin`도 같은 gate를 통과한다. 설치 후 Launcher 검색, Dock pin/unpin,
+`pear-desktop-bin`도 같은 승인 목록에 포함된다. 설치 후 Launcher 검색, Dock pin/unpin,
 최소화·복원·닫기를 확인하고 `hyprctl clients -j`로 실제 class/title을 관찰하기 전에는
 앱별 window rule을 추가하지 않는다. Pear Desktop의 desktop entry와 실행 파일
 이름에는 upstream 호환성을 위해 아직 `youtube-music`이 남아 있다. FileZilla는 공식

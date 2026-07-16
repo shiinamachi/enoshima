@@ -2,17 +2,17 @@
 
 `native.txt`, `management.txt`, `optional-deps.txt`, and `absent.txt` are
 consumed by the Ansible package role. `aur.txt` is consumed by
-`scripts/install-aur.sh`; every entry must have an exact AUR commit and recipe
-hashes in `aur-review.lock`. Reviewed, pinned PKGBUILDs under `local/` are
-built by `scripts/install-local-packages.sh`.
+`scripts/install-aur.sh`; listing a package base there approves installation of
+its current AUR revision. Reviewed, pinned PKGBUILDs under `local/` are built by
+`scripts/install-local-packages.sh`.
 
 Comments and blank lines are allowed. Keep one package name per line.
 
-Before accepting an AUR change, run `scripts/review-aur.sh update PKGBASE`,
-inspect the full Git diff, and type `REVIEW`. Normal convergence first clones
-all locked package bases, verifies their commit, `PKGBUILD`, `.SRCINFO`, and
-declared package-base name, then builds those exact local directories. It never
-asks paru to fetch a second unreviewed recipe.
+Normal convergence asks paru to install the latest revision of every approved
+package base without a per-revision review prompt. A failure in one package is
+reported as `FAILURE`, and the remaining approved package bases are still
+attempted. Move a recipe under `local/` when its exact recipe or upstream
+payload must remain repository-pinned.
 
 `absent.txt` is applied before desired packages are installed so conflicting
 packages, such as `power-profiles-daemon`, are removed deterministically.

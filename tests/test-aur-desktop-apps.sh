@@ -5,19 +5,10 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 manifest=$repo_root/packages/aur.txt
 native_manifest=$repo_root/packages/native.txt
 absent_manifest=$repo_root/packages/absent.txt
-lock_file=$repo_root/packages/aur-review.lock
 postflight=$repo_root/scripts/postflight.sh
 
 package=pear-desktop-bin
 grep -Fxq "$package" "$manifest"
-jq -e --arg package "$package" '
-  .packages[] | select(
-    .pkgbase == $package and
-    (.aur_commit | test("^[0-9a-f]{40}$")) and
-    (.pkgbuild_sha256 | test("^[0-9a-f]{64}$")) and
-    (.srcinfo_sha256 | test("^[0-9a-f]{64}$"))
-  )
-' "$lock_file" >/dev/null
 
 for electerm_package in \
   electerm \
@@ -40,10 +31,6 @@ for electerm_package in \
     printf 'Electerm must remain user-managed rather than intentionally absent.\n' >&2
     exit 1
   fi
-
-  jq -e --arg package "$electerm_package" \
-    '[.packages[] | select(.pkgbase == $package)] | length == 0' \
-    "$lock_file" >/dev/null
 done
 grep -Fxq filezilla "$native_manifest"
 grep -Fq '/usr/share/applications/filezilla.desktop' "$postflight"

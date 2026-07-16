@@ -467,7 +467,7 @@ launch of unmodified GIMP as a rollback path.
 
 ### ONLYOFFICE
 
-Install the reviewed AUR `onlyoffice-bin` package and its metric-compatible
+Install the approved AUR `onlyoffice-bin` package and its metric-compatible
 font dependencies. It is the default for DOCX, XLSX, and PPTX. PDF remains
 assigned according to the existing MIME policy unless the user later requests
 ONLYOFFICE PDF editing by default.

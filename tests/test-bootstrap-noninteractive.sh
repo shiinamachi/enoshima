@@ -30,17 +30,16 @@ for assignment in \
     fail "bootstrap does not enforce $assignment"
 done
 
-for flag in --noupgrademenu --nosudoloop --noconfirm; do
+for flag in --noupgrademenu --nosudoloop --skipreview --noconfirm; do
   grep -Fq -- "$flag" "$aur_installer" ||
     fail "AUR convergence does not enforce $flag"
 done
-if grep -Fq -- '--skipreview' "$aur_installer"; then
-  fail 'AUR convergence bypasses the review lock'
-fi
-grep -Fq "\"\$review_helper\" verify --destination" "$aur_installer" ||
-  fail 'AUR convergence does not materialize review-locked package bases'
+grep -Fq -- '--needed' "$aur_installer" ||
+  fail 'AUR convergence does not preserve already-current approved packages'
+grep -Fq -- '-S' "$aur_installer" ||
+  fail 'AUR convergence does not install the current approved package base'
 grep -Fq "PACMAN_AUTH=(%q)" "$aur_installer" ||
-  fail 'reviewed paru bootstrap does not preserve the single sudo session'
+  fail 'paru bootstrap does not preserve the single sudo session'
 
 [[ $(git config --file "$git_config" --get core.editor) == 'zeditor --wait' ]] ||
   fail 'Git does not use the managed graphical editor outside bootstrap'

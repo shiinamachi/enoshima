@@ -275,12 +275,12 @@ A logout/login is required after applying the UWSM environment.
 
 Official Arch packages provide Ghostty, Zed, Discord, Obsidian, and FileZilla.
 Bottles is installed from user-scoped Flathub. Google Chrome, Slack, Parsec,
-Pear Desktop, and the requested unofficial Notion package are reviewed AUR
-builds. Firefox and Kitty are removed.
+Pear Desktop, and the requested unofficial Notion package are approved AUR
+package bases. Firefox and Kitty are removed.
 
-The AUR review lock covers the complete allowlist, not only the two newly added
-desktop applications. Bootstrap verifies the remote head, AUR commit and recipe
-hashes before building local clones. Pear Desktop currently retains upstream's
+The complete allowlist in `packages/aur.txt`, not individual upstream commits,
+defines the AUR trust boundary. Bootstrap installs the current revision of each
+approved base and continues with later bases after a failure. Pear Desktop currently retains upstream's
 `com.github.th-ch.youtube-music.desktop` ID and `youtube-music` launcher. Do not
 write Hyprland class rules from those filenames: launch each app once, inspect
 its actual `hyprctl clients -j` class/title, and test Launcher search, Dock
