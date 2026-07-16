@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/home/dot_local/bin/executable_kakaotalk-profile
 setup_helper=$repo_root/home/dot_local/bin/executable_kakaotalk-setup
+smoke_helper=$repo_root/home/dot_local/bin/executable_kakaotalk-smoke-test
 test_root=$(mktemp -d)
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -148,5 +149,10 @@ grep -Fq 'manager.dependency_manager.install(config, [dependency, manifest])' \
   "$setup_helper"
 grep -Fq 'the KakaoTalk bottle did not converge to the selected profile' \
   "$setup_helper"
+grep -Fq 'Uninstall\KakaoTalk" /v DisplayVersion' "$smoke_helper"
+if grep -Fq "'wine powershell" "$smoke_helper"; then
+  printf 'The smoke test tries to nest the Wine launcher inside a Bottles shell.\n' >&2
+  exit 1
+fi
 
 printf 'KakaoTalk profile tests passed.\n'

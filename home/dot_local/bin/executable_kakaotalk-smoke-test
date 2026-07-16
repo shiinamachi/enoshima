@@ -62,12 +62,12 @@ kakaotalk_version=unavailable
 if command -v flatpak >/dev/null 2>&1; then
   bottles_version=$(command_version unavailable flatpak run \
     --command=bottles-cli "$app_id" --version)
-  # PowerShell expands $env inside the Wine process, not this Bash process.
-  # shellcheck disable=SC2016
   kakaotalk_version=$(flatpak run --command=bottles-cli "$app_id" shell \
     -b "$bottle_name" -i \
-    'wine powershell -NoProfile -Command "(Get-Item \"$env:LOCALAPPDATA\\Kakao\\KakaoTalk\\KakaoTalk.exe\").VersionInfo.FileVersion"' \
-    2>/dev/null | tr -d '\r' | grep -E '^[0-9]+([.][0-9]+){1,3}$' | tail -n 1 || true)
+    'reg query "HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\KakaoTalk" /v DisplayVersion' \
+    2>/dev/null | tr -d '\r' |
+    sed -nE 's/^[[:space:]]*DisplayVersion[[:space:]]+REG_SZ[[:space:]]+([0-9]+([.][0-9]+){1,3}).*/\1/p' |
+    tail -n 1 || true)
   [[ -n $kakaotalk_version ]] || kakaotalk_version=unavailable
 fi
 fcitx_version=$(command_version unavailable fcitx5 --version)
