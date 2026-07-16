@@ -188,17 +188,17 @@ jq -e '
   ."margin-top" == 14 and
   ."margin-left" == 14 and
   ."margin-right" == 14 and
-  ."modules-left" == ["ext/workspaces", "hyprland/window"] and
-  ."modules-right" == ["custom/window-minimize", "custom/window-maximize", "custom/window-close", "custom/notification", "pulseaudio", "network", "bluetooth", "battery", "group/system", "custom/power"] and
+  ."modules-left" == ["ext/workspaces"] and
+  ."modules-right" == ["custom/notification", "pulseaudio", "network", "bluetooth", "battery", "group/system", "custom/power"] and
   ."ext/workspaces"."all-outputs" == false and
   ."group/system".drawer."transition-duration" == 0 and
   ."group/system".modules == ["custom/system", "tray", "backlight", "custom/power-profile", "custom/wwan", "clock#date"] and
   ."custom/notification".tooltip == true and
   ."custom/power"."on-click" == "desktop-power menu" and
-  ."hyprland/window".icon == true and
-  ."custom/window-minimize"."on-click" == "desktop-window-action minimize --tracked" and
-  ."custom/window-maximize"."on-click" == "desktop-window-action maximize --tracked" and
-  ."custom/window-close"."on-click" == "desktop-window-action close --tracked" and
+  (has("hyprland/window") | not) and
+  (has("custom/window-minimize") | not) and
+  (has("custom/window-maximize") | not) and
+  (has("custom/window-close") | not) and
   ."network"."on-click" == "swaync-client -t -sw" and
   ."ext/workspaces"."format-icons"."3" == "DOCS"
 ' "$waybar_config" >/dev/null
@@ -216,6 +216,13 @@ assert_contains "$waybar_style" '#battery.critical {'
 assert_contains "$waybar_style" 'border: 2px solid alpha(@cyber_critical, 0.86);'
 assert_contains "$waybar_style" '#network.wifi,'
 assert_contains "$waybar_style" '#bluetooth.connected,'
+for retired_selector in \
+  '#window' \
+  '#custom-window-minimize' \
+  '#custom-window-maximize' \
+  '#custom-window-close'; do
+  assert_not_contains "$waybar_style" "$retired_selector"
+done
 assert_not_contains "$waybar_style" '"JetBrainsMono Nerd Font"'
 assert_not_contains "$waybar_style" 'battery-pulse'
 

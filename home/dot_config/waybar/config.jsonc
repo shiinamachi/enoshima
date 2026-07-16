@@ -8,8 +8,7 @@
     "margin-right": 14,
 
     "modules-left": [
-        "ext/workspaces",
-        "hyprland/window"
+        "ext/workspaces"
     ],
 
     "modules-center": [
@@ -17,9 +16,6 @@
     ],
 
     "modules-right": [
-        "custom/window-minimize",
-        "custom/window-maximize",
-        "custom/window-close",
         "custom/notification",
         "pulseaudio",
         "network",
@@ -42,17 +38,6 @@
         "sort-by-id": true,
         "all-outputs": false,
         "on-click": "activate"
-    },
-
-    "hyprland/window": {
-        "format": "{title} · {class}",
-        "icon": true,
-        "icon-size": 18,
-        "max-length": 64,
-        "separate-outputs": false,
-        "rewrite": {
-            "^ · (.*)$": "$1"
-        }
     },
 
     "clock": {
@@ -185,23 +170,5 @@
         "format": "󰐥",
         "tooltip-format": "전원 및 세션",
         "on-click": "desktop-power menu"
-    },
-
-    "custom/window-minimize": {
-        "format": "󰖰",
-        "tooltip-format": "최소화",
-        "on-click": "desktop-window-action minimize --tracked"
-    },
-
-    "custom/window-maximize": {
-        "format": "󰖯",
-        "tooltip-format": "최대화 / 복원",
-        "on-click": "desktop-window-action maximize --tracked"
-    },
-
-    "custom/window-close": {
-        "format": "󰅖",
-        "tooltip-format": "닫기",
-        "on-click": "desktop-window-action close --tracked"
     }
 }

@@ -535,7 +535,11 @@ check "Waybar uses quiet persistent status and a secondary system drawer" \
   jq -e '
     .height == 48 and
     ."margin-top" == 14 and
-    ."modules-left" == ["ext/workspaces", "hyprland/window"] and
+    ."modules-left" == ["ext/workspaces"] and
+    (has("hyprland/window") | not) and
+    (has("custom/window-minimize") | not) and
+    (has("custom/window-maximize") | not) and
+    (has("custom/window-close") | not) and
     (."modules-right" | index("group/system") != null)
   ' \
   "$HOME/.config/waybar/config.jsonc"
