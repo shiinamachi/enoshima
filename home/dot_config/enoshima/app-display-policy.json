@@ -4,7 +4,7 @@
     {
       "label": "Internal OLED",
       "name_pattern": "^eDP-1$",
-      "expected_scale": 2.0
+      "expected_scale": 1.5
     },
     {
       "label": "Dell U2725QE",
@@ -68,7 +68,7 @@
       "label": "KakaoTalk",
       "class_pattern": "^kakaotalk\\.exe$",
       "expected_backend": "xwayland",
-      "scaling": "application-192-dpi-internal",
+      "scaling": "application-144-dpi-internal",
       "required_for_acceptance": false
     },
     {

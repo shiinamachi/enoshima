@@ -39,7 +39,7 @@ jq -n --arg sha "$archive_sha" '
     },
     bottle: {
       architecture: "win64", environment: "application", graphics: "x11",
-      dxvk: false, vkd3d: false, dpi: 192
+      dxvk: false, vkd3d: false, dpi: 144
     },
     dependencies: [
       {id:"cjkfonts",winetricks:"cjkfonts"},
@@ -151,6 +151,9 @@ grep -Fq 'the KakaoTalk bottle did not converge to the selected profile' \
   "$setup_helper"
 grep -Fq 'wine_registry.remove(kakaotalk_x11, "InputStyle")' "$setup_helper"
 grep -Fq 'add(kakaotalk_x11, "UseXIM", "Y")' "$setup_helper"
+grep -Fq 'custom_dpi:144' "$setup_helper"
+grep -Fq '"dpi": 144' \
+  "$repo_root/home/dot_config/enoshima/kakaotalk/profiles/wine-11.8-staging-candidate.json"
 grep -Fq 'Uninstall\KakaoTalk" /v DisplayVersion' "$smoke_helper"
 if grep -Fq "'wine powershell" "$smoke_helper"; then
   printf 'The smoke test tries to nest the Wine launcher inside a Bottles shell.\n' >&2

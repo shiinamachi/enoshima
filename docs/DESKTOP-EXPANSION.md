@@ -294,10 +294,10 @@ fullscreen.
 
 ## HiDPI and input design
 
-The default `balanced` display profile uses scale `2.0` on the 2880x1800
-internal OLED and `1.5` on the 27-inch 4K Dell. The optional `matched` profile
+The default `balanced` display profile uses scale `1.5` on both the 2880x1800
+internal OLED and the 27-inch 4K Dell. The optional `matched` profile
 uses `2.25` internally so both displays have nearly equal physical UI density,
-at the cost of reducing the internal logical workspace from 1440x900 to
+at the cost of reducing the internal logical workspace from 1920x1200 to
 1280x800. Hyprland `xwayland.force_zero_scaling=true` remains enabled to
 preserve sharp XWayland/Wine content.
 
@@ -311,7 +311,7 @@ preserve sharp XWayland/Wine content.
 - Thunderbird uses its native Wayland path.
 - GIMP/PhotoGIMP and GTK utilities rely on native Wayland scaling.
 - KakaoTalk stays XWayland/Wine, remains routed to the internal output, and
-  uses 192 DPI inside its bottle to match the internal 2x profile.
+  uses 144 DPI inside its bottle to match the internal 1.5x profile.
 - Parsec stays XWayland with zero scaling. Its small UI is an approved
   exception; no Gamescope wrapper or global blurry scaling will be added.
 - ONLYOFFICE receives an isolated wrapper adjustment only if its installed
@@ -359,7 +359,7 @@ clear connectivity preflight and retry path:
 2. run the check again after Cloudflare One enrollment because WARP replaces
    the active DNS path;
 3. create a dedicated 64-bit application bottle;
-4. retain X11/Wine, 192 DPI, `XMODIFIERS=@im=fcitx`, and Wine 11.8's fixed
+4. retain X11/Wine, 144 DPI, `XMODIFIERS=@im=fcitx`, and Wine 11.8's fixed
    callback XIM preedit;
 5. allow only Downloads, Documents, and Pictures;
 6. download the installer from Kakao's official CDN;

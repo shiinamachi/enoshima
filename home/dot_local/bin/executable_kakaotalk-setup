@@ -593,18 +593,18 @@ configure_korean_bottle
 printf 'Installing the pinned KakaoTalk compatibility dependencies.\n'
 install_profile_dependencies
 
-# XIM is required for Hangul composition in Wine/XWayland. KakaoTalk is routed
-# to the internal workspace, so its 192-DPI Wine desktop matches the 2x
-# compositor profile (96 * 2).
+# XIM is required for Hangul composition in Wine/XWayland. A 144-DPI Wine
+# desktop matches the 1.5 compositor scale on the internal workspace
+# (96 * 1.5).
 "${bottles_cli[@]}" edit \
   -b "$bottle_name" \
-  --params wayland:false,custom_dpi:192 \
+  --params wayland:false,custom_dpi:144 \
   --env-var XMODIFIERS=@im=fcitx
 "${bottles_cli[@]}" reg add \
   -b "$bottle_name" \
   -k 'HKEY_CURRENT_USER\Control Panel\Desktop' \
   -v LogPixels \
-  -d 192 \
+  -d 144 \
   -t REG_DWORD
 "${bottles_cli[@]}" reg add \
   -b "$bottle_name" \

@@ -14,7 +14,7 @@
     "graphics": "x11",
     "dxvk": false,
     "vkd3d": false,
-    "dpi": 192
+    "dpi": 144
   },
   "dependencies": [
     {"id": "cjkfonts", "winetricks": "cjkfonts"},

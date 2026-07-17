@@ -52,7 +52,7 @@ command -v flock >/dev/null 2>&1 || die 'flock is required'
 defaults=$("$jq_bin" -c -e '
   select(
     .schema == 2
-    and .display_policy_revision == 2
+    and .display_policy_revision == 3
     and (.internal_output | type == "string")
     and (.known_external_description_pattern | type == "string")
     and (.confirmation_timeout_seconds | type == "number")
@@ -425,6 +425,24 @@ legacy_managed_default() {
   ' <<<"$profile" >/dev/null
 }
 
+managed_default_needs_refresh() {
+  local profile=$1
+
+  # Schema-2 topologies explicitly saved as the managed default profile follow
+  # newer display policy revisions. Custom and named alternative profiles are
+  # preserved exactly as the user confirmed them.
+  "$jq_bin" -e \
+    --arg defaultProfile "$default_profile" \
+    --argjson policyRevision "$policy_revision" '
+      .schema == 2
+      and ((.policy_revision // 0) < $policyRevision)
+      and ((.profile // "") == $defaultProfile)
+    ' <<<"$profile" >/dev/null && return 0
+
+  # Continue supporting migration from the old schema-1 managed defaults.
+  legacy_managed_default "$profile"
+}
+
 arm_revert() {
   "$systemctl_bin" --user restart desktop-display-revert.timer >/dev/null 2>&1
 }
@@ -593,7 +611,7 @@ case ${1:-} in
       profile_json=$("$jq_bin" -c -e 'select((.schema == 1 or .schema == 2) and (.monitors | length > 0))' "$profile") || exit 0
       mode=$("$jq_bin" -r '.mode' <<<"$profile_json")
       snapshot=$(capture_snapshot "$monitors")
-      if legacy_managed_default "$profile_json"; then
+      if managed_default_needs_refresh "$profile_json"; then
         apply_mode "$mode" false "$default_profile"
         save_profile "$(monitors_all)" "$mode" "$default_profile"
       else

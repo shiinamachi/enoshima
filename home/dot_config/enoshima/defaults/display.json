@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "display_policy_revision": 2,
+  "display_policy_revision": 3,
   "internal_output": "eDP-1",
   "known_external_description_pattern": "U2725QE",
   "confirmation_timeout_seconds": 15,
@@ -8,10 +8,10 @@
   "fallback_external_scale": "auto",
   "profiles": {
     "balanced": {
-      "internal_scale": 2.0,
-      "internal_position": "0x540",
+      "internal_scale": 1.5,
+      "internal_position": "0x240",
       "known_external_scale": 1.5,
-      "known_external_position": "1440x0"
+      "known_external_position": "1920x0"
     },
     "matched": {
       "internal_scale": 2.25,

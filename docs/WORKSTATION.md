@@ -65,17 +65,17 @@ before relying on fingerprint-only access.
 
 ## Displays and HiDPI
 
-The default `balanced` profile uses scale `2.0` on the internal OLED and `1.5`
-on the Dell, both at 120 Hz. The coordinates are Hyprland logical pixels after
+The default `balanced` profile uses scale `1.5` on both the internal OLED and
+the Dell, both at 120 Hz. The coordinates are Hyprland logical pixels after
 scaling:
 
 | Output | Mode | Logical size | Position | Role |
 | --- | --- | --- | --- | --- |
-| ThinkPad `eDP-1` | 2880x1800@120 | 1440x900 | `0x540` | lower-left |
-| Dell U2725QE | 3840x2160@120 | 2560x1440 | `1440x0` | upper-right |
+| ThinkPad `eDP-1` | 2880x1800@120 | 1920x1200 | `0x240` | lower-left |
+| Dell U2725QE | 3840x2160@120 | 2560x1440 | `1920x0` | upper-right |
 
 This bottom-aligns the panels while putting the Dell fully to the right. The
-540 logical-pixel vertical offset bottom-aligns the 900-pixel internal
+240 logical-pixel vertical offset bottom-aligns the 1200-pixel internal
 workspace with the 1440-pixel Dell workspace. The internal panel stays enabled
 while the Dell is connected. `desktop-display-mode apply-profile matched`
 selects the optional 2.25x, 1280x800 internal profile.
@@ -94,7 +94,7 @@ Hyprland IPC and the display are available.
 The profile uses SDR, 8-bit output, and VRR off. This is the conservative path
 for Parsec, portals, screenshots, and Wine capture. XWayland zero-scaling is
 enabled so legacy applications render sharply; the KakaoTalk bottle is set to
-192 DPI because its workspace is routed to the internal 2x output. Parsec
+144 DPI to match the internal 1.5x output. Parsec
 retains its intentionally small, sharp zero-scaled XWayland UI.
 
 ## Shell environment
@@ -338,7 +338,7 @@ kakaotalk-setup
 The helper verifies and installs the pinned Wine 11.8 staging candidate, creates
 a dedicated 64-bit application bottle, installs the profile's CJK fonts,
 Visual C++ runtime and rich-edit dependencies, grants only
-Downloads/Documents/Pictures, exports Fcitx XIM, applies 192 DPI, launches the
+Downloads/Documents/Pictures, exports Fcitx XIM, applies 144 DPI, launches the
 official Kakao installer, and registers the installed executable. The
 `kakaotalk` wrapper and login autostart remain silent until provisioning is
 complete. The dedicated bottle enables XIM and removes legacy `InputStyle=root`

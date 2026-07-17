@@ -28,7 +28,7 @@ export DESKTOP_SCALING_PROC_ROOT=$test_root/proc
 
 cat >"$test_root/monitors.json" <<'EOF'
 [
-  {"id":0,"name":"eDP-1","description":"Samsung OLED","scale":2.0},
+  {"id":0,"name":"eDP-1","description":"Samsung OLED","scale":1.5},
   {"id":1,"name":"DP-1","description":"Dell U2725QE","scale":1.5}
 ]
 EOF
@@ -67,7 +67,7 @@ for launcher in \
   fi
 done
 jq -e '
-  any(.applications[]; .label == "KakaoTalk" and .scaling == "application-192-dpi-internal")
+  any(.applications[]; .label == "KakaoTalk" and .scaling == "application-144-dpi-internal")
   and any(.applications[]; .label == "Parsec" and .scaling == "zero-scaled-sharp-exception")
 ' "$DESKTOP_SCALING_POLICY_FILE" >/dev/null
 
@@ -93,7 +93,7 @@ fi
 jq '. + [{"class":"parsec","xwayland":true,"title":"private host","monitor":1,"pid":106}]' \
   "$test_root/clients.json" >"$test_root/restored.json"
 mv -- "$test_root/restored.json" "$test_root/clients.json"
-jq 'map(if .name == "eDP-1" then .scale = 1.5 else . end)' \
+jq 'map(if .name == "eDP-1" then .scale = 2 else . end)' \
   "$test_root/monitors.json" >"$test_root/wrong-scale.json"
 mv -- "$test_root/wrong-scale.json" "$test_root/monitors.json"
 if bash "$helper" >"$test_root/scale.out"; then
@@ -102,9 +102,9 @@ if bash "$helper" >"$test_root/scale.out"; then
 else
   [[ $? -eq 1 ]]
 fi
-grep -Fq 'expected scale=2' "$test_root/scale.out"
+grep -Fq 'expected scale=1.5' "$test_root/scale.out"
 
-jq 'map(if .name == "eDP-1" then .scale = 2 else . end)' \
+jq 'map(if .name == "eDP-1" then .scale = 1.5 else . end)' \
   "$test_root/monitors.json" >"$test_root/correct-scale.json"
 mv -- "$test_root/correct-scale.json" "$test_root/monitors.json"
 printf 'LANG=en_US.UTF-8\0QT_SCALE_FACTOR=2\0' >"$test_root/proc/103/environ"
