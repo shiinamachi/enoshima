@@ -558,7 +558,7 @@ ShellRoot {
             onStreamFinished: {
                 try {
                     const next = JSON.parse(text);
-                    if (next.version === 1) {
+                    if (next.version === 2) {
                         root.snapshot = next;
                         if (root.displayOverlayOpen
                                 && !next.monitors.some(monitor =>

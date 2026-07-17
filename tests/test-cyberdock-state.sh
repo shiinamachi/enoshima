@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/home/dot_local/bin/executable_cyberdock-state
+shell_qml=$repo_root/home/dot_config/quickshell/cyberdock/shell.qml
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
@@ -230,6 +231,11 @@ reset_fixture
 snapshot=$(run_state snapshot)
 jq -e '.version == 2 and .generation == 0 and (.windows | length == 2) and (.windows | all(.minimized == false))' \
   <<<"$snapshot" >/dev/null || fail 'unexpected initial snapshot'
+grep -Fq 'if (next.version === 2)' "$shell_qml" ||
+  fail 'Quickshell does not consume the current Cyberdock snapshot schema'
+if grep -Fq 'if (next.version === 1)' "$shell_qml"; then
+  fail 'Quickshell still accepts only the retired Cyberdock snapshot schema'
+fi
 jq -e 'all(.windows[]; .workspace.name != "special:tray" and .class != "xembed-sni-proxy")' \
   <<<"$snapshot" >/dev/null || fail 'tray bridge surface leaked into the dock snapshot'
 [[ $(stat -c %a "$XDG_RUNTIME_DIR/cyberdock") == 700 ]] || fail 'runtime directory mode is not 0700'
