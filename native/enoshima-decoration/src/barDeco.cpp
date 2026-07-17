@@ -45,7 +45,7 @@ CHyprBar::CHyprBar(PHLWINDOW pWindow) : IHyprWindowDecoration(pWindow) {
 
     // move events
     m_pTouchMoveCallback = Event::bus()->m_events.input.touch.motion.listen([&](ITouch::SMotionEvent e, Event::SCallbackInfo& info) { onTouchMove(info, e); });
-    m_pMouseMoveCallback = Event::bus()->m_events.input.mouse.move.listen([&](Vector2D c, Event::SCallbackInfo& info) { onMouseMove(c); });
+    m_pMouseMoveCallback = Event::bus()->m_events.input.mouse.move.listen([&](Vector2D c, Event::SCallbackInfo&) { onMouseMove(c); });
     m_pKeyboardKeyCallback = Event::bus()->m_events.input.keyboard.key.listen(
         [&](IKeyboard::SKeyEvent e, Event::SCallbackInfo& info) { onKeyboardKey(info, e); });
 
@@ -68,7 +68,7 @@ SDecorationPositioningInfo CHyprBar::getPositioningInfo() {
     info.edges          = DECORATION_EDGE_TOP;
     info.priority       = PRECEDENCE ? 10005 : 5000;
     info.reserved       = true;
-    info.desiredExtents = {{0, m_hidden || !ENABLED ? 0 : HEIGHT}, {0, 0}};
+    info.desiredExtents = {{0, m_hidden || !ENABLED ? 0 : static_cast<int>(HEIGHT)}, {0, 0}};
     return info;
 }
 
@@ -163,7 +163,7 @@ void CHyprBar::onTouchUp(Event::SCallbackInfo& info, ITouch::SUpEvent e) {
     handleUpEvent(info);
 }
 
-void CHyprBar::onMouseMove(Vector2D coords) {
+void CHyprBar::onMouseMove(Vector2D) {
     // ensure proper redraws of button icons on hover when using hardware cursors
     if (g_pGlobalState->config.iconOnHover->value())
         damageOnButtonHover();
@@ -192,7 +192,7 @@ void CHyprBar::onKeyboardKey(Event::SCallbackInfo& info, IKeyboard::SKeyEvent ev
     m_bDragPending  = false;
 }
 
-void CHyprBar::onTouchMove(Event::SCallbackInfo& info, ITouch::SMotionEvent e) {
+void CHyprBar::onTouchMove(Event::SCallbackInfo&, ITouch::SMotionEvent e) {
     if (!m_bDragPending || !m_bTouchEv || !validMapped(m_pWindow) || e.touchID != m_touchId)
         return;
 
@@ -286,7 +286,7 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
         g_pKeybindManager->changeMouseBindMode(MBIND_INVALID);
         m_bDraggingThis = false;
         if (m_bTouchEv)
-            Config::Actions::floatWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE);
+            (void)Config::Actions::floatWindow(Config::Actions::eTogglableAction::TOGGLE_ACTION_DISABLE);
 
         Log::logger->log(Log::DEBUG, "[enoshima-decoration] Dragging ended on {:x}", (uintptr_t)m_pWindow.lock().get());
     }
@@ -331,7 +331,7 @@ bool CHyprBar::doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButt
     float offset = barPadding;
 
     for (auto& b : g_pGlobalState->buttons) {
-        const auto BARBUF     = Vector2D{(int)assignedBoxGlobal().w, barHeight};
+        const auto BARBUF     = Vector2D{assignedBoxGlobal().w, static_cast<double>(barHeight)};
         Vector2D   currentPos = Vector2D{(BUTTONSRIGHT ? BARBUF.x - barButtonPadding - b.size - offset : offset), (BARBUF.y - b.size) / 2.0}.floor();
 
         if (VECINRECT(COORDS, currentPos.x, 0, currentPos.x + b.size + barButtonPadding, barHeight - 1)) {
@@ -451,7 +451,7 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
         const auto scaledButtonsPad = BARBUTTONPADDING * scale;
 
         // check if hovering here
-        const auto BARBUF     = Vector2D{(int)assignedBoxGlobal().w, HEIGHT};
+        const auto BARBUF     = Vector2D{assignedBoxGlobal().w, static_cast<double>(HEIGHT)};
         Vector2D   currentPos = Vector2D{(BUTTONSRIGHT ? BARBUF.x - BARBUTTONPADDING - button.size - noScaleOffset : noScaleOffset), (BARBUF.y - button.size) / 2.0}.floor();
         bool       hovering   = VECINRECT(COORDS, currentPos.x, 0, currentPos.x + button.size + BARBUTTONPADDING, HEIGHT - 1);
         noScaleOffset += BARBUTTONPADDING + button.size;
@@ -470,8 +470,11 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
         const auto iconY = barBox->y + barBox->height / 2.0 - button.iconTex->m_size.y / 2.0;
         CBox       pos   = {iconX, iconY, button.iconTex->m_size.x, button.iconTex->m_size.y};
 
-        if (!ICONONHOVER || (ICONONHOVER && m_iButtonHoverState > 0))
-            g_pHyprOpenGL->renderTexture(button.iconTex, pos, {.a = a});
+        if (!ICONONHOVER || (ICONONHOVER && m_iButtonHoverState > 0)) {
+            CHyprOpenGLImpl::STextureRenderData textureData;
+            textureData.a = a;
+            g_pHyprOpenGL->renderTexture(button.iconTex, pos, textureData);
+        }
         offset += scaledButtonsPad + scaledButtonSize;
 
         bool currentBit = (m_iButtonHoverState & (1 << i)) != 0;
@@ -483,7 +486,7 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
     }
 }
 
-void CHyprBar::draw(PHLMONITOR pMonitor, const float& a) {
+void CHyprBar::draw(PHLMONITOR, const float& a) {
     const auto ENABLED = g_pGlobalState->config.enabled->value();
 
     if (m_bLastEnabledState != ENABLED) {
@@ -544,9 +547,11 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
 
     const auto ROUNDING = PWINDOW->rounding() + (PRECEDENCE ? 0 : PWINDOW->getRealBorderSize());
 
-    const auto scaledRounding = ROUNDING > 0 ? ROUNDING * pMonitor->m_scale - 2 /* idk why but otherwise it looks bad due to the gaps */ : 0;
+    const auto scaledRounding = ROUNDING > 0
+        ? std::max(0, static_cast<int>(std::lround(ROUNDING * pMonitor->m_scale - 2)))
+        : 0;
 
-    m_seExtents = {{0, HITHEIGHT}, {}};
+    m_seExtents = {{0, static_cast<int>(HITHEIGHT)}, {}};
 
     const auto DECOBOX = assignedBoxGlobal();
 
@@ -610,7 +615,7 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
         glStencilFunc(GL_ALWAYS, 1, 0xFF);
     }
 
-    CBox textBox = {titleBarBox.x, titleBarBox.y, (int)BARBUF.x, (int)BARBUF.y};
+    CBox textBox = {titleBarBox.x, titleBarBox.y, BARBUF.x, BARBUF.y};
     if (ENABLETITLE && m_pTextTex) {
         const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
         const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
@@ -629,7 +634,9 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
         const auto yOffset           = std::round((BARBUF.y - m_pTextTex->m_size.y) / 2.0);
         CBox       titleBox          = {textBox.x + xOffset, textBox.y + yOffset, m_pTextTex->m_size.x, m_pTextTex->m_size.y};
 
-        g_pHyprOpenGL->renderTexture(m_pTextTex, titleBox, {.a = a});
+        CHyprOpenGLImpl::STextureRenderData textureData;
+        textureData.a = a;
+        g_pHyprOpenGL->renderTexture(m_pTextTex, titleBox, textureData);
     }
 
     renderBarButtons(&textBox, pMonitor->m_scale, a);
@@ -653,7 +660,7 @@ eDecorationType CHyprBar::getDecorationType() {
     return DECORATION_CUSTOM;
 }
 
-void CHyprBar::updateWindow(PHLWINDOW pWindow) {
+void CHyprBar::updateWindow(PHLWINDOW) {
     damageEntire();
 }
 
@@ -733,7 +740,7 @@ void CHyprBar::damageOnButtonHover() {
     const auto COORDS = cursorRelativeToBar();
 
     for (auto& b : g_pGlobalState->buttons) {
-        const auto BARBUF     = Vector2D{(int)assignedBoxGlobal().w, HEIGHT};
+        const auto BARBUF     = Vector2D{assignedBoxGlobal().w, static_cast<double>(HEIGHT)};
         Vector2D   currentPos = Vector2D{(BUTTONSRIGHT ? BARBUF.x - BARBUTTONPADDING - b.size - offset : offset), (BARBUF.y - b.size) / 2.0}.floor();
 
         bool       hover = VECINRECT(COORDS, currentPos.x, 0, currentPos.x + b.size + BARBUTTONPADDING, HEIGHT - 1);

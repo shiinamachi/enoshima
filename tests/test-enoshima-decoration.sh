@@ -36,6 +36,11 @@ grep -Fq 'enoshima-snap-controller preview' "$plugin/src/barDeco.cpp"
 grep -Fq 'enoshima-snap-controller commit' "$plugin/src/barDeco.cpp"
 grep -Fq 'enoshima-snap-controller cancel' "$plugin/src/barDeco.cpp"
 grep -Fq 'enoshima-window-menu' "$plugin/src/barDeco.cpp"
+grep -Fq -- '-Wall -Wextra -Wformat=2 -Werror' "$plugin/Makefile"
+if grep -Fq -- '-Wno-c++11-narrowing' "$plugin/Makefile"; then
+  printf 'Decoration build retains a compiler-specific warning suppression.\n' >&2
+  exit 1
+fi
 grep -Fq 'Qt.callLater(() => scrimInput.forceActiveFocus())' "$window_menu"
 grep -Fq 'Keys.onPressed: event => menu.handleKey(event)' "$window_menu"
 if grep -Fq '    Keys.onPressed: event => {' "$window_menu"; then

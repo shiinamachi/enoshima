@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <stdexcept>
 
 #include "barDeco.hpp"
 #include "globals.hpp"
@@ -97,7 +98,7 @@ static void onUpdateWindowRules(PHLWINDOW window) {
     window->updateWindowDecos();
 }
 
-Hyprlang::CParseResult onNewButton(const char* K, const char* V) {
+Hyprlang::CParseResult onNewButton([[maybe_unused]] const char* K, const char* V) {
     std::string                 v = V;
     Hyprutils::String::CVarList vars(v);
 
@@ -137,7 +138,7 @@ Hyprlang::CParseResult onNewButton(const char* K, const char* V) {
         return result;
     }
 
-    g_pGlobalState->buttons.push_back(SHyprButton{vars[3], userfg, *fgcolor, *bgcolor, size, vars[2]});
+    g_pGlobalState->buttons.push_back(SHyprButton{vars[3], userfg, *fgcolor, *bgcolor, size, vars[2], nullptr});
 
     for (auto& b : g_pGlobalState->bars) {
         b->m_bButtonsDirty = true;
@@ -285,10 +286,19 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.onDoubleClick);
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.allowlist);
 
-    if (Config::mgr()->type() == Config::CONFIG_LEGACY)
-        HyprlandAPI::addConfigKeyword(PHANDLE, "plugin:enoshima_decoration:button", onNewButton, Hyprlang::SHandlerOptions{});
-    else
+    if (Config::mgr()->type() == Config::CONFIG_LEGACY) {
+// Hyprland 0.55 deprecates the legacy keyword API without exposing a V2
+// replacement. Keep this warning scoped to the legacy-only compatibility call.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        const bool keywordAdded =
+            HyprlandAPI::addConfigKeyword(PHANDLE, "plugin:enoshima_decoration:button", onNewButton, Hyprlang::SHandlerOptions{});
+#pragma GCC diagnostic pop
+        if (!keywordAdded)
+            throw std::runtime_error("[enoshima-decoration] failed to register the legacy button keyword");
+    } else {
         HyprlandAPI::addLuaFunction(PHANDLE, "enoshima_decoration", "add_button", ::newLuaButton);
+    }
     static auto P4 = Event::bus()->m_events.config.preReload.listen([&] { onPreConfigReload(); });
     static auto P5 = Event::bus()->m_events.config.reloaded.listen([&] { onConfigReloaded(); });
 
