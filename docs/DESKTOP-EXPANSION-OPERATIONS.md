@@ -249,7 +249,7 @@ unit, 이전 boot journal, firmware와 Thunderbolt 장치를 함께 보여준다
 systemctl is-enabled greetd.service
 systemctl is-enabled sddm.service || true
 Hyprland --verify-config -c /etc/greetd/hyprland.conf
-grep -F 'Exec=uwsm start -e -D Hyprland hyprland.desktop' \
+grep -F 'Exec=uwsm start -e -D Hyprland -N "enoshima Desktop"' \
   /usr/local/share/wayland-sessions/enoshima-desktop.desktop
 grep -F 'Hidden=true' \
   /usr/local/share/wayland-sessions/{hyprland,hyprland-uwsm}.desktop
@@ -257,6 +257,10 @@ grep -F 'Hidden=true' \
 
 첫 ReGreet acceptance는 laptop-only, docked dual, lid-closed external-only에서
 각각 수행한다.
+
+`enoshima Desktop`은 UWSM에 `start-hyprland` 실행 파일을 직접 전달한다. 표시
+목록에서 숨긴 package session ID를 다시 참조하면 UWSM이 `Entry ... is hidden`으로
+거부하므로 `hyprland.desktop`을 간접 실행 대상으로 사용하지 않는다.
 
 - eDP는 2880x1800 scale 2.0, Dell은 3840x2160 scale 1.5로 표시된다.
 - lid가 닫힐 때 활성 외장 출력이 있으면 eDP만 비활성화되고 ReGreet가 외장
