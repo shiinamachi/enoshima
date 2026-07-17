@@ -123,6 +123,7 @@ remote_exists() {
 configure_remote() {
   local kind=$1
   local remote backend unit expected_type redacted actual_type
+  local remote_preexisting=false
 
   case $kind in
     google)
@@ -142,6 +143,7 @@ configure_remote() {
   expected_type=$backend
 
   if remote_exists "$remote"; then
+    remote_preexisting=true
     printf '%s already exists; preserving its account configuration.\n' "$remote"
   else
     printf '\nConfiguring %s as an rclone %s remote.\n' "$remote" "$backend"
@@ -166,8 +168,21 @@ EOF
     die "$remote has backend type '$actual_type', expected '$expected_type'"
 
   printf 'Checking %s connectivity...\n' "$remote"
-  /usr/bin/rclone lsd "$remote:" "${config_options[@]}" >/dev/null ||
+  if /usr/bin/rclone lsd "$remote:" "${config_options[@]}" >/dev/null; then
+    :
+  elif [[ $remote_preexisting == true ]]; then
+    /usr/bin/systemctl --user stop "$unit"
+    printf '%s saved sign-in no longer works. Re-enter its account details now.\n' \
+      "$remote"
+    /usr/bin/rclone config update "$remote" --all "${config_options[@]}"
+    remote_exists "$remote" ||
+      die "$remote was lost while updating its account configuration"
+    printf 'Checking %s connectivity with the updated sign-in...\n' "$remote"
+    /usr/bin/rclone lsd "$remote:" "${config_options[@]}" >/dev/null ||
+      die "$remote authentication or connectivity check still fails"
+  else
     die "$remote authentication or connectivity check failed"
+  fi
 
   chmod 0600 -- "$config_file"
   /usr/bin/systemctl --user daemon-reload

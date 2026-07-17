@@ -463,6 +463,9 @@ rclone-cloud-setup all
 helper는 고정 remote 이름과 backend type을 확인하고, 암호화된
 `~/.config/rclone/rclone.conf`를 `0600`으로 유지한다. 설정 암호는
 `rclone-cloud-password`가 실행 시 GNOME Keyring에서 읽는다.
+기존 remote의 연결 검사가 실패하면 해당 mount unit을 먼저 중지하고 저장된
+로그인 정보를 다시 입력받는다. 인증 복구가 끝나기 전까지 실패한 자격 증명을
+백그라운드에서 반복 제출하지 않는다.
 
 Mount와 cache 정책은 다음과 같다.
 

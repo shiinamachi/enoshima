@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # Assertions intentionally match literal shell source.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -36,6 +37,16 @@ done
 grep -Fxq 'RestartSec=5min' \
   "$repo_root/home/dot_config/systemd/user/rclone-proton-drive.service" || {
   printf 'FAIL: Proton Drive retry cadence can trigger backend rate limiting\n' >&2
+  exit 1
+}
+
+grep -Fq '/usr/bin/systemctl --user stop "$unit"' "$setup_helper" || {
+  printf 'FAIL: cloud setup does not stop a failed mount before reauthentication\n' >&2
+  exit 1
+}
+grep -Fq '/usr/bin/rclone config update "$remote" --all "${config_options[@]}"' \
+  "$setup_helper" || {
+  printf 'FAIL: cloud setup cannot refresh an existing remote sign-in\n' >&2
   exit 1
 }
 
