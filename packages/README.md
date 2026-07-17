@@ -6,6 +6,13 @@ consumed by the Ansible package role. `aur.txt` is consumed by
 its current AUR revision. Reviewed, pinned PKGBUILDs under `local/` are built by
 `scripts/install-local-packages.sh`.
 
+Codex Desktop is the one dedicated upstream source build. It is intentionally
+absent from `aur.txt`: `scripts/install-codex-desktop.sh` builds the native
+`codex-desktop` package from `ilysenko/codex-desktop-linux`, while its host build
+inputs remain declared in `management.txt`. The superseded
+`chatgpt-desktop-bin` package is declared in `absent.txt` so the two packages
+cannot coexist after convergence.
+
 Comments and blank lines are allowed. Keep one package name per line.
 
 Normal convergence asks paru to install the latest revision of every approved

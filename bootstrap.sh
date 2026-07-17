@@ -7,6 +7,7 @@ profile=${PROFILE:-}
 conflict_policy=${CONFLICT_POLICY:-}
 skip_local=${SKIP_LOCAL:-false}
 skip_aur=${SKIP_AUR:-false}
+skip_codex_desktop=${SKIP_CODEX_DESKTOP:-false}
 apply_boot_artifacts=${APPLY_BOOT_ARTIFACTS:-false}
 sudo_keepalive_pid=
 runtime_dir=
@@ -47,7 +48,8 @@ Options:
   -h, --help                    Show this help.
 
 Environment equivalents:
-  PROFILE, CONFLICT_POLICY, APPLY_BOOT_ARTIFACTS, SKIP_LOCAL, SKIP_AUR
+  PROFILE, CONFLICT_POLICY, APPLY_BOOT_ARTIFACTS, SKIP_LOCAL, SKIP_AUR,
+  SKIP_CODEX_DESKTOP
 EOF
 }
 
@@ -191,6 +193,11 @@ install_local_packages() {
   # Rust toolchain through rustup's standard environment contract.
   RUSTUP_TOOLCHAIN="$rust_toolchain" \
     "$repo_root/scripts/install-local-packages.sh"
+}
+
+install_codex_desktop() {
+  refresh_sudo_credentials
+  "$repo_root/scripts/install-codex-desktop.sh"
 }
 
 apply_ansible_desired_state() {
@@ -433,6 +440,14 @@ if [[ $skip_aur != true ]]; then
     "$repo_root/scripts/install-aur.sh"
 else
   echo "==> Skipping AUR packages because SKIP_AUR=true"
+fi
+
+if [[ $skip_codex_desktop != true ]]; then
+  bootstrap_run_step \
+    "Building and installing Codex Desktop from ilysenko/codex-desktop-linux" \
+    install_codex_desktop
+else
+  echo "==> Skipping Codex Desktop because SKIP_CODEX_DESKTOP=true"
 fi
 
 bootstrap_run_step \

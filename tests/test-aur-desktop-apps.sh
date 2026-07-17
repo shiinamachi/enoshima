@@ -10,6 +10,13 @@ postflight=$repo_root/scripts/postflight.sh
 package=pear-desktop-bin
 grep -Fxq "$package" "$manifest"
 
+if grep -Fxq chatgpt-desktop-bin "$manifest"; then
+  printf 'Codex Desktop must be built from ilysenko/codex-desktop-linux, not AUR.\n' >&2
+  exit 1
+fi
+grep -Fxq chatgpt-desktop-bin "$absent_manifest"
+grep -Fq 'pacman -Q codex-desktop' "$postflight"
+
 for electerm_package in \
   electerm \
   electerm-bin \

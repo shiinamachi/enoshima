@@ -276,7 +276,9 @@ A logout/login is required after applying the UWSM environment.
 Official Arch packages provide Ghostty, Zed, Discord, Obsidian, and FileZilla.
 Bottles is installed from user-scoped Flathub. Google Chrome, Slack, Parsec,
 Pear Desktop, and the requested unofficial Notion package are approved AUR
-package bases. Firefox and Kitty are removed.
+package bases. Codex Desktop is built into a native `codex-desktop` pacman
+package from the current `ilysenko/codex-desktop-linux` `main` branch instead
+of the retired `chatgpt-desktop-bin` AUR package. Firefox and Kitty are removed.
 
 The complete allowlist in `packages/aur.txt`, not individual upstream commits,
 defines the AUR trust boundary. Bootstrap installs the current revision of each
@@ -285,6 +287,13 @@ approved base and continues with later bases after a failure. Pear Desktop curre
 write Hyprland class rules from those filenames: launch each app once, inspect
 its actual `hyprctl clients -j` class/title, and test Launcher search, Dock
 pin/unpin, native minimize/restore, close and relaunch.
+
+The Codex wrapper checkout is cached under the user's XDG cache and updated
+only by fast-forward. Bootstrap records the successfully installed wrapper
+revision under XDG state, so an unchanged revision is not rebuilt. The native
+package includes `codex-update-manager` for later upstream application updates;
+Codex profiles, sessions, authentication, and updater caches remain mutable
+user state outside Git.
 
 FileZilla is the managed FTP, FTPS, and SFTP client. It replaces only
 Electerm's file-transfer role; terminal and other connection-manager workflows

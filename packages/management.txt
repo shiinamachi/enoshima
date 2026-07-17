@@ -5,3 +5,9 @@ ansible-core
 # Arch rustup package explicit for bootstrap compatibility while mise remains
 # authoritative for the user-facing development toolchain selection.
 rustup
+
+# Build inputs for the ilysenko/codex-desktop-linux native Arch package.
+7zip
+curl
+unzip
+zstd

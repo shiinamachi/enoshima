@@ -194,6 +194,10 @@ while IFS= read -r package; do
   check "local package installed: $package" pacman -Q "$package"
 done < <(find "$repo_root/packages/local" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort)
 
+check "source-built Codex Desktop package installed" pacman -Q codex-desktop
+check "source-built Codex Desktop launcher installed" test -x /usr/bin/codex-desktop
+check "source-built Codex Desktop updater installed" test -x /usr/bin/codex-update-manager
+
 while IFS= read -r package; do
   # pacman -Q <name> accepts providers, so it would report tlp-pd as an
   # installed power-profiles-daemon. Compare against actual database names.

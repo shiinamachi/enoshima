@@ -4,6 +4,7 @@
 
 - Explicit native pacman packages and selected optional dependencies
 - AUR package bases plus an exact foreign-package observation
+- Locally built Codex Desktop package from `ilysenko/codex-desktop-linux`
 - Exact installed package/version lock
 - Enabled system and user systemd units
 - Hostname, locale, timezone, user groups and subordinate IDs

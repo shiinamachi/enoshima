@@ -80,11 +80,22 @@ gate. Move a recipe under `packages/local/` when its upstream payload also
 needs a repository-owned content pin. A failure in one AUR package is reported
 and the remaining approved bases are still attempted. `SKIP_LOCAL=true` and
 `SKIP_AUR=true` remain available for partial recovery, but the complete
-`tpx1c13` profile requires both phases. Local
-packages are built only when the declared version differs from the installed
-version and are installed before Ansible so their systemd units exist. AUR
-applications follow Ansible after multilib and native prerequisites are
-present.
+`tpx1c13` profile requires both phases.
+
+Codex Desktop is not installed from the `chatgpt-desktop-bin` AUR package.
+After the AUR phase, `scripts/install-codex-desktop.sh` fast-forwards an
+XDG-cached `ilysenko/codex-desktop-linux` `main` checkout, derives a stable
+package version from the source commit, and runs the upstream native Arch
+build/install path with the managed mise runtimes. The resulting
+`codex-desktop` package includes the upstream update manager. Repeated runs
+skip the expensive build while the recorded source revision and installed
+package still match; `SKIP_CODEX_DESKTOP=true` is the partial-recovery escape
+hatch.
+
+Local packages are built only when the declared version differs from the
+installed version and are installed before Ansible so their systemd units
+exist. AUR applications follow Ansible after multilib and native prerequisites
+are present.
 
 Validation, chezmoi hooks, service refreshes, and postflight checks are part of
 the command. No later `make validate`, `make apply`, or `make postflight` step

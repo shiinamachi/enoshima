@@ -366,6 +366,7 @@ echo "==> Testing single-authentication sudo wrapper"
 echo "==> Testing non-interactive bootstrap behavior"
 "$repo_root/tests/test-bootstrap-noninteractive.sh"
 "$repo_root/tests/test-bootstrap-failure-continuation.sh"
+"$repo_root/tests/test-codex-desktop-install.sh"
 
 echo "==> Testing desktop expansion behavior"
 for test_script in \

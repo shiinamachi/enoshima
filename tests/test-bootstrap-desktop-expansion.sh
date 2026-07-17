@@ -19,12 +19,13 @@ line_number() {
 }
 
 aur_line=$(line_number "$bootstrap" '"Installing approved AUR package bases"')
+codex_line=$(line_number "$bootstrap" '"Building and installing Codex Desktop from ilysenko/codex-desktop-linux"')
 converge_line=$(line_number "$bootstrap" '"Converging desktop expansion after the AUR phase"')
 apply_line=$(line_number "$bootstrap" "\"Applying user configuration with policy: \$conflict_policy\"")
 plugins_line=$(line_number "$bootstrap" '"Converging official Hyprland plugins"')
 postflight_line=$(line_number "$bootstrap" '"Running integrated postflight checks"')
-((aur_line < converge_line && converge_line < apply_line)) || {
-  printf 'Desktop expansion must converge after AUR and before dotfile apply.\n' >&2
+((aur_line < codex_line && codex_line < converge_line && converge_line < apply_line)) || {
+  printf 'Codex build and desktop expansion must follow AUR before dotfile apply.\n' >&2
   exit 1
 }
 ((apply_line < plugins_line && plugins_line < postflight_line)) || {
@@ -39,7 +40,7 @@ if [[ $(grep -Fc 'ANSIBLE_WORKER_SESSION_ISOLATION=false' "$bootstrap") -ne 2 ]]
   printf 'Every Ansible convergence must retain the bootstrap TTY session.\n' >&2
   exit 1
 fi
-if [[ $(grep -Fc 'refresh_sudo_credentials' "$bootstrap") -ne 4 ]]; then
+if [[ $(grep -Fc 'refresh_sudo_credentials' "$bootstrap") -ne 5 ]]; then
   printf 'Every privileged convergence phase must refresh sudo first.\n' >&2
   exit 1
 fi

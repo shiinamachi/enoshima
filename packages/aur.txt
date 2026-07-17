@@ -1,5 +1,4 @@
 # AUR package bases. Generated -debug packages are captured only in state/.
-chatgpt-desktop-bin
 cloudflare-warp-bin
 fzf-tab
 google-chrome

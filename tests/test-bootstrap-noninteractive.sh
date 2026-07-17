@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 bootstrap=$repo_root/bootstrap.sh
 aur_installer=$repo_root/scripts/install-aur.sh
+codex_installer=$repo_root/scripts/install-codex-desktop.sh
 git_config=$repo_root/home/dot_gitconfig
 
 fail() {
@@ -40,6 +41,14 @@ grep -Fq -- '-S' "$aur_installer" ||
   fail 'AUR convergence does not install the current approved package base'
 grep -Fq "PACMAN_AUTH=(%q)" "$aur_installer" ||
   fail 'paru bootstrap does not preserve the single sudo session'
+
+grep -Fq 'mise exec --' "$codex_installer" ||
+  fail 'Codex Desktop build does not use the managed development runtimes'
+grep -Fq 'PACKAGE_WITH_UPDATER=1' "$codex_installer" ||
+  fail 'Codex Desktop build does not include the upstream update manager'
+if grep -Fq 'make bootstrap-native' "$codex_installer"; then
+  fail 'Codex Desktop installer bypasses the managed native dependency manifests'
+fi
 
 [[ $(git config --file "$git_config" --get core.editor) == 'zeditor --wait' ]] ||
   fail 'Git does not use the managed graphical editor outside bootstrap'

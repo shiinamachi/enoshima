@@ -1,4 +1,5 @@
 # Packages intentionally removed from the desired desktop state.
+chatgpt-desktop-bin
 firefox
 hyprlauncher
 kitty

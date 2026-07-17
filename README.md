@@ -34,6 +34,7 @@ The initial inventory was captured on 2026-07-13 from Arch Linux on
 | --- | --- |
 | Native packages and root-owned configuration | Ansible |
 | AUR packages | approved package bases installed at current revisions through paru |
+| Codex Desktop | locally built pacman package from `ilysenko/codex-desktop-linux` |
 | User dotfiles | chezmoi (`home/`) |
 | Enabled system and user units | Ansible |
 | Exact installed versions and hardware facts | `state/tpx1c13/` |
@@ -51,7 +52,7 @@ Do not manage the same file with both Ansible and chezmoi.
 ├── docs/                   # design, scope and installation notes
 ├── home/                   # chezmoi source state
 ├── packages/               # desired package manifests
-├── scripts/                # capture, AUR install and validation helpers
+├── scripts/                # capture, source/AUR install and validation helpers
 └── state/tpx1c13/          # observed state; not an install manifest
 ```
 
@@ -72,8 +73,9 @@ At startup it asks once how all conflicting chezmoi-managed user files should
 be handled: back up and replace, overwrite, keep local, or abort. It then asks
 sudo to authenticate once and keeps that credential alive without allowing any
 later password prompt. The command performs a supported full Arch upgrade,
-installs only missing or changed local/AUR packages, converges Ansible state,
-applies non-conflicting or selected dotfile state, and runs postflight checks.
+installs only missing or changed local/AUR packages, builds Codex Desktop from
+its approved Linux wrapper source when needed, converges Ansible state, applies
+non-conflicting or selected dotfile state, and runs postflight checks.
 After its safety gates pass, a failed convergence stage is recorded as
 `FAILURE` while independent later stages continue. The command reports the
 aggregate failures and returns non-zero only after every stage has been
@@ -122,6 +124,8 @@ for a one-release rollback window; it is not the enabled display manager.
 - `packages/native.txt` is the explicit native package install manifest.
 - `packages/aur.txt` is the explicit approval allowlist of AUR package bases to
   install at their current upstream revisions.
+- `scripts/install-codex-desktop.sh` maintains an XDG-cached checkout of
+  `ilysenko/codex-desktop-linux` and installs its locally built native package.
 - `packages/optional-deps.txt` preserves intentionally installed optional
   dependencies with dependency install reason.
 - `packages/management.txt` contains tooling needed to reproduce the system
