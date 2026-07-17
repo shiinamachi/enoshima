@@ -1,10 +1,11 @@
-# Isolated compositor for ReGreet. Do not source the user session here.
+# Isolated compositor for Enoshima Auth. Do not source the user session here.
 monitor = eDP-1,2880x1800@120,0x540,2
 monitor = desc:Dell Inc. DELL U2725QE,3840x2160@120,1440x0,1.5
 monitor = ,preferred,auto-right,auto
 
 env = GTK_USE_PORTAL,0
 env = GDK_DEBUG,no-portals
+env = GDK_BACKEND,wayland
 env = XCURSOR_THEME,capitaine-cursors
 env = XCURSOR_SIZE,24
 

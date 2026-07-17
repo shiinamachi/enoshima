@@ -1,0 +1,62 @@
+#!/usr/bin/python
+from __future__ import annotations
+
+from pathlib import Path
+import re
+import sys
+
+import yaml
+
+
+ROOT = Path(__file__).resolve().parent.parent
+THEME = ROOT / "home/dot_config/enoshima/auth-theme.yaml"
+CSS = ROOT / "ansible/roles/system/templates/enoshima-greeter.css.j2"
+LOCK = ROOT / "home/dot_config/hypr/hyprlock.conf"
+
+
+def rgb(hex_color: str) -> str:
+    value = hex_color.removeprefix("#")
+    return ", ".join(
+        str(int(value[index : index + 2], 16)) for index in (0, 2, 4)
+    )
+
+
+def main() -> int:
+    theme = yaml.safe_load(THEME.read_text(encoding="utf-8"))
+    css = CSS.read_text(encoding="utf-8")
+    lock = LOCK.read_text(encoding="utf-8")
+    if theme.get("schema") != 1 or theme.get("direction") != "outline-frame":
+        raise SystemExit("auth theme schema/direction is invalid")
+
+    for name, value in theme["colors"].items():
+        expected = f"@define-color cyber_{name} {value};"
+        if expected not in css:
+            raise SystemExit(f"greeter CSS is missing auth token: {expected}")
+        if f"rgba({rgb(value)}," not in lock:
+            raise SystemExit(f"Hyprlock is missing auth token: {name}={value}")
+
+    geometry = theme["geometry"]
+    contracts = {
+        f"size = {geometry['frame_width']}, {geometry['frame_height']}",
+        f"size = {geometry['content_width']}, 58",
+        f"size = {geometry['content_width']}, {geometry['primary_height']}",
+        f"rounding = {geometry['radius']}",
+    }
+    missing = sorted(contract for contract in contracts if contract not in lock)
+    if missing:
+        raise SystemExit("Hyprlock geometry drift: " + ", ".join(missing))
+    if not re.search(
+        rf"\.auth-card\s*\{{.*?min-width:\s*{geometry['content_width']}px;",
+        css,
+        flags=re.DOTALL,
+    ):
+        raise SystemExit("greeter auth-card width drift")
+    if f"min-height: {geometry['primary_height']}px;" not in css:
+        raise SystemExit("greeter primary action height drift")
+
+    print("auth theme: shared tokens and geometry match greeter and Hyprlock")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

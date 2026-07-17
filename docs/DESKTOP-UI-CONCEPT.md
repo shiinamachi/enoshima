@@ -47,14 +47,16 @@ actions; it does not present non-functional mock controls.
 ![Lock screen concept](assets/concepts/cyberpunk-lock-screen.png)
 
 The lock study keeps the supplied artwork recognizable behind a restrained
-scrim and moves the complete authentication hierarchy into one lower-left
-card. Time, date, session state, the focused password field, and fingerprint
+scrim and moves the complete authentication hierarchy into one centered
+Outline Frame. Time, date, session state, the focused password field, and fingerprint
 readiness follow one reading path without placing fictional controls over the
 character or the library signage. The managed Hyprlock layout uses the same
-placement, palette, focus edge, and biometric status model. ReGreet extends
+placement, palette, focus edge, and biometric status model. Enoshima Auth extends
 that hierarchy to initial login with user, session, and power actions on an
 isolated mixed-DPI Hyprland compositor. The responsive SDDM theme preserves
 the same hierarchy only as a tested rollback surface.
+`home/dot_config/enoshima/auth-theme.yaml` is the shared semantic token and
+geometry contract; validation rejects drift between the GTK greeter and Hyprlock.
 
 ### System title bar and window menu
 
@@ -159,7 +161,7 @@ All components use the same behavioral tokens:
 | Pointer and keyboard Snap Assist | shared snap controller and `EnoshimaSnapAssist.qml` |
 | GTK 3/4 application surfaces | managed `settings.ini` and semantic `gtk.css` in `home/dot_config/gtk-3.0/` and `home/dot_config/gtk-4.0/` |
 | Cursor, file chooser, and input-method continuity | UWSM/Hyprland cursor exports, `home/dot_config/xdg-desktop-portal/`, and managed Fcitx5 Classic UI settings |
-| Authentication hierarchy | `home/dot_config/hypr/hyprlock.conf`, ReGreet under `ansible/roles/system/`, and the fallback SDDM theme under `ansible/roles/desktop_expansion/` |
+| Authentication hierarchy | `home/dot_config/hypr/hyprlock.conf`, `enoshima-greeter` under `packages/local/`, and the fallback SDDM theme under `ansible/roles/desktop_expansion/` |
 
 `docs/ui-surfaces.yaml` and the per-surface specs turn approved concept art into
 a structural implementation contract. A concept must not introduce controls

@@ -170,7 +170,7 @@ sudo -v
 hyprlock
 ```
 
-At the ReGreet, fallback SDDM, and sudo prompts, a normal password is checked
+At the Enoshima Auth, fallback SDDM, and sudo prompts, a normal password is checked
 first. Submit an empty field to start fingerprint authentication. See
 [WORKSTATION.md](WORKSTATION.md) for the accepted sudo fingerprint security
 tradeoff and the reason a login manager is not replaced by Hyprlock.
@@ -179,7 +179,7 @@ tradeoff and the reason a login manager is not replaced by Hyprlock.
 
 After a reboot and password login:
 
-1. In ReGreet, select **enoshima Desktop**. The
+1. In Enoshima Auth, sign in to **enoshima Desktop**. The
    UWSM session is required for the managed environment, graphical user units,
    and XDG autostart applications.
 2. Connect the Dell U2725QE and verify its EDID selector, scale, geometry and

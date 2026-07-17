@@ -11,14 +11,10 @@ fail() {
 
 grep -Fq 'fractional_scaling = 2' "$config" ||
   fail 'fractional scaling is not explicitly automatic'
-grep -Fq 'size = 600, 30%' "$config" ||
-  fail 'authentication card does not have bounded mixed-unit geometry'
-grep -Fq 'size = 532, 64' "$config" ||
+grep -Fq 'size = 468, 560' "$config" ||
+  fail 'authentication card does not match the bounded Outline Frame'
+grep -Fq 'size = 420, 58' "$config" ||
   fail 'password control lost its accessible bounded size'
-
-if grep -Eq '^[[:space:]]*position = -?[0-9]+, -?[0-9]+[[:space:]]*$' "$config"; then
-  fail 'an absolute widget position remains in the lock layout'
-fi
 
 python - "$config" <<'PY'
 import pathlib
@@ -27,16 +23,9 @@ import sys
 
 text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 positions = re.findall(r"^\s*position\s*=\s*([^\n#]+)", text, flags=re.MULTILINE)
-expected = {
-    "5%, 7%",
-    "7%, 34.5%",
-    "6.7%, 26%",
-    "7%, 21.5%",
-    "7%, 14%",
-    "7.2%, 9.5%",
-}
+expected = {"0, 0", "0, 264", "0, 232", "0, 164", "0, 112", "0, 66", "0, 10", "0, -62", "0, -132"}
 if set(map(str.strip, positions)) != expected:
-    raise SystemExit(f"unexpected percentage positions: {positions}")
+    raise SystemExit(f"unexpected centered positions: {positions}")
 
 # Logical output sizes cover balanced eDP, matched eDP, Dell, common external,
 # and a conservative small fallback. Widgets must stay within the card and the
@@ -50,26 +39,17 @@ resolutions = [
     (800, 600),
 ]
 for width, height in resolutions:
-    card_left = width * 0.05
-    card_bottom = height * 0.07
-    card_top = card_bottom + height * 0.30
-    input_left = width * 0.07
-    input_center = height * 0.14
-
-    assert card_left >= 0
-    assert card_left + 600 <= width
-    assert card_top <= height
-    assert input_left + 532 <= width
-    assert input_center - 32 >= card_bottom
-    assert input_center + 32 <= card_top
-
-    for center in (height * 0.345, height * 0.26, height * 0.215, height * 0.095):
-        assert card_bottom <= center <= card_top
+    assert 468 <= width
+    assert 560 <= height
+    assert 420 <= width
+    for center, half_height in ((264, 10), (232, 10), (164, 38), (112, 12), (66, 12), (10, 29), (-62, 26), (-132, 24)):
+        assert center - half_height >= -280
+        assert center + half_height <= 280
 PY
 
 # Match hyprlock's literal runtime substitution tokens.
 # shellcheck disable=SC2016
-grep -Fq 'text = $FPRINTPROMPT' "$config" ||
+grep -Fq 'text = ◎  $FPRINTMESSAGE' "$config" ||
   fail 'fingerprint feedback is not connected to hyprlock state'
 # shellcheck disable=SC2016
 grep -Fq 'fail_text = $FAIL' "$config" ||

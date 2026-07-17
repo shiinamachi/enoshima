@@ -1,6 +1,7 @@
 # Packages intentionally removed from the desired desktop state.
 chatgpt-desktop-bin
 firefox
+greetd-regreet
 hyprlauncher
 kitty
 power-profiles-daemon

@@ -46,8 +46,8 @@ git
 gnome-keyring
 gptfdisk
 greetd
-greetd-regreet
 grim
+gtk4
 gvfs
 hypridle
 hyprland
@@ -60,6 +60,7 @@ hyprsunset
 intel-media-driver
 intel-ucode
 jq
+json-glib
 lib32-mesa
 lib32-vulkan-intel
 libcamera

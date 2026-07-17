@@ -284,6 +284,7 @@ PY
 
 echo "==> Checking UI concept coverage"
 "$repo_root/scripts/check-ui-concept-coverage"
+"$repo_root/scripts/check-auth-theme"
 
 PYTHONDONTWRITEBYTECODE=1 /usr/bin/python \
   .agents/skills/ui-ux-pro-max/scripts/validate_data.py

@@ -1,0 +1,148 @@
+@define-color cyber_canvas #050623;
+@define-color cyber_surface #0a0c3e;
+@define-color cyber_raised #161151;
+@define-color cyber_focus #62d8ff;
+@define-color cyber_selection #9a5cff;
+@define-color cyber_selection_strong #6541b8;
+@define-color cyber_text #f2ecff;
+@define-color cyber_muted #c9bfe8;
+@define-color cyber_critical #ff5d8f;
+@define-color cyber_warning #ffb86b;
+@define-color cyber_success #77e0c6;
+
+* {
+  font-family: "Pretendard", "Noto Sans CJK KR", sans-serif;
+}
+
+.auth-window {
+  background-color: @cyber_canvas;
+  color: @cyber_text;
+}
+
+.auth-scrim {
+  background-color: alpha(@cyber_canvas, 0.44);
+}
+
+.auth-card {
+  min-width: 420px;
+  padding: 24px;
+  border: 2px solid alpha(@cyber_selection, 0.88);
+  border-radius: 14px;
+  background-color: alpha(@cyber_surface, 0.94);
+  color: @cyber_text;
+}
+
+.status-row {
+  min-height: 28px;
+}
+
+.status-label {
+  color: @cyber_muted;
+  font-size: 12px;
+}
+
+.auth-clock {
+  margin-top: 2px;
+  color: @cyber_text;
+  font-size: 64px;
+  font-weight: 700;
+}
+
+.auth-date {
+  margin-bottom: 10px;
+  color: @cyber_muted;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.auth-mode {
+  color: @cyber_selection;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.auth-prompt,
+.auth-message,
+.warning-message {
+  min-height: 20px;
+  color: @cyber_muted;
+  font-size: 12px;
+}
+
+.warning-message {
+  color: @cyber_warning;
+}
+
+.error-message {
+  color: @cyber_critical;
+}
+
+.auth-entry,
+.auth-entry > text,
+.fingerprint-button,
+.primary-action,
+.secondary-action {
+  min-height: 44px;
+  border-radius: 12px;
+}
+
+.auth-entry,
+.auth-entry > text {
+  border: 1px solid alpha(@cyber_focus, 0.48);
+  background-color: alpha(@cyber_raised, 0.96);
+  color: @cyber_text;
+  caret-color: @cyber_focus;
+}
+
+.auth-entry:focus,
+.auth-entry > text:focus,
+button:focus-visible {
+  outline: 2px solid @cyber_focus;
+  outline-offset: 2px;
+  border-color: @cyber_focus;
+}
+
+.fingerprint-button {
+  border: 1px solid alpha(@cyber_selection, 0.48);
+  background-color: alpha(@cyber_raised, 0.76);
+  color: @cyber_muted;
+}
+
+.fingerprint-button:hover:not(:disabled) {
+  border-color: @cyber_selection;
+  color: @cyber_text;
+}
+
+.primary-action {
+  min-height: 48px;
+  border: 1px solid alpha(@cyber_focus, 0.46);
+  background-color: @cyber_selection_strong;
+  color: @cyber_text;
+  font-weight: 700;
+}
+
+.primary-action:hover:not(:disabled) {
+  background-color: @cyber_selection;
+}
+
+.primary-action:active:not(:disabled) {
+  background-color: alpha(@cyber_focus, 0.72);
+}
+
+.secondary-action {
+  min-width: 154px;
+  border: 1px solid alpha(@cyber_focus, 0.38);
+  background-color: alpha(@cyber_surface, 0.88);
+  color: @cyber_muted;
+}
+
+.secondary-action:hover {
+  border-color: @cyber_focus;
+  color: @cyber_text;
+}
+
+button:disabled,
+entry:disabled {
+  opacity: 0.58;
+}

@@ -1,0 +1,36 @@
+# Maintainer: local workstation configuration
+pkgname=enoshima-greeter
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Enoshima Auth frontend for greetd'
+arch=('x86_64')
+url='https://github.com/shiinamachi/enoshima'
+license=('MIT')
+depends=('glib2' 'greetd' 'gtk4' 'json-glib')
+makedepends=('pkgconf')
+options=('!debug')
+source=('enoshima-greeter.c' 'LICENSE')
+sha256sums=(
+  'c0001150d86fba506d5c06f428e569e69a193ab7f417bfe1afe54c5d030d9180'
+  '77ee8b4e2b59cde22db339c6518e2d647f1c3863d06294156f12c6be8c27d833'
+)
+
+build() {
+  cc \
+    -std=c17 -O2 -D_FORTIFY_SOURCE=3 \
+    -Wall -Wextra -Wformat=2 -Werror=format-security \
+    $(pkg-config --cflags gtk4 json-glib-1.0 gio-unix-2.0) \
+    "$srcdir/enoshima-greeter.c" \
+    -o enoshima-greeter \
+    $(pkg-config --libs gtk4 json-glib-1.0 gio-unix-2.0)
+}
+
+check() {
+  ./enoshima-greeter --self-test
+}
+
+package() {
+  install -Dm0755 enoshima-greeter "$pkgdir/usr/bin/enoshima-greeter"
+  install -Dm0644 "$srcdir/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

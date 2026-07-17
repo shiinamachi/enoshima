@@ -27,8 +27,8 @@ providing the active camera path.
 
 ## Login and fingerprint model
 
-greetd with ReGreet is the boot-time display manager. ReGreet runs as the
-unprivileged `greeter` user inside a dedicated minimal Hyprland compositor and
+greetd with `enoshima-greeter` is the boot-time display manager. The greeter
+runs as the unprivileged `greeter` user inside a dedicated minimal Hyprland compositor and
 starts the selected user session through the local UWSM desktop entry.
 Hyprlock remains a session locker and does not create a login session, so
 autologin followed by Hyprlock is not treated as an equivalent security
@@ -37,7 +37,7 @@ disabled as a one-release rollback path.
 
 Authentication behavior is deliberately service-specific:
 
-- ReGreet/greetd: type the password normally, or submit an empty password field
+- Enoshima Auth/greetd: type the password normally, or choose fingerprint authentication
   and then scan the enrolled finger.
 - fallback SDDM: retains the same password-first fingerprint branch.
 - Hyprlock: its native fingerprint support runs alongside the PAM password
@@ -60,7 +60,7 @@ a fingerprint interaction. This is an explicit convenience-versus-security
 decision for this profile.
 
 Keep an authenticated root shell open while testing PAM after the first apply.
-Test `sudo -k && sudo -v`, ReGreet, Hyprlock, and the TTY rollback to SDDM
+Test `sudo -k && sudo -v`, Enoshima Auth, Hyprlock, and the TTY rollback to SDDM
 before relying on fingerprint-only access.
 
 ## Displays and HiDPI
@@ -429,9 +429,9 @@ is carrying a remote administration session.
    package-base allowlist is acceptable as an automatic trust boundary.
 2. Run `./bootstrap.sh` from the target desktop user. Validation and postflight
    are included.
-3. Reboot, select **enoshima Desktop** in ReGreet, then log in once with the
+3. Reboot, sign in to **enoshima Desktop** with Enoshima Auth, then log in once with the
    password so the UWSM environment and login keyring are initialized.
-4. Keep a root shell open and test ReGreet, Hyprlock, `sudo`, and the documented
+4. Keep a root shell open and test Enoshima Auth, Hyprlock, `sudo`, and the documented
    TTY rollback to SDDM.
 5. Connect the Dell by USB-C and inspect `hyprctl monitors all` if it was absent
    during convergence.

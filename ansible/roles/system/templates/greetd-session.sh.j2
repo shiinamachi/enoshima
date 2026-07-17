@@ -5,7 +5,8 @@ internal_output=eDP-1
 internal_rule='eDP-1,2880x1800@120,0x540,2'
 hyprctl_command=${GREETD_HYPRCTL:-hyprctl}
 jq_command=${GREETD_JQ:-jq}
-regreet_command=${GREETD_REGREET:-regreet}
+enoshima_greeter_command=${GREETD_ENOSHIMA_GREETER:-enoshima-greeter}
+enoshima_user_file=${GREETD_ENOSHIMA_USER_FILE:-/etc/greetd/enoshima-user}
 lid_state_root=${GREETD_LID_STATE_ROOT:-/proc/acpi/button/lid}
 
 has_external_output() {
@@ -38,7 +39,17 @@ case ${1:-start} in
     if lid_is_closed; then
       disable_internal_if_safe
     fi
-    "$regreet_command"
+    IFS= read -r enoshima_user <"$enoshima_user_file" || {
+      printf 'greetd-session: cannot read managed user file\n' >&2
+      exit 1
+    }
+    case $enoshima_user in
+      '' | *[!A-Za-z0-9_.-]*)
+        printf 'greetd-session: invalid managed user\n' >&2
+        exit 1
+        ;;
+    esac
+    "$enoshima_greeter_command" --user "$enoshima_user"
     status=$?
     "$hyprctl_command" dispatch exit >/dev/null 2>&1 || true
     exit "$status"

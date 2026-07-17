@@ -83,8 +83,10 @@ surfaces:
   auth:
     implementation:
       - home/dot_config/hypr/hyprlock.conf
-      - ansible/roles/system/templates/regreet.css.j2
-      - ansible/roles/system/templates/regreet.toml.j2
+      - home/dot_config/enoshima/auth-theme.yaml
+      - home/dot_local/bin/executable_enoshima-auth-status
+      - packages/local/enoshima-greeter/enoshima-greeter.c
+      - ansible/roles/system/templates/enoshima-greeter.css.j2
     token_mode: external
     concept:
       status: approved

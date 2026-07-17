@@ -251,20 +251,23 @@ check "fallback SDDM is disabled" bash -c \
 # shellcheck disable=SC2016
 check "display-manager alias selects greetd" bash -c \
   '[[ $(readlink -f /etc/systemd/system/display-manager.service) == /usr/lib/systemd/system/greetd.service ]]'
-check "greetd uses the isolated ReGreet compositor" grep -Fq \
+check "greetd uses the isolated Enoshima Auth compositor" grep -Fq \
   'command = "dbus-run-session start-hyprland -- -c /etc/greetd/hyprland.conf"' \
   /etc/greetd/config.toml
 # The inner expression is intentionally evaluated by bash -c.
 # shellcheck disable=SC2016
 check "greetd configuration is world-readable but root-owned" bash -c \
   '[[ $(stat -c "%U:%G:%a" /etc/greetd/config.toml) == root:root:644 ]]'
-check "ReGreet mixed-DPI compositor configuration parses" \
+check "Enoshima Auth mixed-DPI compositor configuration parses" \
   Hyprland --verify-config -c /etc/greetd/hyprland.conf
-check "ReGreet configuration is installed" test -f /etc/greetd/regreet.toml
-check "ReGreet semantic stylesheet is installed" test -f /etc/greetd/regreet.css
-check "ReGreet lid-aware session helper is executable" \
+check "Enoshima Auth greeter binary is installed" test -x /usr/bin/enoshima-greeter
+check "Enoshima Auth greeter self-test passes" enoshima-greeter --self-test
+check "Enoshima Auth semantic stylesheet is installed" test -f /etc/greetd/enoshima-greeter.css
+check "superseded ReGreet configuration is absent" bash -c \
+  '[[ ! -e /etc/greetd/regreet.toml && ! -e /etc/greetd/regreet.css ]]'
+check "Enoshima Auth lid-aware session helper is executable" \
   test -x /usr/local/lib/enoshima/greetd-session
-check "ReGreet crop-safe wallpaper is installed intact" sha256_matches \
+check "Enoshima Auth crop-safe wallpaper is installed intact" sha256_matches \
   /etc/greetd/background-16x10.jpg \
   784c66002966e57a2ab0e5ae2413c3faee7b93a8c656d203899d41b25faffafb
 # The inner expression is intentionally evaluated by bash -c.
@@ -616,7 +619,7 @@ check "Hyprlock keeps password and fingerprint authentication" \
 # HOME is intentionally expanded by the child Bash used for this compound check.
 # shellcheck disable=SC2016
 check "Hyprlock uses mixed-DPI responsive geometry" bash -c \
-  'grep -Fq "fractional_scaling = 2" "$HOME/.config/hypr/hyprlock.conf" && grep -Fq "size = 600, 30%" "$HOME/.config/hypr/hyprlock.conf"'
+  'grep -Fq "fractional_scaling = 2" "$HOME/.config/hypr/hyprlock.conf" && grep -Fq "size = 468, 560" "$HOME/.config/hypr/hyprlock.conf"'
 check "Waybar uses quiet persistent status and a secondary system drawer" \
   jq -e '
     .height == 48 and
@@ -851,6 +854,6 @@ else
 fi
 
 printf '\nPostflight result: %d failure(s), %d warning(s).\n' "$failures" "$warnings"
-printf 'Manual checks still required: sudo/ReGreet fingerprint, fallback SDDM rollback, Hyprlock, Wi-Fi/WWAN handoff, Kakao login/files/clipboard/tray, and Parsec input/video.\n'
+printf 'Manual checks still required: sudo/Enoshima Auth fingerprint, fallback SDDM rollback, Hyprlock, Wi-Fi/WWAN handoff, Kakao login/files/clipboard/tray, and Parsec input/video.\n'
 
 ((failures == 0))

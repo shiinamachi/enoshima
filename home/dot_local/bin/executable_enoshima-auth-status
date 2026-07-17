@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+network='○ 오프라인'
+if command -v nmcli >/dev/null 2>&1 &&
+  [[ $(nmcli -t -f STATE general 2>/dev/null || true) == connected* ]]; then
+  network='● 네트워크'
+fi
+
+battery='전원 확인 중'
+if [[ -r /sys/class/power_supply/BAT0/capacity ]]; then
+  read -r capacity </sys/class/power_supply/BAT0/capacity
+  if [[ $capacity =~ ^[0-9]+$ ]]; then
+    battery="배터리 ${capacity}%"
+  fi
+fi
+
+case ${1:-summary} in
+  summary) printf '%s  ·  한  ·  %s\n' "$network" "$battery" ;;
+  network) printf '%s\n' "$network" ;;
+  battery) printf '%s\n' "$battery" ;;
+  *)
+    printf 'usage: enoshima-auth-status [summary|network|battery]\n' >&2
+    exit 64
+    ;;
+esac

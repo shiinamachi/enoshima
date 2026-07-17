@@ -29,8 +29,9 @@ login_tasks=ansible/roles/system/tasks/login-manager.yml
 greetd_config=ansible/roles/system/templates/greetd-config.toml.j2
 greetd_hyprland=ansible/roles/system/templates/greetd-hyprland.conf.j2
 greetd_session=ansible/roles/system/templates/greetd-session.sh.j2
-regreet_config=ansible/roles/system/templates/regreet.toml.j2
-regreet_css=ansible/roles/system/templates/regreet.css.j2
+greeter_css=ansible/roles/system/templates/enoshima-greeter.css.j2
+greeter_source=packages/local/enoshima-greeter/enoshima-greeter.c
+greeter_pkgbuild=packages/local/enoshima-greeter/PKGBUILD
 session_entry=ansible/roles/system/templates/enoshima-desktop.desktop.j2
 hidden_session_entry=ansible/roles/system/templates/hidden-wayland-session.desktop.j2
 sddm_config=ansible/roles/system/templates/sddm-hidpi.conf.j2
@@ -38,7 +39,11 @@ sddm_qml=ansible/roles/desktop_expansion/files/sddm-cyberpunk/Main.qml
 
 printf '%s\n' '==> login manager selection and package contract'
 grep -Fxq greetd packages/native.txt || fail 'greetd is not a native package'
-grep -Fxq greetd-regreet packages/native.txt || fail 'greetd-regreet is not a native package'
+grep -Fxq greetd-regreet packages/absent.txt || fail 'ReGreet is not retired explicitly'
+if grep -Fxq greetd-regreet packages/native.txt; then
+  fail 'ReGreet remains in the native package manifest'
+fi
+[[ -f $greeter_pkgbuild ]] || fail 'Enoshima greeter local package is missing'
 grep -Fxq sddm packages/native.txt || fail 'SDDM fallback package was removed prematurely'
 assert_contains "$group_vars" 'desktop_login_manager: sddm'
 assert_contains "$group_vars" 'desktop_login_manager_apply_now: false'
@@ -56,8 +61,8 @@ assert_contains "$login_tasks" 'enabled: true'
 [[ $(grep -Fc 'when: desktop_login_manager_apply_now | bool' "$login_tasks") == 2 ]] ||
   fail 'runtime service replacement is not fully gated by the TTY-only switch'
 
-printf '%s\n' '==> greetd launches only the isolated ReGreet compositor'
-python - "$greetd_config" "$regreet_config" <<'PY'
+printf '%s\n' '==> greetd launches only the isolated Enoshima Auth compositor'
+python - "$greetd_config" <<'PY'
 import sys
 import tomllib
 
@@ -89,7 +94,7 @@ for contract in \
   'lid_is_closed()' \
   '"$hyprctl_command" keyword monitor "$internal_output,disable"' \
   '"$hyprctl_command" keyword monitor "$internal_rule"' \
-  '"$regreet_command"' \
+  '"$enoshima_greeter_command" --user "$enoshima_user"' \
   '"$hyprctl_command" dispatch exit'; do
   assert_contains "$greetd_session" "$contract"
 done
@@ -106,17 +111,19 @@ if [ "${1:-}" = -j ] && [ "${2:-}" = monitors ]; then
 fi
 printf 'hyprctl %s\n' "$*" >>"${GREETD_TEST_LOG:?}"
 SH
-cat >"$work/bin/regreet" <<'SH'
+cat >"$work/bin/enoshima-greeter" <<'SH'
 #!/usr/bin/env sh
-printf 'regreet\n' >>"${GREETD_TEST_LOG:?}"
-exit "${GREETD_TEST_REGREET_STATUS:-0}"
+printf 'enoshima-greeter %s\n' "$*" >>"${GREETD_TEST_LOG:?}"
+exit "${GREETD_TEST_GREETER_STATUS:-0}"
 SH
-chmod 0755 "$work/bin/hyprctl" "$work/bin/regreet"
+chmod 0755 "$work/bin/hyprctl" "$work/bin/enoshima-greeter"
+printf 'kentakang\n' >"$work/enoshima-user"
 
 run_greetd_session() {
   env \
     GREETD_HYPRCTL="$work/bin/hyprctl" \
-    GREETD_REGREET="$work/bin/regreet" \
+    GREETD_ENOSHIMA_GREETER="$work/bin/enoshima-greeter" \
+    GREETD_ENOSHIMA_USER_FILE="$work/enoshima-user" \
     GREETD_LID_STATE_ROOT="$work/lid" \
     GREETD_TEST_LOG="$work/session.log" \
     GREETD_TEST_MONITORS="$1" \
@@ -128,9 +135,10 @@ printf '%s\n' 'state:      closed' >"$work/lid/LID/state"
 run_greetd_session '[{"name":"eDP-1"},{"name":"DP-1"}]'
 grep -Fxq 'hyprctl keyword monitor eDP-1,disable' "$work/session.log" ||
   fail 'closed-lid startup did not disable eDP when an external output existed'
-grep -Fxq regreet "$work/session.log" || fail 'startup did not run ReGreet'
+grep -Fxq 'enoshima-greeter --user kentakang' "$work/session.log" ||
+  fail 'startup did not run Enoshima Auth for the managed user'
 grep -Fxq 'hyprctl dispatch exit' "$work/session.log" ||
-  fail 'ReGreet exit did not stop the isolated compositor'
+  fail 'Enoshima Auth exit did not stop the isolated compositor'
 
 : >"$work/session.log"
 run_greetd_session '[{"name":"eDP-1"}]' lid-closed
@@ -141,19 +149,44 @@ run_greetd_session '[{"name":"DP-1"}]' lid-open
 grep -Fxq 'hyprctl keyword monitor eDP-1,2880x1800@120,0x540,2' \
   "$work/session.log" || fail 'lid open did not restore the balanced eDP rule'
 
-printf '%s\n' '==> ReGreet preserves the desktop accessibility and visual contracts'
-assert_contains "$regreet_config" 'fit = "Cover"'
-assert_contains "$regreet_config" 'font_name = "Pretendard 12"'
-assert_contains "$regreet_config" 'theme_name = "adw-gtk3-dark"'
-assert_contains "$regreet_css" 'min-height: 44px;'
-assert_contains "$regreet_css" 'outline: 2px solid @cyber_focus;'
-assert_contains "$regreet_css" '@define-color cyber_canvas #050623;'
+printf '%s\n' '==> Enoshima Auth preserves IPC, accessibility, and visual contracts'
+assert_contains "$greeter_css" 'min-width: 420px;'
+assert_contains "$greeter_css" 'min-height: 44px;'
+assert_contains "$greeter_css" 'min-height: 48px;'
+assert_contains "$greeter_css" 'outline: 2px solid @cyber_focus;'
+assert_contains "$greeter_css" '@define-color cyber_canvas #050623;'
+assert_contains scripts/validate.sh 'scripts/check-auth-theme'
+for contract in \
+  'GREETD_SOCK' \
+  'create_session' \
+  'post_auth_message_response' \
+  'cancel_session' \
+  'start_session' \
+  'auth_message_type' \
+  'org.freedesktop.login1.Manager' \
+  'G_APPLICATION_NON_UNIQUE' \
+  'gtk_window_fullscreen'; do
+  assert_contains "$greeter_source" "$contract"
+done
+assert_not_contains "$greeter_source" 'system('
+assert_not_contains "$greeter_source" 'popen('
+assert_contains "$greeter_pkgbuild" "depends=('glib2' 'greetd' 'gtk4' 'json-glib')"
+read -r -a greeter_cflags <<<"$(pkg-config --cflags gtk4 json-glib-1.0 gio-unix-2.0)"
+read -r -a greeter_libs <<<"$(pkg-config --libs gtk4 json-glib-1.0 gio-unix-2.0)"
+cc -std=c17 -O2 \
+  "${greeter_cflags[@]}" \
+  "$greeter_source" -o "$work/enoshima-greeter" \
+  "${greeter_libs[@]}"
+"$work/enoshima-greeter" --self-test >/dev/null
 assert_contains "$login_tasks" 'mode: "0644"'
 assert_contains "$login_tasks" 'dest: /etc/greetd/background-16x10.jpg'
+assert_contains "$login_tasks" 'dest: /etc/greetd/enoshima-greeter.css'
+assert_contains "$login_tasks" 'dest: /etc/greetd/enoshima-user'
+assert_contains "$login_tasks" 'Remove superseded ReGreet configuration'
 assert_contains scripts/postflight.sh 'greetd is the boot display manager'
 assert_contains scripts/postflight.sh 'fallback SDDM is disabled'
-assert_contains scripts/postflight.sh 'ReGreet mixed-DPI compositor configuration parses'
-assert_contains scripts/postflight.sh 'ReGreet lid-aware session helper is executable'
+assert_contains scripts/postflight.sh 'Enoshima Auth mixed-DPI compositor configuration parses'
+assert_contains scripts/postflight.sh 'Enoshima Auth lid-aware session helper is executable'
 
 printf '%s\n' '==> UWSM session entry is valid'
 grep -Eq '^\[Desktop Entry\]$' "$session_entry" || fail 'session entry header is invalid'

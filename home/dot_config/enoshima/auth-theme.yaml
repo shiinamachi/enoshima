@@ -1,0 +1,33 @@
+schema: 1
+surface: auth
+direction: outline-frame
+geometry:
+  content_width: 420
+  frame_width: 468
+  frame_height: 560
+  field_height: 44
+  primary_height: 48
+  radius: 14
+  control_radius: 12
+  focus_width: 2
+colors:
+  canvas: "#050623"
+  surface: "#0a0c3e"
+  raised: "#161151"
+  focus: "#62d8ff"
+  selection: "#9a5cff"
+  selection_strong: "#6541b8"
+  text: "#f2ecff"
+  muted: "#c9bfe8"
+  success: "#77e0c6"
+  warning: "#ffb86b"
+  critical: "#ff5d8f"
+modes:
+  boot:
+    label: ENOSHIMA // 로그인
+    backend: greetd
+    power_actions: [reboot, poweroff]
+  unlock:
+    label: ENOSHIMA // 잠금 해제
+    backend: hyprlock
+    power_actions: []

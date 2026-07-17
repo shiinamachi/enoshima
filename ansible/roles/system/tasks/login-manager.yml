@@ -15,7 +15,7 @@
     group: root
     mode: "0755"
 
-- name: Configure greetd to launch the isolated ReGreet compositor
+- name: Configure greetd to launch the isolated Enoshima Auth compositor
   ansible.builtin.template:
     src: greetd-config.toml.j2
     dest: /etc/greetd/config.toml
@@ -33,28 +33,36 @@
     mode: "0644"
     backup: true
 
-- name: Configure ReGreet appearance and session controls
+- name: Install the Enoshima Auth greeter stylesheet
   ansible.builtin.template:
-    src: regreet.toml.j2
-    dest: /etc/greetd/regreet.toml
+    src: enoshima-greeter.css.j2
+    dest: /etc/greetd/enoshima-greeter.css
     owner: root
     group: root
     mode: "0644"
     backup: true
 
-- name: Install the Cyberpunk Library ReGreet stylesheet
-  ansible.builtin.template:
-    src: regreet.css.j2
-    dest: /etc/greetd/regreet.css
-    owner: root
-    group: root
-    mode: "0644"
-    backup: true
+- name: Remove superseded ReGreet configuration
+  ansible.builtin.file:
+    path: "/etc/greetd/{{ item }}"
+    state: absent
+  loop:
+    - regreet.toml
+    - regreet.css
 
-- name: Install the crop-safe ReGreet wallpaper
+- name: Install the crop-safe Enoshima Auth wallpaper
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../home/dot_local/share/backgrounds/cyberpunk-library-16x10.jpg"
     dest: /etc/greetd/background-16x10.jpg
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Install the managed Enoshima Auth user identity
+  ansible.builtin.copy:
+    content: "{{ target_user }}\n"
+    dest: /etc/greetd/enoshima-user
     owner: root
     group: root
     mode: "0644"
@@ -68,7 +76,7 @@
     group: root
     mode: "0755"
 
-- name: Install the ReGreet lid-aware session helper
+- name: Install the Enoshima Auth lid-aware session helper
   ansible.builtin.template:
     src: greetd-session.sh.j2
     dest: /usr/local/lib/enoshima/greetd-session
@@ -90,7 +98,7 @@
     path: /usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop
     state: absent
 
-- name: Hide package-provided Hyprland sessions from ReGreet
+- name: Hide package-provided Hyprland sessions from Enoshima Auth
   ansible.builtin.template:
     src: hidden-wayland-session.desktop.j2
     dest: "/usr/local/share/wayland-sessions/{{ item.filename }}"
