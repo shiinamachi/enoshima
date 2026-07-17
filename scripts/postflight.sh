@@ -258,7 +258,7 @@ check "enoshima Desktop login session is the only visible Hyprland session" \
     legacy=/usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop
     [[ ! -e $legacy ]] &&
       grep -Fxq "Name=enoshima Desktop" "$entry" &&
-      grep -Fxq "Exec=uwsm start -e -D Hyprland -N \"enoshima Desktop\" -C \"enoshima desktop session managed by UWSM\" start-hyprland" "$entry" &&
+      grep -Fxq "Exec=uwsm start -e -D Hyprland start-hyprland" "$entry" &&
       command -v start-hyprland >/dev/null &&
       for override in hyprland.desktop hyprland-uwsm.desktop; do
         path=/usr/local/share/wayland-sessions/$override

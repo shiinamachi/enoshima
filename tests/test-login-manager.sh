@@ -160,8 +160,10 @@ grep -Eq '^\[Desktop Entry\]$' "$session_entry" || fail 'session entry header is
 grep -Eq '^Type=Application$' "$session_entry" || fail 'session entry type is invalid'
 assert_contains "$session_entry" 'Name=enoshima Desktop'
 assert_contains "$session_entry" \
-  'Exec=uwsm start -e -D Hyprland -N "enoshima Desktop" -C "enoshima desktop session managed by UWSM" start-hyprland'
+  'Exec=uwsm start -e -D Hyprland start-hyprland'
 assert_not_contains "$session_entry" ' hyprland.desktop'
+assert_not_contains "$session_entry" ' -N '
+assert_not_contains "$session_entry" ' -C '
 assert_contains "$session_entry" 'TryExec=uwsm'
 assert_contains "$login_tasks" 'path: /usr/local/share/wayland-sessions/enoshima-hyprland-uwsm.desktop'
 assert_contains "$login_tasks" 'state: absent'
