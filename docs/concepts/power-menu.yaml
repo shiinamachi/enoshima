@@ -1,0 +1,28 @@
+surface_id: power-menu
+status: approved
+asset: docs/assets/concepts/power-menu/power-menu-v1.png
+candidates: docs/assets/concepts/power-menu/power-menu-candidates-v1.png
+selection: >-
+  Direction B, Section Card, groups session, sleep, and system operations without
+  hiding them behind icons. Its stable geometry supports progress and inline errors.
+states: [default, confirmation, closing-apps, dispatching, error, retry]
+invariants:
+  - Card width is 380px with 24px outer padding and rows at least 44px high.
+  - Duplicate actions are disabled while a transition is running.
+  - Critical color appears only for destructive confirmation or an error.
+behavior:
+  - Enter executes the focused action and Escape closes or cancels.
+  - Restart and shutdown show graceful-close progress before login1 dispatch.
+  - Errors remain in the card with retry and cancel paths.
+acceptance:
+  - Restart changes the boot ID and never stops at the greeter.
+  - Permission and inhibitor failures are readable and recoverable.
+  - Keyboard and pointer operations expose identical state feedback.
+generation:
+  references:
+    - docs/assets/concepts/cyberpunk-launcher.png
+    - docs/assets/concepts/cyberpunk-notification-center.png
+  candidate_prompt: >-
+    Explore three compact Enoshima power-menu directions for 잠금, 로그아웃, 절전, 다시 시작, 시스템 종료 with keyboard focus, 44px targets, confirmation, graceful close, dispatch, login1 error, retry, and duplicate-action prevention.
+  final_prompt: >-
+    Develop Direction B Section Card as a 380px implementation board with grouped rows, 44px targets, 16px sections, 24px padding, Enter and Escape hints, destructive confirmation, graceful-close progress, dispatch, inline error, and retry.

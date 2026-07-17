@@ -61,6 +61,27 @@
   `scripts/validate.sh`; retain documented internal/external display review as
   the final gate for visual behavior that static checks cannot prove.
 
+### Concept-first surface contract
+
+- Resolve every user-visible change to a `surface-id` in
+  `docs/ui-surfaces.yaml` before editing its implementation.
+- If the surface or required state has no approved concept, stop UI
+  implementation and invoke `$enoshima-concept-art` together with the built-in
+  image generation skill.
+- Generate a three-direction candidate board, record the selected direction and
+  rationale, then generate an implementation-ready state/redline board.
+- Copy canonical image output into `docs/assets/concepts/<surface-id>/` and
+  record prompts, references, states, invariants, and acceptance criteria in
+  `docs/concepts/<surface-id>.yaml`.
+- Do not mark a concept approved until its asset and spec exist. Do not treat
+  generated concept pixels as golden tests.
+- After implementation, compare real internal/external display screenshots with
+  the approved hierarchy, spacing, typography, controls, states, localization,
+  clipping, and accessibility contract.
+- Run `scripts/check-ui-concept-coverage` for every design change. New visible
+  QML/CSS/Waybar/SwayNC/Hyprlock/greeter/window-decoration surfaces may not be
+  exempted merely because they are small or transient.
+
 ## Entrypoints
 
 - Extend the existing `bootstrap.sh`, `scripts/validate.sh`, and

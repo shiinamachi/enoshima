@@ -1,0 +1,30 @@
+surface_id: system-titlebar
+status: approved
+asset: docs/assets/concepts/system-titlebar/system-titlebar-v1.png
+candidates: docs/assets/concepts/system-titlebar/system-titlebar-candidates-v1.png
+selection: >-
+  Direction A, Slim Line, preserves familiar desktop chrome, maximizes the drag
+  region, and fits the existing squared application surfaces without adding a
+  second capsule motif.
+states: [active, inactive, keyboard-focus, hover, pressed, maximized, close-hover, system-menu]
+invariants:
+  - Visual height is 36px while every caption-button hit target is at least 44px.
+  - The close button becomes critical only on hover or keyboard focus.
+  - Decoration is attached only to positive-allowlisted undecorated clients.
+  - Close sends a client close request and never kills the process.
+behavior:
+  - Dragging the title region moves the window without a modifier.
+  - Double-click toggles maximize and restore.
+  - Right-click or Alt+Space opens the system menu.
+acceptance:
+  - No client receives both client-side and Enoshima title bars.
+  - All controls work with pointer and keyboard on Wayland and XWayland clients.
+  - Korean and English titles elide before the caption controls.
+generation:
+  references:
+    - docs/assets/concepts/cyberpunk-desktop-shell.png
+    - docs/assets/concepts/cyberpunk-launcher.png
+  candidate_prompt: >-
+    Create a high-fidelity UI design exploration board with three clearly separated directions A, B, and C for the Enoshima Linux desktop system title bar and system window menu. Show a compact title bar, broad drag region, 44px hit targets, active and inactive states, and a Korean system menu. Follow the Enoshima palette and avoid duplicate native chrome.
+  final_prompt: >-
+    Develop Direction A Slim Line as an implementation-ready 1920x1080 specification board with a 36px visual title bar, 44px hit targets, active/inactive/focus/hover/pressed/maximized states, and the exact Korean system menu labels 복원, 이동, 크기 조절, 최소화, 최대화, 닫기.

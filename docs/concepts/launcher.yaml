@@ -1,0 +1,12 @@
+surface_id: launcher
+status: approved
+source: legacy-concept
+asset: docs/assets/concepts/cyberpunk-launcher.png
+states: [default, search, selected, empty, unavailable, error]
+invariants:
+  - Search is first focus and results use a clear list-detail hierarchy.
+  - Enter executes and Escape closes without hidden focus traps.
+acceptance:
+  - Korean and English app names elide without moving action controls.
+  - Keyboard and pointer selection expose the same action.
+  - Search, result, and footer focus remain visibly distinct.

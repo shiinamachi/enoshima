@@ -1,0 +1,27 @@
+surface_id: display-mode
+status: approved
+asset: docs/assets/concepts/display-mode/display-mode-v1.png
+candidates: docs/assets/concepts/display-mode/display-mode-candidates-v1.png
+selection: >-
+  Direction B, Grid Card Panel, makes the four spatial display relationships
+  scannable while preserving the current 2x2 keyboard navigation model.
+states: [default, hover, focus, selected, unavailable, applying, confirmation, error]
+invariants:
+  - Modal width is 620px with four 280x100px mode cards and 10px gaps.
+  - Selection includes a check or layout cue in addition to violet color.
+  - Confirmation offers revert and keep actions for 15 seconds.
+behavior:
+  - Arrow keys move; 1 through 4 select; Enter applies or confirms; Escape reverts or closes.
+  - Unavailable external modes remain visible and explain why they cannot run.
+acceptance:
+  - Failed mirror or missing-display operations keep the prior configuration.
+  - Korean descriptions wrap without changing the modal width.
+  - Confirmation countdown is perceivable without motion.
+generation:
+  references:
+    - docs/assets/concepts/cyberpunk-launcher.png
+    - docs/assets/concepts/cyberpunk-notification-center.png
+  candidate_prompt: >-
+    Explore three Enoshima display-mode overlays for PC 화면만, 복제, 확장, 두 번째 화면만 with monitor diagrams, shortcuts 1–4, focus, unavailable, applying, inline errors, and 15-second keep/revert confirmation.
+  final_prompt: >-
+    Develop Direction B Grid Card Panel as a 620px implementation board with a 2x2 grid, 280x100px cards, 10px gaps, monitor preview, focus and selection cues, unavailable/error states, and 48px keep/revert buttons.

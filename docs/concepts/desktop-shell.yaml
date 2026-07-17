@@ -1,0 +1,12 @@
+surface_id: desktop-shell
+status: approved
+source: legacy-concept
+asset: docs/assets/concepts/cyberpunk-desktop-shell.png
+states: [default, active-window, inactive-window, internal-display, external-display]
+invariants:
+  - A quiet top status surface and compact centered Cyberdock frame the workspace.
+  - Deep navy application surfaces remain more legible than the wallpaper.
+acceptance:
+  - Waybar and Cyberdock never overlap maximized application content.
+  - Internal and external scale review preserves hierarchy and pointer targets.
+  - Reduced transparency keeps every label readable.

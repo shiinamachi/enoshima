@@ -1,0 +1,24 @@
+surface_id: osd
+status: approved
+asset: docs/assets/concepts/osd/osd-v1.png
+candidates: docs/assets/concepts/osd/osd-candidates-v1.png
+selection: >-
+  Direction A, Slim Bar, matches the existing transient OSD geometry and gives
+  feedback without competing with notifications or application content.
+states: [volume, muted, microphone-muted, brightness, keyboard-backlight, airplane-mode]
+invariants:
+  - One 330x64px OSD appears 86px above the dock safe area on the active monitor.
+  - It is click-through, focus-free, and visible for about 1400ms.
+  - Repeated input updates the existing OSD instead of stacking another surface.
+acceptance:
+  - Muted and off states use text and icon shape in addition to critical color.
+  - Continuous and discrete values remain distinguishable.
+  - Reduced motion uses opacity only and reduced transparency uses an opaque surface.
+generation:
+  references:
+    - docs/assets/concepts/cyberpunk-desktop-shell.png
+    - docs/assets/concepts/cyberpunk-notification-center.png
+  candidate_prompt: >-
+    Explore three transient Enoshima OSD directions for volume, mute, microphone mute, brightness, keyboard backlight, and airplane mode. Place them above the dock, keep them click-through, active-monitor-only, and readable for 1400ms.
+  final_prompt: >-
+    Develop Direction A Slim Bar as a 330x64px implementation board with 24px Papirus icon, 12px label, 13px value, 8px track, six exact Korean states, active-monitor placement, repeated-key reuse, and reduced-mode behavior.

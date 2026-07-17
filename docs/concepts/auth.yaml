@@ -1,0 +1,29 @@
+surface_id: auth
+status: approved
+asset: docs/assets/concepts/auth/auth-v1.png
+candidates: docs/assets/concepts/auth/auth-candidates-v1.png
+selection: >-
+  Direction B, Outline Frame, stays closest to the restrained lock-screen concept
+  and can be reproduced consistently by both the greetd front end and Hyprlock.
+states: [password, fingerprint-ready, fingerprint-progress, success, failure, caps-lock, busy, power-confirmation]
+invariants:
+  - Boot sign-in and session unlock share a 420px hierarchy and differ only by mode-specific copy/actions.
+  - Controls are at least 44px high and the primary action is 48px high.
+  - Password input remains masked and authentication failure never exposes a shell.
+  - Only boot mode shows restart and shutdown.
+behavior:
+  - Password and fingerprint may complete concurrently but only one success transitions.
+  - Primary monitor owns input; secondary monitors show wallpaper and status only.
+  - Boot power actions use login1 with an explicit confirmation.
+acceptance:
+  - Boot login creates a new session and unlock never creates one.
+  - Greeter or lock process failure is fail-closed.
+  - Korean and English layouts, errors, fingerprint states, and Caps Lock warning fit.
+generation:
+  references:
+    - docs/assets/concepts/cyberpunk-lock-screen.png
+    - docs/assets/concepts/cyberpunk-notification-center.png
+  candidate_prompt: >-
+    Explore three unified Enoshima Auth directions for Boot Sign In and Session Unlock with identical hierarchy, time, user, password, fingerprint, Caps Lock, layout, Wi-Fi, battery, errors, boot-only power actions, multi-monitor policy, and fail-closed responsibilities.
+  final_prompt: >-
+    Develop Direction B Outline Frame into a 420px implementation board with 44px fields, 48px primary action, login and unlock variants, fingerprint/password states, Caps Lock and error feedback, layout menu, boot-only login1 power actions, and primary/secondary monitor behavior.

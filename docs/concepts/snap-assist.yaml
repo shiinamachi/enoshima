@@ -1,0 +1,29 @@
+surface_id: snap-assist
+status: approved
+asset: docs/assets/concepts/snap-assist/snap-assist-v1.png
+candidates: docs/assets/concepts/snap-assist/snap-assist-candidates-v1.png
+selection: >-
+  Direction A, Minimal Border and Fill, makes target geometry immediately clear
+  while leaving application and wallpaper context visible. It also has a direct
+  opaque fallback for reduced-transparency mode.
+states: [left-half, right-half, maximize, corners, layout-chooser, cross-monitor, cancelled]
+invariants:
+  - Preview uses a 2px border plus fill or hatch and never communicates by color alone.
+  - Edge threshold is 16px and committed geometry keeps a 10px monitor inset.
+  - Pointer and Super+Arrow actions call the same controller.
+behavior:
+  - Titlebar drag activates preview; release commits.
+  - Escape or leaving the threshold cancels without moving the client.
+  - Destination monitor scale is applied before final geometry is calculated.
+acceptance:
+  - Tiled and floating windows produce the same target layouts.
+  - Every half, corner, and maximize target works on internal and external displays.
+  - Reduced motion changes state immediately without spatial sweeps.
+generation:
+  references:
+    - docs/assets/concepts/cyberpunk-desktop-shell.png
+    - docs/assets/concepts/system-titlebar/system-titlebar-v1.png
+  candidate_prompt: >-
+    Explore three Enoshima Snap Assist directions for left/right halves, maximize, four corners, a compact layout chooser, cross-monitor drag, Escape cancel, and threshold withdrawal. Use restrained border-and-fill geometry with Korean labels and reduced-mode variants.
+  final_prompt: >-
+    Develop Direction A Minimal Border and Fill into a 1920x1080 implementation board with cyan border, low-opacity violet fill, hatch fallback, 16px threshold, 10px inset, 2px focus border, keyboard parity, and tiled/floating consistency.

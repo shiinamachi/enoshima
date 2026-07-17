@@ -195,6 +195,7 @@ expected = {
         ),
     },
 }
+repository_owned = {"enoshima-concept-art"}
 
 sources = json.loads(sources_path.read_text(encoding="utf-8"))
 assert sources["schema"] == 1
@@ -203,7 +204,9 @@ source_by_name = {entry["name"]: entry for entry in sources["skills"]}
 assert set(source_by_name) == set(expected)
 
 active_skill_files = sorted(skills_root.glob("*/SKILL.md"))
-assert [path.parent.name for path in active_skill_files] == sorted(expected)
+assert [path.parent.name for path in active_skill_files] == sorted(
+    set(expected) | repository_owned
+)
 assert sorted(skills_root.rglob("SKILL.md")) == active_skill_files, (
     "nested active skill found"
 )
@@ -258,7 +261,29 @@ ui_skill = (skills_root / "ui-ux-pro-max" / "SKILL.md").read_text(encoding="utf-
 assert "CLAUDE_PLUGIN_ROOT" not in ui_skill
 assert ".agents/skills/ui-ux-pro-max/scripts/search.py" in ui_skill
 assert "Do not pass `--persist`" in ui_skill
+
+concept_skill_dir = skills_root / "enoshima-concept-art"
+concept_skill = (concept_skill_dir / "SKILL.md").read_text(encoding="utf-8")
+_, concept_frontmatter_text, concept_body = concept_skill.split("---", 2)
+concept_frontmatter = yaml.safe_load(concept_frontmatter_text)
+assert concept_frontmatter["name"] == "enoshima-concept-art"
+assert "docs/ui-surfaces.yaml" in concept_body
+concept_interface = yaml.safe_load(
+    (concept_skill_dir / "agents" / "openai.yaml").read_text(encoding="utf-8")
+)["interface"]
+assert 25 <= len(concept_interface["short_description"]) <= 64
+assert "$enoshima-concept-art" in concept_interface["default_prompt"]
+for required in (
+    "references/visual-language.md",
+    "references/prompt-template.md",
+    "references/surface-checklist.md",
+    "scripts/validate-concept-manifest",
+):
+    assert (concept_skill_dir / required).is_file(), required
 PY
+
+echo "==> Checking UI concept coverage"
+"$repo_root/scripts/check-ui-concept-coverage"
 
 PYTHONDONTWRITEBYTECODE=1 /usr/bin/python \
   .agents/skills/ui-ux-pro-max/scripts/validate_data.py

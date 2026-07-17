@@ -1,0 +1,4 @@
+interface:
+  display_name: "Enoshima Concept Art"
+  short_description: "Concept-first desktop surface workflow"
+  default_prompt: "Use $enoshima-concept-art to create and register an Enoshima desktop UI concept before implementation."

@@ -56,6 +56,61 @@ that hierarchy to initial login with user, session, and power actions on an
 isolated mixed-DPI Hyprland compositor. The responsive SDDM theme preserves
 the same hierarchy only as a tested rollback surface.
 
+### System title bar and window menu
+
+![System title bar concept](assets/concepts/system-titlebar/system-titlebar-v1.png)
+
+The compositor-owned Slim Line title bar is a positive-allowlist fallback for
+clients that provide no usable chrome. Its 36 px visual bar retains 44 px
+caption-button targets, a broad modifier-free drag area, maximize/restore on
+double-click, an accessible system menu, and a client-close request that never
+kills the application process. Client-owned and Enoshima title bars must never
+appear on the same window.
+
+### Snap Assist
+
+![Snap Assist concept](assets/concepts/snap-assist/snap-assist-v1.png)
+
+Snap Assist gives title-bar dragging and keyboard placement one shared
+controller. Half, corner, maximize, layout-picker, cancellation, and
+cross-monitor behavior use a restrained geometry preview. Reduced transparency
+replaces translucent fill with a stronger border and hatch; reduced motion
+changes preview state without a spatial sweep.
+
+### Power, display, and transient feedback
+
+![Power menu concept](assets/concepts/power-menu/power-menu-v1.png)
+
+![Display mode concept](assets/concepts/display-mode/display-mode-v1.png)
+
+![OSD concept](assets/concepts/osd/osd-v1.png)
+
+The power menu keeps session and system actions in stable groups while exposing
+graceful-close progress, login1 dispatch, and recoverable errors. The display
+overlay makes its four spatial relationships visible and protects changes with
+a timed keep/revert step. The Slim Bar OSD reuses a single click-through active-
+monitor surface for volume, microphone, brightness, keyboard-light, and radio
+feedback.
+
+### Cyberdock window state
+
+![Cyberdock window-state concept](assets/concepts/cyberdock-window-state/cyberdock-window-state-v1.png)
+
+Cyberdock uses a quiet bottom edge bar, notch, and count badge to distinguish
+pinned, running, focused, minimized, restoring, multi-window, urgent, and
+unavailable states. These markers render the address-based state machine; they
+must not invent state from icon clicks independently.
+
+### Unified Enoshima Auth
+
+![Unified authentication concept](assets/concepts/auth/auth-v1.png)
+
+Boot sign-in and session unlock keep distinct secure backends but share one
+420 px visual hierarchy. The greetd front end creates a session; Hyprlock
+unlocks the existing session. Password and fingerprint feedback, Caps Lock,
+keyboard layout, multi-monitor policy, and fail-closed behavior are common.
+Only boot mode offers login1-backed restart and shutdown.
+
 ## Shared visual language
 
 | Role | Value | Use |
@@ -77,7 +132,8 @@ All components use the same behavioral tokens:
 
 - an 8 px spacing grid, with 14 px desktop edge margins;
 - 10--14 px component radii and a 2 px compositor focus edge;
-- at least 40 px for interactive rows and icon targets;
+- at least 40 px for compact secondary controls and 44 px for primary pointer
+  targets;
 - near-opaque persistent chrome, with blur reserved for transient overlays;
 - one focus cue per interaction, never simultaneous competing glows;
 - 110--190 ms direct-manipulation transitions and no continuous pulsing;
@@ -96,13 +152,21 @@ All components use the same behavioral tokens:
 | Grouped notifications, DND, and six functional quick settings | `home/dot_config/swaync/` |
 | Persistent application Dock and fullscreen reveal | `home/dot_config/quickshell/cyberdock/shell.qml` |
 | Volume and brightness feedback | `home/dot_config/quickshell/cyberdock/CyberOsd.qml` and shell IPC helpers |
+| Power transition feedback | `home/dot_config/quickshell/cyberdock/PowerMenu.qml` and `desktop-power` |
+| Display mode choice and rollback | `home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml` |
+| Window-state markers | Cyberdock state store, event bridge, and `shell.qml` |
+| System title bar and window menu | positive-allowlist Enoshima decoration backend |
+| Pointer and keyboard Snap Assist | shared snap controller and `EnoshimaSnapAssist.qml` |
 | GTK 3/4 application surfaces | managed `settings.ini` and semantic `gtk.css` in `home/dot_config/gtk-3.0/` and `home/dot_config/gtk-4.0/` |
 | Cursor, file chooser, and input-method continuity | UWSM/Hyprland cursor exports, `home/dot_config/xdg-desktop-portal/`, and managed Fcitx5 Classic UI settings |
 | Authentication hierarchy | `home/dot_config/hypr/hyprlock.conf`, ReGreet under `ansible/roles/system/`, and the fallback SDDM theme under `ansible/roles/desktop_expansion/` |
 
-Concept art is deliberately advisory. It must not introduce controls that the
-managed component cannot actually operate, duplicate application-owned title
-bars, or trade legibility for glass effects. Visual acceptance on the real
+`docs/ui-surfaces.yaml` and the per-surface specs turn approved concept art into
+a structural implementation contract. A concept must not introduce controls
+that the managed component cannot actually operate, duplicate application-owned
+title bars, or trade legibility for glass effects. It is not a pixel golden:
+the required contract covers hierarchy, tokens, geometry, controls, states,
+localization, scaling, and accessibility. Visual acceptance on the real
 internal and external displays remains the final manual gate. The named GTK
 theme, cursor, Fcitx5 material theme, Audio panel, and Display panel also
 depend on their declared Arch packages being installed through a complete

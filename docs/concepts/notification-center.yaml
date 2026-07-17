@@ -1,0 +1,12 @@
+surface_id: notification-center
+status: approved
+source: legacy-concept
+asset: docs/assets/concepts/cyberpunk-notification-center.png
+states: [default, empty, do-not-disturb, notification, critical, action-error]
+invariants:
+  - Notifications remain right-aligned and subordinate to active work.
+  - Quick actions have text labels and non-color state cues.
+acceptance:
+  - Empty and do-not-disturb modes remain understandable without notifications.
+  - Long Korean and English notification copy wraps without clipping actions.
+  - Critical notifications do not rely on color alone.

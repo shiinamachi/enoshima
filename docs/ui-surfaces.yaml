@@ -1,0 +1,97 @@
+schema: 1
+reviewed: 2026-07-17
+
+surfaces:
+  desktop-shell:
+    implementation:
+      - home/dot_config/quickshell/cyberdock/shell.qml
+      - home/dot_config/waybar/config.jsonc
+      - home/dot_config/waybar/style.css
+    token_mode: source
+    concept:
+      status: approved
+      asset: docs/assets/concepts/cyberpunk-desktop-shell.png
+      spec: docs/concepts/desktop-shell.yaml
+  launcher:
+    implementation:
+      - home/dot_config/quickshell/cyberdock/CyberLauncher.qml
+    token_mode: consumer
+    concept:
+      status: approved
+      asset: docs/assets/concepts/cyberpunk-launcher.png
+      spec: docs/concepts/launcher.yaml
+  notification-center:
+    implementation:
+      - home/dot_config/swaync/config.json
+      - home/dot_config/swaync/style.css
+    token_mode: external
+    concept:
+      status: approved
+      asset: docs/assets/concepts/cyberpunk-notification-center.png
+      spec: docs/concepts/notification-center.yaml
+  power-menu:
+    implementation:
+      - home/dot_config/quickshell/cyberdock/PowerMenu.qml
+    token_mode: consumer
+    concept:
+      status: approved
+      asset: docs/assets/concepts/power-menu/power-menu-v1.png
+      spec: docs/concepts/power-menu.yaml
+  osd:
+    implementation:
+      - home/dot_config/quickshell/cyberdock/CyberOsd.qml
+    token_mode: consumer
+    concept:
+      status: approved
+      asset: docs/assets/concepts/osd/osd-v1.png
+      spec: docs/concepts/osd.yaml
+  display-mode:
+    implementation:
+      - home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
+    token_mode: consumer
+    concept:
+      status: approved
+      asset: docs/assets/concepts/display-mode/display-mode-v1.png
+      spec: docs/concepts/display-mode.yaml
+  cyberdock-window-state:
+    implementation:
+      - home/dot_config/quickshell/cyberdock/shell.qml
+    token_mode: source
+    concept:
+      status: approved
+      asset: docs/assets/concepts/cyberdock-window-state/cyberdock-window-state-v1.png
+      spec: docs/concepts/cyberdock-window-state.yaml
+  system-titlebar:
+    planned: true
+    implementation:
+      - native/enoshima-decoration/src/main.cpp
+      - home/dot_config/enoshima/window-interaction.yaml
+    token_mode: external
+    concept:
+      status: approved
+      asset: docs/assets/concepts/system-titlebar/system-titlebar-v1.png
+      spec: docs/concepts/system-titlebar.yaml
+  snap-assist:
+    planned: true
+    implementation:
+      - home/dot_config/quickshell/cyberdock/EnoshimaSnapAssist.qml
+      - home/dot_local/bin/executable_enoshima-snap-controller
+    token_mode: consumer
+    concept:
+      status: approved
+      asset: docs/assets/concepts/snap-assist/snap-assist-v1.png
+      spec: docs/concepts/snap-assist.yaml
+  auth:
+    implementation:
+      - home/dot_config/hypr/hyprlock.conf
+      - ansible/roles/system/templates/regreet.css.j2
+      - ansible/roles/system/templates/regreet.toml.j2
+    token_mode: external
+    concept:
+      status: approved
+      asset: docs/assets/concepts/auth/auth-v1.png
+      spec: docs/concepts/auth.yaml
+
+exemptions:
+  home/dot_config/quickshell/cyberdock/FocusSentinel.qml: >-
+    Transparent 2x2 input-focus handoff mechanism with no rendered user interface.

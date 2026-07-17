@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Validate the Enoshima UI surface registry and concept coverage."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+VISIBLE_PATTERNS = (
+    "home/dot_config/quickshell/cyberdock/*.qml",
+    "home/dot_config/waybar/config.jsonc",
+    "home/dot_config/waybar/style.css",
+    "home/dot_config/swaync/config.json",
+    "home/dot_config/swaync/style.css",
+    "home/dot_config/hypr/hyprlock.conf",
+    "ansible/roles/system/templates/regreet.css.j2",
+    "ansible/roles/system/templates/regreet.toml.j2",
+)
+
+DIRECT_COLOR = re.compile(r"(?:#[0-9a-fA-F]{6,8}|\b(?:rgba?|hsla?)\s*\()")
+
+
+def load_yaml(path: Path) -> object:
+    """Use the managed yq package and parse its JSON output."""
+    completed = subprocess.run(
+        ["yq", ".", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def fail(errors: list[str], message: str) -> None:
+    errors.append(message)
+
+
+def relative_path(root: Path, value: object, errors: list[str], label: str) -> Path | None:
+    if not isinstance(value, str) or not value:
+        fail(errors, f"{label}: expected a non-empty repository-relative path")
+        return None
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts:
+        fail(errors, f"{label}: path must stay inside the repository: {value}")
+        return None
+    return root / path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("manifest", nargs="?", default="docs/ui-surfaces.yaml")
+    args = parser.parse_args()
+
+    manifest = Path(args.manifest).resolve()
+    root = manifest.parent.parent
+    errors: list[str] = []
+    try:
+        data = load_yaml(manifest)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+        print(f"concept manifest: cannot read {manifest}: {exc}", file=sys.stderr)
+        return 1
+
+    if not isinstance(data, dict) or data.get("schema") != 1:
+        print("concept manifest: schema must be 1", file=sys.stderr)
+        return 1
+    surfaces = data.get("surfaces")
+    exemptions = data.get("exemptions", {})
+    if not isinstance(surfaces, dict) or not surfaces:
+        print("concept manifest: surfaces must be a non-empty mapping", file=sys.stderr)
+        return 1
+    if not isinstance(exemptions, dict):
+        print("concept manifest: exemptions must be a mapping", file=sys.stderr)
+        return 1
+
+    registered: set[str] = set()
+    for surface_id, entry in surfaces.items():
+        label = f"surfaces.{surface_id}"
+        if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", str(surface_id)):
+            fail(errors, f"{label}: invalid surface id")
+        if not isinstance(entry, dict):
+            fail(errors, f"{label}: expected a mapping")
+            continue
+        implementations = entry.get("implementation", [])
+        if not isinstance(implementations, list) or not implementations:
+            fail(errors, f"{label}.implementation: expected a non-empty list")
+            continue
+        planned = bool(entry.get("planned", False))
+        for value in implementations:
+            path = relative_path(root, value, errors, f"{label}.implementation")
+            if path is None:
+                continue
+            registered.add(path.relative_to(root).as_posix())
+            if not planned and not path.is_file():
+                fail(errors, f"{label}: implementation does not exist: {value}")
+
+        concept = entry.get("concept")
+        if not isinstance(concept, dict) or concept.get("status") != "approved":
+            fail(errors, f"{label}.concept.status: must be approved")
+            continue
+        for key in ("asset", "spec"):
+            path = relative_path(root, concept.get(key), errors, f"{label}.concept.{key}")
+            if path is not None and not path.is_file():
+                fail(errors, f"{label}.concept.{key}: file does not exist: {concept.get(key)}")
+        spec_path = relative_path(root, concept.get("spec"), errors, f"{label}.concept.spec")
+        if spec_path is not None and spec_path.is_file():
+            try:
+                spec = load_yaml(spec_path)
+            except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+                fail(errors, f"{label}.concept.spec: cannot read: {exc}")
+                spec = None
+            if not isinstance(spec, dict) or spec.get("surface_id") != surface_id:
+                fail(errors, f"{label}.concept.spec: surface_id must equal {surface_id}")
+            elif not spec.get("states") or not spec.get("acceptance"):
+                fail(errors, f"{label}.concept.spec: states and acceptance are required")
+
+        if entry.get("token_mode") == "consumer":
+            for value in implementations:
+                path = root / value
+                if path.suffix == ".qml" and path.is_file():
+                    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                        if DIRECT_COLOR.search(line) and 'color: "transparent"' not in line:
+                            fail(errors, f"{value}:{number}: token consumer contains a direct color literal")
+
+    for pattern in VISIBLE_PATTERNS:
+        for path in root.glob(pattern):
+            relative = path.relative_to(root).as_posix()
+            if relative in registered:
+                continue
+            reason = exemptions.get(relative)
+            if not isinstance(reason, str) or not reason.strip():
+                fail(errors, f"unregistered visible implementation: {relative}")
+
+    for value, reason in exemptions.items():
+        path = relative_path(root, value, errors, "exemptions")
+        if path is not None and not path.is_file():
+            fail(errors, f"exemption target does not exist: {value}")
+        if not isinstance(reason, str) or len(reason.strip()) < 12:
+            fail(errors, f"exemptions.{value}: provide a specific reason")
+
+    if errors:
+        for error in errors:
+            print(f"concept manifest: {error}", file=sys.stderr)
+        return 1
+    print(f"concept manifest: {len(surfaces)} surfaces approved; coverage complete")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

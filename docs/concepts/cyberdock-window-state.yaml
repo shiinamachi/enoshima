@@ -1,0 +1,28 @@
+surface_id: cyberdock-window-state
+status: approved
+asset: docs/assets/concepts/cyberdock-window-state/cyberdock-window-state-v1.png
+candidates: docs/assets/concepts/cyberdock-window-state/cyberdock-window-state-candidates-v1.png
+selection: >-
+  Direction B, Edge Bar, adds the least visual noise and scales cleanly from one
+  window to multiple windows while keeping minimized distinct from closed.
+states: [pinned, running, focused, minimizing, minimized, restoring, multi-window, urgent, unavailable]
+invariants:
+  - Each 56px icon slot retains a 44px target and a 2px bottom state bar.
+  - Minimized uses a dashed or recessed marker plus notch, not color alone.
+  - Transition markers settle within 160ms and never loop.
+behavior:
+  - Focused single-window click minimizes; minimized click restores the exact address.
+  - Multi-window click opens a chooser using current window titles.
+  - Tab and Shift+Tab move visible focus through dock items.
+acceptance:
+  - State store, Hyprland address, and rendered marker converge after every action.
+  - Closed and minimized clients are never shown as the same state.
+  - Reduced motion changes markers immediately without bounce or magnification.
+generation:
+  references:
+    - docs/assets/concepts/cyberpunk-desktop-shell.png
+    - docs/assets/concepts/cyberpunk-launcher.png
+  candidate_prompt: >-
+    Explore three Cyberdock state systems covering pinned, running, focused, minimizing, minimized, restoring, multi-window counts, urgent attention, unavailable, Korean labels, keyboard focus, and exact-address restore.
+  final_prompt: >-
+    Develop Direction B Edge Bar using a 2px bottom marker, 56px slots, 44px targets, dashed minimized marker and notch, bounded 120–160ms transition, numeric multi-window badge, chooser, and reduced-motion state changes.
