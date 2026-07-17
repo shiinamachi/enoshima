@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+section() {
+  printf '\n[%s]\n' "$1"
+}
+
+section 'ModemManager unit'
+systemctl show ModemManager.service \
+  -p ActiveState -p SubState -p TimeoutStopUSec -p KillMode -p ExecStop -p Result \
+  2>&1 || true
+
+section 'Previous ModemManager shutdown'
+journalctl -b -1 -u ModemManager.service -o short-monotonic --no-pager 2>&1 || true
+
+section 'Detected modem paths'
+mmcli -L 2>&1 || true
+
+section 'Redacted modem state'
+mmcli -m any --output-keyvalue 2>/dev/null |
+  sed -E '/(equipment-identifier|device-identifier|own-numbers|operator-code|operator-name|sim-path)/Id' || true
+
+section 'NetworkManager radios'
+nmcli radio 2>&1 || true
+
+section 'Active WWAN connection types'
+nmcli -t -f TYPE connection show --active 2>/dev/null | sort -u || true

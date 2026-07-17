@@ -223,6 +223,12 @@ frequency or lower either display to 60 Hz on battery. Hypridle locks after
 five minutes, powers displays down after ten minutes, and suspends after thirty
 minutes only when on battery.
 
+At shutdown, `enoshima-wwan-quiesce.service` disconnects mobile broadband and
+disables the modem before ModemManager stops. Every operation has an eight
+second bound, and the confirmed Quectel/MBIM ModemManager hang has a
+service-local 15 second stop timeout. The system-wide service timeout is left
+unchanged.
+
 ## Development runtimes
 
 `mise` is the single user-scoped runtime manager. The global

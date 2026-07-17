@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+log() {
+  /usr/bin/systemd-cat --identifier=enoshima-wwan-quiesce \
+    /usr/bin/printf '%s\n' "$*"
+}
+
+run_bounded() {
+  local label=$1
+  shift
+  if /usr/bin/timeout --signal=TERM --kill-after=2s 8s "$@"; then
+    log "$label completed"
+    return 0
+  fi
+  local status=$?
+  log "$label failed or timed out with status $status; shutdown will continue"
+  return 0
+}
+
+if ! /usr/bin/systemctl --quiet is-active ModemManager.service; then
+  log 'ModemManager is not active; no WWAN quiesce is required'
+  exit 0
+fi
+
+while IFS=: read -r uuid connection_type; do
+  [[ $connection_type == gsm ]] || continue
+  [[ $uuid =~ ^[0-9A-Fa-f-]{36}$ ]] || continue
+  run_bounded "disconnect $uuid" /usr/bin/nmcli --wait 5 connection down uuid "$uuid"
+done < <(/usr/bin/nmcli -t -f UUID,TYPE connection show --active 2>/dev/null || true)
+
+if /usr/bin/mmcli -L 2>/dev/null | /usr/bin/grep -q '/Modem/'; then
+  run_bounded 'modem disable' /usr/bin/mmcli -m any --disable
+fi
+
+# Prevent NetworkManager autoconnect from re-enabling the modem between this
+# bounded quiesce and ModemManager's own stop job. The managed WWAN fallback
+# policy enables the radio again on the next boot.
+run_bounded 'WWAN radio off' /usr/bin/nmcli radio wwan off

@@ -202,11 +202,13 @@ desktop-power suspend
 desktop-power doctor
 ```
 
-재시작과 종료는 그래픽 메뉴 프로세스와 독립된 user systemd unit에서
-Hyprshutdown을 foreground로 실행해 앱과 Hyprland를 정리한 다음 각각
-`systemctl reboot`, `systemctl poweroff`를 실행한다. 요청 직전에 현재 boot ID와
-`requested` phase가 `$XDG_STATE_HOME/enoshima/power/pending.json`에 기록되고,
-실제 systemctl 호출 직전에 phase가 `systemctl_dispatched`로 바뀐다. 다음 그래픽
+재시작과 종료는 `hyprshutdown --no-exit --no-fork`로 앱의 정상 close 요청과
+저장 확인을 먼저 처리하되 Hyprland와 user manager는 유지한다. 앱 정리가 끝나면
+systemd-logind의 `Reboot` 또는 `PowerOff` D-Bus method를 직접 호출하며,
+직접 호출이 실패할 때만 `systemctl`을 fallback으로 사용한다. 요청 직전에 현재
+boot ID와 `requested` phase가
+`$XDG_STATE_HOME/enoshima/power/pending.json`에 기록되고, login1 호출 직전에
+phase가 `login1_dispatching`으로 바뀐다. 다음 그래픽
 로그인에서 `desktop-power-verify.service`는 boot ID 변화와 dispatch phase를 모두
 비교해 `last-result.json`에 저장한다. 따라서 전원 버튼 종료처럼 boot ID만 바뀐
 경우는 `boot_changed_without_dispatch`로 기록된다. `status --json`에 pending
@@ -224,6 +226,17 @@ unit, 이전 boot journal, firmware와 Thunderbolt 장치를 함께 보여준다
 확인되기 전에는 강제 재부팅이나 `reboot=` kernel parameter를 추가하지 않는다.
 실제 완료 검증은 dock 미연결 10회와 연결 10회에서 `last-result.json`이 모두
 `succeeded`인지 확인한다.
+
+Quectel WWAN modem은 종료 직전 재탐색과 sleep preparation에서 멈출 수 있다.
+`enoshima-wwan-quiesce.service`는 stop ordering상 NetworkManager와
+ModemManager보다 먼저 active GSM 연결, modem, WWAN radio를 각각 제한 시간 안에
+정리한다. 확인된 90초 기본 stop timeout은 ModemManager에만 15초로 제한한다.
+전역 systemd stop timeout은 변경하지 않는다. 이전 종료의 증거는 식별자를
+redact하는 다음 helper로 수집한다.
+
+```bash
+enoshima-shutdown-doctor | tee /tmp/enoshima-shutdown-doctor.txt
+```
 
 ## 권장 대화식 온보딩 순서
 

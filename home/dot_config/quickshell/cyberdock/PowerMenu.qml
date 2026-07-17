@@ -22,6 +22,8 @@ PanelWindow {
 
     property int selectedIndex: 0
     property string confirmationAction: ""
+    property bool applying: false
+    property string actionError: ""
     property var powerStatus: ({
         "availability": {
             "lock": "yes",
@@ -65,7 +67,7 @@ PanelWindow {
     }
 
     function requestAction(index) {
-        if (!actionAvailable(index))
+        if (!actionAvailable(index) || applying)
             return;
         const action = actions[index].id;
         if (action === "reboot" || action === "poweroff") {
@@ -77,10 +79,27 @@ PanelWindow {
     }
 
     function confirmAction() {
+        if (applying || confirmationAction === "")
+            return;
         const action = confirmationAction;
-        confirmationAction = "";
-        closeRequested();
-        Quickshell.execDetached(["desktop-power", action]);
+        actionError = "";
+        applying = true;
+        actionProcess.exec([
+            "bash", "-c",
+            "output=$(\"$@\" 2>&1); exit_code=$?; printf '%s\\n%s' \"$exit_code\" \"$output\"",
+            "cyberpower-apply", "desktop-power", action
+        ]);
+    }
+
+    function actionFailureMessage(detail) {
+        const normalized = String(detail || "").toLowerCase();
+        if (normalized.includes("not available"))
+            return "현재 시스템에서 이 전원 동작을 사용할 수 없습니다.";
+        if (normalized.includes("application close"))
+            return "열린 앱을 정리하지 못했습니다. 저장 확인 창을 처리한 뒤 다시 시도하세요.";
+        if (normalized.includes("inhibitor") || normalized.includes("access denied"))
+            return "다른 작업이 전원 전환을 막고 있습니다. 진행 중인 작업을 확인하세요.";
+        return "전원 요청을 완료하지 못했습니다. 잠시 후 다시 시도하세요.";
     }
 
     function moveSelection(delta) {
@@ -110,9 +129,32 @@ PanelWindow {
         }
     }
 
+    Process {
+        id: actionProcess
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const separator = text.indexOf("\n");
+                const exitCode = Number(separator >= 0
+                    ? text.slice(0, separator) : text);
+                const detail = separator >= 0
+                    ? text.slice(separator + 1) : "";
+                menu.applying = false;
+                if (exitCode === 0) {
+                    menu.actionError = "";
+                } else {
+                    menu.actionError = menu.actionFailureMessage(detail);
+                    console.warn("cyberpower: action failed:", exitCode,
+                        detail.trim());
+                }
+            }
+        }
+    }
+
     onVisibleChanged: {
         if (visible) {
             confirmationAction = "";
+            applying = false;
+            actionError = "";
             statusProcess.running = true;
             Qt.callLater(() => keyHandler.forceActiveFocus());
         }
@@ -125,6 +167,7 @@ PanelWindow {
 
     MouseArea {
         anchors.fill: parent
+        enabled: !menu.applying
         onClicked: menu.closeRequested()
     }
 
@@ -132,7 +175,9 @@ PanelWindow {
         id: card
         anchors.centerIn: parent
         width: Math.min(parent.width - 48, 440)
-        height: confirmation.visible ? 276 : 438
+        height: confirmation.visible
+            ? (menu.actionError === "" ? 276 : 324)
+            : 438
         radius: menu.theme.radiusPanel
         color: menu.theme.colorLauncherSurface
         border.width: 1
@@ -201,7 +246,9 @@ PanelWindow {
             anchors.top: heading.bottom
             anchors.topMargin: 7
             text: confirmation.visible
-                ? "열려 있는 앱을 정리한 뒤 요청을 실행합니다."
+                ? (menu.applying
+                    ? "열려 있는 앱을 정리하고 시스템에 요청하는 중입니다."
+                    : "열려 있는 앱을 정리한 뒤 요청을 실행합니다.")
                 : "잠금, 절전 또는 세션 종료 작업을 선택하세요."
             color: confirmation.visible
                 ? menu.theme.colorWarning
@@ -304,7 +351,9 @@ PanelWindow {
                 width: Math.floor((confirmation.width - confirmation.spacing) / 2)
                 height: 48
                 radius: menu.theme.radiusControl
-                color: cancelMouse.containsMouse ? menu.theme.colorFocusHover : "transparent"
+                opacity: menu.applying ? 0.5 : 1
+                color: cancelMouse.containsMouse && !menu.applying
+                    ? menu.theme.colorFocusHover : "transparent"
                 border.width: 1
                 border.color: menu.theme.colorQuietBorder
                 Accessible.role: Accessible.Button
@@ -323,6 +372,7 @@ PanelWindow {
                     id: cancelMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    enabled: !menu.applying
                     onClicked: menu.confirmationAction = ""
                 }
             }
@@ -331,7 +381,8 @@ PanelWindow {
                 width: Math.floor((confirmation.width - confirmation.spacing) / 2)
                 height: 48
                 radius: menu.theme.radiusControl
-                color: confirmMouse.pressed
+                opacity: menu.applying ? 0.72 : 1
+                color: confirmMouse.pressed && !menu.applying
                     ? menu.theme.colorFocusSelected
                     : menu.theme.colorSelectionStrong
                 border.width: 1
@@ -342,7 +393,9 @@ PanelWindow {
 
                 Text {
                     anchors.centerIn: parent
-                    text: menu.confirmationAction === "reboot" ? "재시작" : "시스템 종료"
+                    text: menu.applying
+                        ? "처리 중…"
+                        : (menu.confirmationAction === "reboot" ? "재시작" : "시스템 종료")
                     color: menu.theme.colorText
                     font.family: "Pretendard"
                     font.pixelSize: 14
@@ -352,9 +405,27 @@ PanelWindow {
                     id: confirmMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    enabled: !menu.applying
                     onClicked: menu.confirmAction()
                 }
             }
+        }
+
+        Text {
+            visible: menu.actionError !== ""
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: confirmation.top
+            anchors.leftMargin: 26
+            anchors.rightMargin: 26
+            anchors.bottomMargin: 14
+            text: menu.actionError
+            color: menu.theme.colorCritical
+            wrapMode: Text.WordWrap
+            font.family: "Pretendard"
+            font.pixelSize: 13
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: text
         }
     }
 }

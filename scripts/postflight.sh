@@ -350,6 +350,13 @@ done
 check_or_warn "at least one GSM connection profile exists (manual APN credentials if absent)" bash -c \
   "nmcli -g TYPE connection show | grep -Fxq gsm"
 check "WWAN fallback dispatcher installed" test -x /etc/NetworkManager/dispatcher.d/90-wwan-fallback
+check "WWAN shutdown quiesce service enabled" \
+  systemctl is-enabled --quiet enoshima-wwan-quiesce.service
+check "WWAN shutdown helper installed" test -x /usr/local/libexec/enoshima-wwan-quiesce
+# The command substitution must run in the child shell used by the check.
+# shellcheck disable=SC2016
+check "ModemManager stop timeout is bounded" bash -c \
+  '[[ $(systemctl show ModemManager.service -P TimeoutStopUSec) == 15s ]]'
 check "RGB UVC camera present" grep -qs '^Integrated Camera: Integrated C' /sys/class/video4linux/*/name
 check "IR UVC camera present" grep -qs '^Integrated Camera: Integrated I' /sys/class/video4linux/*/name
 check "fingerprint reader present" bash -c \
@@ -603,6 +610,10 @@ check "display projection overlay is deployed" \
   test -f "$HOME/.config/quickshell/cyberdock/DisplayModeOverlay.qml"
 check "desktop power controller is deployed" \
   test -x "$HOME/.local/bin/desktop-power"
+# HOME is intentionally expanded by the child Bash used for this compound check.
+# shellcheck disable=SC2016
+check "desktop power uses login1 without a user-scoped post command" bash -c \
+  'grep -Fq "org.freedesktop.login1.Manager" "$HOME/.local/bin/desktop-power" && ! grep -Eq "systemd-run|--post-cmd|finalize-transition" "$HOME/.local/bin/desktop-power"'
 check "desktop power menu is deployed" \
   test -f "$HOME/.config/quickshell/cyberdock/PowerMenu.qml"
 # HOME is intentionally expanded by the child Bash used for these compound checks.

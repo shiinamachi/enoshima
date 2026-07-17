@@ -1,0 +1,14 @@
+[Unit]
+Description=Quiesce WWAN before ModemManager shutdown
+After=NetworkManager.service ModemManager.service
+Wants=NetworkManager.service ModemManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+ExecStop=/usr/local/libexec/enoshima-wwan-quiesce
+RemainAfterExit=yes
+TimeoutStopSec=20s
+
+[Install]
+WantedBy=multi-user.target

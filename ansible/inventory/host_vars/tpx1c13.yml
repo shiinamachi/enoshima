@@ -37,6 +37,7 @@ system_units_started:
   - bluetooth.service
   - lenovo-cfgservice.service
   - ModemManager.service
+  - enoshima-wwan-quiesce.service
   - NetworkManager-dispatcher.service
   - NetworkManager-wait-online.service
   - NetworkManager.service

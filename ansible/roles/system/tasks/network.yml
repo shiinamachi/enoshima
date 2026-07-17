@@ -15,6 +15,43 @@
     group: root
     mode: "0755"
 
+- name: Ensure ModemManager override directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/ModemManager.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Bound the confirmed ModemManager stop hang
+  ansible.builtin.template:
+    src: modemmanager-stop-timeout.conf.j2
+    dest: /etc/systemd/system/ModemManager.service.d/20-enoshima-stop-timeout.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Reload systemd
+
+- name: Install the bounded WWAN shutdown helper
+  ansible.builtin.template:
+    src: enoshima-wwan-quiesce.sh.j2
+    dest: /usr/local/libexec/enoshima-wwan-quiesce
+    owner: root
+    group: root
+    mode: "0755"
+    backup: true
+
+- name: Install the WWAN shutdown ordering service
+  ansible.builtin.template:
+    src: enoshima-wwan-quiesce.service.j2
+    dest: /etc/systemd/system/enoshima-wwan-quiesce.service
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Reload systemd
+
 - name: Install the WWAN fallback helper
   ansible.builtin.template:
     src: wwan-fallback.sh.j2

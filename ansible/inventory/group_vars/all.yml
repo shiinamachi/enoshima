@@ -26,6 +26,7 @@ subordinate_id_count: 65536
 system_units_started: []
 system_units_enabled_only: []
 user_units_started: []
+wwan_modemmanager_stop_timeout: 15s
 
 # The selected display manager is enabled for the next boot. An explicit
 # apply-now override is reserved for TTY maintenance because stopping the

@@ -134,10 +134,10 @@ Fcitx5 Classic UI, tooltips, and session controls.
   stateful toggles; Power opens the repository-owned session menu, Audio opens
   Hyprpwcenter, and Display opens the projection overlay. The power menu routes
   lock, logout, suspend, reboot, and poweroff through `desktop-power`; reboot and
-  poweroff first record a boot-ID checkpoint and close the session gracefully
-  through a foreground Hyprshutdown process owned by an independent user
-  systemd unit. Verification requires both a changed boot ID and a checkpoint
-  written immediately before the final systemctl action. `Super+P` exposes
+  poweroff first record a boot-ID checkpoint, ask applications to close while
+  Hyprland remains alive, and then call systemd-logind directly. Verification
+  requires both a changed boot ID and a checkpoint written immediately before
+  the login1 request. `Super+P` exposes
   internal-only, duplicate, extend, and external-only modes; each transaction
   has a 15-second rollback timer, and confirmed preferences are stored per
   physical monitor topology. Advanced display settings remain available

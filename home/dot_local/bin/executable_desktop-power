@@ -2,7 +2,6 @@
 set -euo pipefail
 
 readonly systemctl_bin=${DESKTOP_POWER_SYSTEMCTL:-systemctl}
-readonly systemd_run_bin=${DESKTOP_POWER_SYSTEMD_RUN:-systemd-run}
 readonly loginctl_bin=${DESKTOP_POWER_LOGINCTL:-loginctl}
 readonly busctl_bin=${DESKTOP_POWER_BUSCTL:-busctl}
 readonly hyprshutdown_bin=${DESKTOP_POWER_HYPRSHUTDOWN:-hyprshutdown}
@@ -16,7 +15,6 @@ readonly pending_file=$state_dir/pending.json
 readonly result_file=$state_dir/last-result.json
 readonly lock_file=$state_dir/controller.lock
 readonly boot_id_file=${DESKTOP_POWER_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}
-readonly self_path=${DESKTOP_POWER_SELF:-$(realpath -- "$0")}
 
 die() {
   printf 'desktop-power: %s\n' "$*" >&2
@@ -143,46 +141,52 @@ record_checkpoint() {
 }
 
 run_power_transition() {
-  local action=$1 method=$2 status result post_command unit
-  require_available "$method" "$action"
+  local action=$1 capability_method=$2 login1_method=$3 status result checkpoint
+  require_available "$capability_method" "$action"
   command -v "$hyprshutdown_bin" >/dev/null 2>&1 ||
     die "hyprshutdown command not found: $hyprshutdown_bin"
-  command -v "$systemd_run_bin" >/dev/null 2>&1 ||
-    die "systemd-run command not found: $systemd_run_bin"
   record_checkpoint "$action"
-  printf -v post_command '%q finalize-transition %q' "$self_path" "$action"
-  unit="enoshima-desktop-power-$action"
-  if "$systemd_run_bin" --user --quiet --collect \
-    --unit="$unit" \
-    --property=Type=exec \
-    --property=Slice=background.slice \
-    -- "$hyprshutdown_bin" --no-fork --verbose --post-cmd "$post_command"; then
-    return
+
+  # Keep Hyprland and the user manager alive while applications process their
+  # normal close requests. The system transition must not be a post-command of
+  # a user-scoped unit because that unit disappears with the graphical session.
+  if "$hyprshutdown_bin" --no-exit --no-fork --verbose; then
+    :
   else
     status=$?
     result=$(jq -c --arg verifiedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      --arg status dispatch_failed --argjson exitCode "$status" \
-      '. + {verified_at:$verifiedAt,status:$status,dispatch_exit_code:$exitCode}' "$pending_file")
+      --arg status app_close_failed --argjson exitCode "$status" \
+      '. + {verified_at:$verifiedAt,status:$status,app_close_exit_code:$exitCode}' "$pending_file")
     write_json "$result_file" "$result"
     rm -f -- "$pending_file"
-    die "failed to dispatch $action through hyprshutdown"
+    die "application close phase failed before $action"
   fi
-}
 
-finalize_transition() {
-  local action=$1 pending checkpoint
-  pending=$(pending_json)
-  [[ $pending != null ]] || die "no pending power transition"
-  [[ $(jq -r '.action' <<<"$pending") == "$action" ]] ||
-    die "pending power transition does not match $action"
-  [[ $(jq -r '.boot_id_before' <<<"$pending") == "$(current_boot_id)" ]] ||
-    die 'pending power transition belongs to another boot'
   checkpoint=$(jq -c \
     --arg dispatchedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '. + {phase:"systemctl_dispatched",systemctl_dispatched_at:$dispatchedAt}' \
-    <<<"$pending")
+    '. + {phase:"login1_dispatching",login1_dispatch_started_at:$dispatchedAt}' \
+    "$pending_file")
   write_json "$pending_file" "$checkpoint"
-  exec "$systemctl_bin" "$action"
+
+  # login1 is the authority for polkit and inhibitors. If the direct D-Bus
+  # call cannot be made, systemctl is the supported logind-aware fallback.
+  if command -v "$busctl_bin" >/dev/null 2>&1 &&
+    "$busctl_bin" call org.freedesktop.login1 /org/freedesktop/login1 \
+      org.freedesktop.login1.Manager "$login1_method" b true; then
+    return
+  fi
+
+  if "$systemctl_bin" "$action"; then
+    return
+  else
+    status=$?
+  fi
+  result=$(jq -c --arg verifiedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg status dispatch_failed --argjson exitCode "$status" \
+    '. + {verified_at:$verifiedAt,status:$status,dispatch_exit_code:$exitCode}' "$pending_file")
+  write_json "$result_file" "$result"
+  rm -f -- "$pending_file"
+  die "failed to dispatch $action through systemd-logind"
 }
 
 verify_last_action() {
@@ -196,7 +200,7 @@ verify_last_action() {
   after=$(current_boot_id)
   phase=$(jq -r '.phase // "requested"' <<<"$pending")
   if [[ $before != "$after" ]]; then
-    if [[ $phase == systemctl_dispatched ]]; then
+    if [[ $phase == login1_dispatching ]]; then
       status=succeeded
     else
       status=boot_changed_without_dispatch
@@ -273,11 +277,11 @@ case ${1:-} in
     ;;
   reboot)
     [[ $# -eq 1 ]] || usage
-    run_power_transition reboot CanReboot
+    run_power_transition reboot CanReboot Reboot
     ;;
   poweroff)
     [[ $# -eq 1 ]] || usage
-    run_power_transition poweroff CanPowerOff
+    run_power_transition poweroff CanPowerOff PowerOff
     ;;
   doctor)
     [[ $# -eq 1 ]] || usage
@@ -286,10 +290,6 @@ case ${1:-} in
   verify-last-action)
     [[ $# -eq 1 ]] || usage
     verify_last_action
-    ;;
-  finalize-transition)
-    [[ $# -eq 2 && ($2 == reboot || $2 == poweroff) ]] || usage
-    finalize_transition "$2"
     ;;
   *) usage ;;
 esac
