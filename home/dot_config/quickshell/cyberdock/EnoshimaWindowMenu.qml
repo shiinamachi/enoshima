@@ -55,6 +55,14 @@ PanelWindow {
 
     mask: Region { item: menu.showing ? scrimInput : null }
 
+    onShowingChanged: {
+        if (showing) {
+            selectedIndex = 0;
+            adjustmentMode = "";
+            Qt.callLater(() => scrimInput.forceActiveFocus());
+        }
+    }
+
     function runWindowAction(action) {
         Quickshell.execDetached([
             "desktop-window-action", action,
@@ -106,7 +114,7 @@ PanelWindow {
         return true;
     }
 
-    Keys.onPressed: event => {
+    function handleKey(event) {
         if (event.key === Qt.Key_Escape) {
             if (adjustmentMode !== "")
                 adjustmentMode = "";
@@ -140,6 +148,9 @@ PanelWindow {
         id: scrimInput
         anchors.fill: parent
         color: menu.theme.colorScrim
+        focus: true
+
+        Keys.onPressed: event => menu.handleKey(event)
 
         MouseArea {
             anchors.fill: parent

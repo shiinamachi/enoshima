@@ -9,6 +9,7 @@ plugin=native/enoshima-decoration
 config=home/dot_config/enoshima/window-interaction.yaml
 lua=home/dot_config/hypr/hyprland.lua
 loader=home/dot_local/bin/executable_enoshima-decoration-load
+window_menu=home/dot_config/quickshell/cyberdock/EnoshimaWindowMenu.qml
 work=$(mktemp -d)
 
 cleanup() {
@@ -35,6 +36,12 @@ grep -Fq 'enoshima-snap-controller preview' "$plugin/src/barDeco.cpp"
 grep -Fq 'enoshima-snap-controller commit' "$plugin/src/barDeco.cpp"
 grep -Fq 'enoshima-snap-controller cancel' "$plugin/src/barDeco.cpp"
 grep -Fq 'enoshima-window-menu' "$plugin/src/barDeco.cpp"
+grep -Fq 'Qt.callLater(() => scrimInput.forceActiveFocus())' "$window_menu"
+grep -Fq 'Keys.onPressed: event => menu.handleKey(event)' "$window_menu"
+if grep -Fq '    Keys.onPressed: event => {' "$window_menu"; then
+  printf 'Window menu attaches Keys directly to a non-Item PanelWindow.\n' >&2
+  exit 1
+fi
 grep -Fq 'bar_hit_height = 44' "$lua"
 grep -Fq 'hl.bind("ALT + SPACE"' "$lua"
 
