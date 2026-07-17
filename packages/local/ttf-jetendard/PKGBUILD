@@ -37,12 +37,14 @@ prepare() {
 
 build() {
   cd "jetendard-${_commit}"
-  PYTHONPATH=src python -m jetendard.cli --all
+  PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}" \
+    /usr/bin/python -m jetendard.cli --all
 }
 
 check() {
   cd "jetendard-${_commit}"
-  PYTHONPATH=src python -m pytest
+  PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}" \
+    /usr/bin/python -m pytest
 
   local -a built_fonts=(fonts/ttf/Jetendard-*.ttf)
   local -a pretendard_fonts=(upstream/pretendard/Pretendard-*.ttf)

@@ -211,7 +211,8 @@ install_local_packages() {
   # Keep Arch's /usr/bin/python ahead of the global mise Python here: local
   # PKGBUILDs consume pacman-provided Python build modules. Select only the
   # Rust toolchain through rustup's standard environment contract.
-  RUSTUP_TOOLCHAIN="$rust_toolchain" \
+  PATH="/usr/bin:/bin:$PATH" \
+    RUSTUP_TOOLCHAIN="$rust_toolchain" \
     "$repo_root/scripts/install-local-packages.sh"
 }
 

@@ -5,6 +5,8 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 bootstrap=$repo_root/bootstrap.sh
 aur_installer=$repo_root/scripts/install-aur.sh
 codex_installer=$repo_root/scripts/install-codex-desktop.sh
+local_package_installer=$repo_root/scripts/install-local-packages.sh
+font_package=$repo_root/packages/local/ttf-jetendard/PKGBUILD
 git_config=$repo_root/home/dot_gitconfig
 
 fail() {
@@ -49,6 +51,15 @@ grep -Fq 'PACKAGE_WITH_UPDATER=1' "$codex_installer" ||
 if grep -Fq 'make bootstrap-native' "$codex_installer"; then
   fail 'Codex Desktop installer bypasses the managed native dependency manifests'
 fi
+
+# shellcheck disable=SC2016 # Assertion intentionally matches literal bootstrap source.
+grep -Fq 'PATH="/usr/bin:/bin:$PATH"' "$bootstrap" ||
+  fail 'local package builds do not put Arch build tools ahead of mise shims'
+if [[ $(grep -Fc '/usr/bin/python -m' "$font_package") -ne 2 ]]; then
+  fail 'Jetendard build and test do not use the Arch Python dependency set'
+fi
+grep -Fq -- '--syncdeps' "$local_package_installer" ||
+  fail 'local package convergence does not install declared build dependencies'
 
 [[ $(git config --file "$git_config" --get core.editor) == 'zeditor --wait' ]] ||
   fail 'Git does not use the managed graphical editor outside bootstrap'
