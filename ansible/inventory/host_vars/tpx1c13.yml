@@ -11,8 +11,19 @@ esp_partition_uuid: 364E-D75A
 esp_partition_partuuid: ee918224-253d-4620-bddb-36fcbbcb840e
 
 manage_boot_config: true
-manage_empty_fstab: true
+manage_fstab: true
 snapper_configure_root: true
+
+desktop_hibernation_enabled: true
+desktop_hibernation_swap_size_gib: 40
+desktop_hibernate_delay: 30min
+desktop_hibernate_on_ac_power: false
+
+# Preserve resume reliability for the WWAN modem, Thunderbolt controllers,
+# fingerprint reader, and integrated cameras while enabling TLP defaults for
+# the remaining laptop hardware.
+tlp_runtime_pm_denylist: "08:00.0 00:0d.2 00:0d.3"
+tlp_usb_denylist: "06cb:0123 30c9:005f"
 
 kernel_command_line: >-
   root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=subvol=@ rw

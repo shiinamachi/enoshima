@@ -339,6 +339,22 @@ for index in "${!runtime_names[@]}"; do
 done
 
 echo "==> ThinkPad hardware integration"
+# The command substitution must inspect the live mount in the child shell.
+# shellcheck disable=SC2016
+check "dedicated hibernation swap subvolume is mounted" bash -c \
+  '[[ $(findmnt -n -o FSTYPE /swap) == btrfs ]] && findmnt -n -o OPTIONS /swap | grep -Fq subvol=/@swap'
+# The pipeline must inspect the live swap table in the child shell.
+# shellcheck disable=SC2016
+check "disk-backed hibernation swap is active" bash -c \
+  'swapon --show=NAME --noheadings --raw | grep -Fxq /swap/swapfile'
+check "kernel command line declares the Btrfs resume mapping" bash -c \
+  'grep -Eq "(^| )resume=UUID=[0-9a-f-]+ resume_offset=[1-9][0-9]*($| )" /etc/kernel/cmdline'
+check "systemd sleep policy enables suspend-then-hibernate" bash -c \
+  'systemd-analyze cat-config systemd/sleep.conf | grep -Fxq "AllowSuspendThenHibernate=yes"'
+check "systemd-logind owns the lid policy" bash -c \
+  'systemd-analyze cat-config systemd/logind.conf | grep -Fxq "HandleLidSwitch=suspend-then-hibernate"'
+check_or_warn "systemd-logind reports hibernation available after rebooting the rebuilt UKI" bash -c \
+  'busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanHibernate | grep -Eq "\\\"(yes|challenge)\\\""'
 check "NetworkManager active" systemctl is-active --quiet NetworkManager.service
 check "ModemManager active" systemctl is-active --quiet ModemManager.service
 check "Lenovo WWAN configuration service enabled" systemctl is-enabled --quiet lenovo-cfgservice.service

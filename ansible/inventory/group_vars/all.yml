@@ -15,7 +15,7 @@ system_keymap: us
 perform_full_upgrade: true
 manage_pacman_config: true
 manage_boot_config: false
-manage_empty_fstab: false
+manage_fstab: false
 apply_boot_artifacts: false
 boot_artifact_state_file: /var/lib/enoshima/boot-artifacts-applied
 snapper_configure_root: false
@@ -27,6 +27,12 @@ system_units_started: []
 system_units_enabled_only: []
 user_units_started: []
 wwan_modemmanager_stop_timeout: 15s
+desktop_hibernation_enabled: false
+desktop_hibernation_swap_size_gib: 0
+desktop_hibernate_delay: 30min
+desktop_hibernate_on_ac_power: false
+tlp_runtime_pm_denylist: ""
+tlp_usb_denylist: ""
 
 # The selected display manager is enabled for the next boot. An explicit
 # apply-now override is reserved for TTY maintenance because stopping the

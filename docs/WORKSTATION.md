@@ -19,7 +19,7 @@ Intel Core Ultra 7 255H and 32 GiB RAM.
 | Wi-Fi | `iwlwifi` managed by NetworkManager |
 | 5G WWAN | `mhi-pci-generic`, ModemManager, Lenovo FCC/SAR service |
 | Thunderbolt/USB4 dock trust | `bolt`; enrollment remains an explicit user action |
-| Suspend | `s2idle` |
+| Suspend | `s2idle` followed by disk-backed hibernation on battery |
 
 The camera is already exposed as normal UVC devices. Installing an IPU6 DKMS
 or proprietary camera HAL on this machine would add failure modes without
@@ -208,9 +208,10 @@ These modes store only the selected profile name beneath
 
 ## Power policy
 
-TLP 1.10 and `tlp-pd` replace `power-profiles-daemon`. Only the agreed policy
-knobs are enabled; broad USB, PCI runtime, radio, and disk defaults are disabled
-to avoid destabilizing WWAN, the camera, and Thunderbolt.
+TLP 1.10 and `tlp-pd` replace `power-profiles-daemon`. TLP's complete laptop
+defaults are active. PCI runtime PM, USB autosuspend, Wi-Fi power saving, and
+ASPM apply broadly, while the WWAN modem, Thunderbolt controllers, fingerprint
+reader, and integrated camera are explicit resume-safety exclusions.
 
 | Condition/profile | Platform profile | Energy preference | Boost |
 | --- | --- | --- | --- |
@@ -220,8 +221,22 @@ to avoid destabilizing WWAN, the camera, and Thunderbolt.
 
 No charge threshold is configured. The profile does not cap maximum CPU
 frequency or lower either display to 60 Hz on battery. Hypridle locks after
-five minutes, powers displays down after ten minutes, and suspends after thirty
-minutes only when on battery.
+five minutes, powers displays down after ten minutes, and starts
+`suspend-then-hibernate` after thirty minutes only when on battery.
+
+The root Btrfs filesystem owns a separate top-level `@swap` subvolume mounted
+at `/swap`. Ansible creates a 40 GiB swapfile with `btrfs filesystem
+mkswapfile`, activates it, calculates the kernel resume offset with
+`btrfs inspect-internal map-swapfile -r`, and writes both resume arguments into
+the UKI command line. Existing undersized swapfiles are never replaced
+implicitly. The linux-lts UKI remains the bootable rollback path.
+
+systemd-logind is the only owner of lid events. On battery, lid close enters
+`suspend-then-hibernate`; on AC it remains in suspend; with a dock or second
+display it is ignored so the external desktop remains usable. The machine
+stays in responsive s2idle for 30 minutes, then hibernates only after AC power
+has been disconnected. Hypridle continues to own only idle lock, DPMS, and the
+battery idle transition.
 
 At shutdown, `enoshima-wwan-quiesce.service` disconnects mobile broadband and
 disables the modem before ModemManager stops. Every operation has an eight

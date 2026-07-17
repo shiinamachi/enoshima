@@ -9,6 +9,159 @@
     backup: true
   notify: Reload TLP power policy
 
+- name: Validate hibernation policy inputs
+  ansible.builtin.assert:
+    that:
+      - not (desktop_hibernation_enabled | bool) or (desktop_hibernation_swap_size_gib | int) >= 32
+      - desktop_hibernate_delay is match('^[1-9][0-9]*(s|min|h)$')
+    fail_msg: Hibernation requires a RAM-sized swapfile and a valid systemd delay.
+
+- name: Inspect an existing hibernation swapfile for check mode
+  ansible.builtin.stat:
+    path: /swap/swapfile
+  register: existing_hibernation_swapfile
+  when: desktop_hibernation_enabled | bool
+
+- name: Read the existing Btrfs resume offset
+  ansible.builtin.command:
+    cmd: btrfs inspect-internal map-swapfile -r /swap/swapfile
+  register: hibernation_resume_offset
+  changed_when: false
+  check_mode: false
+  when:
+    - desktop_hibernation_enabled | bool
+    - existing_hibernation_swapfile.stat.exists
+
+- name: Prepare the dedicated Btrfs hibernation swap
+  when:
+    - desktop_hibernation_enabled | bool
+    - not ansible_check_mode
+  block:
+    - name: Ensure the temporary Btrfs top-level mountpoint exists
+      ansible.builtin.file:
+        path: /run/enoshima-btrfs-root
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Inspect the temporary Btrfs top-level mountpoint
+      ansible.builtin.command:
+        cmd: mountpoint --quiet /run/enoshima-btrfs-root
+      register: btrfs_top_level_mountpoint
+      changed_when: false
+      failed_when: false
+
+    - name: Mount the Btrfs top level for subvolume management
+      ansible.builtin.command:
+        argv:
+          - mount
+          - --types
+          - btrfs
+          - --options
+          - subvolid=5
+          - "UUID={{ root_btrfs_uuid }}"
+          - /run/enoshima-btrfs-root
+      register: btrfs_top_level_mount_result
+      when: btrfs_top_level_mountpoint.rc != 0
+
+    - name: Inspect the dedicated swap subvolume
+      ansible.builtin.command:
+        cmd: btrfs subvolume show /run/enoshima-btrfs-root/@swap
+      register: btrfs_swap_subvolume
+      changed_when: false
+      failed_when: false
+
+    - name: Create the dedicated swap subvolume
+      ansible.builtin.command:
+        cmd: btrfs subvolume create /run/enoshima-btrfs-root/@swap
+      when: btrfs_swap_subvolume.rc != 0
+
+    - name: Ensure the swap mountpoint exists
+      ansible.builtin.file:
+        path: /swap
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Inspect the swap subvolume mount
+      ansible.builtin.command:
+        cmd: mountpoint --quiet /swap
+      register: hibernation_swap_mountpoint
+      changed_when: false
+      failed_when: false
+
+    - name: Mount the swap subvolume from the managed fstab
+      ansible.builtin.command:
+        cmd: mount /swap
+      when: hibernation_swap_mountpoint.rc != 0
+
+    - name: Inspect the hibernation swapfile
+      ansible.builtin.stat:
+        path: /swap/swapfile
+      register: hibernation_swapfile
+
+    - name: Require sufficient free space for a new hibernation swapfile
+      ansible.builtin.assert:
+        that:
+          - >-
+            (ansible_mounts
+            | selectattr('mount', 'equalto', '/')
+            | map(attribute='size_available')
+            | first
+            | int) > ((desktop_hibernation_swap_size_gib | int) + 8) * 1073741824
+        fail_msg: The root Btrfs filesystem needs the swap size plus 8 GiB free.
+      when: not hibernation_swapfile.stat.exists
+
+    - name: Reject an undersized existing hibernation swapfile
+      ansible.builtin.assert:
+        that:
+          - hibernation_swapfile.stat.size >= (desktop_hibernation_swap_size_gib | int) * 1073741824
+        fail_msg: Existing /swap/swapfile is smaller than the declared policy; it was not replaced.
+      when: hibernation_swapfile.stat.exists
+
+    - name: Create the Btrfs-compatible hibernation swapfile
+      ansible.builtin.command:
+        argv:
+          - btrfs
+          - filesystem
+          - mkswapfile
+          - --size
+          - "{{ desktop_hibernation_swap_size_gib }}G"
+          - /swap/swapfile
+      when: not hibernation_swapfile.stat.exists
+
+    - name: Inspect active swap devices
+      ansible.builtin.command:
+        cmd: swapon --show=NAME --noheadings --raw
+      register: active_swap_devices
+      changed_when: false
+
+    - name: Activate the hibernation swapfile
+      ansible.builtin.command:
+        cmd: swapon /swap/swapfile
+      when: "'/swap/swapfile' not in active_swap_devices.stdout_lines"
+
+    - name: Calculate the Btrfs hibernation resume offset
+      ansible.builtin.command:
+        cmd: btrfs inspect-internal map-swapfile -r /swap/swapfile
+      register: hibernation_resume_offset
+      changed_when: false
+
+    - name: Validate the calculated hibernation resume offset
+      ansible.builtin.assert:
+        that:
+          - hibernation_resume_offset.stdout is match('^[1-9][0-9]*$')
+        fail_msg: Btrfs did not return a usable resume offset for /swap/swapfile.
+  always:
+    - name: Unmount the temporary Btrfs top level
+      ansible.builtin.command:
+        cmd: umount /run/enoshima-btrfs-root
+      when:
+        - btrfs_top_level_mount_result is defined
+        - btrfs_top_level_mount_result.changed | default(false)
+
 - name: Ensure systemd sleep configuration directory exists
   ansible.builtin.file:
     path: /etc/systemd/sleep.conf.d
@@ -17,7 +170,24 @@
     group: root
     mode: "0755"
 
-- name: Keep suspend on s2idle
+- name: Ensure systemd-logind configuration directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Make systemd-logind the sole lid-switch policy owner
+  ansible.builtin.template:
+    src: logind-lid.conf.j2
+    dest: /etc/systemd/logind.conf.d/20-enoshima-lid.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Configure suspend-then-hibernate on s2idle
   ansible.builtin.template:
     src: sleep-thinkpad.conf.j2
     dest: /etc/systemd/sleep.conf.d/10-thinkpad.conf

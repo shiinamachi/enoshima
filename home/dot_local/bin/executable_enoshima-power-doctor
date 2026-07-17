@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+if [[ ${1:-} != capture || $# -ne 1 ]]; then
+  printf 'usage: enoshima-power-doctor capture\n' >&2
+  exit 2
+fi
+
+section() {
+  printf '\n[%s]\n' "$1"
+}
+
+section 'Versions'
+printf 'kernel=%s\n' "$(uname -sr)"
+systemctl --version 2>/dev/null | sed -n '1p' || true
+tlp-stat --version 2>&1 || true
+mmcli --version 2>&1 | sed -n '1p' || true
+
+section 'Sleep modes'
+printf 'mem_sleep='
+cat /sys/power/mem_sleep 2>&1 || true
+systemd-analyze cat-config systemd/sleep.conf 2>&1 || true
+systemd-analyze cat-config systemd/logind.conf 2>&1 |
+  sed -n '/^\[Login\]/,/^\[/p' || true
+
+section 'Inhibitors'
+systemd-inhibit --list --no-pager 2>&1 || true
+
+section 'Session'
+session_id=$(loginctl list-sessions --no-legend 2>/dev/null |
+  awk -v uid="$UID" '$2 == uid { print $1; exit }')
+if [[ -n $session_id ]]; then
+  loginctl show-session "$session_id" \
+    -p Id -p Type -p Class -p State -p Remote -p IdleHint -p LockedHint 2>&1 || true
+fi
+
+section 'TLP policy'
+tlp-stat -s -c -p -e 2>&1 || true
+
+section 'Battery'
+for battery in /sys/class/power_supply/BAT*; do
+  [[ -d $battery ]] || continue
+  printf 'device=%s\n' "${battery##*/}"
+  for field in status capacity energy_now energy_full energy_full_design charge_now charge_full power_now; do
+    [[ -r $battery/$field ]] || continue
+    printf '%s=' "$field"
+    cat "$battery/$field"
+  done
+done
+
+section 'Wake sources'
+if [[ -r /sys/kernel/debug/wakeup_sources ]]; then
+  sed -n '1,80p' /sys/kernel/debug/wakeup_sources
+else
+  printf 'wakeup_sources unavailable without debugfs permission\n'
+fi
+
+section 'Intel PMC residency'
+for pmc_file in /sys/kernel/debug/pmc_core/*residency* /sys/kernel/debug/pmc_core/package_cstate_show; do
+  [[ -r $pmc_file ]] || continue
+  printf '%s\n' "${pmc_file##*/}"
+  sed -n '1,120p' "$pmc_file"
+done
+
+section 'WWAN and radios'
+nmcli radio 2>&1 || true
+mmcli -L 2>&1 || true
+
+section 'USB and Thunderbolt'
+lsusb 2>&1 || true
+boltctl list 2>&1 || true
+
+section 'Recent sleep journal'
+journalctl -b --no-pager -o short-monotonic \
+  -u systemd-logind.service \
+  -u systemd-suspend.service \
+  -u systemd-hibernate.service \
+  -u systemd-suspend-then-hibernate.service \
+  -u ModemManager.service -n 300 2>&1 || true

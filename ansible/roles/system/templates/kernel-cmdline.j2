@@ -1,1 +1,1 @@
-{{ kernel_command_line }}
+{{ kernel_command_line }}{% if desktop_hibernation_enabled | bool %} resume=UUID={{ root_btrfs_uuid }} resume_offset={{ hibernation_resume_offset.stdout | trim }}{% endif %}

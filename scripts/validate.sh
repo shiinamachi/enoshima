@@ -379,6 +379,7 @@ for test_script in \
   tests/test-cyberdock-state.sh \
   tests/test-desktop-display-mode.sh \
   tests/test-desktop-power.sh \
+  tests/test-power-policy.sh \
   tests/test-wwan-shutdown.sh \
   tests/test-desktop-window-action.sh \
   tests/test-window-decoration-policy.sh \

@@ -238,6 +238,28 @@ redact하는 다음 helper로 수집한다.
 enoshima-shutdown-doctor | tee /tmp/enoshima-shutdown-doctor.txt
 ```
 
+### 덮개와 최대절전 검증
+
+`@swap` 생성과 resume offset 반영은 boot artifact 변경이므로 Secure Boot key를
+확인한 뒤 다음 경로로 적용한다.
+
+```bash
+./bootstrap.sh --apply-boot-artifacts
+sudo sbctl sign-all
+sudo sbctl verify
+enoshima-power-doctor capture | tee /tmp/enoshima-power-capture.txt
+```
+
+먼저 `systemctl hibernate` 단독 경로를 테스트하고 linux-lts UKI rollback이
+부팅되는지 확인한다. 이후 battery lid-close 20회, AC lid-close, docked
+lid-close를 각각 검증한다. battery에서는 30분 뒤 최대절전으로 넘어가야 하며,
+AC에서는 suspend를 유지하고, 외부 출력이 연결된 상태에서는 세션을 유지해야
+한다. 각 복귀 후 Wi-Fi, Bluetooth, WWAN, audio, fingerprint, touchpad를 확인한다.
+
+짧은 s2idle 구간은 시간당 0.7% 이하, 8시간 lid-close는 총 2% 이하를 목표로
+측정한다. 기준을 넘으면 `enoshima-power-doctor capture`를 WWAN/Bluetooth/USB
+조합별로 다시 수집한다. `powertop --auto-tune`은 상시 서비스로 적용하지 않는다.
+
 ## 권장 대화식 온보딩 순서
 
 자동 적용과 재로그인을 마친 뒤 아래 순서를 사용한다. Cloudflare One이 DNS 경로를

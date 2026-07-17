@@ -79,7 +79,7 @@
     - manage_boot_config | bool
     - vconsole_configuration.changed
 
-- name: Preserve empty fstab layout used by systemd GPT discovery
+- name: Configure static filesystem and hibernation swap entries
   ansible.builtin.template:
     src: fstab.j2
     dest: /etc/fstab
@@ -87,7 +87,7 @@
     group: root
     mode: "0644"
     backup: true
-  when: manage_empty_fstab | bool
+  when: manage_fstab | bool
 
 - name: Configure zram generator
   ansible.builtin.template:
@@ -167,7 +167,11 @@
     mode: "0644"
     backup: true
   register: kernel_command_line_configuration
-  when: manage_boot_config | bool
+  when:
+    - manage_boot_config | bool
+    - >-
+      not (desktop_hibernation_enabled | bool)
+      or hibernation_resume_offset.stdout is defined
   notify: Rebuild boot artifacts
 
 - name: Invalidate boot artifact record after a kernel command line change

@@ -1,2 +1,7 @@
 [Sleep]
+AllowSuspend=yes
+AllowHibernation={{ 'yes' if desktop_hibernation_enabled | bool else 'no' }}
+AllowSuspendThenHibernate={{ 'yes' if desktop_hibernation_enabled | bool else 'no' }}
 MemorySleepMode=s2idle
+HibernateDelaySec={{ desktop_hibernate_delay }}
+HibernateOnACPower={{ 'yes' if desktop_hibernate_on_ac_power | bool else 'no' }}
