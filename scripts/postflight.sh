@@ -135,7 +135,7 @@ hyprfocus_loaded() {
 enoshima_decoration_installed() {
   local abi plugin recorded
   abi=$(Hyprland --version | sed -n 's/^Version ABI string: //p')
-  [[ $abi =~ ^[0-9a-f]{40}$ ]] || return 1
+  [[ $abi =~ ^[0-9a-f]{40}(_[[:alnum:]]+([.-][[:alnum:]]+)*)*$ ]] || return 1
   plugin=${XDG_DATA_HOME:-$HOME/.local/share}/enoshima/plugins/$abi/enoshima-decoration.so
   recorded=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/enoshima-decoration/hyprland-abi" 2>/dev/null) || return 1
   [[ $recorded == "$abi" && -s $plugin ]]

@@ -9,8 +9,12 @@ plugin=native/enoshima-decoration
 config=home/dot_config/enoshima/window-interaction.yaml
 lua=home/dot_config/hypr/hyprland.lua
 loader=home/dot_local/bin/executable_enoshima-decoration-load
+work=$(mktemp -d)
 
-cleanup() { make -s -C "$plugin" clean; }
+cleanup() {
+  make -s -C "$plugin" clean
+  rm -rf -- "$work"
+}
 trap cleanup EXIT
 
 [[ $(yq -r '.decoration.owner' "$config") == enoshima-decoration ]]
@@ -36,8 +40,58 @@ grep -Fq 'hl.bind("ALT + SPACE"' "$lua"
 
 grep -Fq 'recorded_abi == "$abi"' "$loader"
 grep -Fq 'hyprctl plugin load "$plugin"' "$loader"
+grep -Fq '(_[[:alnum:]]+([.-][[:alnum:]]+)*)*' scripts/postflight.sh
 grep -Fq 'hyprpm disable hyprbars' bootstrap.sh
 grep -Fq 'enoshima-decoration-load' bootstrap.sh
+
+printf '%s\n' '==> composite Hyprland ABI loads the matching decoration plugin'
+composite_abi=0123456789abcdef0123456789abcdef01234567_aq_0.12_hu_0.13_hg_0.5
+mkdir -p \
+  "$work/bin" \
+  "$work/config/enoshima" \
+  "$work/data/enoshima/plugins/$composite_abi" \
+  "$work/state/enoshima-decoration"
+cp "$config" "$work/config/enoshima/window-interaction.yaml"
+touch "$work/data/enoshima/plugins/$composite_abi/enoshima-decoration.so"
+printf '%s\n' "$composite_abi" >"$work/state/enoshima-decoration/hyprland-abi"
+cat >"$work/bin/Hyprland" <<'EOF'
+#!/usr/bin/env bash
+printf 'Version ABI string: %s\n' "$TEST_HYPRLAND_ABI"
+EOF
+cat >"$work/bin/hyprctl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+  'plugin list -j') printf '[]\n' ;;
+  plugin\ load\ *) printf '%s\n' "${3:-}" >"$TEST_HYPRCTL_LOG" ;;
+  'reload config-only') ;;
+  *) exit 64 ;;
+esac
+EOF
+chmod 0700 "$work/bin/Hyprland" "$work/bin/hyprctl"
+PATH="$work/bin:$PATH" \
+  XDG_CONFIG_HOME="$work/config" \
+  XDG_DATA_HOME="$work/data" \
+  XDG_STATE_HOME="$work/state" \
+  HYPRLAND_INSTANCE_SIGNATURE=test \
+  TEST_HYPRLAND_ABI="$composite_abi" \
+  TEST_HYPRCTL_LOG="$work/hyprctl.log" \
+  bash "$loader"
+[[ $(<"$work/hyprctl.log") == "$work/data/enoshima/plugins/$composite_abi/enoshima-decoration.so" ]]
+
+printf '%s\n' '==> unsafe Hyprland ABI cannot escape the plugin root'
+if PATH="$work/bin:$PATH" \
+  XDG_CONFIG_HOME="$work/config" \
+  XDG_DATA_HOME="$work/data" \
+  XDG_STATE_HOME="$work/state" \
+  HYPRLAND_INSTANCE_SIGNATURE=test \
+  TEST_HYPRLAND_ABI="${composite_abi}_../../outside" \
+  TEST_HYPRCTL_LOG="$work/unsafe.log" \
+  bash "$loader" >/dev/null 2>&1; then
+  printf 'Unsafe composite ABI unexpectedly passed validation.\n' >&2
+  exit 1
+fi
+[[ ! -e $work/unsafe.log ]]
 
 make -s -C "$plugin" all
 [[ -s $plugin/enoshima-decoration.so ]]

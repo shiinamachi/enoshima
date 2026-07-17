@@ -11,7 +11,7 @@ command -v yq >/dev/null 2>&1 || exit 0
 [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || exit 0
 
 abi=$(Hyprland --version | sed -n 's/^Version ABI string: //p')
-[[ $abi =~ ^[0-9a-f]{40}$ ]] || {
+[[ $abi =~ ^[0-9a-f]{40}(_[[:alnum:]]+([.-][[:alnum:]]+)*)*$ ]] || {
   printf 'enoshima-decoration-load: cannot resolve Hyprland ABI\n' >&2
   exit 1
 }
