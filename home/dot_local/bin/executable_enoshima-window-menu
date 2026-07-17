@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+qs_bin=${ENOSHIMA_WINDOW_MENU_QS:-qs}
+config_path=${ENOSHIMA_WINDOW_MENU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/cyberdock}
+hyprctl_bin=${ENOSHIMA_WINDOW_MENU_HYPRCTL:-hyprctl}
+
+address=${1:-}
+if [[ -z $address ]]; then
+  address=$($hyprctl_bin activewindow -j | jq -r '.address // ""')
+fi
+[[ $address =~ ^0x[0-9A-Fa-f]+$ ]] || exit 0
+
+"$qs_bin" -p "$config_path" ipc call -- windowmenu open "$address" >/dev/null

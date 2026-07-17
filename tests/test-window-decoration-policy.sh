@@ -15,6 +15,7 @@ window_action=home/dot_local/bin/executable_desktop-window-action
 event_bridge=home/dot_local/bin/executable_cyberdock-event-bridge
 event_service=home/dot_config/systemd/user/cyberdock-event-bridge.service
 decoration_policy=docs/WINDOW-DECORATIONS.md
+interaction_config=home/dot_config/enoshima/window-interaction.yaml
 
 printf '%s\n' '==> Waybar remains a global status surface'
 jq -e '
@@ -72,13 +73,15 @@ grep -Fq 'hyprpm disable hyprbars' home/run_after_30-enable-custom-user-services
   fail 'user service convergence no longer disables stale hyprbars state'
 
 printf '%s\n' '==> application matrix records ownership without a fallback conflict'
-/usr/bin/python - "$decoration_policy" <<'PY'
+/usr/bin/python - "$decoration_policy" "$interaction_config" <<'PY'
 from pathlib import Path
 import re
 import sys
+import yaml
 
 path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
+config = yaml.safe_load(Path(sys.argv[2]).read_text(encoding="utf-8"))
 section = text.split("## 관리 대상 매트릭스", 1)[1].split("## 수동 검증 절차", 1)[0]
 rows = []
 for raw_line in section.splitlines():
@@ -105,21 +108,21 @@ missing = sorted(required - applications)
 if missing:
     raise SystemExit("missing required decoration rows: " + ", ".join(missing))
 
-for application, _class, _backend, owner, _config, fallback, status in rows:
-    if "hyprbars" not in fallback.lower():
-        if fallback != "없음":
-            raise SystemExit(f"{application}: unknown fallback contract: {fallback}")
-        continue
-    if owner not in {"없음", "미제공"}:
-        raise SystemExit(f"{application}: native owner and hyprbars are both assigned")
-    reason = fallback.partition(":")[2].strip()
-    if not reason:
-        raise SystemExit(f"{application}: hyprbars fallback has no reason")
-    if not re.search(r"\b20\d{2}-\d{2}-\d{2}\b", status):
-        raise SystemExit(f"{application}: hyprbars fallback has no validation date")
-
-if "현재 `hyprbars` fallback: 없음." not in text:
-    raise SystemExit("the empty hyprbars fallback register is not explicit")
+allowlist = {
+    entry["class"] for entry in config["decoration"]["positive_allowlist"]
+}
+client_owned = {
+    entry["class"] for entry in config["decoration"]["client_owned"]
+}
+if allowlist & client_owned:
+    raise SystemExit("a class has both client and Enoshima decoration ownership")
+if allowlist != {"mpv", "imv", "org.pwmt.zathura"}:
+    raise SystemExit("unexpected positive decoration allowlist")
+for class_name in allowlist:
+    if f"`{class_name}`" not in text:
+        raise SystemExit(f"documentation omits allowlisted class: {class_name}")
+if not re.search(r"공식 `hyprbars`\s+fallback은 없다", text):
+    raise SystemExit("the retired official hyprbars fallback is not explicit")
 PY
 
 printf 'Window decoration policy tests passed.\n'

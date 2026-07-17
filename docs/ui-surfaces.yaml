@@ -62,17 +62,16 @@ surfaces:
       asset: docs/assets/concepts/cyberdock-window-state/cyberdock-window-state-v1.png
       spec: docs/concepts/cyberdock-window-state.yaml
   system-titlebar:
-    planned: true
     implementation:
       - native/enoshima-decoration/src/main.cpp
       - home/dot_config/enoshima/window-interaction.yaml
+      - home/dot_config/quickshell/cyberdock/EnoshimaWindowMenu.qml
     token_mode: external
     concept:
       status: approved
       asset: docs/assets/concepts/system-titlebar/system-titlebar-v1.png
       spec: docs/concepts/system-titlebar.yaml
   snap-assist:
-    planned: true
     implementation:
       - home/dot_config/quickshell/cyberdock/EnoshimaSnapAssist.qml
       - home/dot_local/bin/executable_enoshima-snap-controller

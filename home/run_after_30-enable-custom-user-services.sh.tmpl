@@ -18,7 +18,7 @@ rm -f -- \
   "$HOME/.config/systemd/user/graphical-session.target.wants/hyprlauncher.service"
 
 # Hyprbars used to add the same compositor titlebar to every client. Retire
-# that optional plugin and its user files so applications can own decorations.
+# that optional plugin; the managed Enoshima fork is positive-allowlist only.
 systemctl --user disable --now hyprbars-check.service 2>/dev/null || true
 rm -f -- \
   "$HOME/.config/systemd/user/hyprbars-check.service" \
@@ -30,8 +30,13 @@ if command -v hyprpm >/dev/null 2>&1 &&
   /usr/bin/sudo -n -v >/dev/null 2>&1; then
   hyprpm disable hyprbars >/dev/null 2>&1 || true
   if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
-    hyprpm reload >/dev/null 2>&1 &&
+    hyprpm reload >/dev/null 2>&1 || true
+    if command -v enoshima-decoration-load >/dev/null 2>&1; then
+      enoshima-decoration-load >/dev/null 2>&1 ||
+        hyprctl reload config-only >/dev/null 2>&1 || true
+    else
       hyprctl reload config-only >/dev/null 2>&1 || true
+    fi
   fi
 fi
 rm -f -- "$hyprbars_state/hyprland-abi" "$hyprbars_state/setup.lock"

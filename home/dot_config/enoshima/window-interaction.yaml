@@ -1,0 +1,34 @@
+schema: 1
+decoration:
+  enabled: true
+  owner: enoshima-decoration
+  positive_allowlist:
+    - class: mpv
+      backend: wayland-or-xwayland
+      mode: enoshima-system
+      reason: The player intentionally exposes no persistent client title bar.
+    - class: imv
+      backend: wayland
+      mode: enoshima-system
+      reason: The image viewer intentionally exposes no persistent client title bar.
+    - class: org.pwmt.zathura
+      backend: wayland
+      mode: enoshima-system
+      reason: The document viewer can run without client-owned window controls.
+  client_owned:
+    - {class: google-chrome, mode: client-system}
+    - {class: discord, mode: client-system}
+    - {class: slack, mode: client-system}
+    - {class: obsidian, mode: client-system}
+    - {class: notion, mode: client-system}
+    - {class: dev.zed.Zed, mode: client-native}
+    - {class: com.mitchellh.ghostty, mode: client-native}
+    - {class: thunar, mode: client-native}
+    - {class: thunderbird, mode: client-native}
+    - {class: kakaotalk.exe, mode: client-native}
+snap:
+  enabled: true
+  edge_threshold: 16
+  preview_inset: 10
+  gap: 10
+  stale_after_ms: 750

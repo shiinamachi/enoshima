@@ -228,7 +228,7 @@ JSON
 printf '%s\n' '==> snapshot initializes private runtime state'
 reset_fixture
 snapshot=$(run_state snapshot)
-jq -e '.version == 1 and (.windows | length == 2) and (.windows | all(.minimized == false))' \
+jq -e '.version == 2 and .generation == 0 and (.windows | length == 2) and (.windows | all(.minimized == false))' \
   <<<"$snapshot" >/dev/null || fail 'unexpected initial snapshot'
 jq -e 'all(.windows[]; .workspace.name != "special:tray" and .class != "xembed-sni-proxy")' \
   <<<"$snapshot" >/dev/null || fail 'tray bridge surface leaked into the dock snapshot'
@@ -242,13 +242,39 @@ jq -e '.[] | select(.address == "0xaaa") | .workspace.name == "special:minimized
   "$CYBERDOCK_FAKE_ROOT/clients.json" >/dev/null || fail 'window was not minimized'
 jq -e '.windows["0xaaa"].workspace.name == "3" and .windows["0xaaa"].monitor == "eDP-1"' \
   "$XDG_RUNTIME_DIR/cyberdock/minimized.json" >/dev/null || fail 'origin was not recorded'
+jq -e '.version == 2 and .generation == 1 and
+  .windows["0xaaa"].state == "minimized" and
+  .windows["0xaaa"].desiredState == "minimized" and
+  .windows["0xaaa"].origin == "dock" and
+  .windows["0xaaa"].sequence == 1 and
+  .lastTransition.state == "minimized"' \
+  "$XDG_RUNTIME_DIR/cyberdock/minimized.json" >/dev/null ||
+  fail 'transition metadata was not recorded'
 snapshot=$(run_state snapshot)
-jq -e '.windows[] | select(.address == "0xaaa") | .minimized and .originalWorkspace.name == "3"' \
+jq -e '.windows[] | select(.address == "0xaaa") |
+  .minimized and .state == "minimized" and .transitionOrigin == "dock" and
+  .transitionSequence == 1 and .originalWorkspace.name == "3"' \
   <<<"$snapshot" >/dev/null || fail 'snapshot did not expose minimized state'
 before=$(wc -l <"$CYBERDOCK_FAKE_ROOT/dispatch.log")
 run_state minimize 0xaaa
 after=$(wc -l <"$CYBERDOCK_FAKE_ROOT/dispatch.log")
 [[ $before -eq $after ]] || fail 'duplicate minimize dispatched another transition'
+
+printf '%s\n' '==> native minimize observations reconcile through one state machine'
+reset_fixture
+CYBERDOCK_TRANSITION_ORIGIN=client run_state observe-minimized 0xaaa 1
+CYBERDOCK_TRANSITION_ORIGIN=client run_state observe-minimized 0xaaa 1
+[[ $(grep -Fc $'movetoworkspacesilent\tspecial:minimized,address:0xaaa' \
+  "$CYBERDOCK_FAKE_ROOT/dispatch.log") -eq 1 ]] ||
+  fail 'duplicate native minimize observation dispatched twice'
+jq -e '.windows["0xaaa"].origin == "client" and .windows["0xaaa"].state == "minimized"' \
+  "$XDG_RUNTIME_DIR/cyberdock/minimized.json" >/dev/null ||
+  fail 'native minimize origin was not preserved'
+CYBERDOCK_TRANSITION_ORIGIN=client run_state observe-minimized 0xaaa 0
+CYBERDOCK_TRANSITION_ORIGIN=client run_state observe-minimized 0xaaa 0
+[[ $(grep -Fc $'movetoworkspacesilent\t3,address:0xaaa' \
+  "$CYBERDOCK_FAKE_ROOT/dispatch.log") -eq 1 ]] ||
+  fail 'duplicate native restore observation dispatched twice'
 
 printf '%s\n' '==> activation restores the original workspace, output, and focus'
 run_state activate 0xaaa
@@ -344,7 +370,7 @@ done
 for pid in "${pids[@]}"; do
   wait "$pid"
 done
-jq -e '.version == 1 and (.windows | type == "object")' \
+jq -e '.version == 2 and (.generation | type == "number") and (.windows | type == "object")' \
   "$XDG_RUNTIME_DIR/cyberdock/minimized.json" >/dev/null || fail 'concurrent state is invalid'
 
 printf '%s\n' 'Cyberdock state tests passed.'

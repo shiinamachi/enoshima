@@ -115,7 +115,7 @@ for focus_contract in \
   'mode = "flash"' \
   'fade_opacity = 0.94' \
   'hyprbars == "false" && hyprfocus == "true"' \
-  'hyprpm reload && hyprctl reload config-only' \
+  'hyprpm reload && enoshima-decoration-load' \
   'hl.on("hyprland.start", reloadHyprlandPlugins)' \
   'hl.dsp.window.cycle_next({ next = nextWindow })' \
   'hl.on("config.reloaded", applyAppearancePreferences)' \
@@ -274,8 +274,9 @@ assert_contains "$dock" 'height: 58'
 assert_contains "$dock" 'width: app.id === "launcher" ? 54 : 44'
 assert_contains "$dock" 'height: 46'
 assert_contains "$dock" 'height: 40'
-assert_contains "$dock" 'appItem.active ? 16 : 7'
-assert_contains "$dock" 'height: 3'
+assert_contains "$dock" '["minimizing", "restoring", "closing"]'
+assert_contains "$dock" 'model: 3'
+assert_contains "$dock" 'root.theme.colorAccent'
 assert_contains "$dock" 'readonly property color colorFocus: "#62d8ff"'
 assert_contains "$dock" 'readonly property color colorSelectionStrong: "#6541b8"'
 assert_contains "$dock" 'readonly property color colorOnSelection: "#f2ecff"'
@@ -313,9 +314,9 @@ assert_contains "$dock" 'readonly property bool reducedMotion:'
 assert_contains "$dock" 'readonly property bool reducedTransparency:'
 assert_contains "$dock" 'colorCanvasOverlay: root.reducedTransparency'
 assert_contains "$dock" 'colorLauncherSurface: root.reducedTransparency'
-assert_count 8 "$dock" 'enabled: !root.reducedMotion'
-assert_count 4 "$dock" 'theme: root.theme'
-assert_count 4 "$dock" 'reducedMotion: root.reducedMotion'
+assert_count 9 "$dock" 'enabled: !root.reducedMotion'
+assert_count 6 "$dock" 'theme: root.theme'
+assert_count 6 "$dock" 'reducedMotion: root.reducedMotion'
 assert_contains "$dock" 'border.color: root.theme.colorQuietBorder'
 assert_contains "$dock" 'color: root.theme.colorRaisedOverlay'
 assert_contains "$dock" '? "9+"'

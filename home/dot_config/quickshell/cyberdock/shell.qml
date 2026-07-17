@@ -20,6 +20,9 @@ ShellRoot {
     property string displayOverlayScreenName: ""
     property bool powerMenuOpen: false
     property string powerMenuScreenName: ""
+    property bool windowMenuOpen: false
+    property string windowMenuScreenName: ""
+    property string windowMenuAddress: ""
     property bool kakaoFocusPulseActive: false
     property string kakaoFocusScreenName: ""
     property string kakaoFocusTargetAddress: ""
@@ -44,6 +47,9 @@ ShellRoot {
             ? configured
             : Quickshell.env("HOME") + "/.config";
     }
+    readonly property string runtimeHome: Quickshell.env("XDG_RUNTIME_DIR")
+    property int snapClock: 0
+    readonly property var snapState: parseSnapState(snapStateFile.text, snapClock)
     readonly property string pinsPath:
         configHome + "/enoshima/user/cyberdock-pins.json"
     readonly property string appearanceMode: {
@@ -126,6 +132,35 @@ ShellRoot {
         printErrors: false
         watchChanges: true
         onFileChanged: reload()
+    }
+
+    function parseSnapState(text, clock) {
+        void clock;
+        try {
+            const document = JSON.parse(text || "{}");
+            if (document.schema === 1)
+                return document;
+        } catch (error) {
+            // A writer uses atomic rename, but an absent first-run state is
+            // still expected before the first title-bar drag.
+        }
+        return {"schema": 1, "active": false, "updatedAt": 0};
+    }
+
+    FileView {
+        id: snapStateFile
+        path: root.runtimeHome + "/enoshima/snap.json"
+        preload: true
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+    }
+
+    Timer {
+        interval: 100
+        repeat: true
+        running: Boolean(root.snapState.active)
+        onTriggered: root.snapClock += 1
     }
 
     // The mode file is created only after the user first selects a profile.
@@ -315,6 +350,18 @@ ShellRoot {
         powerMenuOpen = true;
     }
 
+    function windowByAddress(address) {
+        return (snapshot.windows || []).find(window =>
+            String(window.address || "") === String(address || "")) || ({});
+    }
+
+    function screenForWindow(address) {
+        const window = windowByAddress(address);
+        const monitor = (snapshot.monitors || []).find(candidate =>
+            Number(candidate.id) === Number(window.monitor));
+        return monitor ? String(monitor.name || "") : focusedScreenName();
+    }
+
     function showOsd(kind, value, muted) {
         osdScreenName = focusedScreenName();
         osdKind = kind;
@@ -358,6 +405,23 @@ ShellRoot {
             root.powerMenuOpen = true;
         }
         function close(): void { root.powerMenuOpen = false; }
+    }
+
+    IpcHandler {
+        target: "windowmenu"
+
+        function open(address: string): void {
+            if (!/^0x[0-9A-Fa-f]+$/.test(address)
+                    || Object.keys(root.windowByAddress(address)).length === 0)
+                return;
+            root.launcherOpen = false;
+            root.displayOverlayOpen = false;
+            root.powerMenuOpen = false;
+            root.windowMenuAddress = address;
+            root.windowMenuScreenName = root.screenForWindow(address);
+            root.windowMenuOpen = true;
+        }
+        function close(): void { root.windowMenuOpen = false; }
     }
 
     IpcHandler {
@@ -915,6 +979,9 @@ ShellRoot {
                                     readonly property var app: modelData
                                     readonly property bool running: app.windows.length > 0
                                     readonly property bool minimized: app.windows.some(window => window.minimized)
+                                    readonly property bool transitioning: app.windows.some(window =>
+                                        ["minimizing", "restoring", "closing"]
+                                            .includes(String(window.state || "")))
                                     readonly property bool active: app.windows.some(window =>
                                         window.address === root.snapshot.activeAddress)
                                     property real dragOffsetX: 0
@@ -929,13 +996,15 @@ ShellRoot {
 
                                     Accessible.role: Accessible.Button
                                     Accessible.name: app.name
-                                    Accessible.description: appItem.active
+                                    Accessible.description: appItem.minimized
+                                        ? "최소화됨, 선택하면 복원"
+                                        : (appItem.active
                                         ? "현재 활성화된 애플리케이션"
                                         : (appItem.app.unavailable
                                             ? "현재 설치되어 있지 않은 고정 애플리케이션"
                                             : (appItem.running
                                                 ? "실행 중인 애플리케이션"
-                                                : "애플리케이션 열기"))
+                                                : "애플리케이션 열기")))
                                     Accessible.pressed: appMouse.pressed
                                     Accessible.onPressAction:
                                         dockWindow.performPrimaryAction(appItem.app)
@@ -989,19 +1058,70 @@ ShellRoot {
                                         }
                                     }
 
-                                    Rectangle {
-                                        anchors.horizontalCenter: parent.horizontalCenter
+                                    Item {
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
                                         anchors.bottom: parent.bottom
-                                        anchors.bottomMargin: 1.5
-                                        width: appItem.running ? (appItem.active ? 16 : 7) : 0
+                                        anchors.leftMargin: 7
+                                        anchors.rightMargin: 7
+                                        anchors.bottomMargin: 1
                                         height: 3
-                                        radius: 1.5
-                                        color: appItem.minimized
-                                            ? root.theme.colorAccent
-                                            : root.theme.colorFocus
-                                        Behavior on width {
+                                        visible: appItem.running
+
+                                        Rectangle {
+                                            anchors.left: parent.left
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: appItem.active ? parent.width
+                                                : (appItem.app.windows.length > 1 ? 22 : 14)
+                                            height: appItem.active ? 2 : 1
+                                            radius: 1
+                                            color: appItem.active
+                                                ? root.theme.colorFocus
+                                                : root.theme.colorSelection
+
+                                            Behavior on width {
+                                                enabled: !root.reducedMotion
+                                                NumberAnimation { duration: root.theme.durationDirect }
+                                            }
+                                        }
+
+                                        Row {
+                                            visible: appItem.minimized
+                                            anchors.centerIn: parent
+                                            spacing: 2
+
+                                            Repeater {
+                                                model: 3
+                                                Rectangle {
+                                                    required property int index
+                                                    width: index === 1 ? 7 : 4
+                                                    height: 2
+                                                    radius: 1
+                                                    color: root.theme.colorAccent
+                                                }
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            visible: appItem.transitioning
+                                            anchors.right: parent.right
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 3
+                                            height: 3
+                                            radius: 1.5
+                                            color: root.theme.colorWarning
+
+                                            SequentialAnimation on opacity {
+                                                running: appItem.transitioning && !root.reducedMotion
+                                                loops: Animation.Infinite
+                                                NumberAnimation { to: 0.32; duration: root.theme.durationStandard }
+                                                NumberAnimation { to: 1; duration: root.theme.durationStandard }
+                                            }
+                                        }
+
+                                        Behavior on opacity {
                                             enabled: !root.reducedMotion
-                                            NumberAnimation { duration: root.theme.durationDirect }
+                                            NumberAnimation { duration: root.theme.durationFast }
                                         }
                                     }
 
@@ -1317,6 +1437,35 @@ ShellRoot {
                     }
                 }
             }
+        }
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        delegate: EnoshimaWindowMenu {
+            required property var modelData
+            targetScreen: modelData
+            menuOpen: root.windowMenuOpen
+            activeScreenName: root.windowMenuScreenName
+            targetAddress: root.windowMenuAddress
+            targetWindow: root.windowByAddress(root.windowMenuAddress)
+            theme: root.theme
+            reducedMotion: root.reducedMotion
+            onCloseRequested: root.windowMenuOpen = false
+        }
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        delegate: EnoshimaSnapAssist {
+            required property var modelData
+            targetScreen: modelData
+            snapState: root.snapState
+            theme: root.theme
+            reducedMotion: root.reducedMotion
+            reducedTransparency: root.reducedTransparency
         }
     }
 

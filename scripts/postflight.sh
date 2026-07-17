@@ -132,6 +132,19 @@ hyprfocus_loaded() {
   hyprctl plugin list -j | jq -e '.[] | select(.name == "hyprfocus")'
 }
 
+enoshima_decoration_installed() {
+  local abi plugin recorded
+  abi=$(Hyprland --version | sed -n 's/^Version ABI string: //p')
+  [[ $abi =~ ^[0-9a-f]{40}$ ]] || return 1
+  plugin=${XDG_DATA_HOME:-$HOME/.local/share}/enoshima/plugins/$abi/enoshima-decoration.so
+  recorded=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/enoshima-decoration/hyprland-abi" 2>/dev/null) || return 1
+  [[ $recorded == "$abi" && -s $plugin ]]
+}
+
+enoshima_decoration_loaded() {
+  hyprctl plugin list -j | jq -e '.[] | select(.name == "enoshima-decoration")'
+}
+
 hyprfocus_configured() {
   local appearance_mode=default
   local animate_floating enable fade keyboard legacy_mode mouse
@@ -409,6 +422,8 @@ if hyprpm_plugin_enabled hyprbars; then
 else
   pass "retired hyprbars plugin is disabled"
 fi
+check "Enoshima titlebar plugin matches the installed Hyprland ABI" \
+  enoshima_decoration_installed
 check "desktop appearance accessibility helper is deployed" \
   test -x "$HOME/.local/bin/desktop-appearance"
 
@@ -446,6 +461,8 @@ if systemctl --user is-active --quiet graphical-session.target; then
   check_or_warn "graphical session imports mise shims (log out once if absent)" bash -c \
     "systemctl --user show-environment | grep -Eq '^PATH=.*/\.local/share/mise/shims'"
   check_or_warn "hyprfocus plugin is loaded in the active compositor" hyprfocus_loaded
+  check_or_warn "Enoshima titlebar plugin is loaded in the active compositor" \
+    enoshima_decoration_loaded
   check_or_warn "hyprfocus uses the managed schema and accessibility mode" \
     hyprfocus_configured
 else

@@ -3,7 +3,6 @@
 set -euo pipefail
 
 readonly socat_bin=${CYBERDOCK_EVENT_SOCAT:-socat}
-readonly controller=${CYBERDOCK_EVENT_CONTROLLER:-desktop-window-action}
 readonly state_bin=${CYBERDOCK_EVENT_STATE:-cyberdock-state}
 readonly jq_bin=${CYBERDOCK_EVENT_JQ:-jq}
 
@@ -16,30 +15,16 @@ valid_address() {
   [[ $1 =~ ^0x[0-9A-Fa-f]+$ ]]
 }
 
-window_is_minimized() {
-  local address=$1 snapshot
-  snapshot=$("$state_bin" snapshot 2>/dev/null) || return 2
-  "$jq_bin" -e --arg address "$address" \
-    'any(.windows[]?; .address == $address and .minimized == true)' \
-    <<<"$snapshot" >/dev/null
-}
-
 handle_minimize() {
-  local payload=$1 address state current_state=0
+  local payload=$1 address state
   address=${payload%%,*}
   state=${payload#*,}
   valid_address "$address" || return 0
   [[ $state == 0 || $state == 1 ]] || return 0
-  window_is_minimized "$address" || current_state=$?
-  if [[ $current_state -eq 2 ]]; then
-    printf 'cyberdock-event-bridge: unable to inspect state for %s\n' "$address" >&2
-    return 0
-  fi
-  if [[ $state == 1 ]]; then
-    [[ $current_state -eq 0 ]] || "$controller" minimize --address "$address" || true
-  else
-    [[ $current_state -ne 0 ]] || "$controller" restore --address "$address" || true
-  fi
+  # The state machine consumes confirmations for its own sequence and creates a
+  # client-origin transition only when observed and desired state differ.
+  CYBERDOCK_TRANSITION_ORIGIN=client \
+    "$state_bin" observe-minimized "$address" "$state" || true
 }
 
 handle_event() {

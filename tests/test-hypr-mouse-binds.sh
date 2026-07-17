@@ -23,7 +23,11 @@ case ${1:-} in
     cat <<'JSON'
 [
   {"mouse":false,"modmask":64,"key":"mouse:272","dispatcher":"__lua","has_description":true,"description":"Move window with pointer"},
-  {"mouse":false,"modmask":64,"key":"mouse:273","dispatcher":"__lua","has_description":true,"description":"Resize window with pointer"}
+  {"mouse":false,"modmask":64,"key":"mouse:273","dispatcher":"__lua","has_description":true,"description":"Resize window with pointer"},
+  {"mouse":false,"modmask":64,"key":"left","dispatcher":"__lua","has_description":true,"description":"Place the active window like Windows Snap"},
+  {"mouse":false,"modmask":64,"key":"right","dispatcher":"__lua","has_description":true,"description":"Place the active window like Windows Snap"},
+  {"mouse":false,"modmask":64,"key":"up","dispatcher":"__lua","has_description":true,"description":"Place the active window like Windows Snap"},
+  {"mouse":false,"modmask":64,"key":"down","dispatcher":"__lua","has_description":true,"description":"Place the active window like Windows Snap"}
 ]
 JSON
     ;;
@@ -44,6 +48,10 @@ JSON
     esac
     ;;
   version) printf 'Hyprland test\n' ;;
+  plugin)
+    [[ ${2:-} == list && ${3:-} == -j ]]
+    printf '[{"name":"enoshima-decoration"}]\n'
+    ;;
   *) exit 64 ;;
 esac
 FAKE
@@ -59,6 +67,10 @@ grep -Fq 'description = "Resize window with pointer"' "$hypr_config" ||
 printf '%s\n' '==> effective runtime binds and border resizing are healthy'
 jq -e '
   .healthy and .effective.move and .effective.resize and
+  .effective.snap_left and .effective.snap_right and
+  .effective.snap_maximize and .effective.snap_minimize and
+  .effective.system_titlebar and .active_window.title_redacted and
+  (.active_window | has("title") | not) and
   .effective.resize_on_border and .effective.border_grab_area == 24 and
   (.mice | length) == 2
 ' < <(bash "$doctor" --json) >/dev/null || fail 'healthy mouse control report is invalid'

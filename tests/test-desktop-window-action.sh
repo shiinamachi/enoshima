@@ -109,26 +109,9 @@ fi
 after=$(wc -l <"$WINDOW_TEST_LOG")
 [[ $before -eq $after ]] || fail 'invalid target dispatched a window action'
 
-printf '%s\n' '==> socket events bridge native client minimize requests once'
-export CYBERDOCK_EVENT_CONTROLLER=$work/bin/event-controller
+printf '%s\n' '==> socket events are reconciled only by the state machine'
 export CYBERDOCK_EVENT_STATE=$work/bin/event-state
 export EVENT_STATE_FILE=$work/event-state.json
-cat >"$CYBERDOCK_EVENT_CONTROLLER" <<'FAKE'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'event-controller' >>"${WINDOW_TEST_LOG:?}"
-for argument in "$@"; do printf ' %q' "$argument" >>"$WINDOW_TEST_LOG"; done
-printf '\n' >>"$WINDOW_TEST_LOG"
-action=${1:?}
-[[ ${2:?} == --address ]]
-address=${3:?}
-minimized=false
-[[ $action == minimize ]] && minimized=true
-jq -c --arg address "$address" --argjson minimized "$minimized" '
-  .windows |= map(if .address == $address then .minimized = $minimized else . end)
-' "${EVENT_STATE_FILE:?}" >"$EVENT_STATE_FILE.next"
-mv -- "$EVENT_STATE_FILE.next" "$EVENT_STATE_FILE"
-FAKE
 cat >"$CYBERDOCK_EVENT_STATE" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -140,7 +123,7 @@ printf 'event-state' >>"${WINDOW_TEST_LOG:?}"
 for argument in "$@"; do printf ' %q' "$argument" >>"$WINDOW_TEST_LOG"; done
 printf '\n' >>"$WINDOW_TEST_LOG"
 FAKE
-chmod 0700 "$CYBERDOCK_EVENT_CONTROLLER" "$CYBERDOCK_EVENT_STATE"
+chmod 0700 "$CYBERDOCK_EVENT_STATE"
 cat >"$EVENT_STATE_FILE" <<'JSON'
 {"version":1,"windows":[{"address":"0xaaa","minimized":false},{"address":"0xbbb","minimized":false}]}
 JSON
@@ -154,14 +137,17 @@ printf '%s\n' \
   'minimized>>0xbbb,1' \
   'minimized>>class:bad,1' \
   'closewindow>>0xaaa' | bash "$bridge" --stdin
-[[ $(grep -Fc 'event-controller minimize --address 0xaaa' "$WINDOW_TEST_LOG") -eq 1 ]] ||
-  fail 'duplicate minimize event was not idempotent'
-[[ $(grep -Fc 'event-controller restore --address 0xaaa' "$WINDOW_TEST_LOG") -eq 1 ]] ||
-  fail 'duplicate restore event was not idempotent'
-grep -Fxq 'event-controller minimize --address 0xbbb' "$WINDOW_TEST_LOG" ||
-  fail 'documented minimize event was not bridged'
-if grep -Fq 'event-controller minimize --address class:bad' "$WINDOW_TEST_LOG"; then
-  fail 'malformed minimize event reached the controller'
+[[ $(grep -Fc 'event-state observe-minimized 0xaaa 1' "$WINDOW_TEST_LOG") -eq 2 ]] ||
+  fail 'valid minimize observations did not reach the state machine'
+[[ $(grep -Fc 'event-state observe-minimized 0xaaa 0' "$WINDOW_TEST_LOG") -eq 2 ]] ||
+  fail 'valid restore observations did not reach the state machine'
+grep -Fxq 'event-state observe-minimized 0xbbb 1' "$WINDOW_TEST_LOG" ||
+  fail 'documented minimize observation was not bridged'
+if grep -Fq 'event-state observe-minimized class:bad' "$WINDOW_TEST_LOG"; then
+  fail 'malformed minimize observation reached the state machine'
+fi
+if grep -Fq 'event-controller' "$WINDOW_TEST_LOG"; then
+  fail 'event bridge bypassed the authoritative state machine'
 fi
 if grep -Fq 'debounce' "$bridge" || grep -Fq 'minimize\>\>* |' "$bridge"; then
   fail 'event bridge retains timing correctness or the undocumented event name'

@@ -137,6 +137,22 @@ converge_hyprland_plugins() {
   [[ -f $cache_root/hyprland-plugins/hyprfocus.so ]] ||
     die 'hyprpm did not build the official hyprfocus plugin'
 
+  local decoration_config=$repo_root/home/dot_config/enoshima/window-interaction.yaml
+  local decoration_enabled decoration_source decoration_root decoration_target decoration_state
+  decoration_enabled=$(yq -r '.decoration.enabled // false' "$decoration_config")
+  if [[ $decoration_enabled == true ]]; then
+    decoration_source=$repo_root/native/enoshima-decoration
+    decoration_root=${XDG_DATA_HOME:-$HOME/.local/share}/enoshima/plugins/$installed_abi
+    decoration_target=$decoration_root/enoshima-decoration.so
+    decoration_state=${XDG_STATE_HOME:-$HOME/.local/state}/enoshima-decoration
+    make -B -C "$decoration_source" all
+    install -Dm 0755 "$decoration_source/enoshima-decoration.so" "$decoration_target"
+    install -d -m 0700 "$decoration_state"
+    printf '%s\n' "$installed_abi" >"$decoration_state/hyprland-abi"
+    chmod 0600 "$decoration_state/hyprland-abi"
+    make -C "$decoration_source" clean
+  fi
+
   run_hyprpm_state_command hyprpm disable hyprbars || true
   run_hyprpm_state_command hyprpm enable hyprfocus || true
 
@@ -148,7 +164,11 @@ converge_hyprland_plugins() {
 
   if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     hyprpm reload
-    hyprctl reload config-only
+    if [[ $decoration_enabled == true ]]; then
+      "$HOME/.local/bin/enoshima-decoration-load"
+    else
+      hyprctl reload config-only
+    fi
   fi
 }
 

@@ -21,7 +21,8 @@ command -v flock >/dev/null 2>&1 || die 'flock is required'
 readonly state_dir=$XDG_RUNTIME_DIR/cyberdock
 readonly state_file=$state_dir/minimized.json
 readonly lock_file=$state_dir/state.lock
-readonly empty_state='{"version":1,"windows":{}}'
+readonly empty_state='{"version":2,"generation":0,"windows":{},"lastTransition":null}'
+readonly transition_origin=${CYBERDOCK_TRANSITION_ORIGIN:-dock}
 
 if [[ -L $state_dir ]]; then
   die "$state_dir must not be a symbolic link"
@@ -50,13 +51,82 @@ load_state() {
 
   chmod 0600 "$state_file"
   if ! state=$(
-    "$jq_bin" -c -e \
-      'select(.version == 1 and (.windows | type == "object"))' \
-      "$state_file" 2>/dev/null
+    "$jq_bin" -c -e '
+      if .version == 1 and (.windows | type == "object") then
+        .version = 2
+        | .generation = 0
+        | .lastTransition = null
+        | .windows |= with_entries(.value += {
+            state: "minimized",
+            desiredState: "minimized",
+            origin: "migration",
+            sequence: 0,
+            generation: 0
+          })
+      else . end
+      | select(
+          .version == 2
+          and (.generation | type == "number")
+          and (.windows | type == "object")
+        )
+    ' "$state_file" 2>/dev/null
   ); then
     state=$empty_state
     write_state "$state"
+  elif ! "$jq_bin" -e '.version == 2' "$state_file" >/dev/null 2>&1; then
+    write_state "$state"
   fi
+}
+
+valid_origin() {
+  [[ $1 =~ ^(client|titlebar|dock|keyboard|compositor|recovery|migration)$ ]]
+}
+
+begin_transition() {
+  local address=$1 desired=$2 phase=$3
+  valid_address "$address" || return 1
+  valid_origin "$transition_origin" || die "invalid transition origin: $transition_origin"
+  state=$(
+    "$jq_bin" -c \
+      --arg address "$address" \
+      --arg desired "$desired" \
+      --arg phase "$phase" \
+      --arg origin "$transition_origin" \
+      --argjson changedAt "$(date +%s)" '
+        .generation += 1
+        | .lastTransition = {
+            address: $address,
+            desiredState: $desired,
+            state: $phase,
+            origin: $origin,
+            sequence: .generation,
+            generation: .generation,
+            changedAt: $changedAt
+          }
+      ' <<<"$state"
+  )
+  transition_sequence=$("$jq_bin" -r '.generation' <<<"$state")
+}
+
+complete_transition() {
+  local address=$1 completed_state=$2
+  state=$(
+    "$jq_bin" -c \
+      --arg address "$address" \
+      --arg completedState "$completed_state" \
+      --argjson changedAt "$(date +%s)" '
+        if .lastTransition.address == $address then
+          .lastTransition.state = $completedState
+          | .lastTransition.changedAt = $changedAt
+        else . end
+      ' <<<"$state"
+  )
+}
+
+fail_transition() {
+  local address=$1
+  complete_transition "$address" failed
+  write_state "$state"
 }
 
 hypr_json() {
@@ -147,7 +217,12 @@ prune_state() {
         .key as $address
         | select(any($clients[];
             .address == $address
-            and (.workspace.name // "") == "special:minimized"))
+            and (
+              (.workspace.name // "") == "special:minimized"
+              or (.value.state // "") == "minimizing"
+              or (.value.state // "") == "restoring"
+              or (.value.state // "") == "closing"
+            )))
       )
     ' <<<"$state"
   )
@@ -228,6 +303,23 @@ restore_one() {
     return 0
   fi
 
+  begin_transition "$address" visible restoring
+  if [[ -n $record ]]; then
+    state=$(
+      "$jq_bin" -c \
+        --arg address "$address" \
+        --arg origin "$transition_origin" \
+        --argjson sequence "$transition_sequence" '
+          .windows[$address].state = "restoring"
+          | .windows[$address].desiredState = "visible"
+          | .windows[$address].origin = $origin
+          | .windows[$address].sequence = $sequence
+          | .windows[$address].generation = $sequence
+        ' <<<"$state"
+    )
+  fi
+  write_state "$state"
+
   target_workspace=$fallback_workspace
   target_monitor=$fallback_monitor
   if [[ -n $record ]]; then
@@ -250,6 +342,7 @@ restore_one() {
   fi
 
   if ! move_window_to_workspace "$target_workspace" "$address"; then
+    fail_transition "$address"
     return 1
   fi
 
@@ -267,7 +360,9 @@ restore_one() {
     fullscreen_client=$("$jq_bin" -r '.fullscreenClient // .fullscreen // 0' <<<"$record")
     set_fullscreen_state "$address" "$fullscreen" "$fullscreen_client" || true
   fi
-  remove_record "$address"
+  complete_transition "$address" visible
+  state=$("$jq_bin" -c --arg address "$address" 'del(.windows[$address])' <<<"$state")
+  write_state "$state"
 
   if [[ $focus_after == true ]]; then
     focus_monitor "$target_monitor" || true
@@ -289,7 +384,7 @@ snapshot_command() {
     --argjson active "$active" \
     --argjson runtimeState "$state" '
       {
-        version: 1,
+        version: 2,
         activeAddress: ($active.address // ""),
         monitors: $monitors,
         windows: [
@@ -306,9 +401,24 @@ snapshot_command() {
                 or (($client.workspace.name // "") == "special:minimized")
               ),
               originalWorkspace: ($record.workspace // null),
-              originalMonitor: ($record.monitor // null)
+              originalMonitor: ($record.monitor // null),
+              state: (
+                $record.state
+                // (if (($client.workspace.name // "") == "special:minimized")
+                    then "minimized"
+                    elif ($client.address == ($active.address // ""))
+                    then "focused"
+                    else "visible"
+                    end)
+              ),
+              desiredState: ($record.desiredState // "visible"),
+              transitionOrigin: ($record.origin // null),
+              transitionSequence: ($record.sequence // null),
+              transitionGeneration: ($record.generation // null)
             }
-        ]
+        ],
+        generation: ($runtimeState.generation // 0),
+        lastTransition: ($runtimeState.lastTransition // null)
       }
     '
 }
@@ -356,24 +466,52 @@ minimize_command() {
       --argjson fullscreen "$fullscreen" \
       --argjson fullscreenClient "$fullscreen_client" \
       --argjson focusHistory "$focus_history" \
-      --argjson recordedAt "$recorded_at" '
-        .windows[$address] = {
+      --argjson recordedAt "$recorded_at" \
+      --arg origin "$transition_origin" '
+        .generation += 1
+        | .windows[$address] = {
           workspace: {id: $workspaceId, name: $workspaceName},
           monitor: $monitor,
           floating: $floating,
           fullscreen: $fullscreen,
           fullscreenClient: $fullscreenClient,
           focusHistoryID: $focusHistory,
-          recordedAt: $recordedAt
+          recordedAt: $recordedAt,
+          state: "minimizing",
+          desiredState: "minimized",
+          origin: $origin,
+          sequence: .generation,
+          generation: .generation
         }
+        | .lastTransition = {
+            address: $address,
+            desiredState: "minimized",
+            state: "minimizing",
+            origin: $origin,
+            sequence: .generation,
+            generation: .generation,
+            changedAt: $recordedAt
+          }
       ' <<<"$state"
   )
   write_state "$state"
 
   if ! move_window_to_workspace "special:minimized" "$address"; then
-    remove_record "$address"
+    state=$("$jq_bin" -c --arg address "$address" '
+      del(.windows[$address])
+      | .lastTransition.state = "failed"
+    ' <<<"$state")
+    write_state "$state"
     die "failed to move $address to special:minimized"
   fi
+  state=$(
+    "$jq_bin" -c --arg address "$address" --argjson changedAt "$(date +%s)" '
+      .windows[$address].state = "minimized"
+      | .lastTransition.state = "minimized"
+      | .lastTransition.changedAt = $changedAt
+    ' <<<"$state"
+  )
+  write_state "$state"
 }
 
 activate_command() {
@@ -421,8 +559,55 @@ close_command() {
     'any(.[]; .address == $address)' <<<"$clients" >/dev/null ||
     die "window does not exist: $address"
 
-  close_window "$address" || die "failed to close $address"
-  remove_record "$address"
+  begin_transition "$address" closed closing
+  if "$jq_bin" -e --arg address "$address" '.windows[$address] != null' \
+    <<<"$state" >/dev/null; then
+    state=$("$jq_bin" -c --arg address "$address" '
+      .windows[$address].state = "closing"
+      | .windows[$address].desiredState = "closed"
+    ' <<<"$state")
+  fi
+  write_state "$state"
+  if ! close_window "$address"; then
+    fail_transition "$address"
+    die "failed to close $address"
+  fi
+  complete_transition "$address" closed
+  state=$("$jq_bin" -c --arg address "$address" 'del(.windows[$address])' <<<"$state")
+  write_state "$state"
+}
+
+observe_minimized_command() {
+  local address=$1 observed=$2 clients client current_workspace record_state
+  valid_address "$address" || exit 0
+  [[ $observed == 0 || $observed == 1 ]] || exit 0
+  clients=$(hypr_json clients)
+  prune_state "$clients"
+  client=$("$jq_bin" -c -e --arg address "$address" \
+    '.[] | select(.address == $address)' <<<"$clients") || exit 0
+  current_workspace=$("$jq_bin" -r '.workspace.name // ""' <<<"$client")
+  record_state=$("$jq_bin" -r --arg address "$address" \
+    '.windows[$address].state // ""' <<<"$state")
+
+  if [[ $observed == 1 ]]; then
+    if [[ $current_workspace == special:minimized && -n $record_state ]]; then
+      if [[ $record_state != minimized ]]; then
+        state=$("$jq_bin" -c --arg address "$address" '
+          .windows[$address].state = "minimized"
+          | if .lastTransition.address == $address
+            then .lastTransition.state = "minimized" else . end
+        ' <<<"$state")
+        write_state "$state"
+      fi
+      return 0
+    fi
+    minimize_command "$address"
+    return
+  fi
+
+  if [[ $current_workspace == special:minimized || -n $record_state ]]; then
+    restore_one "$address" true
+  fi
 }
 
 recover_command() {
@@ -473,7 +658,11 @@ case ${1:-snapshot} in
   recover)
     recover_command
     ;;
+  observe-minimized)
+    [[ $# -eq 3 ]] || die 'usage: cyberdock-state observe-minimized ADDRESS 0|1'
+    observe_minimized_command "$2" "$3"
+    ;;
   *)
-    die 'usage: cyberdock-state {snapshot|prune|minimize [ADDRESS]|restore ADDRESS|activate ADDRESS|close ADDRESS|recover}'
+    die 'usage: cyberdock-state {snapshot|prune|minimize [ADDRESS]|restore ADDRESS|activate ADDRESS|close ADDRESS|recover|observe-minimized ADDRESS 0|1}'
     ;;
 esac

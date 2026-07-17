@@ -1,0 +1,312 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016 # jq programs intentionally use single quotes.
+set -euo pipefail
+
+readonly hyprctl_bin=${ENOSHIMA_SNAP_HYPRCTL:-hyprctl}
+readonly jq_bin=${ENOSHIMA_SNAP_JQ:-jq}
+readonly config=${ENOSHIMA_WINDOW_INTERACTION_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/enoshima/window-interaction.yaml}
+
+die() {
+  printf 'enoshima-snap-controller: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  die 'usage: enoshima-snap-controller preview --address ADDRESS --x X --y Y | commit --address ADDRESS | cancel | place TARGET [--address ADDRESS]'
+}
+
+valid_address() {
+  [[ $1 =~ ^0x[0-9A-Fa-f]+$ ]]
+}
+
+[[ -n ${XDG_RUNTIME_DIR:-} && $XDG_RUNTIME_DIR == /* ]] || die 'XDG_RUNTIME_DIR must be absolute'
+[[ -d $XDG_RUNTIME_DIR && -O $XDG_RUNTIME_DIR ]] || die 'XDG_RUNTIME_DIR must be user-owned'
+command -v "$hyprctl_bin" >/dev/null 2>&1 || die 'hyprctl is required'
+command -v "$jq_bin" >/dev/null 2>&1 || die 'jq is required'
+command -v yq >/dev/null 2>&1 || die 'yq is required'
+
+readonly state_dir=$XDG_RUNTIME_DIR/enoshima
+readonly state_file=$state_dir/snap.json
+install -d -m 0700 "$state_dir"
+[[ ! -L $state_dir ]] || die 'state directory must not be a symbolic link'
+
+config_int() {
+  local key=$1 fallback=$2 value
+  value=$(yq -r "$key // $fallback" "$config" 2>/dev/null || printf '%s' "$fallback")
+  [[ $value =~ ^[0-9]+$ ]] || value=$fallback
+  printf '%s\n' "$value"
+}
+
+edge_threshold=$(config_int '.snap.edge_threshold' 16)
+preview_inset=$(config_int '.snap.preview_inset' 10)
+snap_gap=$(config_int '.snap.gap' 10)
+stale_after_ms=$(config_int '.snap.stale_after_ms' 750)
+readonly edge_threshold preview_inset snap_gap stale_after_ms
+
+write_state() {
+  local content=$1 temporary
+  temporary=$(mktemp "$state_dir/.snap.XXXXXX")
+  chmod 0600 "$temporary"
+  printf '%s\n' "$content" >"$temporary"
+  mv -f -- "$temporary" "$state_file"
+}
+
+inactive_state() {
+  "$jq_bin" -cn --argjson updatedAt "$(date +%s%3N)" \
+    '{schema: 1, active: false, updatedAt: $updatedAt}'
+}
+
+hypr_json() {
+  local resource=$1 output
+  output=$("$hyprctl_bin" "$resource" -j) || die "hyprctl $resource failed"
+  "$jq_bin" -ce . <<<"$output" || die "hyprctl $resource returned invalid JSON"
+}
+
+monitor_for_point() {
+  local monitors=$1 point_x=$2 point_y=$3
+  "$jq_bin" -ce --argjson x "$point_x" --argjson y "$point_y" '
+    .[]
+    | (.width / .scale | floor) as $logicalWidth
+    | (.height / .scale | floor) as $logicalHeight
+    | select(
+        $x >= .x and $x < (.x + $logicalWidth)
+        and $y >= .y and $y < (.y + $logicalHeight)
+      )
+  ' <<<"$monitors" | head -n 1
+}
+
+monitor_for_address() {
+  local address=$1 clients monitors monitor_id
+  clients=$(hypr_json clients)
+  monitor_id=$("$jq_bin" -r --arg address "$address" \
+    '.[] | select(.address == $address) | .monitor' <<<"$clients" | head -n 1)
+  [[ $monitor_id =~ ^[0-9]+$ ]] || return 1
+  monitors=$(hypr_json monitors)
+  "$jq_bin" -ce --argjson id "$monitor_id" '.[] | select(.id == $id)' <<<"$monitors"
+}
+
+target_for_point() {
+  local monitor=$1 point_x=$2 point_y=$3
+  local monitor_x monitor_y logical_width logical_height near_left near_right near_top near_bottom
+  monitor_x=$("$jq_bin" -r '.x' <<<"$monitor")
+  monitor_y=$("$jq_bin" -r '.y' <<<"$monitor")
+  logical_width=$("$jq_bin" -r '(.width / .scale | floor)' <<<"$monitor")
+  logical_height=$("$jq_bin" -r '(.height / .scale | floor)' <<<"$monitor")
+  near_left=$((point_x - monitor_x <= edge_threshold))
+  near_right=$((monitor_x + logical_width - 1 - point_x <= edge_threshold))
+  near_top=$((point_y - monitor_y <= edge_threshold))
+  near_bottom=$((monitor_y + logical_height - 1 - point_y <= edge_threshold))
+
+  if ((near_left)); then
+    if ((point_y < monitor_y + logical_height / 3)); then
+      printf 'upper-left\n'
+    elif ((point_y > monitor_y + logical_height * 2 / 3)); then
+      printf 'lower-left\n'
+    else
+      printf 'left-half\n'
+    fi
+  elif ((near_right)); then
+    if ((point_y < monitor_y + logical_height / 3)); then
+      printf 'upper-right\n'
+    elif ((point_y > monitor_y + logical_height * 2 / 3)); then
+      printf 'lower-right\n'
+    else
+      printf 'right-half\n'
+    fi
+  elif ((near_top)); then
+    printf 'maximize\n'
+  elif ((near_bottom)); then
+    printf 'bottom-half\n'
+  else
+    printf 'none\n'
+  fi
+}
+
+state_for_target() {
+  local monitor=$1 target=$2 address=$3
+  local monitor_x monitor_y logical_width logical_height reserved_left reserved_top reserved_right reserved_bottom
+  local work_x work_y work_width work_height inner_x inner_y inner_width inner_height half_width half_height
+  local target_x target_y target_width target_height label
+  monitor_x=$("$jq_bin" -r '.x' <<<"$monitor")
+  monitor_y=$("$jq_bin" -r '.y' <<<"$monitor")
+  logical_width=$("$jq_bin" -r '(.width / .scale | floor)' <<<"$monitor")
+  logical_height=$("$jq_bin" -r '(.height / .scale | floor)' <<<"$monitor")
+  # Hyprland reports reserved extents as [top, bottom, left, right].
+  reserved_top=$("$jq_bin" -r '.reserved[0] // 0' <<<"$monitor")
+  reserved_bottom=$("$jq_bin" -r '.reserved[1] // 0' <<<"$monitor")
+  reserved_left=$("$jq_bin" -r '.reserved[2] // 0' <<<"$monitor")
+  reserved_right=$("$jq_bin" -r '.reserved[3] // 0' <<<"$monitor")
+  work_x=$((monitor_x + reserved_left))
+  work_y=$((monitor_y + reserved_top))
+  work_width=$((logical_width - reserved_left - reserved_right))
+  work_height=$((logical_height - reserved_top - reserved_bottom))
+  inner_x=$((work_x + preview_inset))
+  inner_y=$((work_y + preview_inset))
+  inner_width=$((work_width - preview_inset * 2))
+  inner_height=$((work_height - preview_inset * 2))
+  half_width=$(((inner_width - snap_gap) / 2))
+  half_height=$(((inner_height - snap_gap) / 2))
+
+  case $target in
+    left-half)
+      target_x=$inner_x
+      target_y=$inner_y
+      target_width=$half_width
+      target_height=$inner_height
+      label='왼쪽 절반'
+      ;;
+    right-half)
+      target_x=$((inner_x + half_width + snap_gap))
+      target_y=$inner_y
+      target_width=$half_width
+      target_height=$inner_height
+      label='오른쪽 절반'
+      ;;
+    upper-left)
+      target_x=$inner_x
+      target_y=$inner_y
+      target_width=$half_width
+      target_height=$half_height
+      label='왼쪽 위'
+      ;;
+    upper-right)
+      target_x=$((inner_x + half_width + snap_gap))
+      target_y=$inner_y
+      target_width=$half_width
+      target_height=$half_height
+      label='오른쪽 위'
+      ;;
+    lower-left)
+      target_x=$inner_x
+      target_y=$((inner_y + half_height + snap_gap))
+      target_width=$half_width
+      target_height=$half_height
+      label='왼쪽 아래'
+      ;;
+    lower-right)
+      target_x=$((inner_x + half_width + snap_gap))
+      target_y=$((inner_y + half_height + snap_gap))
+      target_width=$half_width
+      target_height=$half_height
+      label='오른쪽 아래'
+      ;;
+    bottom-half)
+      target_x=$inner_x
+      target_y=$((inner_y + half_height + snap_gap))
+      target_width=$inner_width
+      target_height=$half_height
+      label='아래쪽 절반'
+      ;;
+    maximize)
+      target_x=$inner_x
+      target_y=$inner_y
+      target_width=$inner_width
+      target_height=$inner_height
+      label='최대화'
+      ;;
+    *) return 1 ;;
+  esac
+
+  "$jq_bin" -cn \
+    --arg address "$address" --arg target "$target" --arg label "$label" \
+    --arg monitor "$("$jq_bin" -r '.name' <<<"$monitor")" \
+    --argjson monitorX "$monitor_x" --argjson monitorY "$monitor_y" \
+    --argjson x "$target_x" --argjson y "$target_y" \
+    --argjson localX "$((target_x - monitor_x))" --argjson localY "$((target_y - monitor_y))" \
+    --argjson width "$target_width" --argjson height "$target_height" \
+    --argjson updatedAt "$(date +%s%3N)" '
+      {
+        schema: 1, active: true, address: $address, target: $target,
+        label: $label, monitor: $monitor, monitorX: $monitorX, monitorY: $monitorY,
+        geometry: {x: $x, y: $y, localX: $localX, localY: $localY, width: $width, height: $height},
+        updatedAt: $updatedAt
+      }
+    '
+}
+
+apply_state() {
+  local document=$1 address target x y width height
+  address=$("$jq_bin" -r '.address // ""' <<<"$document")
+  target=$("$jq_bin" -r '.target // ""' <<<"$document")
+  valid_address "$address" || return 1
+  "$jq_bin" -e --arg address "$address" \
+    'any(.[]; .address == $address)' <<<"$(hypr_json clients)" >/dev/null || return 1
+
+  if [[ $target == maximize ]]; then
+    "$hyprctl_bin" dispatch \
+      "hl.dsp.window.fullscreen_state({ internal = 1, client = 1, action = \"set\", window = \"address:$address\" })" >/dev/null
+    return
+  fi
+
+  x=$("$jq_bin" -r '.geometry.x' <<<"$document")
+  y=$("$jq_bin" -r '.geometry.y' <<<"$document")
+  width=$("$jq_bin" -r '.geometry.width' <<<"$document")
+  height=$("$jq_bin" -r '.geometry.height' <<<"$document")
+  for value in "$x" "$y" "$width" "$height"; do [[ $value =~ ^-?[0-9]+$ ]] || return 1; done
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.fullscreen_state({ internal = 0, client = 0, action = \"set\", window = \"address:$address\" })" >/dev/null
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.float({ action = \"set\", window = \"address:$address\" })" >/dev/null
+  "$hyprctl_bin" dispatch resizewindowpixel "exact $width $height,address:$address" >/dev/null
+  "$hyprctl_bin" dispatch movewindowpixel "exact $x $y,address:$address" >/dev/null
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.focus({ window = \"address:$address\" })" >/dev/null
+}
+
+case ${1:-} in
+  preview)
+    [[ $# -eq 7 && $2 == --address && $4 == --x && $6 == --y ]] || usage
+    address=$3
+    point_x=$5
+    point_y=$7
+    valid_address "$address" || usage
+    [[ $point_x =~ ^-?[0-9]+$ && $point_y =~ ^-?[0-9]+$ ]] || usage
+    monitors=$(hypr_json monitors)
+    if ! monitor=$(monitor_for_point "$monitors" "$point_x" "$point_y"); then
+      write_state "$(inactive_state)"
+      exit 0
+    fi
+    target=$(target_for_point "$monitor" "$point_x" "$point_y")
+    if [[ $target == none ]]; then
+      write_state "$(inactive_state)"
+    else
+      write_state "$(state_for_target "$monitor" "$target" "$address")"
+    fi
+    ;;
+  commit)
+    [[ $# -eq 3 && $2 == --address ]] || usage
+    address=$3
+    valid_address "$address" || usage
+    [[ -r $state_file && ! -L $state_file ]] || exit 0
+    document=$("$jq_bin" -ce --arg address "$address" \
+      'select(.schema == 1 and .active == true and .address == $address)' "$state_file" 2>/dev/null) || exit 0
+    now=$(date +%s%3N)
+    updated=$("$jq_bin" -r '.updatedAt' <<<"$document")
+    [[ $updated =~ ^[0-9]+$ ]] || exit 0
+    ((now - updated <= stale_after_ms)) || {
+      write_state "$(inactive_state)"
+      exit 0
+    }
+    apply_state "$document"
+    write_state "$(inactive_state)"
+    ;;
+  cancel)
+    [[ $# -eq 1 ]] || usage
+    write_state "$(inactive_state)"
+    ;;
+  place)
+    [[ $# -eq 2 || ($# -eq 4 && $3 == --address) ]] || usage
+    target=$2
+    if [[ $# -eq 4 ]]; then
+      address=$4
+    else
+      address=$(hypr_json activewindow | "$jq_bin" -r '.address // ""')
+    fi
+    valid_address "$address" || die 'no actionable window is focused'
+    monitor=$(monitor_for_address "$address") || die 'window monitor is unavailable'
+    document=$(state_for_target "$monitor" "$target" "$address") || die "unsupported target: $target"
+    apply_state "$document"
+    write_state "$(inactive_state)"
+    ;;
+  *) usage ;;
+esac

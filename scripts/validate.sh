@@ -407,6 +407,8 @@ for test_script in \
   tests/test-power-policy.sh \
   tests/test-wwan-shutdown.sh \
   tests/test-desktop-window-action.sh \
+  tests/test-enoshima-snap-controller.sh \
+  tests/test-enoshima-decoration.sh \
   tests/test-window-decoration-policy.sh \
   tests/test-hypr-mouse-binds.sh \
   tests/test-hyprlock-responsive.sh \
@@ -434,7 +436,9 @@ if [[ -x /usr/lib/qt6/bin/qmllint ]]; then
     home/dot_config/quickshell/cyberdock/PowerMenu.qml \
     home/dot_config/quickshell/cyberdock/FocusSentinel.qml \
     home/dot_config/quickshell/cyberdock/CyberLauncher.qml \
-    home/dot_config/quickshell/cyberdock/CyberOsd.qml
+    home/dot_config/quickshell/cyberdock/CyberOsd.qml \
+    home/dot_config/quickshell/cyberdock/EnoshimaWindowMenu.qml \
+    home/dot_config/quickshell/cyberdock/EnoshimaSnapAssist.qml
   /usr/lib/qt6/bin/qmllint --max-warnings 0 \
     ansible/roles/desktop_expansion/files/sddm-cyberpunk/Main.qml
 else

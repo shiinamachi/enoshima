@@ -212,6 +212,56 @@ end
 
 configureHyprfocus()
 
+local function configureEnoshimaDecoration()
+    if hl.get_config("plugin.enoshima_decoration.enabled") == nil then
+        return
+    end
+
+    hl.config({
+        plugin = {
+            enoshima_decoration = {
+                enabled = true,
+                allowlist = "mpv,imv,org.pwmt.zathura",
+                bar_color = "rgba(0a0c3eff)",
+                ["col.text"] = "rgba(f2ecffff)",
+                inactive_button_color = "rgba(16115188)",
+                bar_height = 36,
+                bar_hit_height = 44,
+                bar_text_size = 13,
+                bar_text_font = "Pretendard",
+                bar_text_align = "left",
+                bar_buttons_alignment = "right",
+                bar_padding = 8,
+                bar_button_padding = 16,
+                bar_part_of_window = true,
+                bar_precedence_over_border = false,
+                icon_on_hover = false,
+                on_double_click = "desktop-window-action maximize --active --origin titlebar",
+            },
+        },
+    })
+
+    -- Buttons are registered from right to left. The 36px rendered bar sits in
+    -- a 44px input extent; 28px glyphs plus padding keep every target >=44px.
+    hl.plugin.enoshima_decoration.add_button({
+        bg_color = "rgba(00000000)", fg_color = "rgba(f2ecffff)",
+        size = 28, icon = "×",
+        action = "desktop-window-action close --active --origin titlebar",
+    })
+    hl.plugin.enoshima_decoration.add_button({
+        bg_color = "rgba(00000000)", fg_color = "rgba(f2ecffff)",
+        size = 28, icon = "□",
+        action = "desktop-window-action maximize --active --origin titlebar",
+    })
+    hl.plugin.enoshima_decoration.add_button({
+        bg_color = "rgba(00000000)", fg_color = "rgba(f2ecffff)",
+        size = 28, icon = "−",
+        action = "desktop-window-action minimize --active --origin titlebar",
+    })
+end
+
+configureEnoshimaDecoration()
+
 local function reloadHyprlandPlugins()
     -- Never load a stale optional plugin set during login. Bootstrap first
     -- converges these flags and the ABI cache; only that reviewed state may be
@@ -225,7 +275,7 @@ awk '
     section == "[hyprfocus]" && $1 == "enabled" { hyprfocus = $3 }
     END { exit !(hyprbars == "false" && hyprfocus == "true") }
 ' "$state" &&
-hyprpm reload && hyprctl reload config-only
+hyprpm reload && enoshima-decoration-load
 ]])
 end
 
@@ -322,6 +372,7 @@ hl.bind(mainMod .. " + CTRL + K", hl.dsp.exec_cmd("kakaotalk-focus-repair"), {
     description = "Repair KakaoTalk input focus",
 })
 hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("desktop-power menu"), { description = "Open power and session menu" })
+hl.bind("ALT + SPACE", hl.dsp.exec_cmd("enoshima-window-menu"), { description = "Open the system window menu" })
 
 local directions = {
     H = { name = "left", x = -40, y = 0 },
@@ -341,17 +392,19 @@ for key, direction in pairs(directions) do
 end
 
 local arrowDirections = {
-    left = "left",
-    down = "down",
-    up = "up",
-    right = "right",
+    left = { direction = "left", snap = "left-half" },
+    down = { direction = "down", action = "desktop-window-action minimize --active --origin keyboard" },
+    up = { direction = "up", snap = "maximize" },
+    right = { direction = "right", snap = "right-half" },
 }
 
-for key, direction in pairs(arrowDirections) do
-    hl.bind(mainMod .. " + " .. key,
-        hl.dsp.focus({ direction = direction }))
+for key, action in pairs(arrowDirections) do
+    local command = action.action or ("enoshima-snap-controller place " .. action.snap)
+    hl.bind(mainMod .. " + " .. key, hl.dsp.exec_cmd(command), {
+        description = "Place the active window like Windows Snap",
+    })
     hl.bind(mainMod .. " + SHIFT + " .. key,
-        hl.dsp.window.move({ direction = direction }))
+        hl.dsp.window.move({ direction = action.direction }))
 end
 
 hl.bind(mainMod .. " + CTRL + left",

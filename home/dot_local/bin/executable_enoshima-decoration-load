@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+config=${XDG_CONFIG_HOME:-$HOME/.config}/enoshima/window-interaction.yaml
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/enoshima-decoration
+plugin_root=${XDG_DATA_HOME:-$HOME/.local/share}/enoshima/plugins
+
+[[ -r $config ]] || exit 0
+command -v yq >/dev/null 2>&1 || exit 0
+[[ $(yq -r '.decoration.enabled // false' "$config") == true ]] || exit 0
+[[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || exit 0
+
+abi=$(Hyprland --version | sed -n 's/^Version ABI string: //p')
+[[ $abi =~ ^[0-9a-f]{40}$ ]] || {
+  printf 'enoshima-decoration-load: cannot resolve Hyprland ABI\n' >&2
+  exit 1
+}
+plugin=$plugin_root/$abi/enoshima-decoration.so
+recorded_abi=$(cat "$state_dir/hyprland-abi" 2>/dev/null || true)
+[[ $recorded_abi == "$abi" && -f $plugin ]] || {
+  printf 'enoshima-decoration-load: plugin is not built for ABI %s; run bootstrap.sh\n' "$abi" >&2
+  exit 1
+}
+
+if ! hyprctl plugin list -j | jq -e \
+  'any(.[]; .name == "enoshima-decoration")' >/dev/null; then
+  hyprctl plugin load "$plugin" >/dev/null
+fi
+hyprctl reload config-only >/dev/null
