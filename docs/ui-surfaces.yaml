@@ -137,7 +137,7 @@ surfaces:
       sha256: 009401e3c6bc2c2fd014e936e4f037d0e00486651cc8a293b5f402089b7a189c
     evidence:
       status: pending
-      required_states: [active, inactive, keyboard-focus, hover, pressed, maximized, close-hover, system-menu]
+      required_states: [active, inactive, keyboard-focus, hover, pressed, maximized, close-hover, system-menu, action-running, action-error]
       required_locales: [en_US.UTF-8, ko_KR.UTF-8]
       required_scales: [1.0, 1.25, 2.0]
       implementation_digest: null

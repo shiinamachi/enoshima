@@ -6,7 +6,7 @@ selection: >-
   Direction A, Slim Line, preserves familiar desktop chrome, maximizes the drag
   region, and fits the existing squared application surfaces without adding a
   second capsule motif.
-states: [active, inactive, keyboard-focus, hover, pressed, maximized, close-hover, system-menu]
+states: [active, inactive, keyboard-focus, hover, pressed, maximized, close-hover, system-menu, action-running, action-error]
 invariants:
   - Visual height is 36px while every caption-button hit target is at least 44px.
   - The close button becomes critical only on hover or keyboard focus.
@@ -16,10 +16,14 @@ behavior:
   - Dragging the title region moves the window without a modifier.
   - Double-click toggles maximize and restore.
   - Right-click or Alt+Space opens the system menu.
+  - Exact-target action failures replace the failed menu row with a compact
+    inline error for 1500ms; Enter, Space, Escape, or its dismiss control closes it.
 acceptance:
   - No client receives both client-side and Enoshima title bars.
   - All controls work with pointer and keyboard on Wayland and XWayland clients.
   - Korean and English titles elide before the caption controls.
+  - A disappeared target never causes an action to fall back to another active window.
+  - Error feedback uses dialog-error-symbolic, text, and focus treatment rather than color alone.
 generation:
   references:
     - docs/assets/concepts/cyberpunk-desktop-shell.png
@@ -28,3 +32,37 @@ generation:
     Create a high-fidelity UI design exploration board with three clearly separated directions A, B, and C for the Enoshima Linux desktop system title bar and system window menu. Show a compact title bar, broad drag region, 44px hit targets, active and inactive states, and a Korean system menu. Follow the Enoshima palette and avoid duplicate native chrome.
   final_prompt: >-
     Develop Direction A Slim Line as an implementation-ready 1920x1080 specification board with a 36px visual title bar, 44px hit targets, active/inactive/focus/hover/pressed/maximized states, and the exact Korean system menu labels 복원, 이동, 크기 조절, 최소화, 최대화, 닫기.
+extensions:
+  action_error:
+    status: approved
+    candidates: docs/assets/concepts/system-titlebar/system-titlebar-action-error-candidates-v2.png
+    asset: docs/assets/concepts/system-titlebar/system-titlebar-action-error-v2.png
+    sha256: b32306d0b2a96bbba0615bc61448bae03ce041f3e7e2a32fa875808feacdd719
+    selected_direction: >-
+      Direction A, Compact Inline Error Row, keeps the failure adjacent to the
+      exact menu action, preserves the 300px anchored menu and workstation
+      density, and offers the clearest keyboard dismissal without introducing
+      a separate toast or replacement dialog.
+    states: [action-running, action-error, keyboard-focus, auto-dismiss, target-disappeared]
+    invariants:
+      - The approved 36px visual title bar and 44px caption targets do not change.
+      - The anchored menu remains 300px wide with 44px normal rows.
+      - The inline error row is at least 56px high with 12px padding and a 44px dismiss target.
+      - The error remains visible for 1500ms and never substitutes another active window.
+      - Korean primary copy is 창이 이미 닫혔습니다 and the English sample is The window has already closed.
+    candidate_prompt: >-
+      Create one high-fidelity 16:9 Enoshima desktop exploration board with three
+      recoverable exact-target system-window-menu action-error directions while
+      preserving the approved Direction A Slim Line title bar: A compact inline
+      error row, an adjacent temporary status strip, and a menu-replacement
+      recovery panel. Use the existing Enoshima palette, a 300px anchored menu,
+      visible keyboard focus, dialog-error-symbolic, Korean copy 창이 이미
+      닫혔습니다, English overflow copy The window has already closed, a 1500ms
+      dismissal rule, and an explicit no-window-substitution invariant.
+    final_prompt: >-
+      Develop selected Direction A Compact Inline Error Row as an implementation-
+      ready 1920x1080 state and redline board extending the approved Slim Line
+      title bar. Show normal, action-running, inline action-error, keyboard-focus,
+      1500ms auto-dismiss, and target-disappeared states. Redline a 36px title
+      bar, 44px caption targets, 300px menu, 44px normal rows, 56px error row,
+      12px padding, 10px error radius, and icon-plus-copy non-color feedback.

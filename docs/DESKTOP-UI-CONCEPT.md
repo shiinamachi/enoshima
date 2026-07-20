@@ -67,7 +67,10 @@ clients that provide no usable chrome. Its 36 px visual bar retains 44 px
 caption-button targets, a broad modifier-free drag area, maximize/restore on
 double-click, an accessible system menu, and a client-close request that never
 kills the application process. Client-owned and Enoshima title bars must never
-appear on the same window.
+appear on the same window. Exact-target menu failures use the approved compact
+inline error-row extension in
+`assets/concepts/system-titlebar/system-titlebar-action-error-v2.png`; the
+menu never substitutes a newly active window when its owner disappears.
 
 ### Snap Assist
 
