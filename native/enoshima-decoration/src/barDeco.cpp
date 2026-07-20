@@ -32,9 +32,7 @@
 #include <filesystem>
 #include <format>
 #include <linux/input-event-codes.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
+#include <random>
 
 using namespace Render::GL;
 
@@ -393,65 +391,43 @@ void CHyprBar::updateSnapPreview(Vector2D coords) {
 
 void CHyprBar::commitSnapPreview() {
     sendSnapRequest("commit");
-    m_snapSession  = 0;
+    m_snapSession.clear();
     m_snapSequence = 0;
 }
 
 void CHyprBar::cancelSnapPreview() {
     sendSnapRequest("cancel");
-    m_snapSession  = 0;
+    m_snapSession.clear();
     m_snapSequence = 0;
 }
 
 void CHyprBar::startSnapSession() {
-    m_snapSession = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(Time::steadyNow().time_since_epoch()).count());
-    if (m_snapSession == 0)
-        m_snapSession = 1;
+    static thread_local std::mt19937_64 generator(std::random_device{}());
+    m_snapSession = std::format("{:016x}{:016x}", generator(), generator());
     m_snapSequence = 0;
+    sendSnapRequest("acquire");
 }
 
 bool CHyprBar::sendSnapRequest(const std::string& type, std::optional<Vector2D> coords) {
     const auto address = ownerAddress();
-    if (address.empty() || m_snapSession == 0)
+    if (address.empty() || m_snapSession.empty() || !g_pGlobalState || !g_pGlobalState->snapTransport)
         return false;
-
-    const auto runtime = std::getenv("XDG_RUNTIME_DIR");
-    if (!runtime || runtime[0] != '/')
-        return false;
-
-    const auto socketPath = std::format("{}/enoshima/windowd.sock", runtime);
-    sockaddr_un endpoint  = {};
-    endpoint.sun_family   = AF_UNIX;
-    if (socketPath.size() >= sizeof(endpoint.sun_path))
-        return false;
-    std::memcpy(endpoint.sun_path, socketPath.c_str(), socketPath.size() + 1);
-
-    const int descriptor = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
-    if (descriptor < 0)
-        return false;
-
-    timeval timeout = {.tv_sec = 0, .tv_usec = 50000};
-    setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-    if (connect(descriptor, reinterpret_cast<sockaddr*>(&endpoint), sizeof(endpoint)) < 0) {
-        close(descriptor);
-        return false;
-    }
 
     ++m_snapSequence;
     auto request = std::format(
-        R"({{"schema":1,"type":"{}","address":"{}","session":{},"sequence":{},"source":"titlebar"}})",
+        R"({{"schema":2,"command":"{}","address":"{}","session":"{}","sequence":{},"source":"titlebar-pointer"}})",
         type, address, m_snapSession, m_snapSequence);
     if (coords)
         request = std::format(
-            R"({{"schema":1,"type":"{}","address":"{}","session":{},"sequence":{},"source":"titlebar","x":{},"y":{}}})",
+            R"({{"schema":2,"command":"{}","address":"{}","session":"{}","sequence":{},"source":"titlebar-pointer","x":{},"y":{}}})",
             type, address, m_snapSession, m_snapSequence, std::lround(coords->x), std::lround(coords->y));
 
-    const auto sent = send(descriptor, request.data(), request.size(), MSG_NOSIGNAL);
-    char       response[256];
-    const auto received = sent == static_cast<ssize_t>(request.size()) ? recv(descriptor, response, sizeof(response), 0) : -1;
-    close(descriptor);
-    return sent == static_cast<ssize_t>(request.size()) && received > 0;
+    const auto key = m_snapSession + ":" + address;
+    if (type == "preview")
+        g_pGlobalState->snapTransport->enqueuePreview(key, std::move(request));
+    else
+        g_pGlobalState->snapTransport->enqueueTerminal(key, std::move(request), type == "commit");
+    return true;
 }
 
 std::string CHyprBar::ownerAddress() const {

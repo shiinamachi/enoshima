@@ -6,6 +6,7 @@
 #include <hyprland/src/config/values/types/IntValue.hpp>
 #include <hyprland/src/config/values/types/StringValue.hpp>
 #include <hyprland/src/config/values/types/ColorValue.hpp>
+#include "snapTransport.hpp"
 
 inline HANDLE PHANDLE = nullptr;
 
@@ -25,6 +26,7 @@ struct SHyprButton {
 class CHyprBar;
 
 struct SGlobalState {
+    UP<CSnapTransport>           snapTransport;
     std::vector<SHyprButton>  buttons;
     std::vector<WP<CHyprBar>> bars;
     uint32_t                  nobarRuleIdx      = 0;

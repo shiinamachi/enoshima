@@ -9,7 +9,7 @@ import os
 import socket
 import subprocess
 import sys
-import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -68,14 +68,20 @@ def main() -> None:
     preview.add_argument("--address", required=True)
     preview.add_argument("--x", required=True, type=int)
     preview.add_argument("--y", required=True, type=int)
-    preview.add_argument("--session", required=True, type=int)
+    preview.add_argument("--session", required=True)
     preview.add_argument("--sequence", required=True, type=int)
     preview.add_argument("--source", default="titlebar")
 
-    for name in ("commit", "cancel"):
+    acquire = commands.add_parser("acquire")
+    acquire.add_argument("--address", required=True)
+    acquire.add_argument("--session", required=True)
+    acquire.add_argument("--sequence", required=True, type=int)
+    acquire.add_argument("--source", default="controller")
+
+    for name in ("commit", "cancel", "release"):
         command = commands.add_parser(name)
         command.add_argument("--address")
-        command.add_argument("--session", type=int)
+        command.add_argument("--session")
         command.add_argument("--sequence", type=int)
 
     place = commands.add_parser("place")
@@ -87,7 +93,7 @@ def main() -> None:
     chooser.add_argument("--target", default="left-half")
 
     choose = commands.add_parser("choose")
-    choose.add_argument("target")
+    choose.add_argument("cell_id")
     choose.add_argument("--commit", action="store_true")
 
     arguments = parser.parse_args()
@@ -96,14 +102,27 @@ def main() -> None:
     address = getattr(arguments, "address", None) or str(state.get("address", "")) or active_address()
 
     if arguments.command == "place":
-        request({"schema": 1, "type": "place", "address": address, "target": arguments.target})
+        request({"schema": 2, "command": "place", "address": address, "target": arguments.target})
+        return
+
+    if arguments.command == "acquire":
+        request(
+            {
+                "schema": 2,
+                "command": "acquire",
+                "address": address,
+                "session": arguments.session,
+                "sequence": arguments.sequence,
+                "source": arguments.source,
+            }
+        )
         return
 
     if arguments.command == "preview":
         request(
             {
-                "schema": 1,
-                "type": "preview",
+                "schema": 2,
+                "command": "preview",
                 "address": address,
                 "x": arguments.x,
                 "y": arguments.y,
@@ -115,29 +134,39 @@ def main() -> None:
         return
 
     if arguments.command == "chooser":
-        session = time.monotonic_ns()
+        session = uuid.uuid4().hex
         request(
             {
-                "schema": 1,
-                "type": "chooser",
+                "schema": 2,
+                "command": "acquire",
                 "address": address,
-                "target": arguments.target,
                 "session": session,
                 "sequence": 1,
                 "source": "keyboard",
             }
         )
+        request(
+            {
+                "schema": 2,
+                "command": "chooser",
+                "address": address,
+                "target": arguments.target,
+                "session": session,
+                "sequence": 2,
+                "source": "keyboard",
+            }
+        )
         return
 
-    session = int(getattr(arguments, "session", 0) or state.get("session", 0))
+    session = str(getattr(arguments, "session", "") or state.get("session", ""))
     sequence = int(getattr(arguments, "sequence", 0) or int(state.get("sequence", 0)) + 1)
     if arguments.command == "choose":
         request(
             {
-                "schema": 1,
-                "type": "choose",
+                "schema": 2,
+                "command": "choose",
                 "address": address,
-                "target": arguments.target,
+                "cellId": arguments.cell_id,
                 "session": session,
                 "sequence": sequence,
                 "source": "keyboard",
@@ -148,8 +177,8 @@ def main() -> None:
 
     request(
         {
-            "schema": 1,
-            "type": arguments.command,
+            "schema": 2,
+            "command": arguments.command,
             "address": address,
             "session": session,
             "sequence": sequence,

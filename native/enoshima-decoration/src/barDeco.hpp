@@ -133,8 +133,8 @@ class CHyprBar : public IHyprWindowDecoration {
     bool                m_bDragPending   = false;
     bool                m_bCancelledDown = false;
     int                 m_touchId        = 0;
-    uint64_t            m_snapSession    = 0;
-    uint64_t            m_snapSequence   = 0;
+    std::string         m_snapSession;
+    uint32_t            m_snapSequence = 0;
 
     // store hover state for buttons as a bitfield
     unsigned int m_iButtonHoverState = 0;

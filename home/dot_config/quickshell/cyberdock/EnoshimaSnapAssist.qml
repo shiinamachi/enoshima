@@ -18,7 +18,8 @@ PanelWindow {
     required property bool reducedTransparency
 
     property int selectedIndex: 0
-    property int observedSession: 0
+    property string selectedCellId: ""
+    property string observedSession: ""
     readonly property bool koreanLocale:
         String(Quickshell.env("LANG") || "").toLowerCase().startsWith("ko")
     readonly property bool fresh: Number(snapState.updatedAt || 0) > 0
@@ -85,11 +86,11 @@ PanelWindow {
         return koreanLocale ? value[0] : value[1];
     }
 
-    function choose(target, commit) {
-        if (!target)
+    function choose(cellId, commit) {
+        if (!cellId)
             return;
         Quickshell.execDetached([
-            "enoshima-snap-controller", "choose", String(target),
+            "enoshima-snap-controller", "choose", String(cellId),
             ...(commit ? ["--commit"] : [])
         ]);
     }
@@ -98,7 +99,8 @@ PanelWindow {
         if (cells.length === 0)
             return;
         selectedIndex = (index + cells.length) % cells.length;
-        choose(cells[selectedIndex].target, commit);
+        selectedCellId = String(cells[selectedIndex].cellId || "");
+        choose(selectedCellId, commit);
     }
 
     function cancel() {
@@ -140,11 +142,12 @@ PanelWindow {
     onShowingChooserChanged: {
         if (!showingChooser)
             return;
-        const session = Number(snapState.session || 0);
+        const session = String(snapState.session || "");
         if (session !== observedSession) {
             observedSession = session;
-            const target = String(chooserState.selectedTarget || snapState.target || "");
-            selectedIndex = Math.max(0, cells.findIndex(cell => cell.target === target));
+            selectedCellId = String(chooserState.selectedCellId || "");
+            selectedIndex = Math.max(0, cells.findIndex(
+                cell => String(cell.cellId || "") === selectedCellId));
         }
         Qt.callLater(() => keyboardInput.forceActiveFocus());
     }
@@ -299,7 +302,8 @@ PanelWindow {
                                     id: cell
                                     required property var modelData
                                     readonly property int flatIndex: assist.cells.findIndex(
-                                        item => item.target === modelData.target)
+                                        item => String(item.cellId || "")
+                                            === String(modelData.cellId || ""))
                                     x: 6 + Number(modelData.x || 0) * 143
                                     y: 6 + Number(modelData.y || 0) * 56
                                     width: Math.max(40, Number(modelData.width || 1) * 143 - 3)
@@ -326,9 +330,10 @@ PanelWindow {
                                         cursorShape: Qt.PointingHandCursor
                                         onEntered: {
                                             assist.selectedIndex = cell.flatIndex;
-                                            assist.choose(cell.modelData.target, false);
+                                            assist.selectedCellId = String(cell.modelData.cellId || "");
+                                            assist.choose(assist.selectedCellId, false);
                                         }
-                                        onClicked: assist.choose(cell.modelData.target, true)
+                                        onClicked: assist.choose(String(cell.modelData.cellId || ""), true)
                                     }
                                 }
                             }

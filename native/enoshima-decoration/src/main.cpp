@@ -307,6 +307,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     }
 
     g_pGlobalState                    = makeUnique<SGlobalState>();
+    g_pGlobalState->snapTransport     = makeUnique<CSnapTransport>();
     g_pGlobalState->nobarRuleIdx      = Desktop::Rule::windowEffects()->registerEffect("enoshima-decoration:no_bar");
     g_pGlobalState->barColorRuleIdx   = Desktop::Rule::windowEffects()->registerEffect("enoshima-decoration:bar_color");
     g_pGlobalState->titleColorRuleIdx = Desktop::Rule::windowEffects()->registerEffect("enoshima-decoration:title_color");
@@ -389,6 +390,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+    g_pGlobalState->snapTransport.reset();
     for (auto& m : g_pCompositor->m_monitors)
         m->m_scheduledRecalc = true;
 

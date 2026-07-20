@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -37,46 +38,60 @@ LAYOUTS = [
     {
         "id": "halves",
         "cells": [
-            {"target": "left-half", "x": 0, "y": 0, "width": 0.5, "height": 1},
-            {"target": "right-half", "x": 0.5, "y": 0, "width": 0.5, "height": 1},
+            {"cellId": "halves:0", "target": "left-half", "x": 0, "y": 0, "width": 0.5, "height": 1},
+            {"cellId": "halves:1", "target": "right-half", "x": 0.5, "y": 0, "width": 0.5, "height": 1},
         ],
     },
     {
         "id": "third-two-thirds",
         "cells": [
-            {"target": "left-third", "x": 0, "y": 0, "width": 0.333, "height": 1},
-            {"target": "right-two-thirds", "x": 0.333, "y": 0, "width": 0.667, "height": 1},
+            {"cellId": "third-two-thirds:0", "target": "left-third", "x": 0, "y": 0, "width": 0.333, "height": 1},
+            {"cellId": "third-two-thirds:1", "target": "right-two-thirds", "x": 0.333, "y": 0, "width": 0.667, "height": 1},
         ],
     },
     {
         "id": "two-thirds-third",
         "cells": [
-            {"target": "left-two-thirds", "x": 0, "y": 0, "width": 0.667, "height": 1},
-            {"target": "right-third", "x": 0.667, "y": 0, "width": 0.333, "height": 1},
+            {"cellId": "two-thirds-third:0", "target": "left-two-thirds", "x": 0, "y": 0, "width": 0.667, "height": 1},
+            {"cellId": "two-thirds-third:1", "target": "right-third", "x": 0.667, "y": 0, "width": 0.333, "height": 1},
         ],
     },
     {
         "id": "thirds",
         "cells": [
-            {"target": "left-third", "x": 0, "y": 0, "width": 0.333, "height": 1},
-            {"target": "center-third", "x": 0.333, "y": 0, "width": 0.334, "height": 1},
-            {"target": "right-third", "x": 0.667, "y": 0, "width": 0.333, "height": 1},
+            {"cellId": "thirds:0", "target": "left-third", "x": 0, "y": 0, "width": 0.333, "height": 1},
+            {"cellId": "thirds:1", "target": "center-third", "x": 0.333, "y": 0, "width": 0.334, "height": 1},
+            {"cellId": "thirds:2", "target": "right-third", "x": 0.667, "y": 0, "width": 0.333, "height": 1},
         ],
     },
     {
         "id": "quarters",
         "cells": [
-            {"target": "upper-left", "x": 0, "y": 0, "width": 0.5, "height": 0.5},
-            {"target": "upper-right", "x": 0.5, "y": 0, "width": 0.5, "height": 0.5},
-            {"target": "lower-left", "x": 0, "y": 0.5, "width": 0.5, "height": 0.5},
-            {"target": "lower-right", "x": 0.5, "y": 0.5, "width": 0.5, "height": 0.5},
+            {"cellId": "quarters:0", "target": "upper-left", "x": 0, "y": 0, "width": 0.5, "height": 0.5},
+            {"cellId": "quarters:1", "target": "upper-right", "x": 0.5, "y": 0, "width": 0.5, "height": 0.5},
+            {"cellId": "quarters:2", "target": "lower-left", "x": 0, "y": 0.5, "width": 0.5, "height": 0.5},
+            {"cellId": "quarters:3", "target": "lower-right", "x": 0.5, "y": 0.5, "width": 0.5, "height": 0.5},
         ],
     },
     {
         "id": "maximize",
-        "cells": [{"target": "maximize", "x": 0, "y": 0, "width": 1, "height": 1}],
+        "cells": [{"cellId": "maximize:0", "target": "maximize", "x": 0, "y": 0, "width": 1, "height": 1}],
     },
 ]
+
+CELLS = [cell for layout in LAYOUTS for cell in layout["cells"]]
+
+
+@dataclass
+class ActiveLease:
+    session: str
+    address: str
+    source: str
+    monitor: str
+    acquired_sequence: int
+    latest_sequence: int
+    state_revision: int
+    acquired_at_ns: int
 
 
 def fail(message: str) -> None:
@@ -119,10 +134,13 @@ class WindowBroker:
         self.gap = self.config_int(".snap.gap", 10)
         self.stale_after_ms = self.config_int(".snap.stale_after_ms", 750)
         self.chooser_hold_ms = self.config_int(".snap.chooser_hold_ms", 300)
-        self.sessions: dict[int, dict[str, Any]] = {}
+        self.sessions: dict[str, dict[str, Any]] = {}
+        self.active_lease: ActiveLease | None = None
+        self.state_revision = 0
+        self.last_window_health_check = 0.0
         self.state = self.inactive_state()
         self.monitor_cache: tuple[float, list[dict[str, Any]]] = (0.0, [])
-        self.write_state(self.state)
+        self.publish_state(self.state)
 
     def config_int(self, expression: str, fallback: int) -> int:
         try:
@@ -142,7 +160,7 @@ class WindowBroker:
     def now_ms() -> int:
         return time.time_ns() // 1_000_000
 
-    def inactive_state(self, session: int = 0, sequence: int = 0) -> dict[str, Any]:
+    def inactive_state(self, session: str = "", sequence: int = 0) -> dict[str, Any]:
         return {
             "schema": 2,
             "active": False,
@@ -150,6 +168,46 @@ class WindowBroker:
             "sequence": sequence,
             "updatedAt": self.now_ms(),
         }
+
+    def publish_state(self, document: dict[str, Any]) -> None:
+        self.state_revision += 1
+        document["stateRevision"] = self.state_revision
+        self.state = document
+        if self.active_lease is not None:
+            self.active_lease.state_revision = self.state_revision
+        self.write_state(document)
+
+    @staticmethod
+    def session_token(request: dict[str, Any]) -> str:
+        session = str(request.get("session", ""))
+        normalized = session.replace("-", "")
+        if len(normalized) < 32 or len(normalized) > 128 or not all(
+            character in "0123456789abcdefABCDEF" for character in normalized
+        ):
+            raise ValueError("session must be an opaque hexadecimal token")
+        return session
+
+    @staticmethod
+    def cell_for_id(cell_id: str) -> dict[str, Any] | None:
+        return next((cell for cell in CELLS if cell["cellId"] == cell_id), None)
+
+    @staticmethod
+    def first_cell_id(target: str) -> str:
+        cell = next((candidate for candidate in CELLS if candidate["target"] == target), None)
+        if cell is None:
+            raise ValueError(f"unsupported target: {target}")
+        return str(cell["cellId"])
+
+    def response(self, request: dict[str, Any], **values: Any) -> dict[str, Any]:
+        response = {
+            "schema": 2,
+            "ok": True,
+            "session": str(request.get("session", "")),
+            "sequence": int(request.get("sequence", 0)),
+            "stateRevision": self.state_revision,
+        }
+        response.update(values)
+        return response
 
     def write_state(self, document: dict[str, Any]) -> None:
         descriptor, temporary = tempfile.mkstemp(prefix=".snap.", dir=self.runtime_dir, text=True)
@@ -272,11 +330,14 @@ class WindowBroker:
         monitor: dict[str, Any],
         target: str,
         address: str,
-        session: int,
+        session: str,
         sequence: int,
         source: str,
         chooser: bool = False,
+        selected_cell_id: str = "",
     ) -> dict[str, Any]:
+        if not selected_cell_id:
+            selected_cell_id = self.first_cell_id(target)
         return {
             "schema": 2,
             "active": True,
@@ -293,6 +354,7 @@ class WindowBroker:
             "chooser": {
                 "visible": chooser,
                 "selectedTarget": target,
+                "selectedCellId": selected_cell_id,
                 "layouts": LAYOUTS if chooser else [],
             },
             "updatedAt": self.now_ms(),
@@ -321,38 +383,84 @@ class WindowBroker:
         self.dispatch("movewindowpixel", f'exact {geometry["x"]} {geometry["y"]},address:{address}')
         self.dispatch(f'hl.dsp.focus({{ window = "address:{address}" }})')
 
-    def session(self, request: dict[str, Any]) -> tuple[int, int, dict[str, Any]]:
-        session = int(request.get("session", 0))
+    def session(self, request: dict[str, Any]) -> tuple[str, int, dict[str, Any]]:
+        session = self.session_token(request)
         sequence = int(request.get("sequence", 0))
-        if session <= 0 or sequence <= 0:
-            raise ValueError("session and sequence must be positive")
+        if sequence <= 0:
+            raise ValueError("sequence must be positive")
         record = self.sessions.setdefault(
             session,
-            {"last": 0, "sealed": False, "target": None, "targetSince": time.monotonic()},
+            {
+                "last": 0,
+                "sealed": False,
+                "target": None,
+                "targetSince": time.monotonic(),
+                "updatedAt": time.monotonic(),
+            },
         )
         if record["sealed"] or sequence <= int(record["last"]):
             raise RuntimeError("stale-or-sealed")
         record["last"] = sequence
+        record["updatedAt"] = time.monotonic()
         return session, sequence, record
 
+    def ensure_owner(self, session: str, address: str, sequence: int) -> ActiveLease:
+        lease = self.active_lease
+        if lease is None or lease.session != session or lease.address != address:
+            raise RuntimeError("not-active-owner")
+        lease.latest_sequence = sequence
+        return lease
+
+    def seal_active_lease(self, session: str) -> None:
+        record = self.sessions.get(session)
+        if record is not None:
+            record["sealed"] = True
+            record["updatedAt"] = time.monotonic()
+        if self.active_lease is not None and self.active_lease.session == session:
+            self.active_lease = None
+
     def process(self, request: dict[str, Any]) -> dict[str, Any]:
-        kind = str(request.get("type", ""))
+        if int(request.get("schema", 0)) != 2:
+            raise ValueError("unsupported protocol schema")
+        kind = str(request.get("command", ""))
         if kind == "place":
             address = str(request.get("address", ""))
             target = str(request.get("target", ""))
             monitor = self.monitor_for_address(address)
             if monitor is None:
                 raise ValueError("window monitor is unavailable")
-            document = self.state_for_target(monitor, target, address, 0, 0, "keyboard")
+            if self.active_lease is not None:
+                self.seal_active_lease(self.active_lease.session)
+            document = self.state_for_target(monitor, target, address, "", 0, "keyboard")
             self.apply(document)
-            self.state = self.inactive_state()
-            self.write_state(self.state)
-            return {"ok": True, "applied": target}
+            self.publish_state(self.inactive_state())
+            return self.response(request, applied=target)
 
         session, sequence, record = self.session(request)
         address = str(request.get("address", ""))
         if not valid_address(address):
             raise ValueError("invalid address")
+
+        if kind == "acquire":
+            if self.active_lease is not None and self.active_lease.session == session and self.active_lease.address != address:
+                raise RuntimeError("session-address-mismatch")
+            if self.active_lease is not None and self.active_lease.session != session:
+                self.seal_active_lease(self.active_lease.session)
+            monitor = self.monitor_for_address(address)
+            self.active_lease = ActiveLease(
+                session=session,
+                address=address,
+                source=str(request.get("source", "unknown")),
+                monitor=str(monitor.get("name", "")) if monitor else "",
+                acquired_sequence=sequence,
+                latest_sequence=sequence,
+                state_revision=self.state_revision,
+                acquired_at_ns=time.monotonic_ns(),
+            )
+            self.publish_state(self.inactive_state(session, sequence))
+            return self.response(request, accepted=True)
+
+        self.ensure_owner(session, address, sequence)
 
         if kind == "preview":
             x, y = int(request["x"]), int(request["y"])
@@ -362,74 +470,131 @@ class WindowBroker:
                 record["target"] = target
                 record["targetSince"] = time.monotonic()
             if monitor is None or target is None:
-                self.state = self.inactive_state(session, sequence)
+                document = self.inactive_state(session, sequence)
             else:
+                if self.active_lease is not None:
+                    self.active_lease.monitor = str(monitor["name"])
                 chooser = target == "maximize" and (time.monotonic() - float(record["targetSince"])) * 1000 >= self.chooser_hold_ms
-                self.state = self.state_for_target(monitor, target, address, session, sequence, str(request.get("source", "titlebar")), chooser)
-            self.write_state(self.state)
-            return {"ok": True, "active": self.state["active"]}
+                document = self.state_for_target(
+                    monitor,
+                    target,
+                    address,
+                    session,
+                    sequence,
+                    str(request.get("source", "titlebar")),
+                    chooser,
+                )
+            self.publish_state(document)
+            return self.response(request, active=self.state["active"])
 
         if kind == "chooser":
             monitor = self.monitor_for_address(address)
             if monitor is None:
                 raise ValueError("window monitor is unavailable")
             target = str(request.get("target", "left-half"))
-            self.state = self.state_for_target(monitor, target, address, session, sequence, str(request.get("source", "keyboard")), True)
-            self.write_state(self.state)
-            return {"ok": True, "chooser": True}
+            document = self.state_for_target(
+                monitor,
+                target,
+                address,
+                session,
+                sequence,
+                str(request.get("source", "keyboard")),
+                True,
+            )
+            self.publish_state(document)
+            return self.response(request, chooser=True)
 
         if kind == "choose":
-            if int(self.state.get("session", 0)) != session or self.state.get("address") != address:
+            if str(self.state.get("session", "")) != session or self.state.get("address") != address:
                 raise RuntimeError("session-mismatch")
             monitor = self.monitor_for_address(address)
             if monitor is None:
                 raise ValueError("window monitor is unavailable")
-            target = str(request.get("target", ""))
-            document = self.state_for_target(monitor, target, address, session, sequence, str(request.get("source", "keyboard")), True)
+            cell_id = str(request.get("cellId", ""))
+            cell = self.cell_for_id(cell_id)
+            if cell is None:
+                raise ValueError("unknown snap cell")
+            target = str(cell["target"])
+            document = self.state_for_target(
+                monitor,
+                target,
+                address,
+                session,
+                sequence,
+                str(request.get("source", "keyboard")),
+                True,
+                cell_id,
+            )
             if bool(request.get("commit", False)):
                 self.apply(document)
-                record["sealed"] = True
-                self.state = self.inactive_state(session, sequence)
+                self.seal_active_lease(session)
+                self.publish_state(self.inactive_state(session, sequence))
             else:
-                self.state = document
-            self.write_state(self.state)
-            return {"ok": True, "applied": target if record["sealed"] else None}
+                self.publish_state(document)
+            return self.response(request, applied=target if record["sealed"] else None)
 
         if kind == "commit":
-            if int(self.state.get("session", 0)) != session or self.state.get("address") != address:
-                record["sealed"] = True
-                return {"ok": True, "applied": None}
+            if str(self.state.get("session", "")) != session or self.state.get("address") != address:
+                self.seal_active_lease(session)
+                return self.response(request, applied=None)
             if bool(self.state.get("chooser", {}).get("visible", False)):
                 self.state["source"] = "chooser"
                 self.state["updatedAt"] = self.now_ms()
-                self.write_state(self.state)
-                return {"ok": True, "awaitingChoice": True}
+                self.publish_state(self.state)
+                return self.response(request, awaitingChoice=True)
             if self.state.get("active") and self.now_ms() - int(self.state.get("updatedAt", 0)) <= self.stale_after_ms:
                 self.apply(self.state)
-            record["sealed"] = True
-            self.state = self.inactive_state(session, sequence)
-            self.write_state(self.state)
-            return {"ok": True, "applied": True}
+            self.seal_active_lease(session)
+            self.publish_state(self.inactive_state(session, sequence))
+            return self.response(request, applied=True)
 
-        if kind == "cancel":
-            record["sealed"] = True
-            self.state = self.inactive_state(session, sequence)
-            self.write_state(self.state)
-            return {"ok": True, "cancelled": True}
+        if kind in {"cancel", "release"}:
+            self.seal_active_lease(session)
+            self.publish_state(self.inactive_state(session, sequence))
+            return self.response(request, cancelled=kind == "cancel", released=kind == "release")
 
         raise ValueError(f"unsupported request type: {kind}")
 
     def expire(self) -> None:
-        if not self.state.get("active"):
-            return
-        chooser = bool(self.state.get("chooser", {}).get("visible", False))
-        maximum_age = 15_000 if chooser else max(900, self.stale_after_ms + 150)
-        if self.now_ms() - int(self.state.get("updatedAt", 0)) > maximum_age:
-            session = int(self.state.get("session", 0))
-            if session in self.sessions:
-                self.sessions[session]["sealed"] = True
-            self.state = self.inactive_state(session, int(self.state.get("sequence", 0)))
-            self.write_state(self.state)
+        now = time.monotonic()
+        if self.state.get("active"):
+            chooser = bool(self.state.get("chooser", {}).get("visible", False))
+            maximum_age = 15_000 if chooser else max(900, self.stale_after_ms + 150)
+            if self.now_ms() - int(self.state.get("updatedAt", 0)) > maximum_age:
+                session = str(self.state.get("session", ""))
+                self.seal_active_lease(session)
+                self.publish_state(self.inactive_state(session, int(self.state.get("sequence", 0))))
+
+        if self.active_lease is not None and now - self.last_window_health_check >= 1.0:
+            self.last_window_health_check = now
+            try:
+                addresses = {str(client.get("address", "")) for client in self.hypr_json("clients")}
+            except (subprocess.SubprocessError, json.JSONDecodeError):
+                addresses = {self.active_lease.address}
+            if self.active_lease.address not in addresses:
+                session = self.active_lease.session
+                sequence = self.active_lease.latest_sequence
+                self.seal_active_lease(session)
+                self.publish_state(self.inactive_state(session, sequence))
+
+        active_session = self.active_lease.session if self.active_lease else ""
+        expired = [
+            session
+            for session, record in self.sessions.items()
+            if session != active_session and now - float(record["updatedAt"]) >= 30.0
+        ]
+        for session in expired:
+            self.sessions.pop(session, None)
+        if len(self.sessions) > 256:
+            removable = sorted(
+                (
+                    (float(record["updatedAt"]), session)
+                    for session, record in self.sessions.items()
+                    if session != active_session
+                )
+            )
+            for _, session in removable[: len(self.sessions) - 256]:
+                self.sessions.pop(session, None)
 
     def serve(self) -> None:
         if self.socket_path.exists() or self.socket_path.is_symlink():
@@ -451,14 +616,33 @@ class WindowBroker:
                         if uid != os.getuid():
                             connection.sendall(b'{"ok":false,"error":"peer-uid"}\n')
                             continue
+                        request: dict[str, Any] = {}
                         try:
                             request = json.loads(connection.recv(65536).decode("utf-8"))
                             response = self.process(request)
                         except RuntimeError as error:
-                            response = {"ok": False, "ignored": str(error)}
+                            response = {
+                                "schema": 2,
+                                "ok": False,
+                                "ignored": str(error),
+                                "session": str(request.get("session", "")) if isinstance(request, dict) else "",
+                                "sequence": int(request.get("sequence", 0)) if isinstance(request, dict) else 0,
+                                "activeSession": self.active_lease.session if self.active_lease else "",
+                                "stateRevision": self.state_revision,
+                            }
                         except (KeyError, TypeError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as error:
-                            response = {"ok": False, "error": str(error)}
-                        connection.sendall((json.dumps(response, separators=(",", ":")) + "\n").encode("utf-8"))
+                            response = {
+                                "schema": 2,
+                                "ok": False,
+                                "error": str(error),
+                                "session": str(request.get("session", "")) if isinstance(request, dict) else "",
+                                "sequence": int(request.get("sequence", 0)) if isinstance(request, dict) else 0,
+                                "stateRevision": self.state_revision,
+                            }
+                        try:
+                            connection.sendall((json.dumps(response, separators=(",", ":")) + "\n").encode("utf-8"))
+                        except (BrokenPipeError, ConnectionResetError):
+                            pass
                 self.expire()
         finally:
             selector.close()
@@ -472,7 +656,7 @@ def main() -> None:
     arguments = parser.parse_args()
     broker = WindowBroker()
     if arguments.check:
-        print(json.dumps({"schema": 1, "valid": True, "socket": str(broker.socket_path)}))
+        print(json.dumps({"schema": 2, "valid": True, "socket": str(broker.socket_path)}))
         return
     broker.serve()
 
