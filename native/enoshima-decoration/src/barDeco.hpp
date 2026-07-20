@@ -62,6 +62,12 @@ class CHyprBar : public IHyprWindowDecoration {
     CBox                       m_bAssignedBox;
 
     SP<Render::ITexture>       m_pTextTex;
+    SP<Render::ITexture>       m_pAppIconTex;
+    SP<Render::ITexture>       m_pTooltipTex;
+    std::vector<SP<Render::ITexture>> m_vButtonTextures;
+    std::vector<std::string>   m_vButtonIcons;
+    std::string                m_szAppIconPath;
+    std::string                m_szTooltip;
 
     bool                       m_bWindowSizeChanged = false;
     bool                       m_hidden             = false;
@@ -69,11 +75,13 @@ class CHyprBar : public IHyprWindowDecoration {
     bool                       m_bButtonHovered     = false;
     bool                       m_bLastEnabledState  = false;
     bool                       m_bWindowHasFocus    = false;
+    int                        m_iHoveredButton     = -1;
     std::optional<CHyprColor>  m_bForcedBarColor;
     std::optional<CHyprColor>  m_bForcedTitleColor;
 
     Time::steady_tp            m_lastMouseDown   = Time::steadyNow();
     Time::steady_tp            m_lastSnapPreview = Time::steadyNow();
+    Time::steady_tp            m_lastButtonHover = Time::steadyNow();
 
     PHLANIMVAR<CHyprColor>     m_cRealBarColor;
 
@@ -83,6 +91,8 @@ class CHyprBar : public IHyprWindowDecoration {
     void                       renderBarTitle(const Vector2D& bufferSize, const float scale);
     void renderBarButtons(CBox* barBox, const float scale, const float a);
     void renderBarButtonsText(CBox* barBox, const float scale, const float a);
+    void renderAppIcon(CBox* barBox, const float scale, const float a);
+    void renderButtonTooltip(CBox* barBox, const float scale, const float a);
     void damageOnButtonHover();
 
     bool inputIsValid();

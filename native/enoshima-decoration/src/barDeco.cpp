@@ -18,13 +18,18 @@
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 
+#include <librsvg/rsvg.h>
+
 #include "globals.hpp"
 #include "BarPassElement.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <climits>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <format>
 #include <linux/input-event-codes.h>
 #include <sys/socket.h>
@@ -35,6 +40,63 @@ using namespace Render::GL;
 
 static CHyprColor configColor(Config::INTEGER color) {
     return CHyprColor{static_cast<uint64_t>(color)};
+}
+
+static SP<Render::ITexture> svgTexture(const std::string& path, int pixels, std::optional<CHyprColor> tint = std::nullopt) {
+    if (pixels < 1 || !std::filesystem::is_regular_file(path))
+        return nullptr;
+
+    GError* error  = nullptr;
+    auto*   handle = rsvg_handle_new_from_file(path.c_str(), &error);
+    if (!handle) {
+        if (error)
+            g_error_free(error);
+        return nullptr;
+    }
+
+    auto* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pixels, pixels);
+    auto* cairo   = cairo_create(surface);
+    const RsvgRectangle viewport = {.x = 0, .y = 0, .width = static_cast<double>(pixels), .height = static_cast<double>(pixels)};
+    const bool rendered           = rsvg_handle_render_document(handle, cairo, &viewport, &error);
+    cairo_destroy(cairo);
+    g_object_unref(handle);
+    if (!rendered) {
+        if (error)
+            g_error_free(error);
+        cairo_surface_destroy(surface);
+        return nullptr;
+    }
+
+    if (tint) {
+        cairo_surface_flush(surface);
+        auto*       data   = reinterpret_cast<uint32_t*>(cairo_image_surface_get_data(surface));
+        const auto  stride = cairo_image_surface_get_stride(surface) / static_cast<int>(sizeof(uint32_t));
+        const auto& color  = *tint;
+        for (int y = 0; y < pixels; ++y) {
+            for (int x = 0; x < pixels; ++x) {
+                const auto alpha = static_cast<uint8_t>(data[y * stride + x] >> 24U);
+                const auto red   = static_cast<uint8_t>(std::clamp(color.r * alpha, 0.0, 255.0));
+                const auto green = static_cast<uint8_t>(std::clamp(color.g * alpha, 0.0, 255.0));
+                const auto blue  = static_cast<uint8_t>(std::clamp(color.b * alpha, 0.0, 255.0));
+                data[y * stride + x] = static_cast<uint32_t>(alpha) << 24U | static_cast<uint32_t>(red) << 16U |
+                    static_cast<uint32_t>(green) << 8U | static_cast<uint32_t>(blue);
+            }
+        }
+        cairo_surface_mark_dirty(surface);
+    }
+
+    auto texture = g_pHyprRenderer->createTexture(surface);
+    cairo_surface_destroy(surface);
+    return texture;
+}
+
+static std::string iconPathForClass(std::string className) {
+    std::ranges::transform(className, className.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (className.find("zathura") != std::string::npos)
+        return "/usr/share/icons/Papirus/16x16/apps/org.pwmt.zathura.svg";
+    if (className == "mpv" || className.find("mpv") != std::string::npos)
+        return "/usr/share/icons/Papirus/16x16/apps/mpv.svg";
+    return "/usr/share/icons/Papirus/16x16/mimetypes/image-x-generic.svg";
 }
 
 CHyprBar::CHyprBar(PHLWINDOW pWindow) : IHyprWindowDecoration(pWindow) {
@@ -172,9 +234,9 @@ void CHyprBar::onTouchUp(Event::SCallbackInfo& info, ITouch::SUpEvent e) {
 }
 
 void CHyprBar::onMouseMove(Vector2D) {
-    // ensure proper redraws of button icons on hover when using hardware cursors
-    if (g_pGlobalState->config.iconOnHover->value())
-        damageOnButtonHover();
+    // Hover color, destructive close feedback, and tooltips must update even
+    // when icons are configured to remain permanently visible.
+    damageOnButtonHover();
 
     if (m_bDraggingThis && !m_bTouchEv) {
         if (const auto window = m_pWindow.lock(); window && Desktop::focusState()->window() != window)
@@ -452,7 +514,8 @@ void CHyprBar::renderBarTitle(const Vector2D& bufferSize, const float scale) {
     const int  scaledSize        = std::round(SIZE * scale);
     const auto scaledButtonsSize = buttonSizes * scale;
     const auto scaledBarPadding  = BARPADDING * scale;
-    const int  paddingTotal      = scaledBarPadding * 2 + scaledButtonsSize + (ALIGN != "left" ? scaledButtonsSize : 0);
+    const int  scaledAppIconSlot = std::round(24 * scale);
+    const int  paddingTotal      = scaledBarPadding * 2 + scaledAppIconSlot + scaledButtonsSize + (ALIGN != "left" ? scaledButtonsSize : 0);
     const int  maxWidth          = std::clamp(static_cast<int>(bufferSize.x - paddingTotal), 0, INT_MAX);
 
     if (m_szLastTitle.empty() || maxWidth < 1) {
@@ -523,7 +586,6 @@ void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a) 
 }
 
 void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float a) {
-    const auto HEIGHT           = g_pGlobalState->config.barHitHeight->value();
     const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
     const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
     const auto ALIGNBUTTONS     = g_pGlobalState->config.barButtonsAlignment->value();
@@ -531,50 +593,95 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
 
     const bool BUTTONSRIGHT = ALIGNBUTTONS != "left";
     const auto visibleCount = getVisibleButtonCount(BARBUTTONPADDING, BARPADDING, Vector2D{barBox->w, barBox->h}, scale);
-    const auto COORDS       = cursorRelativeToBar();
+    if (m_vButtonTextures.size() != visibleCount) {
+        m_vButtonTextures.resize(visibleCount);
+        m_vButtonIcons.resize(visibleCount);
+    }
 
-    int        offset        = BARPADDING * scale;
-    float      noScaleOffset = BARPADDING;
+    int offset = BARPADDING * scale;
 
     for (size_t i = 0; i < visibleCount; ++i) {
         auto&      button           = g_pGlobalState->buttons[i];
         const auto scaledButtonSize = button.size * scale;
         const auto scaledButtonsPad = BARBUTTONPADDING * scale;
 
-        // check if hovering here
-        const auto BARBUF     = Vector2D{assignedBoxGlobal().w, static_cast<double>(HEIGHT)};
-        Vector2D   currentPos = Vector2D{(BUTTONSRIGHT ? BARBUF.x - BARBUTTONPADDING - button.size - noScaleOffset : noScaleOffset), (BARBUF.y - button.size) / 2.0}.floor();
-        bool       hovering   = VECINRECT(COORDS, currentPos.x, 0, currentPos.x + button.size + BARBUTTONPADDING, HEIGHT - 1);
-        noScaleOffset += BARBUTTONPADDING + button.size;
-
-        if ((!button.iconTex || button.iconTex->m_texID == 0) && !button.icon.empty()) {
-            // render icon
-            auto fgcol = button.userfg ? button.fgcol : (button.bgcol.r + button.bgcol.g + button.bgcol.b < 1) ? CHyprColor(0xFFFFFFFF) : CHyprColor(0xFF000000);
-
-            button.iconTex = g_pHyprRenderer->renderText(button.icon, fgcol, std::round(button.size * 0.62 * scale), false, "sans", scaledButtonSize);
+        auto icon = button.icon;
+        if (button.semantic == "maximize" && !button.alternateIcon.empty()) {
+            const auto window = m_pWindow.lock();
+            if (window && window->m_fullscreenState.internal == FSMODE_MAXIMIZED)
+                icon = button.alternateIcon;
+        }
+        const auto cacheKey = std::format("{}@{}", icon, std::lround(scale * 100));
+        if (m_vButtonIcons[i] != cacheKey || !m_vButtonTextures[i] || m_vButtonTextures[i]->m_texID == 0) {
+            const auto fgcol = button.userfg ? button.fgcol : (button.bgcol.r + button.bgcol.g + button.bgcol.b < 1) ? CHyprColor(0xFFFFFFFF) : CHyprColor(0xFF000000);
+            m_vButtonTextures[i] = icon.ends_with(".svg") ? svgTexture(icon, std::round(16 * scale), fgcol) :
+                                                           g_pHyprRenderer->renderText(icon, fgcol, std::round(button.size * 0.62 * scale), false, "sans", scaledButtonSize);
+            m_vButtonIcons[i] = cacheKey;
         }
 
-        if (!button.iconTex || button.iconTex->m_texID == 0)
+        const auto& iconTexture = m_vButtonTextures[i];
+
+        if (!iconTexture || iconTexture->m_texID == 0)
             continue;
 
-        const auto iconX = barBox->x + (BUTTONSRIGHT ? barBox->width - offset - scaledButtonSize / 2.0 : offset + scaledButtonSize / 2.0) - button.iconTex->m_size.x / 2.0;
-        const auto iconY = barBox->y + barBox->height / 2.0 - button.iconTex->m_size.y / 2.0;
-        CBox       pos   = {iconX, iconY, button.iconTex->m_size.x, button.iconTex->m_size.y};
+        const auto iconX = barBox->x + (BUTTONSRIGHT ? barBox->width - offset - scaledButtonSize / 2.0 : offset + scaledButtonSize / 2.0) - iconTexture->m_size.x / 2.0;
+        const auto iconY = barBox->y + barBox->height / 2.0 - iconTexture->m_size.y / 2.0;
+        CBox       pos   = {iconX, iconY, iconTexture->m_size.x, iconTexture->m_size.y};
 
         if (!ICONONHOVER || (ICONONHOVER && m_iButtonHoverState > 0)) {
             CHyprOpenGLImpl::STextureRenderData textureData;
-            textureData.a = a;
-            g_pHyprOpenGL->renderTexture(button.iconTex, pos, textureData);
+            textureData.a = a * (m_bWindowHasFocus ? 1.F : 0.62F);
+            g_pHyprOpenGL->renderTexture(iconTexture, pos, textureData);
         }
         offset += scaledButtonsPad + scaledButtonSize;
 
-        bool currentBit = (m_iButtonHoverState & (1 << i)) != 0;
-        if (hovering != currentBit) {
-            m_iButtonHoverState ^= (1 << i);
-            // damage to get rid of some artifacts when icons are "hidden"
-            damageEntire();
-        }
     }
+}
+
+void CHyprBar::renderAppIcon(CBox* barBox, const float scale, const float a) {
+    const auto window = m_pWindow.lock();
+    if (!window)
+        return;
+    const auto iconPath = iconPathForClass(window->m_class.empty() ? window->m_initialClass : window->m_class);
+    const auto cacheKey = std::format("{}@{}", iconPath, std::lround(scale * 100));
+    if (cacheKey != m_szAppIconPath || !m_pAppIconTex || m_pAppIconTex->m_texID == 0) {
+        m_pAppIconTex   = svgTexture(iconPath, std::round(18 * scale));
+        m_szAppIconPath = cacheKey;
+    }
+    if (!m_pAppIconTex || m_pAppIconTex->m_texID == 0)
+        return;
+
+    const auto padding = g_pGlobalState->config.barPadding->value() * scale;
+    CBox       iconBox = {barBox->x + padding, barBox->y + (barBox->h - m_pAppIconTex->m_size.y) / 2.0,
+                           m_pAppIconTex->m_size.x, m_pAppIconTex->m_size.y};
+    CHyprOpenGLImpl::STextureRenderData textureData;
+    textureData.a = a * (m_bWindowHasFocus ? 1.F : 0.62F);
+    g_pHyprOpenGL->renderTexture(m_pAppIconTex, iconBox, textureData);
+}
+
+void CHyprBar::renderButtonTooltip(CBox* barBox, const float scale, const float a) {
+    if (m_iHoveredButton < 0 || static_cast<size_t>(m_iHoveredButton) >= g_pGlobalState->buttons.size())
+        return;
+    const auto& text = g_pGlobalState->buttons[m_iHoveredButton].tooltip;
+    if (text.empty())
+        return;
+    if (m_szTooltip != text || !m_pTooltipTex || m_pTooltipTex->m_texID == 0) {
+        m_pTooltipTex = g_pHyprRenderer->renderText(text, CHyprColor(0xFFF2ECFF), std::round(11 * scale), false, "Pretendard", std::round(180 * scale));
+        m_szTooltip   = text;
+    }
+    if (!m_pTooltipTex || m_pTooltipTex->m_texID == 0)
+        return;
+
+    const auto padding = 8 * scale;
+    const auto width   = m_pTooltipTex->m_size.x + padding * 2;
+    const auto height  = m_pTooltipTex->m_size.y + padding;
+    const auto right   = barBox->x + barBox->w - g_pGlobalState->config.barPadding->value() * scale;
+    CBox       box     = {std::max(barBox->x, right - width), barBox->y + barBox->h + 4 * scale, width, height};
+    g_pHyprOpenGL->renderRect(box, CHyprColor(0xEE161151), {.round = static_cast<int>(std::round(8 * scale)), .roundingPower = 2.F});
+    CBox textBox = {box.x + padding, box.y + padding / 2.0, m_pTooltipTex->m_size.x, m_pTooltipTex->m_size.y};
+    CHyprOpenGLImpl::STextureRenderData textureData;
+    textureData.a = a;
+    g_pHyprOpenGL->renderTexture(m_pTooltipTex, textBox, textureData);
 }
 
 void CHyprBar::draw(PHLMONITOR, const float& a) {
@@ -720,13 +827,14 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
         const auto scaledBorderSize  = PWINDOW->getRealBorderSize() * pMonitor->m_scale;
         const auto scaledButtonsSize = buttonSizes * pMonitor->m_scale;
         const auto scaledBarPadding  = BARPADDING * pMonitor->m_scale;
-        const auto xOffset           = ALIGN == "left" ? std::round(scaledBarPadding + (BUTTONSRIGHT ? 0 : scaledButtonsSize)) :
+        const auto scaledAppIconSlot = 24 * pMonitor->m_scale;
+        const auto xOffset           = ALIGN == "left" ? std::round(scaledBarPadding + scaledAppIconSlot + (BUTTONSRIGHT ? 0 : scaledButtonsSize)) :
                                                          std::round(((BARBUF.x - scaledBorderSize) / 2.0 - m_pTextTex->m_size.x / 2.0));
         const auto yOffset           = std::round((BARBUF.y - m_pTextTex->m_size.y) / 2.0);
         CBox       titleBox          = {textBox.x + xOffset, textBox.y + yOffset, m_pTextTex->m_size.x, m_pTextTex->m_size.y};
 
         CHyprOpenGLImpl::STextureRenderData textureData;
-        textureData.a = a;
+        textureData.a = a * (m_bWindowHasFocus ? 1.F : 0.72F);
         g_pHyprOpenGL->renderTexture(m_pTextTex, titleBox, textureData);
     }
 
@@ -735,7 +843,9 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
 
     g_pHyprOpenGL->scissor(nullptr);
 
+    renderAppIcon(&textBox, pMonitor->m_scale, a);
     renderBarButtonsText(&textBox, pMonitor->m_scale, a);
+    renderButtonTooltip(&textBox, pMonitor->m_scale, a);
 
     m_bWindowSizeChanged = false;
     m_bTitleColorChanged = false;
@@ -759,6 +869,10 @@ void CHyprBar::onConfigReloaded() {
     m_bButtonsDirty      = true;
     m_bTitleColorChanged = true;
     m_pTextTex           = nullptr;
+    m_pAppIconTex        = nullptr;
+    m_pTooltipTex        = nullptr;
+    m_vButtonTextures.clear();
+    m_vButtonIcons.clear();
 
     g_pDecorationPositioner->repositionDeco(this);
     damageEntire();
@@ -826,21 +940,35 @@ void CHyprBar::damageOnButtonHover() {
     const auto ALIGNBUTTONS     = g_pGlobalState->config.barButtonsAlignment->value();
     const bool BUTTONSRIGHT     = ALIGNBUTTONS != "left";
 
-    float      offset = BARPADDING;
+    float        offset   = BARPADDING;
+    unsigned int newState = 0;
+    int          hovered  = -1;
 
     const auto COORDS = cursorRelativeToBar();
 
-    for (auto& b : g_pGlobalState->buttons) {
+    for (size_t index = 0; index < g_pGlobalState->buttons.size(); ++index) {
+        auto&      b          = g_pGlobalState->buttons[index];
         const auto BARBUF     = Vector2D{assignedBoxGlobal().w, static_cast<double>(HEIGHT)};
         Vector2D   currentPos = Vector2D{(BUTTONSRIGHT ? BARBUF.x - BARBUTTONPADDING - b.size - offset : offset), (BARBUF.y - b.size) / 2.0}.floor();
 
         bool       hover = VECINRECT(COORDS, currentPos.x, 0, currentPos.x + b.size + BARBUTTONPADDING, HEIGHT - 1);
-
-        if (hover != m_bButtonHovered) {
-            m_bButtonHovered = hover;
-            damageEntire();
+        if (hover) {
+            newState |= 1U << index;
+            hovered = static_cast<int>(index);
         }
 
         offset += BARBUTTONPADDING + b.size;
+    }
+
+    if (newState != m_iButtonHoverState || hovered != m_iHoveredButton) {
+        m_iButtonHoverState = newState;
+        m_iHoveredButton    = hovered;
+        m_bButtonHovered    = hovered >= 0;
+        m_lastButtonHover   = Time::steadyNow();
+        m_pTooltipTex       = nullptr;
+        m_szTooltip.clear();
+        auto damage = assignedBoxGlobal();
+        damage.h += 40;
+        g_pHyprRenderer->damageBox(damage);
     }
 }

@@ -241,21 +241,26 @@ local function configureEnoshimaDecoration()
         },
     })
 
-    -- Buttons are registered from right to left. The 36px rendered bar sits in
-    -- a 44px input extent; 28px glyphs plus padding keep every target >=44px.
+    -- Buttons are registered from right to left. Papirus vector icons remain
+    -- crisp on mixed-DPI outputs; the 44px input extent is larger than the
+    -- restrained 28px visual control.
     hl.plugin.enoshima_decoration.add_button({
         bg_color = "rgba(00000000)", fg_color = "rgba(f2ecffff)",
-        size = 28, icon = "×",
+        size = 28, icon = "/usr/share/icons/Papirus/16x16/actions/window-close.svg",
+        semantic = "close", tooltip = "Close · 닫기",
         action = "desktop-window-action close --address {address} --origin titlebar",
     })
     hl.plugin.enoshima_decoration.add_button({
         bg_color = "rgba(00000000)", fg_color = "rgba(f2ecffff)",
-        size = 28, icon = "□",
+        size = 28, icon = "/usr/share/icons/Papirus/16x16/actions/window-maximize.svg",
+        alternate_icon = "/usr/share/icons/Papirus/16x16/actions/window-restore.svg",
+        semantic = "maximize", tooltip = "Maximize / Restore · 최대화 / 복원",
         action = "desktop-window-action maximize --address {address} --origin titlebar",
     })
     hl.plugin.enoshima_decoration.add_button({
         bg_color = "rgba(00000000)", fg_color = "rgba(f2ecffff)",
-        size = 28, icon = "−",
+        size = 28, icon = "/usr/share/icons/Papirus/16x16/actions/window-minimize.svg",
+        semantic = "minimize", tooltip = "Minimize · 최소화",
         action = "desktop-window-action minimize --address {address} --origin titlebar",
     })
 end

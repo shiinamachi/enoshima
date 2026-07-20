@@ -173,7 +173,14 @@ Hyprlang::CParseResult onNewButton([[maybe_unused]] const char* K, const char* V
         return result;
     }
 
-    g_pGlobalState->buttons.push_back(SHyprButton{vars[3], userfg, *fgcolor, *bgcolor, size, vars[2], nullptr});
+    SHyprButton button;
+    button.cmd    = vars[3];
+    button.userfg = userfg;
+    button.fgcol  = *fgcolor;
+    button.bgcol  = *bgcolor;
+    button.size   = size;
+    button.icon   = vars[2];
+    g_pGlobalState->buttons.push_back(std::move(button));
 
     for (auto& b : g_pGlobalState->bars) {
         b->m_bButtonsDirty = true;
@@ -212,6 +219,7 @@ int newLuaButton(lua_State* L) {
             return Config::Lua::Bindings::Internal::configError(L, "add_button: failed to parse fg_color");
 
         button.fgcol = parser.parsed();
+        button.userfg = true;
     }
 
     {
@@ -245,6 +253,36 @@ int newLuaButton(lua_State* L) {
             return Config::Lua::Bindings::Internal::configError(L, "add_button: action must be a string");
 
         button.cmd = lua_tostring(L, -1);
+    }
+
+    {
+        Hyprutils::Utils::CScopeGuard x([L] { lua_pop(L, 1); });
+        lua_getfield(L, 1, "alternate_icon");
+        if (!lua_isnil(L, -1)) {
+            if (!lua_isstring(L, -1))
+                return Config::Lua::Bindings::Internal::configError(L, "add_button: alternate_icon must be a string");
+            button.alternateIcon = lua_tostring(L, -1);
+        }
+    }
+
+    {
+        Hyprutils::Utils::CScopeGuard x([L] { lua_pop(L, 1); });
+        lua_getfield(L, 1, "semantic");
+        if (!lua_isnil(L, -1)) {
+            if (!lua_isstring(L, -1))
+                return Config::Lua::Bindings::Internal::configError(L, "add_button: semantic must be a string");
+            button.semantic = lua_tostring(L, -1);
+        }
+    }
+
+    {
+        Hyprutils::Utils::CScopeGuard x([L] { lua_pop(L, 1); });
+        lua_getfield(L, 1, "tooltip");
+        if (!lua_isnil(L, -1)) {
+            if (!lua_isstring(L, -1))
+                return Config::Lua::Bindings::Internal::configError(L, "add_button: tooltip must be a string");
+            button.tooltip = lua_tostring(L, -1);
+        }
     }
 
     g_pGlobalState->buttons.push_back(std::move(button));

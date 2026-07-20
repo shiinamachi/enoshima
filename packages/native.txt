@@ -64,6 +64,7 @@ json-glib
 lib32-mesa
 lib32-vulkan-intel
 libcamera
+librsvg
 libsecret
 libva-utils
 linux

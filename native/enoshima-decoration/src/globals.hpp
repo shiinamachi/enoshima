@@ -17,6 +17,9 @@ struct SHyprButton {
     float                size    = 10;
     std::string          icon    = "";
     SP<Render::ITexture> iconTex;
+    std::string          alternateIcon = "";
+    std::string          semantic      = "";
+    std::string          tooltip       = "";
 };
 
 class CHyprBar;

@@ -40,6 +40,10 @@ grep -Fq 'sendSnapRequest("commit")' "$plugin/src/barDeco.cpp"
 grep -Fq 'sendSnapRequest("cancel")' "$plugin/src/barDeco.cpp"
 grep -Fq 'enoshima-window-menu' "$plugin/src/barDeco.cpp"
 grep -Fq 'commandForOwner' "$plugin/src/barDeco.cpp"
+grep -Fq 'rsvg_handle_render_document' "$plugin/src/barDeco.cpp"
+grep -Fq 'iconPathForClass' "$plugin/src/barDeco.cpp"
+grep -Fq 'FSMODE_MAXIMIZED' "$plugin/src/barDeco.cpp"
+grep -Fq 'renderButtonTooltip' "$plugin/src/barDeco.cpp"
 grep -Fq -- '--anchor-x' "$plugin/src/barDeco.cpp"
 grep -Fq -- '-Wall -Wextra -Wformat=2 -Werror' "$plugin/Makefile"
 if grep -Fq -- '-Wno-c++11-narrowing' "$plugin/Makefile"; then
@@ -55,6 +59,10 @@ fi
 grep -Fq 'bar_hit_height = 44' "$lua"
 grep -Fq 'hl.bind("ALT + SPACE"' "$lua"
 grep -Fq 'maximize --address {address} --origin titlebar' "$lua"
+grep -Fq 'window-close.svg' "$lua"
+grep -Fq 'window-restore.svg' "$lua"
+grep -Fq 'tooltip = "Close · 닫기"' "$lua"
+grep -Fxq librsvg packages/native.txt
 if sed -n '/local function configureEnoshimaDecoration()/,/configureEnoshimaDecoration()/p' "$lua" |
   grep -Fq -- '--active'; then
   printf 'Decoration actions still depend on the active window.\n' >&2
