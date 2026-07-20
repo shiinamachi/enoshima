@@ -1,7 +1,8 @@
 [Unit]
 Description=Cyberdock Quickshell dock and minimized-window recovery
 PartOf=graphical-session.target
-After=graphical-session.target
+After=graphical-session.target enoshima-windowd.service
+Wants=enoshima-windowd.service
 ConditionEnvironment=WAYLAND_DISPLAY
 
 [Service]

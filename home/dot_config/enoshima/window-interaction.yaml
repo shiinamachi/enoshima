@@ -32,3 +32,4 @@ snap:
   preview_inset: 10
   gap: 10
   stale_after_ms: 750
+  chooser_hold_ms: 300

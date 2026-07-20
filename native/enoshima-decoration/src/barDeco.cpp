@@ -23,8 +23,13 @@
 
 #include <climits>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <format>
 #include <linux/input-event-codes.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 using namespace Render::GL;
 
@@ -191,7 +196,7 @@ void CHyprBar::onKeyboardKey(Event::SCallbackInfo& info, IKeyboard::SKeyEvent ev
         return;
 
     info.cancelled = true;
-    Config::Supplementary::executor()->spawn("enoshima-snap-controller cancel");
+    cancelSnapPreview();
     g_pKeybindManager->changeMouseBindMode(MBIND_INVALID);
     m_bDraggingThis = false;
     m_bDragPending  = false;
@@ -212,6 +217,7 @@ void CHyprBar::onTouchMove(Event::SCallbackInfo&, ITouch::SMotionEvent e) {
         g_pKeybindManager->m_dispatchers["resizewindowpixel"](std::format("exact 50% 50%,{}", selector));
         // pin it so you can change workspaces while dragging a window
         g_pKeybindManager->m_dispatchers["pin"](selector);
+        startSnapSession();
     }
     g_pKeybindManager->m_dispatchers["movewindowpixel"](
         std::format("exact {} {},address:{}", (int)(COORDS.x - (assignedBoxGlobal().w / 2)), (int)COORDS.y, ownerAddress()));
@@ -306,6 +312,7 @@ void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
 void CHyprBar::handleMovement() {
     g_pKeybindManager->changeMouseBindMode(MBIND_MOVE);
     m_bDraggingThis = true;
+    startSnapSession();
     Log::logger->log(Log::DEBUG, "[enoshima-decoration] Dragging initiated on {:x}", (uintptr_t)m_pWindow.lock().get());
     return;
 }
@@ -319,18 +326,70 @@ void CHyprBar::updateSnapPreview(Vector2D coords) {
         return;
 
     m_lastSnapPreview = Time::steadyNow();
-    const auto address = std::format("0x{:x}", reinterpret_cast<uintptr_t>(window.get()));
-    Config::Supplementary::executor()->spawn(std::format(
-        "enoshima-snap-controller preview --address {} --x {} --y {}", address, std::lround(coords.x), std::lround(coords.y)));
+    sendSnapRequest("preview", coords);
 }
 
 void CHyprBar::commitSnapPreview() {
-    const auto window = m_pWindow.lock();
-    if (!window)
-        return;
+    sendSnapRequest("commit");
+    m_snapSession  = 0;
+    m_snapSequence = 0;
+}
 
-    const auto address = std::format("0x{:x}", reinterpret_cast<uintptr_t>(window.get()));
-    Config::Supplementary::executor()->spawn(std::format("enoshima-snap-controller commit --address {}", address));
+void CHyprBar::cancelSnapPreview() {
+    sendSnapRequest("cancel");
+    m_snapSession  = 0;
+    m_snapSequence = 0;
+}
+
+void CHyprBar::startSnapSession() {
+    m_snapSession = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(Time::steadyNow().time_since_epoch()).count());
+    if (m_snapSession == 0)
+        m_snapSession = 1;
+    m_snapSequence = 0;
+}
+
+bool CHyprBar::sendSnapRequest(const std::string& type, std::optional<Vector2D> coords) {
+    const auto address = ownerAddress();
+    if (address.empty() || m_snapSession == 0)
+        return false;
+
+    const auto runtime = std::getenv("XDG_RUNTIME_DIR");
+    if (!runtime || runtime[0] != '/')
+        return false;
+
+    const auto socketPath = std::format("{}/enoshima/windowd.sock", runtime);
+    sockaddr_un endpoint  = {};
+    endpoint.sun_family   = AF_UNIX;
+    if (socketPath.size() >= sizeof(endpoint.sun_path))
+        return false;
+    std::memcpy(endpoint.sun_path, socketPath.c_str(), socketPath.size() + 1);
+
+    const int descriptor = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+    if (descriptor < 0)
+        return false;
+
+    timeval timeout = {.tv_sec = 0, .tv_usec = 50000};
+    setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    if (connect(descriptor, reinterpret_cast<sockaddr*>(&endpoint), sizeof(endpoint)) < 0) {
+        close(descriptor);
+        return false;
+    }
+
+    ++m_snapSequence;
+    auto request = std::format(
+        R"({{"schema":1,"type":"{}","address":"{}","session":{},"sequence":{},"source":"titlebar"}})",
+        type, address, m_snapSession, m_snapSequence);
+    if (coords)
+        request = std::format(
+            R"({{"schema":1,"type":"{}","address":"{}","session":{},"sequence":{},"source":"titlebar","x":{},"y":{}}})",
+            type, address, m_snapSession, m_snapSequence, std::lround(coords->x), std::lround(coords->y));
+
+    const auto sent = send(descriptor, request.data(), request.size(), MSG_NOSIGNAL);
+    char       response[256];
+    const auto received = sent == static_cast<ssize_t>(request.size()) ? recv(descriptor, response, sizeof(response), 0) : -1;
+    close(descriptor);
+    return sent == static_cast<ssize_t>(request.size()) && received > 0;
 }
 
 std::string CHyprBar::ownerAddress() const {

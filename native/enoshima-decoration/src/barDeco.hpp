@@ -98,6 +98,9 @@ class CHyprBar : public IHyprWindowDecoration {
     void handleMovement();
     void updateSnapPreview(Vector2D coords);
     void commitSnapPreview();
+    void cancelSnapPreview();
+    void startSnapSession();
+    bool sendSnapRequest(const std::string& type, std::optional<Vector2D> coords = std::nullopt);
     std::string ownerAddress() const;
     std::string commandForOwner(const std::string& command) const;
     void executeForOwner(const std::string& command) const;
@@ -120,6 +123,8 @@ class CHyprBar : public IHyprWindowDecoration {
     bool                m_bDragPending   = false;
     bool                m_bCancelledDown = false;
     int                 m_touchId        = 0;
+    uint64_t            m_snapSession    = 0;
+    uint64_t            m_snapSequence   = 0;
 
     // store hover state for buttons as a bitfield
     unsigned int m_iButtonHoverState = 0;

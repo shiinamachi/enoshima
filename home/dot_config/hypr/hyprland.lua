@@ -373,6 +373,9 @@ hl.bind(mainMod .. " + CTRL + K", hl.dsp.exec_cmd("kakaotalk-focus-repair"), {
 })
 hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("desktop-power menu"), { description = "Open power and session menu" })
 hl.bind("ALT + SPACE", hl.dsp.exec_cmd("enoshima-window-menu"), { description = "Open the system window menu" })
+hl.bind(mainMod .. " + Z", hl.dsp.exec_cmd("enoshima-snap-controller chooser"), {
+    description = "Choose a Windows-style snap layout",
+})
 
 local directions = {
     H = { name = "left", x = -40, y = 0 },

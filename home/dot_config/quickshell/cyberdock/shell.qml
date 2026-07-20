@@ -141,13 +141,13 @@ ShellRoot {
         void clock;
         try {
             const document = JSON.parse(text || "{}");
-            if (document.schema === 1)
+            if (document.schema === 2)
                 return document;
         } catch (error) {
             // A writer uses atomic rename, but an absent first-run state is
             // still expected before the first title-bar drag.
         }
-        return {"schema": 1, "active": false, "updatedAt": 0};
+        return {"schema": 2, "active": false, "updatedAt": 0};
     }
 
     FileView {

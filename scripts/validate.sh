@@ -452,6 +452,7 @@ if command -v systemd-analyze >/dev/null 2>&1; then
   unit_dir=$render_dir/desktop-expansion-units
   mkdir -- "$unit_dir"
   for unit in \
+    home/dot_config/systemd/user/enoshima-windowd.service \
     home/dot_config/systemd/user/cyberdock.service \
     home/dot_config/systemd/user/cyberdock-event-bridge.service \
     home/dot_config/systemd/user/desktop-display-events.service \

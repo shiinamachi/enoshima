@@ -1,0 +1,481 @@
+#!/usr/bin/env python3
+"""Persistent, address-safe window placement broker for Enoshima."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import selectors
+import socket
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+
+TARGET_LABELS = {
+    "left-half": "snap.left_half",
+    "right-half": "snap.right_half",
+    "upper-left": "snap.upper_left",
+    "upper-right": "snap.upper_right",
+    "lower-left": "snap.lower_left",
+    "lower-right": "snap.lower_right",
+    "bottom-half": "snap.bottom_half",
+    "left-third": "snap.left_third",
+    "center-third": "snap.center_third",
+    "right-third": "snap.right_third",
+    "left-two-thirds": "snap.left_two_thirds",
+    "right-two-thirds": "snap.right_two_thirds",
+    "maximize": "snap.maximize",
+}
+
+LAYOUTS = [
+    {
+        "id": "halves",
+        "cells": [
+            {"target": "left-half", "x": 0, "y": 0, "width": 0.5, "height": 1},
+            {"target": "right-half", "x": 0.5, "y": 0, "width": 0.5, "height": 1},
+        ],
+    },
+    {
+        "id": "third-two-thirds",
+        "cells": [
+            {"target": "left-third", "x": 0, "y": 0, "width": 0.333, "height": 1},
+            {"target": "right-two-thirds", "x": 0.333, "y": 0, "width": 0.667, "height": 1},
+        ],
+    },
+    {
+        "id": "two-thirds-third",
+        "cells": [
+            {"target": "left-two-thirds", "x": 0, "y": 0, "width": 0.667, "height": 1},
+            {"target": "right-third", "x": 0.667, "y": 0, "width": 0.333, "height": 1},
+        ],
+    },
+    {
+        "id": "thirds",
+        "cells": [
+            {"target": "left-third", "x": 0, "y": 0, "width": 0.333, "height": 1},
+            {"target": "center-third", "x": 0.333, "y": 0, "width": 0.334, "height": 1},
+            {"target": "right-third", "x": 0.667, "y": 0, "width": 0.333, "height": 1},
+        ],
+    },
+    {
+        "id": "quarters",
+        "cells": [
+            {"target": "upper-left", "x": 0, "y": 0, "width": 0.5, "height": 0.5},
+            {"target": "upper-right", "x": 0.5, "y": 0, "width": 0.5, "height": 0.5},
+            {"target": "lower-left", "x": 0, "y": 0.5, "width": 0.5, "height": 0.5},
+            {"target": "lower-right", "x": 0.5, "y": 0.5, "width": 0.5, "height": 0.5},
+        ],
+    },
+    {
+        "id": "maximize",
+        "cells": [{"target": "maximize", "x": 0, "y": 0, "width": 1, "height": 1}],
+    },
+]
+
+
+def fail(message: str) -> None:
+    print(f"enoshima-windowd: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def valid_address(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith("0x"):
+        return False
+    try:
+        int(value[2:], 16)
+    except ValueError:
+        return False
+    return len(value) > 2
+
+
+class WindowBroker:
+    def __init__(self) -> None:
+        runtime = Path(os.environ.get("ENOSHIMA_WINDOWD_RUNTIME_DIR", os.environ.get("XDG_RUNTIME_DIR", "")))
+        if not runtime.is_absolute() or not runtime.is_dir() or runtime.owner() != Path.home().owner():
+            fail("XDG_RUNTIME_DIR must be an existing absolute user-owned directory")
+
+        self.runtime_dir = runtime / "enoshima"
+        self.runtime_dir.mkdir(mode=0o700, exist_ok=True)
+        if self.runtime_dir.is_symlink():
+            fail("runtime directory must not be a symbolic link")
+        os.chmod(self.runtime_dir, 0o700)
+        self.socket_path = self.runtime_dir / "windowd.sock"
+        self.state_path = self.runtime_dir / "snap.json"
+        self.hyprctl = os.environ.get("ENOSHIMA_WINDOWD_HYPRCTL", os.environ.get("ENOSHIMA_SNAP_HYPRCTL", "hyprctl"))
+        self.config_path = Path(
+            os.environ.get(
+                "ENOSHIMA_WINDOW_INTERACTION_CONFIG",
+                str(Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "enoshima/window-interaction.yaml"),
+            )
+        )
+        self.edge_threshold = self.config_int(".snap.edge_threshold", 16)
+        self.preview_inset = self.config_int(".snap.preview_inset", 10)
+        self.gap = self.config_int(".snap.gap", 10)
+        self.stale_after_ms = self.config_int(".snap.stale_after_ms", 750)
+        self.chooser_hold_ms = self.config_int(".snap.chooser_hold_ms", 300)
+        self.sessions: dict[int, dict[str, Any]] = {}
+        self.state = self.inactive_state()
+        self.monitor_cache: tuple[float, list[dict[str, Any]]] = (0.0, [])
+        self.write_state(self.state)
+
+    def config_int(self, expression: str, fallback: int) -> int:
+        try:
+            result = subprocess.run(
+                ["yq", "-r", f"{expression} // {fallback}", str(self.config_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            value = int(result.stdout.strip())
+            return value if value >= 0 else fallback
+        except (FileNotFoundError, subprocess.SubprocessError, ValueError):
+            return fallback
+
+    @staticmethod
+    def now_ms() -> int:
+        return time.time_ns() // 1_000_000
+
+    def inactive_state(self, session: int = 0, sequence: int = 0) -> dict[str, Any]:
+        return {
+            "schema": 2,
+            "active": False,
+            "session": session,
+            "sequence": sequence,
+            "updatedAt": self.now_ms(),
+        }
+
+    def write_state(self, document: dict[str, Any]) -> None:
+        descriptor, temporary = tempfile.mkstemp(prefix=".snap.", dir=self.runtime_dir, text=True)
+        try:
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                json.dump(document, stream, ensure_ascii=False, separators=(",", ":"))
+                stream.write("\n")
+            os.replace(temporary, self.state_path)
+        except BaseException:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            Path(temporary).unlink(missing_ok=True)
+            raise
+
+    def hypr_json(self, resource: str) -> Any:
+        result = subprocess.run(
+            [self.hyprctl, resource, "-j"], check=True, capture_output=True, text=True, timeout=2
+        )
+        return json.loads(result.stdout)
+
+    def dispatch(self, *arguments: str) -> None:
+        subprocess.run([self.hyprctl, "dispatch", *arguments], check=True, timeout=3)
+
+    def monitors(self) -> list[dict[str, Any]]:
+        timestamp, cached = self.monitor_cache
+        if time.monotonic() - timestamp >= 0.25:
+            cached = self.hypr_json("monitors")
+            self.monitor_cache = (time.monotonic(), cached)
+        return cached
+
+    @staticmethod
+    def logical_size(monitor: dict[str, Any]) -> tuple[int, int]:
+        scale = float(monitor.get("scale", 1)) or 1
+        return int(float(monitor["width"]) / scale), int(float(monitor["height"]) / scale)
+
+    def monitor_for_point(self, x: int, y: int) -> dict[str, Any] | None:
+        for monitor in self.monitors():
+            width, height = self.logical_size(monitor)
+            if int(monitor["x"]) <= x < int(monitor["x"]) + width and int(monitor["y"]) <= y < int(monitor["y"]) + height:
+                return monitor
+        return None
+
+    def monitor_for_address(self, address: str) -> dict[str, Any] | None:
+        clients = self.hypr_json("clients")
+        client = next((item for item in clients if item.get("address") == address), None)
+        if client is None:
+            return None
+        return next((item for item in self.monitors() if item.get("id") == client.get("monitor")), None)
+
+    def target_for_point(self, monitor: dict[str, Any], x: int, y: int) -> str | None:
+        width, height = self.logical_size(monitor)
+        monitor_x, monitor_y = int(monitor["x"]), int(monitor["y"])
+        near_left = x - monitor_x <= self.edge_threshold
+        near_right = monitor_x + width - 1 - x <= self.edge_threshold
+        near_top = y - monitor_y <= self.edge_threshold
+        near_bottom = monitor_y + height - 1 - y <= self.edge_threshold
+        if near_left:
+            if y < monitor_y + height // 3:
+                return "upper-left"
+            if y > monitor_y + height * 2 // 3:
+                return "lower-left"
+            return "left-half"
+        if near_right:
+            if y < monitor_y + height // 3:
+                return "upper-right"
+            if y > monitor_y + height * 2 // 3:
+                return "lower-right"
+            return "right-half"
+        if near_top:
+            return "maximize"
+        if near_bottom:
+            return "bottom-half"
+        return None
+
+    def geometry(self, monitor: dict[str, Any], target: str) -> dict[str, int]:
+        logical_width, logical_height = self.logical_size(monitor)
+        reserved = list(monitor.get("reserved", [0, 0, 0, 0])) + [0, 0, 0, 0]
+        top, bottom, left, right = (int(value) for value in reserved[:4])
+        monitor_x, monitor_y = int(monitor["x"]), int(monitor["y"])
+        x = monitor_x + left + self.preview_inset
+        y = monitor_y + top + self.preview_inset
+        width = logical_width - left - right - self.preview_inset * 2
+        height = logical_height - top - bottom - self.preview_inset * 2
+        half_width = (width - self.gap) // 2
+        half_height = (height - self.gap) // 2
+        third_width = (width - self.gap * 2) // 3
+
+        geometries = {
+            "left-half": (x, y, half_width, height),
+            "right-half": (x + half_width + self.gap, y, half_width, height),
+            "upper-left": (x, y, half_width, half_height),
+            "upper-right": (x + half_width + self.gap, y, half_width, half_height),
+            "lower-left": (x, y + half_height + self.gap, half_width, half_height),
+            "lower-right": (x + half_width + self.gap, y + half_height + self.gap, half_width, half_height),
+            "bottom-half": (x, y + half_height + self.gap, width, half_height),
+            "left-third": (x, y, third_width, height),
+            "center-third": (x + third_width + self.gap, y, third_width, height),
+            "right-third": (x + (third_width + self.gap) * 2, y, width - third_width * 2 - self.gap * 2, height),
+            "left-two-thirds": (x, y, third_width * 2 + self.gap, height),
+            "right-two-thirds": (x + third_width + self.gap, y, width - third_width - self.gap, height),
+            "maximize": (x, y, width, height),
+        }
+        if target not in geometries:
+            raise ValueError(f"unsupported target: {target}")
+        target_x, target_y, target_width, target_height = geometries[target]
+        return {
+            "x": target_x,
+            "y": target_y,
+            "localX": target_x - monitor_x,
+            "localY": target_y - monitor_y,
+            "width": target_width,
+            "height": target_height,
+        }
+
+    def state_for_target(
+        self,
+        monitor: dict[str, Any],
+        target: str,
+        address: str,
+        session: int,
+        sequence: int,
+        source: str,
+        chooser: bool = False,
+    ) -> dict[str, Any]:
+        return {
+            "schema": 2,
+            "active": True,
+            "session": session,
+            "sequence": sequence,
+            "address": address,
+            "source": source,
+            "target": target,
+            "labelKey": TARGET_LABELS[target],
+            "monitor": str(monitor["name"]),
+            "monitorX": int(monitor["x"]),
+            "monitorY": int(monitor["y"]),
+            "geometry": self.geometry(monitor, target),
+            "chooser": {
+                "visible": chooser,
+                "selectedTarget": target,
+                "layouts": LAYOUTS if chooser else [],
+            },
+            "updatedAt": self.now_ms(),
+        }
+
+    def apply(self, document: dict[str, Any]) -> None:
+        address, target = document.get("address"), document.get("target")
+        if not valid_address(address):
+            raise ValueError("invalid address")
+        if not any(client.get("address") == address for client in self.hypr_json("clients")):
+            raise ValueError("target window disappeared")
+        if target == "maximize":
+            self.dispatch(
+                f'hl.dsp.window.fullscreen_state({{ internal = 1, client = 1, action = "set", window = "address:{address}" }})'
+            )
+            return
+        geometry = document["geometry"]
+        self.dispatch(
+            f'hl.dsp.window.fullscreen_state({{ internal = 0, client = 0, action = "set", window = "address:{address}" }})'
+        )
+        self.dispatch(f'hl.dsp.window.float({{ action = "set", window = "address:{address}" }})')
+        self.dispatch(
+            "resizewindowpixel",
+            f'exact {geometry["width"]} {geometry["height"]},address:{address}',
+        )
+        self.dispatch("movewindowpixel", f'exact {geometry["x"]} {geometry["y"]},address:{address}')
+        self.dispatch(f'hl.dsp.focus({{ window = "address:{address}" }})')
+
+    def session(self, request: dict[str, Any]) -> tuple[int, int, dict[str, Any]]:
+        session = int(request.get("session", 0))
+        sequence = int(request.get("sequence", 0))
+        if session <= 0 or sequence <= 0:
+            raise ValueError("session and sequence must be positive")
+        record = self.sessions.setdefault(
+            session,
+            {"last": 0, "sealed": False, "target": None, "targetSince": time.monotonic()},
+        )
+        if record["sealed"] or sequence <= int(record["last"]):
+            raise RuntimeError("stale-or-sealed")
+        record["last"] = sequence
+        return session, sequence, record
+
+    def process(self, request: dict[str, Any]) -> dict[str, Any]:
+        kind = str(request.get("type", ""))
+        if kind == "place":
+            address = str(request.get("address", ""))
+            target = str(request.get("target", ""))
+            monitor = self.monitor_for_address(address)
+            if monitor is None:
+                raise ValueError("window monitor is unavailable")
+            document = self.state_for_target(monitor, target, address, 0, 0, "keyboard")
+            self.apply(document)
+            self.state = self.inactive_state()
+            self.write_state(self.state)
+            return {"ok": True, "applied": target}
+
+        session, sequence, record = self.session(request)
+        address = str(request.get("address", ""))
+        if not valid_address(address):
+            raise ValueError("invalid address")
+
+        if kind == "preview":
+            x, y = int(request["x"]), int(request["y"])
+            monitor = self.monitor_for_point(x, y)
+            target = self.target_for_point(monitor, x, y) if monitor else None
+            if target != record["target"]:
+                record["target"] = target
+                record["targetSince"] = time.monotonic()
+            if monitor is None or target is None:
+                self.state = self.inactive_state(session, sequence)
+            else:
+                chooser = target == "maximize" and (time.monotonic() - float(record["targetSince"])) * 1000 >= self.chooser_hold_ms
+                self.state = self.state_for_target(monitor, target, address, session, sequence, str(request.get("source", "titlebar")), chooser)
+            self.write_state(self.state)
+            return {"ok": True, "active": self.state["active"]}
+
+        if kind == "chooser":
+            monitor = self.monitor_for_address(address)
+            if monitor is None:
+                raise ValueError("window monitor is unavailable")
+            target = str(request.get("target", "left-half"))
+            self.state = self.state_for_target(monitor, target, address, session, sequence, str(request.get("source", "keyboard")), True)
+            self.write_state(self.state)
+            return {"ok": True, "chooser": True}
+
+        if kind == "choose":
+            if int(self.state.get("session", 0)) != session or self.state.get("address") != address:
+                raise RuntimeError("session-mismatch")
+            monitor = self.monitor_for_address(address)
+            if monitor is None:
+                raise ValueError("window monitor is unavailable")
+            target = str(request.get("target", ""))
+            document = self.state_for_target(monitor, target, address, session, sequence, str(request.get("source", "keyboard")), True)
+            if bool(request.get("commit", False)):
+                self.apply(document)
+                record["sealed"] = True
+                self.state = self.inactive_state(session, sequence)
+            else:
+                self.state = document
+            self.write_state(self.state)
+            return {"ok": True, "applied": target if record["sealed"] else None}
+
+        if kind == "commit":
+            if int(self.state.get("session", 0)) != session or self.state.get("address") != address:
+                record["sealed"] = True
+                return {"ok": True, "applied": None}
+            if bool(self.state.get("chooser", {}).get("visible", False)):
+                self.state["source"] = "chooser"
+                self.state["updatedAt"] = self.now_ms()
+                self.write_state(self.state)
+                return {"ok": True, "awaitingChoice": True}
+            if self.state.get("active") and self.now_ms() - int(self.state.get("updatedAt", 0)) <= self.stale_after_ms:
+                self.apply(self.state)
+            record["sealed"] = True
+            self.state = self.inactive_state(session, sequence)
+            self.write_state(self.state)
+            return {"ok": True, "applied": True}
+
+        if kind == "cancel":
+            record["sealed"] = True
+            self.state = self.inactive_state(session, sequence)
+            self.write_state(self.state)
+            return {"ok": True, "cancelled": True}
+
+        raise ValueError(f"unsupported request type: {kind}")
+
+    def expire(self) -> None:
+        if not self.state.get("active"):
+            return
+        chooser = bool(self.state.get("chooser", {}).get("visible", False))
+        maximum_age = 15_000 if chooser else max(900, self.stale_after_ms + 150)
+        if self.now_ms() - int(self.state.get("updatedAt", 0)) > maximum_age:
+            session = int(self.state.get("session", 0))
+            if session in self.sessions:
+                self.sessions[session]["sealed"] = True
+            self.state = self.inactive_state(session, int(self.state.get("sequence", 0)))
+            self.write_state(self.state)
+
+    def serve(self) -> None:
+        if self.socket_path.exists() or self.socket_path.is_symlink():
+            self.socket_path.unlink()
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        listener.bind(str(self.socket_path))
+        os.chmod(self.socket_path, 0o600)
+        listener.listen(16)
+        listener.setblocking(False)
+        selector = selectors.DefaultSelector()
+        selector.register(listener, selectors.EVENT_READ)
+        try:
+            while True:
+                for key, _ in selector.select(timeout=0.25):
+                    connection, _ = key.fileobj.accept()
+                    with connection:
+                        credentials = connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+                        _, uid, _ = struct.unpack("3i", credentials)
+                        if uid != os.getuid():
+                            connection.sendall(b'{"ok":false,"error":"peer-uid"}\n')
+                            continue
+                        try:
+                            request = json.loads(connection.recv(65536).decode("utf-8"))
+                            response = self.process(request)
+                        except RuntimeError as error:
+                            response = {"ok": False, "ignored": str(error)}
+                        except (KeyError, TypeError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+                            response = {"ok": False, "error": str(error)}
+                        connection.sendall((json.dumps(response, separators=(",", ":")) + "\n").encode("utf-8"))
+                self.expire()
+        finally:
+            selector.close()
+            listener.close()
+            self.socket_path.unlink(missing_ok=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true", help="validate dependencies and configuration without serving")
+    arguments = parser.parse_args()
+    broker = WindowBroker()
+    if arguments.check:
+        print(json.dumps({"schema": 1, "valid": True, "socket": str(broker.socket_path)}))
+        return
+    broker.serve()
+
+
+if __name__ == "__main__":
+    main()
