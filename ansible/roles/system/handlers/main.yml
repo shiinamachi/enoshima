@@ -15,7 +15,7 @@
 
 - name: Rebuild boot artifacts
   ansible.builtin.command:
-    cmd: mkinitcpio -P
+    cmd: /usr/local/libexec/enoshima-rebuild-uki
   when:
     - manage_boot_config | bool
     - apply_boot_artifacts | bool

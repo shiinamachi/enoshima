@@ -1,79 +1,278 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-if [[ ${1:-} != capture || $# -ne 1 ]]; then
-  printf 'usage: enoshima-power-doctor capture\n' >&2
+readonly state_home=${ENOSHIMA_POWER_DOCTOR_STATE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}}
+readonly state_dir=$state_home/enoshima/power-doctor
+readonly systemctl_bin=${ENOSHIMA_POWER_DOCTOR_SYSTEMCTL:-systemctl}
+readonly loginctl_bin=${ENOSHIMA_POWER_DOCTOR_LOGINCTL:-loginctl}
+readonly sleep_bin=${ENOSHIMA_POWER_DOCTOR_SLEEP:-sleep}
+readonly boot_id_file=${ENOSHIMA_POWER_DOCTOR_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}
+
+usage() {
+  cat >&2 <<'EOF'
+usage: enoshima-power-doctor capture [--output FILE]
+       enoshima-power-doctor test-suspend
+       enoshima-power-doctor test-hibernate
+       enoshima-power-doctor measure-lid --duration DURATION
+       enoshima-power-doctor report
+EOF
   exit 2
-fi
+}
+
+die() {
+  printf 'enoshima-power-doctor: %s\n' "$*" >&2
+  exit 1
+}
 
 section() {
   printf '\n[%s]\n' "$1"
 }
 
-section 'Versions'
-printf 'kernel=%s\n' "$(uname -sr)"
-systemctl --version 2>/dev/null | sed -n '1p' || true
-tlp-stat --version 2>&1 || true
-mmcli --version 2>&1 | sed -n '1p' || true
-
-section 'Sleep modes'
-printf 'mem_sleep='
-cat /sys/power/mem_sleep 2>&1 || true
-systemd-analyze cat-config systemd/sleep.conf 2>&1 || true
-systemd-analyze cat-config systemd/logind.conf 2>&1 |
-  sed -n '/^\[Login\]/,/^\[/p' || true
-
-section 'Inhibitors'
-systemd-inhibit --list --no-pager 2>&1 || true
-
-section 'Session'
-session_id=$(loginctl list-sessions --no-legend 2>/dev/null |
-  awk -v uid="$UID" '$2 == uid { print $1; exit }')
-if [[ -n $session_id ]]; then
-  loginctl show-session "$session_id" \
-    -p Id -p Type -p Class -p State -p Remote -p IdleHint -p LockedHint 2>&1 || true
-fi
-
-section 'TLP policy'
-tlp-stat -s -c -p -e 2>&1 || true
-
-section 'Battery'
-for battery in /sys/class/power_supply/BAT*; do
-  [[ -d $battery ]] || continue
-  printf 'device=%s\n' "${battery##*/}"
-  for field in status capacity energy_now energy_full energy_full_design charge_now charge_full power_now; do
-    [[ -r $battery/$field ]] || continue
-    printf '%s=' "$field"
-    cat "$battery/$field"
+battery_capacity() {
+  local total=0 count=0 battery value
+  for battery in /sys/class/power_supply/BAT*; do
+    [[ -r $battery/capacity ]] || continue
+    read -r value <"$battery/capacity"
+    [[ $value =~ ^[0-9]+$ ]] || continue
+    total=$((total + value))
+    count=$((count + 1))
   done
-done
+  if ((count == 0)); then
+    printf '%s\n' null
+  else
+    printf '%d\n' "$((total / count))"
+  fi
+}
 
-section 'Wake sources'
-if [[ -r /sys/kernel/debug/wakeup_sources ]]; then
-  sed -n '1,80p' /sys/kernel/debug/wakeup_sources
-else
-  printf 'wakeup_sources unavailable without debugfs permission\n'
-fi
+battery_energy() {
+  local total=0 found=false battery value
+  for battery in /sys/class/power_supply/BAT*; do
+    for field in energy_now charge_now; do
+      [[ -r $battery/$field ]] || continue
+      read -r value <"$battery/$field"
+      [[ $value =~ ^[0-9]+$ ]] || continue
+      total=$((total + value))
+      found=true
+      break
+    done
+  done
+  if $found; then printf '%d\n' "$total"; else printf '%s\n' null; fi
+}
 
-section 'Intel PMC residency'
-for pmc_file in /sys/kernel/debug/pmc_core/*residency* /sys/kernel/debug/pmc_core/package_cstate_show; do
-  [[ -r $pmc_file ]] || continue
-  printf '%s\n' "${pmc_file##*/}"
-  sed -n '1,120p' "$pmc_file"
-done
+capture_body() {
+  section 'Versions'
+  printf 'kernel=%s\n' "$(uname -sr)"
+  systemctl --version 2>/dev/null | sed -n '1p' || true
+  tlp-stat --version 2>&1 || true
+  mmcli --version 2>&1 | sed -n '1p' || true
+  fwupdmgr --version 2>&1 | sed -n '1,4p' || true
 
-section 'WWAN and radios'
-nmcli radio 2>&1 || true
-mmcli -L 2>&1 || true
+  section 'Sleep modes'
+  printf 'power_state='
+  cat /sys/power/state 2>&1 || true
+  printf 'mem_sleep='
+  cat /sys/power/mem_sleep 2>&1 || true
+  systemd-analyze cat-config systemd/sleep.conf 2>&1 || true
+  systemd-analyze cat-config systemd/logind.conf 2>&1 |
+    sed -n '/^\[Login\]/,/^\[/p' || true
 
-section 'USB and Thunderbolt'
-lsusb 2>&1 || true
-boltctl list 2>&1 || true
+  section 'Inhibitors'
+  systemd-inhibit --list --no-pager 2>&1 || true
 
-section 'Recent sleep journal'
-journalctl -b --no-pager -o short-monotonic \
-  -u systemd-logind.service \
-  -u systemd-suspend.service \
-  -u systemd-hibernate.service \
-  -u systemd-suspend-then-hibernate.service \
-  -u ModemManager.service -n 300 2>&1 || true
+  section 'Session'
+  local session_id
+  session_id=$(loginctl list-sessions --no-legend 2>/dev/null |
+    awk -v uid="$UID" '$2 == uid { print $1; exit }')
+  if [[ -n $session_id ]]; then
+    loginctl show-session "$session_id" \
+      -p Id -p Type -p Class -p State -p Remote -p IdleHint -p LockedHint 2>&1 || true
+  fi
+
+  section 'TLP policy'
+  tlp-stat -s -c -p -e 2>&1 || true
+
+  section 'Battery'
+  local battery field
+  for battery in /sys/class/power_supply/BAT*; do
+    [[ -d $battery ]] || continue
+    printf 'device=%s\n' "${battery##*/}"
+    for field in status capacity energy_now energy_full energy_full_design charge_now charge_full power_now; do
+      [[ -r $battery/$field ]] || continue
+      printf '%s=' "$field"
+      cat "$battery/$field"
+    done
+  done
+
+  section 'Wake sources'
+  if [[ -r /sys/kernel/debug/wakeup_sources ]]; then
+    sed -n '1,120p' /sys/kernel/debug/wakeup_sources
+  else
+    printf 'wakeup_sources unavailable without debugfs permission\n'
+  fi
+
+  section 'Intel PMC residency'
+  local pmc_file
+  for pmc_file in /sys/kernel/debug/pmc_core/*residency* /sys/kernel/debug/pmc_core/package_cstate_show; do
+    [[ -r $pmc_file ]] || continue
+    printf '%s\n' "${pmc_file##*/}"
+    sed -n '1,160p' "$pmc_file"
+  done
+
+  section 'WWAN and radios'
+  nmcli radio 2>&1 || true
+  mmcli -L 2>&1 || true
+
+  section 'USB and Thunderbolt'
+  lsusb 2>&1 || true
+  boltctl list 2>&1 || true
+
+  section 'Recent sleep journal'
+  journalctl -b --no-pager -o short-monotonic \
+    -u systemd-logind.service \
+    -u systemd-suspend.service \
+    -u systemd-hibernate.service \
+    -u systemd-suspend-then-hibernate.service \
+    -u ModemManager.service -n 400 2>&1 || true
+}
+
+capture_to() {
+  local destination=$1 temporary
+  [[ $destination == /* ]] || die 'capture output must be an absolute path'
+  [[ ! -L $destination ]] || die 'capture output must not be a symbolic link'
+  install -d -m 0700 "${destination%/*}"
+  temporary=$(mktemp "${destination%/*}/.capture.XXXXXX")
+  chmod 0600 "$temporary"
+  capture_body | tee "$temporary"
+  mv -f -- "$temporary" "$destination"
+}
+
+new_run_dir() {
+  local kind=$1 destination
+  [[ ! -L $state_dir ]] || die 'state directory must not be a symbolic link'
+  install -d -m 0700 "$state_dir"
+  destination=$state_dir/"$(date -u +%Y%m%dT%H%M%S)-$kind-$$"
+  install -d -m 0700 "$destination"
+  printf '%s\n' "$destination"
+}
+
+write_result() {
+  local destination=$1 kind=$2 started_at=$3 completed_at=$4 before_capacity=$5 after_capacity=$6 before_energy=$7 after_energy=$8 boot_before=$9 boot_after=${10}
+  local temporary
+  temporary=$(mktemp "$destination/.result.XXXXXX")
+  jq -n \
+    --arg kind "$kind" \
+    --arg startedAt "$started_at" \
+    --arg completedAt "$completed_at" \
+    --arg bootBefore "$boot_before" \
+    --arg bootAfter "$boot_after" \
+    --argjson beforeCapacity "$before_capacity" \
+    --argjson afterCapacity "$after_capacity" \
+    --argjson beforeEnergy "$before_energy" \
+    --argjson afterEnergy "$after_energy" '
+      {
+        schema: 1,
+        kind: $kind,
+        started_at: $startedAt,
+        completed_at: $completedAt,
+        boot_id_before: $bootBefore,
+        boot_id_after: $bootAfter,
+        resumed_same_boot: ($bootBefore == $bootAfter),
+        battery: {
+          capacity_before: $beforeCapacity,
+          capacity_after: $afterCapacity,
+          capacity_drop: (if ($beforeCapacity != null and $afterCapacity != null) then $beforeCapacity - $afterCapacity else null end),
+          energy_before: $beforeEnergy,
+          energy_after: $afterEnergy,
+          energy_drop: (if ($beforeEnergy != null and $afterEnergy != null) then $beforeEnergy - $afterEnergy else null end)
+        }
+      }
+    ' >"$temporary"
+  chmod 0600 "$temporary"
+  mv -f -- "$temporary" "$destination/result.json"
+  cat "$destination/result.json"
+}
+
+run_sleep_test() {
+  local kind=$1 systemd_action=$2 destination started_at completed_at
+  local before_capacity after_capacity before_energy after_energy boot_before boot_after
+  destination=$(new_run_dir "$kind")
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  before_capacity=$(battery_capacity)
+  before_energy=$(battery_energy)
+  boot_before=$(tr -d '\n' <"$boot_id_file")
+  capture_to "$destination/before.txt" >/dev/null
+  "$loginctl_bin" lock-session || die 'failed to lock the session before the sleep test'
+  "$systemctl_bin" "$systemd_action" || die "$systemd_action did not complete successfully"
+  capture_to "$destination/after.txt" >/dev/null
+  completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  after_capacity=$(battery_capacity)
+  after_energy=$(battery_energy)
+  boot_after=$(tr -d '\n' <"$boot_id_file")
+  write_result "$destination" "$kind" "$started_at" "$completed_at" \
+    "$before_capacity" "$after_capacity" "$before_energy" "$after_energy" \
+    "$boot_before" "$boot_after"
+}
+
+measure_lid() {
+  local duration=$1 destination started_at completed_at
+  local before_capacity after_capacity before_energy after_energy boot_before boot_after
+  [[ $duration =~ ^[1-9][0-9]*(s|m|h)$ ]] || die 'duration must look like 30m or 8h'
+  destination=$(new_run_dir lid)
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  before_capacity=$(battery_capacity)
+  before_energy=$(battery_energy)
+  boot_before=$(tr -d '\n' <"$boot_id_file")
+  capture_to "$destination/before.txt" >/dev/null
+  printf 'Close the lid now. Measurement will finish after %s of boottime.\n' "$duration" >&2
+  "$sleep_bin" "$duration"
+  capture_to "$destination/after.txt" >/dev/null
+  completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  after_capacity=$(battery_capacity)
+  after_energy=$(battery_energy)
+  boot_after=$(tr -d '\n' <"$boot_id_file")
+  write_result "$destination" lid "$started_at" "$completed_at" \
+    "$before_capacity" "$after_capacity" "$before_energy" "$after_energy" \
+    "$boot_before" "$boot_after"
+}
+
+report() {
+  [[ -d $state_dir ]] || { jq -n '{schema:1,runs:0,results:[]}'; return; }
+  local results=("$state_dir"/*/result.json)
+  [[ -e ${results[0]} ]] || { jq -n '{schema:1,runs:0,results:[]}'; return; }
+  jq -s '{
+    schema: 1,
+    runs: length,
+    same_boot_resumes: (map(select(.resumed_same_boot == true)) | length),
+    mean_capacity_drop: ([.[].battery.capacity_drop | select(. != null)] | if length > 0 then add / length else null end),
+    results: .
+  }' "${results[@]}"
+}
+
+case ${1:-} in
+  capture)
+    if [[ $# -eq 1 ]]; then
+      capture_body
+    elif [[ $# -eq 3 && $2 == --output ]]; then
+      capture_to "$3"
+    else
+      usage
+    fi
+    ;;
+  test-suspend)
+    [[ $# -eq 1 ]] || usage
+    run_sleep_test suspend suspend
+    ;;
+  test-hibernate)
+    [[ $# -eq 1 ]] || usage
+    run_sleep_test hibernate hibernate
+    ;;
+  measure-lid)
+    [[ $# -eq 3 && $2 == --duration ]] || usage
+    measure_lid "$3"
+    ;;
+  report)
+    [[ $# -eq 1 ]] || usage
+    report
+    ;;
+  *) usage ;;
+esac

@@ -405,7 +405,9 @@ for test_script in \
   tests/test-cyberdock-state.sh \
   tests/test-desktop-display-mode.sh \
   tests/test-desktop-power.sh \
+  tests/test-power-doctor.sh \
   tests/test-power-policy.sh \
+  tests/test-transactional-uki.sh \
   tests/test-wwan-shutdown.sh \
   tests/test-desktop-window-action.sh \
   tests/test-enoshima-snap-controller.sh \

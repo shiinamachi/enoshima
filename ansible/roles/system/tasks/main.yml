@@ -194,6 +194,15 @@
   when: manage_boot_config | bool
   notify: Rebuild boot artifacts
 
+- name: Install the transactional UKI rebuild helper
+  ansible.builtin.copy:
+    src: enoshima-rebuild-uki
+    dest: /usr/local/libexec/enoshima-rebuild-uki
+    owner: root
+    group: root
+    mode: "0755"
+  when: manage_boot_config | bool
+
 - name: Invalidate boot artifact record after an mkinitcpio change
   ansible.builtin.file:
     path: "{{ boot_artifact_state_file }}"

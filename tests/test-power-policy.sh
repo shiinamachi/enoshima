@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # Assertions intentionally match literal shell source.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -11,6 +12,7 @@ lid_config=$repo_root/ansible/roles/system/templates/logind-lid.conf.j2
 tlp_config=$repo_root/ansible/roles/system/templates/tlp-thinkpad.conf.j2
 hypridle=$repo_root/home/dot_config/hypr/hypridle.conf
 doctor=$repo_root/home/dot_local/bin/executable_enoshima-power-doctor
+uki_helper=$repo_root/ansible/roles/system/files/enoshima-rebuild-uki
 
 fail() {
   printf 'test-power-policy: %s\n' "$*" >&2
@@ -62,10 +64,16 @@ for contract in \
   grep -Fq "$contract" "$tlp_config" || fail "TLP contract is missing: $contract"
 done
 
-grep -Fq "[[ \${1:-} != capture" "$doctor" || fail 'power doctor does not expose capture mode'
+grep -Fq 'test-suspend)' "$doctor" || fail 'power doctor omits suspend qualification mode'
+grep -Fq 'test-hibernate)' "$doctor" || fail 'power doctor omits hibernate qualification mode'
+grep -Fq 'measure-lid)' "$doctor" || fail 'power doctor omits lid measurement mode'
+grep -Fq 'report)' "$doctor" || fail 'power doctor omits summary mode'
 grep -Fq '/sys/power/mem_sleep' "$doctor" || fail 'power doctor omits sleep mode'
 grep -Fq 'systemd-inhibit --list' "$doctor" || fail 'power doctor omits inhibitors'
 grep -Fq '/sys/kernel/debug/wakeup_sources' "$doctor" || fail 'power doctor omits wake sources'
 grep -Fq '/sys/kernel/debug/pmc_core/' "$doctor" || fail 'power doctor omits S0ix evidence'
+grep -Fq 'previous=${destination%/*}/${stem}-previous.efi' "$uki_helper" ||
+  fail 'transactional UKI helper does not retain a rollback image'
+grep -Fq '.cmdline=' "$uki_helper" || fail 'candidate UKI command line is not inspected'
 
 printf 'Laptop power policy tests passed.\n'
