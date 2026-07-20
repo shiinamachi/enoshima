@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # Assertions intentionally match literal shell source.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -18,8 +19,17 @@ grep -Fq 'After=NetworkManager.service ModemManager.service' "$unit" ||
   fail 'quiesce unit is not ordered after the WWAN services'
 grep -Fq 'ExecStop=/usr/local/libexec/enoshima-wwan-quiesce' "$unit" ||
   fail 'quiesce is not executed during stop ordering'
-grep -Fq 'TimeoutStopSec=20s' "$unit" || fail 'quiesce unit is not bounded'
-grep -Fq 'timeout --signal=TERM --kill-after=2s 8s' "$helper" ||
+grep -Fq 'TimeoutStopSec=12s' "$unit" || fail 'quiesce unit is not bounded'
+grep -Fq 'readonly global_budget_cs=1000' "$helper" ||
+  fail 'quiesce helper does not enforce one global deadline'
+grep -Fq 'status=$?' "$helper" || fail 'timeout exit status is not preserved'
+grep -Fq 'RESULT=$result' "$helper" || fail 'structured result is not journaled'
+grep -Fq 'EXIT_STATUS=$status' "$helper" || fail 'structured exit status is not journaled'
+grep -Fq 'ELAPSED_MS=$elapsed_ms' "$helper" || fail 'elapsed time is not journaled'
+grep -Fq 'run_bounded modem-disable 4' "$helper" || fail 'modem disable budget drifted'
+grep -Fq 'run_bounded wwan-radio-off 2' "$helper" || fail 'radio-off budget drifted'
+bash -n "$helper"
+grep -Fq 'timeout --signal=TERM --kill-after=1s "${step_budget}s"' "$helper" ||
   fail 'modem operations are not individually bounded'
 grep -Fq '/usr/bin/mmcli -m any --disable' "$helper" ||
   fail 'modem disable is missing'

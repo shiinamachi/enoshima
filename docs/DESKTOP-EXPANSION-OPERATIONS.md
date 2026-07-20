@@ -229,8 +229,10 @@ unit, 이전 boot journal, firmware와 Thunderbolt 장치를 함께 보여준다
 
 Quectel WWAN modem은 종료 직전 재탐색과 sleep preparation에서 멈출 수 있다.
 `enoshima-wwan-quiesce.service`는 stop ordering상 NetworkManager와
-ModemManager보다 먼저 active GSM 연결, modem, WWAN radio를 각각 제한 시간 안에
-정리한다. 확인된 90초 기본 stop timeout은 ModemManager에만 15초로 제한한다.
+ModemManager보다 먼저 active GSM 연결, modem, WWAN radio를 하나의 10초
+monotonic deadline 안에서 정리한다. 각 단계의 exit status와 elapsed time은
+구조화된 journal field로 남긴다. 확인된 90초 기본 stop timeout은
+ModemManager에만 15초로 제한한다.
 전역 systemd stop timeout은 변경하지 않는다. 이전 종료의 증거는 식별자를
 redact하는 다음 helper로 수집한다.
 

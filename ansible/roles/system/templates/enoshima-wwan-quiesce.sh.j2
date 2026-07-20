@@ -1,39 +1,93 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-log() {
-  /usr/bin/systemd-cat --identifier=enoshima-wwan-quiesce \
-    /usr/bin/printf '%s\n' "$*"
+readonly message_id=5fcac3159f184e89ae62b64b85fbdb32
+readonly global_budget_cs=1000
+
+monotonic_cs() {
+  local uptime fraction
+  IFS='. ' read -r uptime fraction _ </proc/uptime
+  fraction=${fraction:0:2}
+  printf '%d\n' "$((10#$uptime * 100 + 10#${fraction:-0}))"
+}
+
+readonly deadline_cs=$(($(monotonic_cs) + global_budget_cs))
+
+remaining_seconds() {
+  local remaining=$((deadline_cs - $(monotonic_cs)))
+  if ((remaining <= 0)); then
+    printf '0\n'
+  else
+    printf '%d\n' "$(((remaining + 99) / 100))"
+  fi
+}
+
+log_fields() {
+  local step=$1 result=$2 status=$3 elapsed_ms=$4 message=$5
+  /usr/bin/printf '%s\n' \
+    "MESSAGE_ID=$message_id" \
+    "MESSAGE=$message" \
+    "STEP=$step" \
+    "RESULT=$result" \
+    "EXIT_STATUS=$status" \
+    "ELAPSED_MS=$elapsed_ms" |
+    /usr/bin/logger --journald
 }
 
 run_bounded() {
   local label=$1
-  shift
-  if /usr/bin/timeout --signal=TERM --kill-after=2s 8s "$@"; then
-    log "$label completed"
+  local step_budget=$2
+  shift 2
+  local available start_cs end_cs elapsed_ms status result
+  available=$(remaining_seconds)
+  if ((available == 0)); then
+    log_fields "$label" skipped 125 0 \
+      "$label skipped because the WWAN shutdown deadline was exhausted"
     return 0
   fi
-  local status=$?
-  log "$label failed or timed out with status $status; shutdown will continue"
+  if ((available < step_budget)); then
+    step_budget=$available
+  fi
+
+  start_cs=$(monotonic_cs)
+  if /usr/bin/timeout --signal=TERM --kill-after=1s "${step_budget}s" "$@"; then
+    status=0
+  else
+    status=$?
+  fi
+  end_cs=$(monotonic_cs)
+  elapsed_ms=$(((end_cs - start_cs) * 10))
+
+  if ((status == 0)); then
+    result=success
+  elif ((status == 124)); then
+    result=timeout
+  else
+    result=failure
+  fi
+  log_fields "$label" "$result" "$status" "$elapsed_ms" \
+    "$label finished with $result; shutdown will continue"
   return 0
 }
 
 if ! /usr/bin/systemctl --quiet is-active ModemManager.service; then
-  log 'ModemManager is not active; no WWAN quiesce is required'
+  log_fields preflight skipped 0 0 \
+    'ModemManager is not active; no WWAN quiesce is required'
   exit 0
 fi
 
 while IFS=: read -r uuid connection_type; do
   [[ $connection_type == gsm ]] || continue
   [[ $uuid =~ ^[0-9A-Fa-f-]{36}$ ]] || continue
-  run_bounded "disconnect $uuid" /usr/bin/nmcli --wait 5 connection down uuid "$uuid"
+  run_bounded "disconnect-$uuid" 3 \
+    /usr/bin/nmcli --wait 2 connection down uuid "$uuid"
 done < <(/usr/bin/nmcli -t -f UUID,TYPE connection show --active 2>/dev/null || true)
 
 if /usr/bin/mmcli -L 2>/dev/null | /usr/bin/grep -q '/Modem/'; then
-  run_bounded 'modem disable' /usr/bin/mmcli -m any --disable
+  run_bounded modem-disable 4 /usr/bin/mmcli -m any --disable
 fi
 
 # Prevent NetworkManager autoconnect from re-enabling the modem between this
 # bounded quiesce and ModemManager's own stop job. The managed WWAN fallback
 # policy enables the radio again on the next boot.
-run_bounded 'WWAN radio off' /usr/bin/nmcli radio wwan off
+run_bounded wwan-radio-off 2 /usr/bin/nmcli radio wwan off

@@ -239,8 +239,10 @@ has been disconnected. Hypridle continues to own only idle lock, DPMS, and the
 battery idle transition.
 
 At shutdown, `enoshima-wwan-quiesce.service` disconnects mobile broadband and
-disables the modem before ModemManager stops. Every operation has an eight
-second bound, and the confirmed Quectel/MBIM ModemManager hang has a
+disables the modem before ModemManager stops. Disconnect, modem-disable, and
+radio-off steps share one monotonic ten-second deadline, and every result is
+written to the journal with its exit status and elapsed time. The confirmed
+Quectel/MBIM ModemManager hang has a
 service-local 15 second stop timeout. The system-wide service timeout is left
 unchanged.
 
