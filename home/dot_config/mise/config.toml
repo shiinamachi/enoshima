@@ -7,6 +7,7 @@ node = "24"
 python = "3.14"
 go = "1.26"
 rust = { version = "1.97", profile = "default" }
+uv = "0.11"
 
 [settings]
 idiomatic_version_file_enable_tools = ["node", "python", "go", "rust"]

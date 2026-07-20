@@ -1,0 +1,45 @@
+---
+name: converge
+base_image: arch-cloud-reproducible
+domain_template: domain-fast.xml.j2
+profile: enoshima-vm
+timeout_minutes: 240
+resources:
+  vcpus: 4
+  memory_mib: 8192
+  disk_gib: 64
+network:
+  mode: isolated-user
+  allow_inbound_from_host: true
+  allow_lan: false
+steps:
+  - wait_for_ssh
+  - wait_for_cloud_init
+  - wait_for_guest_agent
+  - upload_worktree
+  - run_validate
+  - run_bootstrap:
+      report: first
+  - run_postflight:
+      report: first
+  - run_bootstrap:
+      report: second
+  - assert_idempotent
+  - reboot
+  - run_postflight:
+      report: after-reboot
+  - assert_expected_skips
+  - collect_artifacts
+allowed_skips:
+  - battery-charge-threshold
+  - boot-artifacts
+  - camera-device
+  - external-display
+  - fingerprint-device
+  - fingerprint-enrollment
+  - hibernation
+  - secure-boot
+  - thunderbolt-controller
+  - tpm-unlock
+  - wwan-modem
+fail_on_unexpected_skip: true

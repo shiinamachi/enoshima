@@ -485,8 +485,8 @@ done
 echo "==> Development runtimes"
 mise_config=$HOME/.config/mise/config.toml
 check "mise global runtime configuration deployed" test -f "$mise_config"
-runtime_names=(Node.js Python Go Rust)
-runtime_bins=(node python go rustc)
+runtime_names=(Node.js Python Go Rust uv)
+runtime_bins=(node python go rustc uv)
 for index in "${!runtime_names[@]}"; do
   check "mise runtime active: ${runtime_names[$index]}" env \
     MISE_CONFIG_FILE="$mise_config" mise which "${runtime_bins[$index]}"

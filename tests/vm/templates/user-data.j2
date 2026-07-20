@@ -1,0 +1,40 @@
+#cloud-config
+hostname: enoshima-vm
+manage_etc_hosts: true
+ssh_pwauth: false
+disable_root: true
+growpart:
+  mode: auto
+  devices: ['/']
+resize_rootfs: true
+users:
+  - name: {{ user }}
+    gecos: Enoshima VM Test User
+    groups: [adm, input, video, wheel]
+    lock_passwd: true
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+      - {{ public_key }}
+write_files:
+  - path: /etc/nftables.conf
+    owner: root:root
+    permissions: '0600'
+    content: |
+      table inet enoshima_vm {
+        chain output {
+          type filter hook output priority 0; policy accept;
+          ct state established,related accept
+          ip daddr 10.0.2.3 udp dport 53 accept
+          ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } reject
+        }
+      }
+runcmd:
+  - [pacman, -Syu, --needed, --noconfirm, ansible-core, jq, nftables, openssh, qemu-guest-agent, rsync]
+  - [systemctl, enable, --now, nftables.service]
+  - [systemctl, enable, --now, qemu-guest-agent.service]
+  - [systemctl, enable, --now, sshd.service]
+  - [loginctl, enable-linger, {{ user }}]
+  - [install, -d, -m, '0700', -o, {{ user }}, -g, {{ user }}, /home/{{ user }}/enoshima-test]
+  - [touch, /var/lib/enoshima-cloud-ready]
+final_message: ENOSHIMA_CLOUD_INIT_READY

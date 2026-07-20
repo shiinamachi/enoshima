@@ -17,6 +17,7 @@ assert config["tools"] == {
     "python": "3.14",
     "go": "1.26",
     "rust": {"version": "1.97", "profile": "default"},
+    "uv": "0.11",
 }
 assert config["settings"]["idiomatic_version_file_enable_tools"] == [
     "node",
@@ -46,9 +47,9 @@ if rg -n 'rustup (toolchain|default|component)' \
   exit 1
 fi
 
-grep -Fq 'runtime_bins=(node python go rustc)' \
+grep -Fq 'runtime_bins=(node python go rustc uv)' \
   "$repo_root/scripts/postflight.sh" || {
-  printf 'FAIL: postflight does not verify the mise-managed Rust compiler\n' >&2
+  printf 'FAIL: postflight does not verify all managed runtime tools\n' >&2
   exit 1
 }
 

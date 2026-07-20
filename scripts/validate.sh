@@ -88,12 +88,14 @@ from pathlib import Path
 import json
 import re
 import sys
+import tomllib
 import xml.etree.ElementTree as ET
 import yaml
 
 root = Path(sys.argv[1])
-for path in sorted(root.rglob("*.yml")):
-    if ".git" in path.parts:
+yaml_paths = set(root.rglob("*.yml")) | set(root.rglob("*.yaml"))
+for path in sorted(yaml_paths):
+    if ".git" in path.parts or ".venv" in path.parts:
         continue
     with path.open("r", encoding="utf-8") as handle:
         yaml.safe_load(handle)
@@ -184,6 +186,13 @@ for host in inventory["all"]["hosts"]:
     assert all(isinstance(value, bool) for value in capabilities.values()), (
         f"{host} capabilities must be explicit booleans"
     )
+
+with (root / ".codex/config.toml").open("rb") as handle:
+    codex_config = tomllib.load(handle)
+vm_mcp = codex_config["mcp_servers"]["enoshima_vm"]
+assert vm_mcp["command"] == "uv"
+assert vm_mcp["default_tools_approval_mode"] == "writes"
+assert vm_mcp["tools"]["vm_destroy"]["approval_mode"] == "prompt"
 PY
 
 echo "==> Checking repository-local design skills"
@@ -623,6 +632,20 @@ if command -v ansible-playbook >/dev/null 2>&1; then
     "$repo_root/ansible/site.yml"
 else
   echo "==> Skipping Ansible syntax check: ansible-playbook is not installed"
+fi
+
+mise_config=$repo_root/home/dot_config/mise/config.toml
+if command -v mise >/dev/null 2>&1 &&
+  MISE_CONFIG_FILE="$mise_config" mise which uv >/dev/null 2>&1; then
+  echo "==> Running VM harness unit and lint checks"
+  MISE_CONFIG_FILE="$mise_config" mise exec -- \
+    uv lock --check --project tests/vm
+  MISE_CONFIG_FILE="$mise_config" mise exec -- \
+    uv run --locked --project tests/vm pytest
+  MISE_CONFIG_FILE="$mise_config" mise exec -- \
+    uv run --locked --project tests/vm ruff check tests/vm/src tests/vm/unit
+else
+  echo "==> Skipping VM harness checks: the managed uv runtime is not installed"
 fi
 
 if [[ -d .git ]]; then

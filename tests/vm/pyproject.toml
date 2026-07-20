@@ -1,0 +1,38 @@
+[project]
+name = "enoshima-vm"
+version = "0.1.0"
+description = "Disposable libvirt test runner for Enoshima"
+requires-python = ">=3.11"
+dependencies = [
+  "jinja2>=3.1,<4",
+  "mcp>=1.27,<2",
+  "pyyaml>=6.0,<7",
+]
+
+[project.scripts]
+enoshima-vm = "enoshima_vm.cli:main"
+enoshima-vm-mcp = "enoshima_vm.mcp_server:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<10",
+  "ruff>=0.12,<1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/enoshima_vm"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["unit"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

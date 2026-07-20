@@ -1,0 +1,24 @@
+---
+schema: 1
+images:
+  arch-cloud-reproducible:
+    release: "2026-07-15"
+    variant: cloudimg
+    url: >-
+      https://geo.mirror.pkgbuild.com/images/v20260715.556894/Arch-Linux-x86_64-cloudimg-20260715.556894.qcow2
+    sha256: f419d4e29aebfc017ad4c9de330a3be0d7eefba710b269108b116aaca1122926
+    signature_url: >-
+      https://geo.mirror.pkgbuild.com/images/v20260715.556894/Arch-Linux-x86_64-cloudimg-20260715.556894.qcow2.sig
+    signature: required
+    keyring: /usr/share/pacman/keyrings/archlinux.gpg
+  arch-cloud-latest:
+    release: rolling
+    variant: cloudimg
+    url: >-
+      https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
+    checksum_url: >-
+      https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2.SHA256
+    signature_url: >-
+      https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2.sig
+    signature: required
+    keyring: /usr/share/pacman/keyrings/archlinux.gpg

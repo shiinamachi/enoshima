@@ -4,6 +4,10 @@ local/
 *.retry
 .ansible/
 work/
+tests/vm/.venv/
+tests/vm/.pytest_cache/
+tests/vm/.ruff_cache/
+tests/vm/**/__pycache__/
 
 # Secrets and credentials are intentionally outside this repository.
 .env
