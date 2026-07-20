@@ -163,6 +163,11 @@ ShellRoot {
         }
     }
 
+    function tr(key) {
+        const value = translations?.[key];
+        return value !== undefined && String(value) !== "" ? String(value) : key;
+    }
+
     function parseSnapState(text, clock) {
         void clock;
         try {
@@ -617,7 +622,7 @@ ShellRoot {
 
     function windowTitle(window) {
         const title = String(window.title || "").trim();
-        return title || windowClass(window) || "Window";
+        return title || windowClass(window) || tr("dock.window");
     }
 
     Process {
@@ -832,52 +837,52 @@ ShellRoot {
                         return [];
 
                     if (app.systemControl)
-                        return [{"id": "launch", "label": "Open Applications"}];
+                        return [{"id": "launch", "label": root.tr("dock.openApplications")}];
 
                     const actions = [];
                     if (app.command && app.command.length > 0) {
                         actions.push({
                             "id": "launch",
                             "label": app.windows && app.windows.length > 0
-                                ? "New Window"
-                                : "Open"
+                                ? root.tr("dock.newWindow")
+                                : root.tr("dock.open")
                         });
                     }
                     if (app.windows && app.windows.length > 0) {
                         actions.push({
                             "id": "show",
-                            "label": app.windows.length > 1 ? "Show Windows…" : "Show Window"
+                            "label": app.windows.length > 1 ? root.tr("dock.showWindows") : root.tr("dock.showWindow")
                         });
                         if (app.windows.some(window =>
                                 /^(kakaotalk(\.exe)?|kakao.*)$/i.test(
                                     root.windowClass(window)))) {
                             actions.push({
                                 "id": "repair-kakao-focus",
-                                "label": "입력 포커스 복구"
+                                "label": root.tr("dock.repairInputFocus")
                             });
                         }
                         if (app.windows.some(window => !window.minimized)) {
                             actions.push({
                                 "id": "minimize",
-                                "label": app.windows.length > 1 ? "Minimize All" : "Minimize"
+                                "label": app.windows.length > 1 ? root.tr("dock.minimizeAll") : root.tr("dock.minimize")
                             });
                         }
                         actions.push({
                             "id": "close",
-                            "label": app.windows.length > 1 ? "Close All Windows" : "Close Window",
+                            "label": app.windows.length > 1 ? root.tr("dock.closeAllWindows") : root.tr("dock.closeWindow"),
                             "destructive": true
                         });
                     }
 
                     const pinIndex = root.pinPosition(app.desktopId);
                     if (pinIndex >= 0) {
-                        actions.push({"id": "unpin", "label": "Unpin from Dock"});
+                        actions.push({"id": "unpin", "label": root.tr("dock.unpin")});
                         if (pinIndex > 0)
-                            actions.push({"id": "move-left", "label": "Move Left"});
+                            actions.push({"id": "move-left", "label": root.tr("dock.moveLeft")});
                         if (pinIndex < root.pinIds.length - 1)
-                            actions.push({"id": "move-right", "label": "Move Right"});
+                            actions.push({"id": "move-right", "label": root.tr("dock.moveRight")});
                     } else if (app.desktopId) {
-                        actions.push({"id": "pin", "label": "Pin to Dock"});
+                        actions.push({"id": "pin", "label": root.tr("dock.pin")});
                     }
                     return actions;
                 }
@@ -1125,16 +1130,16 @@ ShellRoot {
                                     Accessible.role: Accessible.Button
                                     Accessible.name: app.name
                                     Accessible.description: appItem.allMinimized
-                                        ? "모든 창이 최소화됨, 선택하면 복원"
+                                        ? root.tr("dock.allMinimized")
                                         : (appItem.someMinimized
-                                            ? `${appItem.minimizedCount}개 창 최소화됨`
+                                            ? root.tr("dock.someMinimized").replace("%1", appItem.minimizedCount)
                                             : (appItem.active
-                                        ? "현재 활성화된 애플리케이션"
+                                        ? root.tr("dock.active")
                                         : (appItem.app.unavailable
-                                            ? "현재 설치되어 있지 않은 고정 애플리케이션"
+                                            ? root.tr("dock.unavailable")
                                             : (appItem.running
-                                                ? "실행 중인 애플리케이션"
-                                                : "애플리케이션 열기"))))
+                                                ? root.tr("dock.running")
+                                                : root.tr("dock.openApplication")))))
                                     Accessible.pressed: appMouse.pressed
                                     Accessible.onPressAction:
                                         dockWindow.performPrimaryAction(appItem.app)
@@ -1567,7 +1572,7 @@ ShellRoot {
                                 anchors.verticalCenter: parent.verticalCenter
                                 anchors.rightMargin: 10
                                 text: modelData.minimized
-                                    ? "MINIMIZED"
+                                    ? root.tr("dock.minimizedState")
                                     : String(modelData.workspace && modelData.workspace.name || "")
                                 color: modelData.minimized
                                     ? root.theme.colorAccent
@@ -1664,7 +1669,7 @@ ShellRoot {
             displayStatus: root.displayStatus
             theme: root.theme
             reducedMotion: root.reducedMotion
-            strings: root.i18nStrings
+            strings: root.translations
             onCloseRequested: root.displayOverlayOpen = false
         }
     }

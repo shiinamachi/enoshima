@@ -235,13 +235,72 @@ PanelWindow {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.leftMargin: 28
-            anchors.rightMargin: 28
+            anchors.rightMargin: confirmation.visible ? 28 : 190
             anchors.topMargin: 24
             text: confirmation.visible ? overlay.tr("display.keepHeading") : overlay.tr("display.heading")
             color: overlay.theme.colorText
             font.family: "Pretendard"
             font.pixelSize: 22
             font.bold: true
+        }
+
+        Rectangle {
+            id: topologyPreview
+            visible: !confirmation.visible
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.rightMargin: 24
+            anchors.topMargin: 18
+            width: 150
+            height: 54
+            radius: overlay.theme.radiusSmall
+            color: overlay.theme.colorSurfaceSubtle
+            border.width: 1
+            border.color: overlay.theme.colorQuietBorder
+
+            Item {
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                width: 58
+                height: 32
+                Rectangle {
+                    x: 0
+                    y: 9
+                    width: 25
+                    height: 17
+                    radius: 2
+                    color: "transparent"
+                    border.width: 1
+                    border.color: overlay.theme.colorText
+                    opacity: overlay.choices[overlay.selectedIndex].id === "external" ? 0.35 : 1
+                }
+                Rectangle {
+                    x: overlay.choices[overlay.selectedIndex].id === "mirror" ? 20 : 31
+                    y: overlay.choices[overlay.selectedIndex].id === "mirror" ? 4 : 6
+                    width: 27
+                    height: 20
+                    radius: 2
+                    color: "transparent"
+                    border.width: 1
+                    border.color: overlay.theme.colorText
+                    opacity: overlay.choices[overlay.selectedIndex].id === "internal" ? 0.35 : 1
+                }
+            }
+
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 74
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                text: overlay.choices[overlay.selectedIndex].label
+                color: overlay.theme.colorTextMuted
+                font.family: "Pretendard"
+                font.pixelSize: 10
+                font.bold: true
+                elide: Text.ElideRight
+            }
         }
 
         Text {
@@ -281,7 +340,7 @@ PanelWindow {
                     required property var modelData
                     required property int index
                     readonly property bool available: overlay.choiceAvailable(index)
-                    width: Math.floor((choiceGrid.width - choiceGrid.columnSpacing) / 2)
+                    width: 280
                     height: 100
                     radius: overlay.theme.radiusControl
                     color: !available

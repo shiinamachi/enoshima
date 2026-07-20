@@ -112,6 +112,8 @@ surfaces:
   cyberdock-window-state:
     implementation:
       - home/dot_config/quickshell/cyberdock/shell.qml
+      - home/dot_config/enoshima/i18n/en-US.json
+      - home/dot_config/enoshima/i18n/ko-KR.json
     token_mode: source
     concept:
       status: approved
