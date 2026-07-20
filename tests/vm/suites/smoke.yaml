@@ -27,11 +27,13 @@ steps:
 allowed_skips: &vm_skips
   - battery-charge-threshold
   - boot-artifacts
+  - btrfs-layout
   - camera-device
   - external-display
   - fingerprint-device
   - fingerprint-enrollment
   - hibernation
+  - root-luks
   - secure-boot
   - thunderbolt-controller
   - tpm-unlock

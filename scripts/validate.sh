@@ -439,6 +439,8 @@ for test_script in \
   tests/test-power-policy.sh \
   tests/test-transactional-uki.sh \
   tests/test-ui-evidence-gate.sh \
+  tests/test-vm-boot-security.sh \
+  tests/test-vm-profile.sh \
   tests/test-wwan-shutdown.sh \
   tests/test-desktop-window-action.sh \
   tests/test-enoshima-snap-controller.sh \

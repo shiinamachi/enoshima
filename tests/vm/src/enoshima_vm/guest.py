@@ -229,6 +229,49 @@ class Guest:
                 {"error": str(error)},
             ) from error
 
+    def upload_file(
+        self,
+        local: Path,
+        remote: PurePosixPath,
+        *,
+        mode: int = 0o600,
+    ) -> None:
+        if not local.is_file():
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"local upload source is unavailable: {local}",
+            )
+        parent = remote.parent
+        self.exec(["install", "-d", "-m", "0700", str(parent)])
+        argv = [
+            "scp",
+            "-i",
+            str(self.private_key),
+            "-P",
+            str(self.port),
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "IdentitiesOnly=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "LogLevel=ERROR",
+            str(local),
+            f"{self.user}@127.0.0.1:{remote}",
+        ]
+        try:
+            run(argv, timeout=120)
+            self.exec(["chmod", f"{mode:o}", str(remote)])
+        except Exception as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"cannot upload guest file: {remote}",
+                {"error": str(error)},
+            ) from error
+
 
 def source_identity_json(identity: SourceIdentity) -> dict[str, object]:
     return {

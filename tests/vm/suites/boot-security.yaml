@@ -1,9 +1,9 @@
 ---
-name: desktop
+name: boot-security
 base_image: arch-cloud-reproducible
-domain_template: domain-desktop.xml.j2
-profile: enoshima-vm
-timeout_minutes: 300
+domain_template: domain-secure-boot.xml.j2
+profile: enoshima-vm-boot
+timeout_minutes: 360
 resources:
   vcpus: 6
   memory_mib: 12288
@@ -17,32 +17,35 @@ steps:
   - wait_for_cloud_init
   - wait_for_guest_agent
   - upload_worktree
+  - prepare_boot_disk
+  - boot_with_recovery
+  - upload_worktree
+  - create_runtime_inventory
+  - assert_secure_boot
+  - enroll_tpm
+  - reboot
   - run_validate
   - run_bootstrap:
       report: first
-  - reboot
-  - start_desktop
-  - send_key:
-      keys: [KEY_LEFTMETA, KEY_ENTER]
-  - query_desktop
-  - screenshot:
-      name: desktop
+      inventory: runtime
+      apply_boot_artifacts: true
   - run_postflight:
-      report: desktop
+      report: boot-security
+      inventory: runtime
   - assert_expected_skips
+  - assert_secure_boot
+  - test_recovery_path
+  - reboot
+  - assert_secure_boot
+  - test_unsigned_rejection
+  - collect_boot_security
   - collect_artifacts
 allowed_skips:
   - battery-charge-threshold
-  - boot-artifacts
-  - btrfs-layout
   - camera-device
   - external-display
   - fingerprint-device
   - fingerprint-enrollment
-  - hibernation
-  - root-luks
-  - secure-boot
   - thunderbolt-controller
-  - tpm-unlock
   - wwan-modem
 fail_on_unexpected_skip: true

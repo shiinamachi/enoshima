@@ -16,6 +16,9 @@
 - name: Rebuild boot artifacts
   ansible.builtin.command:
     cmd: /usr/local/libexec/enoshima-rebuild-uki
+  environment:
+    ENOSHIMA_UKI_SECURE_BOOT_SIGNING: >-
+      {{ 'true' if (secure_boot_sign_uki | bool) else 'false' }}
   when:
     - manage_boot_config | bool
     - apply_boot_artifacts | bool

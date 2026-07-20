@@ -8,7 +8,8 @@ MISE_CONFIG_FILE := $(CURDIR)/home/dot_config/mise/config.toml
 export ANSIBLE_CONFIG
 
 .PHONY: audit validate postflight chezmoi-diff ansible-check apply bootstrap \
-	vm-preflight vm-smoke vm-converge vm-reboot vm-desktop vm-full vm-clean vm-unit
+	vm-preflight vm-smoke vm-converge vm-reboot vm-desktop vm-boot-security \
+	vm-full vm-clean vm-unit
 
 audit:
 	./scripts/capture-state.sh "$(PROFILE)"
@@ -55,7 +56,11 @@ vm-desktop:
 	MISE_CONFIG_FILE="$(MISE_CONFIG_FILE)" mise exec -- \
 		uv run --locked --project tests/vm enoshima-vm run desktop
 
-vm-full: vm-converge vm-desktop
+vm-boot-security:
+	MISE_CONFIG_FILE="$(MISE_CONFIG_FILE)" mise exec -- \
+		uv run --locked --project tests/vm enoshima-vm run boot-security
+
+vm-full: vm-converge vm-desktop vm-boot-security
 
 vm-clean:
 	MISE_CONFIG_FILE="$(MISE_CONFIG_FILE)" mise exec -- \

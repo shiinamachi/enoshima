@@ -22,6 +22,7 @@ class DomainSpec:
     seed: Path
     ssh_host_port: int
     xml: Path
+    boot_disk: Path | None = None
 
 
 def allocate_loopback_port() -> int:
@@ -60,6 +61,8 @@ class LibvirtBackend:
 
     def preflight(self, suite: Suite) -> dict[str, object]:
         required = ["virsh", "qemu-img", "ssh", "scp", "ssh-keygen", "tar", "gpgv"]
+        if suite.domain_template == "domain-secure-boot.xml.j2":
+            required.append("swtpm")
         missing = [command for command in required if not shutil.which(command)]
         if not shutil.which("cloud-localds") and not shutil.which("xorriso"):
             missing.append("cloud-localds|xorriso")
@@ -113,6 +116,12 @@ class LibvirtBackend:
             )
         domain = require_domain(f"{DOMAIN_PREFIX}{run_id}")
         overlay = run_dir / "root.qcow2"
+        boot_disk: Path | None = None
+        overlay_gib = (
+            16
+            if suite.domain_template == "domain-secure-boot.xml.j2"
+            else suite.resources.disk_gib
+        )
         try:
             run(
                 [
@@ -129,9 +138,22 @@ class LibvirtBackend:
                 timeout=60,
             )
             run(
-                ["qemu-img", "resize", overlay, f"{suite.resources.disk_gib}G"],
+                ["qemu-img", "resize", overlay, f"{overlay_gib}G"],
                 timeout=60,
             )
+            if suite.domain_template == "domain-secure-boot.xml.j2":
+                boot_disk = run_dir / "boot.qcow2"
+                run(
+                    [
+                        "qemu-img",
+                        "create",
+                        "-f",
+                        "qcow2",
+                        boot_disk,
+                        f"{suite.resources.disk_gib}G",
+                    ],
+                    timeout=60,
+                )
         except Exception as error:
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
@@ -151,11 +173,14 @@ class LibvirtBackend:
                 seed=seed,
                 ssh_host_port=ssh_host_port,
                 run_dir=run_dir,
+                boot_disk=boot_disk,
             ),
             encoding="utf-8",
         )
         xml_path.chmod(0o600)
-        return DomainSpec(run_id, domain, overlay, seed, ssh_host_port, xml_path)
+        return DomainSpec(
+            run_id, domain, overlay, seed, ssh_host_port, xml_path, boot_disk
+        )
 
     def define_and_start(self, spec: DomainSpec) -> None:
         try:
@@ -213,7 +238,58 @@ class LibvirtBackend:
         require_domain(domain)
         if self.state(domain) not in {"undefined", "shut off", "shutoff"}:
             self.virsh(["destroy", domain], timeout=30, check=False)
-        self.virsh(["undefine", domain, "--nvram"], timeout=30, check=False)
+        result = self.virsh(
+            ["undefine", domain, "--nvram", "--tpm"], timeout=30, check=False
+        )
+        if result.returncode:
+            self.virsh(["undefine", domain, "--nvram"], timeout=30, check=False)
+
+    def force_stop(self, domain: str) -> None:
+        require_domain(domain)
+        self.virsh(["destroy", domain], timeout=30, check=False)
+
+    def start(self, domain: str) -> None:
+        require_domain(domain)
+        self.virsh(["start", domain], timeout=60)
+
+    def detach_disk(self, domain: str, target: str) -> None:
+        require_domain(domain)
+        if target not in {"vda", "vdb"}:
+            raise ValueError(f"refusing unexpected disk target: {target}")
+        self.virsh(["detach-disk", domain, target, "--config"], timeout=60)
+
+    def attach_disk(self, domain: str, disk: Path, target: str) -> None:
+        require_domain(domain)
+        if target not in {"vda", "vdb"}:
+            raise ValueError(f"refusing unexpected disk target: {target}")
+        self.virsh(
+            [
+                "attach-disk",
+                domain,
+                disk,
+                target,
+                "--driver",
+                "qemu",
+                "--subdriver",
+                "qcow2",
+                "--targetbus",
+                "virtio",
+                "--config",
+            ],
+            timeout=60,
+        )
+
+    def type_text(self, domain: str, value: str) -> None:
+        require_domain(domain)
+        for character in value:
+            if "a" <= character <= "z":
+                key = f"KEY_{character.upper()}"
+            elif "0" <= character <= "9":
+                key = f"KEY_{character}"
+            else:
+                raise ValueError("recovery input contains an unsupported character")
+            self.send_keys(domain, [key])
+        self.send_keys(domain, ["KEY_ENTER"])
 
 
 def os_access(path: Path) -> bool:

@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shutil
+import subprocess
+import sys
 import time
 import uuid
 from collections.abc import Sequence
@@ -13,6 +16,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .artifacts import collect_fixed_artifacts
+from .boot_security import (
+    assert_secure_boot,
+    boot_with_recovery,
+    collect_boot_security,
+    create_runtime_inventory,
+    enroll_tpm,
+    prepare_boot_disk,
+    test_recovery_path,
+    test_unsigned_rejection,
+)
 from .cloud_init import CloudInitBuilder
 from .config import (
     DOMAIN_PREFIX,
@@ -162,6 +175,13 @@ class VMService:
             "artifact_dir": str(run_dir / "artifacts"),
             "source_ref": source_ref,
         }
+        if suite.name == "boot-security":
+            secret_dir = run_dir / "secrets"
+            secret_dir.mkdir(mode=0o700)
+            recovery_key = secret_dir / "luks-recovery.key"
+            recovery_key.write_text(secrets.token_hex(32) + "\n", encoding="utf-8")
+            recovery_key.chmod(0o600)
+            record["recovery_key"] = str(recovery_key)
         self._write_record(record)
         try:
             base_image = self.images.ensure(definition)
@@ -180,9 +200,27 @@ class VMService:
                     "domain_xml": str(spec.xml),
                 }
             )
+            if spec.boot_disk:
+                record["boot_disk"] = str(spec.boot_disk)
             self.backend.define_and_start(spec)
             record["status"] = "running"
             record["updated_at"] = utc_now()
+            watchdog = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "enoshima_vm.watchdog",
+                    run_id,
+                    str(suite.timeout_minutes * 60),
+                    self.uri,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            record["watchdog_pid"] = watchdog.pid
+            record["maximum_duration_minutes"] = suite.timeout_minutes
             self._write_record(record)
             self._audit("vm_create", run_id=run_id)
             return record
@@ -197,6 +235,7 @@ class VMService:
             record["updated_at"] = utc_now()
             self._write_record(record)
             self.backend.destroy(record["domain"])
+            self._remove_ephemeral(record)
             self._audit("vm_create", run_id=run_id, result="failed")
             raise
 
@@ -310,11 +349,22 @@ class VMService:
             )
         suite = load_suite(record["suite"], self.paths)
         remote_report = REMOTE_ARTIFACTS / f"bootstrap-{report}"
+        inventory = f"{REMOTE_SOURCE}/ansible/inventory/hosts.yml"
+        if values.get("inventory") == "runtime":
+            inventory = str(record.get("observations", {}).get("runtime_inventory", ""))
+            if not inventory:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "runtime inventory has not been generated",
+                )
+        apply_boot_artifacts = (
+            " --apply-boot-artifacts" if values.get("apply_boot_artifacts") else ""
+        )
         command = (
             f"cd {REMOTE_SOURCE} && ./bootstrap.sh --profile {suite.profile} "
-            f"--inventory {REMOTE_SOURCE}/ansible/inventory/hosts.yml "
+            f"--inventory {inventory} "
             f"--conflict-policy backup --report-dir {remote_report} "
-            "--report-format json"
+            f"--report-format json{apply_boot_artifacts}"
         )
         self._run_checked(
             record,
@@ -342,9 +392,17 @@ class VMService:
             )
         suite = load_suite(record["suite"], self.paths)
         destination = REMOTE_ARTIFACTS / f"postflight-{report}.json"
+        inventory = f"{REMOTE_SOURCE}/ansible/inventory/hosts.yml"
+        if values.get("inventory") == "runtime":
+            inventory = str(record.get("observations", {}).get("runtime_inventory", ""))
+            if not inventory:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "runtime inventory has not been generated",
+                )
         command = (
             f"cd {REMOTE_SOURCE} && scripts/postflight.sh --profile {suite.profile} "
-            f"--inventory {REMOTE_SOURCE}/ansible/inventory/hosts.yml "
+            f"--inventory {inventory} "
             f"--format json --output {destination}"
         )
         self._run_checked(
@@ -575,31 +633,41 @@ class VMService:
 
     def destroy(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
-        run_dir = self._run_dir(run_id)
         self.backend.destroy(record["domain"])
-        removed: list[str] = []
-        for key in ("overlay", "seed"):
-            value = record.get(key)
-            if not value:
-                continue
-            target = confined_path(run_dir, Path(value))
-            if target.exists():
-                target.unlink()
-                removed.append(str(target))
-        for name in ("ssh", "cloud-init", "swtpm"):
-            target = confined_path(run_dir, run_dir / name)
-            if target.exists():
-                shutil.rmtree(target)
-                removed.append(str(target))
+        removed = self._remove_ephemeral(record)
         record["status"] = (
             "completed" if record.get("result") == "passed" else "destroyed"
         )
         record["destroyed_at"] = utc_now()
         record["updated_at"] = utc_now()
         record.pop("private_key", None)
+        record.pop("recovery_key", None)
         self._write_record(record)
         self._audit("vm_destroy", run_id=run_id)
         return {"run_id": run_id, "removed": removed, "recoverable": False}
+
+    def _remove_ephemeral(self, record: dict[str, Any]) -> list[str]:
+        run_dir = self._run_dir(record["run_id"])
+        removed: list[str] = []
+        file_targets = {
+            run_dir / "root.qcow2",
+            run_dir / "boot.qcow2",
+            run_dir / "seed.iso",
+        }
+        for key in ("overlay", "boot_disk", "seed"):
+            if record.get(key):
+                file_targets.add(Path(record[key]))
+        for value in file_targets:
+            target = confined_path(run_dir, value)
+            if target.exists():
+                target.unlink()
+                removed.append(str(target))
+        for name in ("ssh", "cloud-init", "secrets", "swtpm"):
+            target = confined_path(run_dir, run_dir / name)
+            if target.exists():
+                shutil.rmtree(target)
+                removed.append(str(target))
+        return removed
 
     def list_runs(self) -> list[dict[str, object]]:
         if not self.runs_root.exists():
@@ -665,6 +733,22 @@ class VMService:
             self.screenshot(record["run_id"], str(values.get("name", "desktop")))
         elif action == "collect_artifacts":
             self.collect(record["run_id"])
+        elif action == "prepare_boot_disk":
+            prepare_boot_disk(self, record)
+        elif action == "boot_with_recovery":
+            boot_with_recovery(self, record)
+        elif action == "create_runtime_inventory":
+            create_runtime_inventory(self, record)
+        elif action == "assert_secure_boot":
+            assert_secure_boot(self, record)
+        elif action == "enroll_tpm":
+            enroll_tpm(self, record)
+        elif action == "test_recovery_path":
+            test_recovery_path(self, record)
+        elif action == "test_unsigned_rejection":
+            test_unsigned_rejection(self, record)
+        elif action == "collect_boot_security":
+            collect_boot_security(self, record)
         else:
             raise VMError(
                 FailureCategory.HARNESS_ERROR, f"unknown suite step: {action}"

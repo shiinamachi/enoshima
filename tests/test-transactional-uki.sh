@@ -50,6 +50,46 @@ grep -Fq 'sync -f "${destination%/*}"' "$helper"
 grep -Fq 'rollback UKI verification failed' "$helper"
 grep -Fq 'installed UKI verification failed' "$helper"
 
+cat >"$work/sbsign" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+while (($# > 0)); do
+  case $1 in
+    --key | --cert) shift 2 ;;
+    --output) output=$2; shift 2 ;;
+    *) input=$1; shift ;;
+  esac
+done
+printf 'signed\n' >"$output"
+cat "$input" >>"$output"
+EOF
+cat >"$work/sbverify" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $1 == --cert && -s $2 ]]
+grep -Fq signed "$3"
+EOF
+chmod 0700 "$work/sbsign" "$work/sbverify"
+install -d "$work/keys"
+printf 'test key\n' >"$work/keys/db.key"
+printf 'test certificate\n' >"$work/keys/db.pem"
+
+ENOSHIMA_UKI_ALLOW_UNPRIVILEGED=true \
+  ENOSHIMA_UKI_PRESET_DIR=$work/presets \
+  ENOSHIMA_UKI_MKINITCPIO=$work/mkinitcpio \
+  ENOSHIMA_UKI_OBJCOPY=$work/objcopy \
+  ENOSHIMA_UKI_CMDLINE_FILE=$work/cmdline \
+  ENOSHIMA_UKI_OUTPUT_ROOT=$work/esp \
+  ENOSHIMA_UKI_TEMP_DIR=$work \
+  ENOSHIMA_UKI_SECURE_BOOT_SIGNING=true \
+  ENOSHIMA_UKI_SBSIGN=$work/sbsign \
+  ENOSHIMA_UKI_SBVERIFY=$work/sbverify \
+  ENOSHIMA_UKI_SECURE_BOOT_KEY=$work/keys/db.key \
+  ENOSHIMA_UKI_SECURE_BOOT_CERTIFICATE=$work/keys/db.pem \
+  bash "$helper"
+
+grep -Fq signed "$work/esp/arch-linux.efi"
+
 # A failed candidate validation must preserve both bootable generations.
 printf 'known-good\n' >"$work/esp/arch-linux.efi"
 printf 'known-previous\n' >"$work/esp/arch-linux-previous.efi"

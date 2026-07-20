@@ -50,6 +50,12 @@ def vm_create(suite: str = "smoke", source_ref: str = "working-tree") -> dict[st
     return service().create(suite, source_ref=source_ref)
 
 
+@mcp.tool(annotations=WRITE)
+def vm_run_suite(suite: str = "smoke", keep_on_failure: bool = False) -> dict[str, Any]:
+    """Run a complete declarative suite from a fresh overlay and clean it up."""
+    return service().run_suite(suite, keep_on_failure=keep_on_failure)
+
+
 @mcp.tool(annotations=READ_ONLY)
 def vm_status(run_id: str) -> dict[str, Any]:
     """Return the persisted run metadata and current managed-domain state."""

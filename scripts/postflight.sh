@@ -577,15 +577,57 @@ if ! capability external_display; then
   skip "physical external-display checks" \
     "capability external_display=false" "external-display"
 fi
-if ! capability boot_artifacts; then
+if capability btrfs_layout; then
+  # The command substitution must inspect the live mount in the child shell.
+  # shellcheck disable=SC2016
+  check "root filesystem uses the managed Btrfs layout" bash -c \
+    '[[ $(findmnt -n -o FSTYPE /) == btrfs ]] && findmnt -n -o OPTIONS / | grep -Fq subvol=/@'
+else
+  skip "managed Btrfs root-layout checks" \
+    "capability btrfs_layout=false" "btrfs-layout"
+fi
+if capability root_luks; then
+  # The wildcard applies to findmnt output inside the child shell.
+  # shellcheck disable=SC2016
+  check "root filesystem is backed by the managed LUKS mapping" bash -c \
+    '[[ $(findmnt -n -o SOURCE /) == /dev/mapper/cryptroot* ]]'
+else
+  skip "root LUKS mapping checks" \
+    "capability root_luks=false" "root-luks"
+fi
+if capability boot_artifacts; then
+  check "transactional UKI rebuild helper is installed" \
+    test -x /usr/local/libexec/enoshima-rebuild-uki
+  check "managed boot artifacts were explicitly applied" \
+    test -f /var/lib/enoshima/boot-artifacts-applied
+  check "managed kernel command line is present" test -s /etc/kernel/cmdline
+  check "managed initramfs crypttab is present" test -s /etc/crypttab.initramfs
+  check "managed UKIs are present" bash -c \
+    'compgen -G "/efi/EFI/Linux/arch-*.efi" >/dev/null'
+else
   skip "managed boot artifact checks" \
     "capability boot_artifacts=false" "boot-artifacts"
 fi
-if ! capability secure_boot; then
+if capability secure_boot; then
+  # The EFI variable glob and command substitution belong to the child shell.
+  # shellcheck disable=SC2016
+  check_or_warn "firmware reports Secure Boot enabled" bash -c \
+    '[[ $(od -An -j4 -N1 -tu1 /sys/firmware/efi/efivars/SecureBoot-* 2>/dev/null | tr -d " ") == 1 ]]'
+  # The image loop belongs to the child shell.
+  # shellcheck disable=SC2016
+  check_or_warn "managed UKIs carry a Secure Boot signature" bash -c \
+    'for image in /efi/EFI/Linux/arch-*.efi; do [[ $image == *-unsigned.efi ]] && continue; sbverify --list "$image" >/dev/null || exit 1; done'
+else
   skip "Secure Boot enforcement checks" \
     "capability secure_boot=false" "secure-boot"
 fi
-if ! capability tpm; then
+if capability tpm; then
+  check "TPM 2.0 resource manager is present" test -c /dev/tpmrm0
+  # Device discovery and expansion belong to the child shell.
+  # shellcheck disable=SC2016
+  check_or_warn "root LUKS volume has a TPM2 enrollment" bash -c \
+    'device=$(cryptsetup status cryptroot 2>/dev/null | sed -n "s/^[[:space:]]*device:[[:space:]]*//p"); [[ -n $device ]] && sudo -n systemd-cryptenroll "$device" | grep -Fq tpm2'
+else
   skip "TPM enrollment and unlock checks" \
     "capability tpm=false" "tpm-unlock"
 fi

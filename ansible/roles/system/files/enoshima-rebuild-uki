@@ -7,6 +7,11 @@ readonly objcopy_bin=${ENOSHIMA_UKI_OBJCOPY:-/usr/bin/objcopy}
 readonly cmdline_file=${ENOSHIMA_UKI_CMDLINE_FILE:-/etc/kernel/cmdline}
 readonly output_root=${ENOSHIMA_UKI_OUTPUT_ROOT:-/efi/EFI/Linux}
 readonly temp_root=${ENOSHIMA_UKI_TEMP_DIR:-/run}
+readonly secure_boot_signing=${ENOSHIMA_UKI_SECURE_BOOT_SIGNING:-false}
+readonly sbsign_bin=${ENOSHIMA_UKI_SBSIGN:-/usr/bin/sbsign}
+readonly sbverify_bin=${ENOSHIMA_UKI_SBVERIFY:-/usr/bin/sbverify}
+readonly secure_boot_key=${ENOSHIMA_UKI_SECURE_BOOT_KEY:-/var/lib/sbctl/keys/db/db.key}
+readonly secure_boot_certificate=${ENOSHIMA_UKI_SECURE_BOOT_CERTIFICATE:-/var/lib/sbctl/keys/db/db.pem}
 
 die() {
   printf 'enoshima-rebuild-uki: %s\n' "$*" >&2
@@ -23,6 +28,18 @@ normalize_cmdline() {
 [[ -r $cmdline_file && ! -L $cmdline_file ]] || die "invalid kernel command line: $cmdline_file"
 command -v "$mkinitcpio_bin" >/dev/null 2>&1 || die "mkinitcpio is unavailable: $mkinitcpio_bin"
 command -v "$objcopy_bin" >/dev/null 2>&1 || die "objcopy is unavailable: $objcopy_bin"
+case $secure_boot_signing in
+  true)
+    command -v "$sbsign_bin" >/dev/null 2>&1 || die "sbsign is unavailable: $sbsign_bin"
+    command -v "$sbverify_bin" >/dev/null 2>&1 || die "sbverify is unavailable: $sbverify_bin"
+    [[ -r $secure_boot_key && ! -L $secure_boot_key ]] ||
+      die "Secure Boot signing key is unavailable"
+    [[ -r $secure_boot_certificate && ! -L $secure_boot_certificate ]] ||
+      die "Secure Boot signing certificate is unavailable"
+    ;;
+  false) ;;
+  *) die 'ENOSHIMA_UKI_SECURE_BOOT_SIGNING must be true or false' ;;
+esac
 
 canonical_root=$(realpath -m -- "$output_root")
 expected_cmdline=$(normalize_cmdline <"$cmdline_file")
@@ -49,11 +66,17 @@ for preset in "${presets[@]}"; do
   candidate=${destination%/*}/.${name}.enoshima-new
   previous=${destination%/*}/${stem}-previous.efi
   previous_candidate=${destination%/*}/.${stem}-previous.enoshima-new
+  signed_candidate=${destination%/*}/.${name}.enoshima-signed
   temporary_preset=$(mktemp "$temp_root/enoshima-uki-preset.XXXXXX")
   cmdline_dump=$(mktemp "$temp_root/enoshima-uki-cmdline.XXXXXX")
 
   cleanup_iteration() {
-    rm -f -- "$temporary_preset" "$cmdline_dump" "$candidate" "$previous_candidate"
+    rm -f -- \
+      "$temporary_preset" \
+      "$cmdline_dump" \
+      "$candidate" \
+      "$previous_candidate" \
+      "$signed_candidate"
   }
   trap cleanup_iteration EXIT INT TERM
 
@@ -63,6 +86,18 @@ for preset in "${presets[@]}"; do
 
   "$mkinitcpio_bin" -p "$temporary_preset"
   [[ -s $candidate && ! -L $candidate ]] || die "candidate UKI was not created: $candidate"
+  if [[ $secure_boot_signing == true ]]; then
+    "$sbsign_bin" \
+      --key "$secure_boot_key" \
+      --cert "$secure_boot_certificate" \
+      --output "$signed_candidate" \
+      "$candidate"
+    [[ -s $signed_candidate && ! -L $signed_candidate ]] ||
+      die "signed UKI candidate was not created: $signed_candidate"
+    "$sbverify_bin" --cert "$secure_boot_certificate" "$signed_candidate" ||
+      die "signed UKI candidate verification failed: $signed_candidate"
+    mv -f -- "$signed_candidate" "$candidate"
+  fi
   "$objcopy_bin" --dump-section ".cmdline=$cmdline_dump" "$candidate" 2>/dev/null ||
     die "candidate UKI has no readable .cmdline section: $candidate"
   embedded_cmdline=$(tr -d '\0' <"$cmdline_dump" | normalize_cmdline)
