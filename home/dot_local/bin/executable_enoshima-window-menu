@@ -11,10 +11,26 @@ anchor_y=
 source=keyboard
 while (($# > 0)); do
   case $1 in
-    --address) (($# >= 2)) || exit 64; address=$2; shift 2 ;;
-    --anchor-x) (($# >= 2)) || exit 64; anchor_x=$2; shift 2 ;;
-    --anchor-y) (($# >= 2)) || exit 64; anchor_y=$2; shift 2 ;;
-    --source) (($# >= 2)) || exit 64; source=$2; shift 2 ;;
+    --address)
+      (($# >= 2)) || exit 64
+      address=$2
+      shift 2
+      ;;
+    --anchor-x)
+      (($# >= 2)) || exit 64
+      anchor_x=$2
+      shift 2
+      ;;
+    --anchor-y)
+      (($# >= 2)) || exit 64
+      anchor_y=$2
+      shift 2
+      ;;
+    --source)
+      (($# >= 2)) || exit 64
+      source=$2
+      shift 2
+      ;;
     *)
       # Preserve the original one-positional-argument interface for callers
       # upgraded independently from this helper.

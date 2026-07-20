@@ -36,9 +36,18 @@ if [[ ${1:-} == show ]]; then
   state=normal
   while (($#)); do
     case $1 in
-      --kind) kind=${2:-}; shift 2 ;;
-      --value) value=${2:-}; shift 2 ;;
-      --state) state=${2:-}; shift 2 ;;
+      --kind)
+        kind=${2:-}
+        shift 2
+        ;;
+      --value)
+        value=${2:-}
+        shift 2
+        ;;
+      --state)
+        state=${2:-}
+        shift 2
+        ;;
       *) usage ;;
     esac
   done

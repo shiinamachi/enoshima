@@ -236,9 +236,15 @@ measure_lid() {
 }
 
 report() {
-  [[ -d $state_dir ]] || { jq -n '{schema:1,runs:0,results:[]}'; return; }
+  [[ -d $state_dir ]] || {
+    jq -n '{schema:1,runs:0,results:[]}'
+    return
+  }
   local results=("$state_dir"/*/result.json)
-  [[ -e ${results[0]} ]] || { jq -n '{schema:1,runs:0,results:[]}'; return; }
+  [[ -e ${results[0]} ]] || {
+    jq -n '{schema:1,runs:0,results:[]}'
+    return
+  }
   jq -s '{
     schema: 1,
     runs: length,

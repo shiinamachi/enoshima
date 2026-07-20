@@ -38,7 +38,7 @@ if command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     jq -r '.keyboards[] | select(.main == true) | .active_keymap' |
     head -n 1 || true)
   case $keymap in
-    *Korean*|*Hangul*|*한국*) layout='한' ;;
+    *Korean* | *Hangul* | *한국*) layout='한' ;;
     '') ;;
     *) layout='EN' ;;
   esac

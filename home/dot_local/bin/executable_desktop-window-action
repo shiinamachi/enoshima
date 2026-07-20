@@ -119,10 +119,26 @@ parse_geometry_delta() {
   origin=titlebar
   while (($# > 0)); do
     case $1 in
-      --address) (($# >= 2)) || usage; address=$2; shift 2 ;;
-      --x) (($# >= 2)) || usage; delta_x=$2; shift 2 ;;
-      --y) (($# >= 2)) || usage; delta_y=$2; shift 2 ;;
-      --origin) (($# >= 2)) || usage; origin=$2; shift 2 ;;
+      --address)
+        (($# >= 2)) || usage
+        address=$2
+        shift 2
+        ;;
+      --x)
+        (($# >= 2)) || usage
+        delta_x=$2
+        shift 2
+        ;;
+      --y)
+        (($# >= 2)) || usage
+        delta_y=$2
+        shift 2
+        ;;
+      --origin)
+        (($# >= 2)) || usage
+        origin=$2
+        shift 2
+        ;;
       *) usage ;;
     esac
   done
@@ -138,14 +154,46 @@ restore_geometry() {
   local fullscreen='' fullscreen_client=''
   while (($# > 0)); do
     case $1 in
-      --address) (($# >= 2)) || usage; address=$2; shift 2 ;;
-      --x) (($# >= 2)) || usage; x=$2; shift 2 ;;
-      --y) (($# >= 2)) || usage; y=$2; shift 2 ;;
-      --width) (($# >= 2)) || usage; width=$2; shift 2 ;;
-      --height) (($# >= 2)) || usage; height=$2; shift 2 ;;
-      --floating) (($# >= 2)) || usage; floating=$2; shift 2 ;;
-      --fullscreen) (($# >= 2)) || usage; fullscreen=$2; shift 2 ;;
-      --fullscreen-client) (($# >= 2)) || usage; fullscreen_client=$2; shift 2 ;;
+      --address)
+        (($# >= 2)) || usage
+        address=$2
+        shift 2
+        ;;
+      --x)
+        (($# >= 2)) || usage
+        x=$2
+        shift 2
+        ;;
+      --y)
+        (($# >= 2)) || usage
+        y=$2
+        shift 2
+        ;;
+      --width)
+        (($# >= 2)) || usage
+        width=$2
+        shift 2
+        ;;
+      --height)
+        (($# >= 2)) || usage
+        height=$2
+        shift 2
+        ;;
+      --floating)
+        (($# >= 2)) || usage
+        floating=$2
+        shift 2
+        ;;
+      --fullscreen)
+        (($# >= 2)) || usage
+        fullscreen=$2
+        shift 2
+        ;;
+      --fullscreen-client)
+        (($# >= 2)) || usage
+        fullscreen_client=$2
+        shift 2
+        ;;
       *) usage ;;
     esac
   done
