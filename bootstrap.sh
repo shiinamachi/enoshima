@@ -9,6 +9,9 @@ skip_local=${SKIP_LOCAL:-false}
 skip_aur=${SKIP_AUR:-false}
 skip_codex_desktop=${SKIP_CODEX_DESKTOP:-false}
 apply_boot_artifacts=${APPLY_BOOT_ARTIFACTS:-false}
+bootstrap_report_dir=${REPORT_DIR:-}
+bootstrap_report_format=${REPORT_FORMAT:-text}
+bootstrap_report_state_file=
 sudo_keepalive_pid=
 runtime_dir=
 dotfile_preflight_complete=false
@@ -43,13 +46,16 @@ Converge a new or existing Arch Linux installation to this repository.
 
 Options:
   --profile HOST                Select an Ansible inventory host.
+  --inventory PATH              Use an alternate Ansible inventory file or directory.
   --conflict-policy POLICY      User-file policy: backup, overwrite, keep, abort.
   --apply-boot-artifacts        Rebuild boot artifacts when managed boot files change.
+  --report-dir PATH             Write per-stage logs and a machine-readable summary.
+  --report-format text|json     Select the summary format (default: text).
   -h, --help                    Show this help.
 
 Environment equivalents:
-  PROFILE, CONFLICT_POLICY, APPLY_BOOT_ARTIFACTS, SKIP_LOCAL, SKIP_AUR,
-  SKIP_CODEX_DESKTOP
+  PROFILE, CONFLICT_POLICY, APPLY_BOOT_ARTIFACTS, REPORT_DIR, REPORT_FORMAT,
+  SKIP_LOCAL, SKIP_AUR, SKIP_CODEX_DESKTOP
 EOF
 }
 
@@ -254,6 +260,15 @@ apply_user_configuration() {
   echo "==> Cyberpunk Library session theme applied; SDDM selection remains acceptance-gated"
 }
 
+run_integrated_postflight() {
+  local -a args=(--profile "$profile" --inventory "$inventory")
+
+  if [[ -n $bootstrap_report_dir && $bootstrap_report_format == json ]]; then
+    args+=(--format json --output "$bootstrap_report_dir/postflight.json")
+  fi
+  "$repo_root/scripts/postflight.sh" "${args[@]}"
+}
+
 converge_hyprland_plugins_step() {
   refresh_sudo_credentials
   converge_hyprland_plugins
@@ -271,6 +286,10 @@ cleanup() {
     rm -rf -- "$runtime_dir"
   fi
 
+  if [[ -n $bootstrap_report_dir ]]; then
+    bootstrap_write_report aborted || true
+  fi
+
   exit "$status"
 }
 trap cleanup EXIT
@@ -282,6 +301,11 @@ while (($# > 0)); do
       profile=$2
       shift 2
       ;;
+    --inventory)
+      (($# >= 2)) || die "--inventory requires a value"
+      inventory=$2
+      shift 2
+      ;;
     --conflict-policy)
       (($# >= 2)) || die "--conflict-policy requires a value"
       conflict_policy=$2
@@ -290,6 +314,16 @@ while (($# > 0)); do
     --apply-boot-artifacts)
       apply_boot_artifacts=true
       shift
+      ;;
+    --report-dir)
+      (($# >= 2)) || die "--report-dir requires a value"
+      bootstrap_report_dir=$2
+      shift 2
+      ;;
+    --report-format)
+      (($# >= 2)) || die "--report-format requires a value"
+      bootstrap_report_format=$2
+      shift 2
       ;;
     -h | --help)
       usage
@@ -305,6 +339,17 @@ while (($# > 0)); do
       ;;
   esac
 done
+
+[[ -e $inventory ]] || die "inventory does not exist: $inventory"
+case $bootstrap_report_format in
+  text | json) ;;
+  *) die "invalid report format '$bootstrap_report_format' (use text or json)" ;;
+esac
+if [[ -n $bootstrap_report_dir ]]; then
+  install -d -m 0700 "$bootstrap_report_dir"
+  bootstrap_report_state_file=$bootstrap_report_dir/.bootstrap-steps.tsv
+  : >"$bootstrap_report_state_file"
+fi
 
 if [[ $EUID -eq 0 ]]; then
   die "run this command as the target desktop user, not root"
@@ -322,15 +367,20 @@ target_user_home=$(awk '$1 == "target_user_home:" { print $2; exit }' \
 [[ $HOME == "$target_user_home" ]] || die "HOME is '$HOME', but target_user_home is '$target_user_home'"
 
 mapfile -t inventory_profiles < <(
-  awk '
-    /^  hosts:[[:space:]]*$/ { in_hosts = 1; next }
-    in_hosts && /^[^[:space:]]/ { exit }
-    in_hosts && /^    [[:alnum:]_.-]+:[[:space:]]*$/ {
-      name = $1
-      sub(/:$/, "", name)
-      print name
-    }
-  ' "$inventory"
+  if command -v ansible-inventory >/dev/null 2>&1; then
+    ansible-inventory --inventory "$inventory" --list 2>/dev/null |
+      jq -r '._meta.hostvars | keys[]' 2>/dev/null
+  elif [[ -f $inventory ]]; then
+    awk '
+      /^  hosts:[[:space:]]*$/ { in_hosts = 1; next }
+      in_hosts && /^[^[:space:]]/ { exit }
+      in_hosts && /^    [[:alnum:]_.-]+:[[:space:]]*$/ {
+        name = $1
+        sub(/:$/, "", name)
+        print name
+      }
+    ' "$inventory"
+  fi
 )
 ((${#inventory_profiles[@]} > 0)) || die "no hosts were found in $inventory"
 
@@ -482,6 +532,6 @@ bootstrap_run_step \
   converge_hyprland_plugins_step
 bootstrap_run_step \
   "Running integrated postflight checks" \
-  "$repo_root/scripts/postflight.sh"
+  run_integrated_postflight
 
 bootstrap_finish

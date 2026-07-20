@@ -2,21 +2,148 @@
 set -uo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+inventory=$repo_root/ansible/inventory/hosts.yml
+profile=${PROFILE:-}
+report_format=text
+report_output=
 failures=0
 warnings=0
+skips=0
+results_file=$(mktemp)
+report_stdout_fd=
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/postflight.sh [OPTIONS]
+
+Options:
+  --profile HOST            Read capabilities for an Ansible inventory host.
+  --inventory PATH          Use an alternate Ansible inventory file or directory.
+  --format text|json        Select output format (default: text).
+  --output PATH             Write the report to PATH instead of standard output.
+  -h, --help                Show this help.
+EOF
+}
+
+die() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 2
+}
+
+while (($# > 0)); do
+  case $1 in
+    --profile)
+      (($# >= 2)) || die '--profile requires a value'
+      profile=$2
+      shift 2
+      ;;
+    --inventory)
+      (($# >= 2)) || die '--inventory requires a value'
+      inventory=$2
+      shift 2
+      ;;
+    --format)
+      (($# >= 2)) || die '--format requires a value'
+      report_format=$2
+      shift 2
+      ;;
+    --output)
+      (($# >= 2)) || die '--output requires a value'
+      report_output=$2
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      rm -f -- "$results_file"
+      exit 0
+      ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+[[ -e $inventory ]] || die "inventory does not exist: $inventory"
+case $report_format in
+  text | json) ;;
+  *) die "invalid report format '$report_format' (use text or json)" ;;
+esac
+
+if [[ -z $profile ]]; then
+  profile=$(hostnamectl --static 2>/dev/null || hostname)
+fi
+
+inventory_host_json='{}'
+if command -v ansible-inventory >/dev/null 2>&1; then
+  inventory_host_json=$(ansible-inventory \
+    --inventory "$inventory" --host "$profile" 2>/dev/null) ||
+    die "profile '$profile' is not present in $inventory"
+fi
+
+cleanup() {
+  rm -f -- "$results_file" "$results_file.json"
+}
+trap cleanup EXIT
+
+if [[ $report_format == json && -z $report_output ]]; then
+  exec 3>&1
+  report_stdout_fd=3
+  exec 1>/dev/null
+fi
+
+check_id() {
+  LC_ALL=C sed -E \
+    -e 's/[^[:alnum:]]+/-/g' \
+    -e 's/^-+|-+$//g' \
+    -e 's/.*/\L&/' <<<"$1"
+}
+
+record_result() {
+  local status=$1 description=$2 reason=${3:-} id=${4:-}
+  [[ -n $id ]] || id=$(check_id "$description")
+  /usr/bin/python - "$id" "$status" "$description" "$reason" >>"$results_file" <<'PY'
+import json
+import sys
+
+print(json.dumps({
+    "id": sys.argv[1],
+    "status": sys.argv[2],
+    "description": sys.argv[3],
+    **({"reason": sys.argv[4]} if sys.argv[4] else {}),
+}, ensure_ascii=False))
+PY
+}
+
+capability() {
+  local name=$1 value
+  if ! command -v jq >/dev/null 2>&1; then
+    return 0
+  fi
+  value=$(jq -r --arg name "$name" \
+    '.enoshima_capabilities[$name] // true' <<<"$inventory_host_json")
+  [[ $value == true ]]
+}
 
 pass() {
   printf '[PASS] %s\n' "$1"
+  record_result pass "$1" '' "${2:-}"
 }
 
 fail() {
   printf '[FAIL] %s\n' "$1" >&2
   failures=$((failures + 1))
+  record_result fail "$1" '' "${2:-}"
 }
 
 warn() {
   printf '[WARN] %s\n' "$1" >&2
   warnings=$((warnings + 1))
+  record_result warn "$1" "${2:-}" "${3:-}"
+}
+
+skip() {
+  local description=$1 reason=$2 id=${3:-}
+  printf '[SKIP] %s (%s)\n' "$description" "$reason"
+  skips=$((skips + 1))
+  record_result skip "$description" "$reason" "$id"
 }
 
 check() {
@@ -225,25 +352,36 @@ check "multilib repository enabled" bash -c \
   "pacman-conf --repo-list | grep -Fxq multilib"
 
 echo "==> Power and sleep"
-for unit in tlp.service tlp-pd.service rtkit-daemon.service; do
-  check "$unit enabled" systemctl is-enabled --quiet "$unit"
-done
-check "tlp-pd active" systemctl is-active --quiet tlp-pd.service
-check "RealtimeKit active" systemctl is-active --quiet rtkit-daemon.service
-check "TLP reports an active profile" tlp-stat -s
-check "TLP profile compatibility API is available" tlpctl get
-check "s2idle is the selected suspend mode" bash -c \
-  "grep -q '\[s2idle\]' /sys/power/mem_sleep"
-check "no TLP charge threshold is configured" bash -c \
-  "! grep -RqsE '^[[:space:]]*(START|STOP)_CHARGE_THRESH_' /etc/tlp.conf /etc/tlp.d"
+if capability battery; then
+  for unit in tlp.service tlp-pd.service rtkit-daemon.service; do
+    check "$unit enabled" systemctl is-enabled --quiet "$unit"
+  done
+  check "tlp-pd active" systemctl is-active --quiet tlp-pd.service
+  check "RealtimeKit active" systemctl is-active --quiet rtkit-daemon.service
+  check "TLP reports an active profile" tlp-stat -s
+  check "TLP profile compatibility API is available" tlpctl get
+  check "s2idle is the selected suspend mode" bash -c \
+    "grep -q '\[s2idle\]' /sys/power/mem_sleep"
+  check "no TLP charge threshold is configured" bash -c \
+    "! grep -RqsE '^[[:space:]]*(START|STOP)_CHARGE_THRESH_' /etc/tlp.conf /etc/tlp.d"
+else
+  skip "battery and TLP policy checks" \
+    "capability battery=false" "battery-charge-threshold"
+  check "RealtimeKit active" systemctl is-active --quiet rtkit-daemon.service
+fi
 
 echo "==> Authentication and login"
-check_or_warn "fingerprint enrolled for the current user (manual enrollment if absent)" \
-  fprintd-list "${USER:-$(id -un)}"
-for pam_file in /etc/pam.d/greetd /etc/pam.d/sddm /etc/pam.d/sudo; do
-  check "$pam_file has fingerprint authentication" grep -q pam_fprintd.so "$pam_file"
-  check "$pam_file keeps password-first authentication" grep -q 'pam_unix.so.*try_first_pass.*likeauth' "$pam_file"
-done
+if capability fingerprint; then
+  check_or_warn "fingerprint enrolled for the current user (manual enrollment if absent)" \
+    fprintd-list "${USER:-$(id -un)}"
+  for pam_file in /etc/pam.d/greetd /etc/pam.d/sddm /etc/pam.d/sudo; do
+    check "$pam_file has fingerprint authentication" grep -q pam_fprintd.so "$pam_file"
+    check "$pam_file keeps password-first authentication" grep -q 'pam_unix.so.*try_first_pass.*likeauth' "$pam_file"
+  done
+else
+  skip "fingerprint enrollment and PAM checks" \
+    "capability fingerprint=false" "fingerprint-enrollment"
+fi
 check "greetd is the boot display manager" systemctl is-enabled --quiet greetd.service
 check "fallback SDDM is disabled" bash -c \
   '! systemctl is-enabled --quiet sddm.service'
@@ -354,58 +492,102 @@ for index in "${!runtime_names[@]}"; do
     MISE_CONFIG_FILE="$mise_config" mise which "${runtime_bins[$index]}"
 done
 
-echo "==> ThinkPad hardware integration"
-# The command substitution must inspect the live mount in the child shell.
-# shellcheck disable=SC2016
-check "dedicated hibernation swap subvolume is mounted" bash -c \
-  '[[ $(findmnt -n -o FSTYPE /swap) == btrfs ]] && findmnt -n -o OPTIONS /swap | grep -Fq subvol=/@swap'
-# The pipeline must inspect the live swap table in the child shell.
-# shellcheck disable=SC2016
-check "disk-backed hibernation swap is active" bash -c \
-  'swapon --show=NAME --noheadings --raw | grep -Fxq /swap/swapfile'
-check "kernel command line declares the Btrfs resume mapping" bash -c \
-  'grep -Eq "(^| )resume=UUID=[0-9a-f-]+ resume_offset=[1-9][0-9]*($| )" /etc/kernel/cmdline'
-check "systemd sleep policy enables suspend-then-hibernate" bash -c \
-  'systemd-analyze cat-config systemd/sleep.conf | grep -Fxq "AllowSuspendThenHibernate=yes"'
-check "systemd-logind owns the lid policy" bash -c \
-  'systemd-analyze cat-config systemd/logind.conf | grep -Fxq "HandleLidSwitch=suspend-then-hibernate"'
-check_or_warn "systemd-logind reports hibernation available after rebooting the rebuilt UKI" bash -c \
-  'busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanHibernate | grep -Eq "\\\"(yes|challenge)\\\""'
-check "NetworkManager active" systemctl is-active --quiet NetworkManager.service
-check "ModemManager active" systemctl is-active --quiet ModemManager.service
-check "Lenovo WWAN configuration service enabled" systemctl is-enabled --quiet lenovo-cfgservice.service
-check "Lenovo WWAN SAR configuration completed successfully" lenovo_sar_run_succeeded
-for regulatory_profile in 29619 30007; do
-  check "Gen 13 RM520N-GL SAR profile installed: $regulatory_profile" bash -c \
-    "compgen -G '/opt/fcc_lenovo/sar_config_files/cs25/*RM520NGL*ThinkPad-X1-Carbon-Gen-13*21NX*$regulatory_profile.bin' >/dev/null"
-done
-check_or_warn "at least one GSM connection profile exists (manual APN credentials if absent)" bash -c \
-  "nmcli -g TYPE connection show | grep -Fxq gsm"
-check "WWAN fallback dispatcher installed" test -x /etc/NetworkManager/dispatcher.d/90-wwan-fallback
-check "WWAN shutdown quiesce service enabled" \
-  systemctl is-enabled --quiet enoshima-wwan-quiesce.service
-check "WWAN shutdown helper installed" test -x /usr/local/libexec/enoshima-wwan-quiesce
-# The command substitution must run in the child shell used by the check.
-# shellcheck disable=SC2016
-check "ModemManager stop timeout is bounded" bash -c \
-  '[[ $(systemctl show ModemManager.service -P TimeoutStopUSec) == 15s ]]'
-check "RGB UVC camera present" grep -qs '^Integrated Camera: Integrated C' /sys/class/video4linux/*/name
-check "IR UVC camera present" grep -qs '^Integrated Camera: Integrated I' /sys/class/video4linux/*/name
-check "fingerprint reader present" bash -c \
-  "lsusb | grep -Fq '06cb:0123'"
-
-if journalctl -b -u lenovo-cfgservice.service --no-pager 2>/dev/null |
-  grep -Eqi '(No such file|SAR.*(fail|error)|failed to open.*\.bin)'; then
-  warn "Lenovo WWAN service journal still contains a SAR-file error"
+echo "==> Hardware integration"
+if capability hibernation; then
+  # The command substitution must inspect the live mount in the child shell.
+  # shellcheck disable=SC2016
+  check "dedicated hibernation swap subvolume is mounted" bash -c \
+    '[[ $(findmnt -n -o FSTYPE /swap) == btrfs ]] && findmnt -n -o OPTIONS /swap | grep -Fq subvol=/@swap'
+  # The pipeline must inspect the live swap table in the child shell.
+  # shellcheck disable=SC2016
+  check "disk-backed hibernation swap is active" bash -c \
+    'swapon --show=NAME --noheadings --raw | grep -Fxq /swap/swapfile'
+  check "kernel command line declares the Btrfs resume mapping" bash -c \
+    'grep -Eq "(^| )resume=UUID=[0-9a-f-]+ resume_offset=[1-9][0-9]*($| )" /etc/kernel/cmdline'
+  check "systemd sleep policy enables suspend-then-hibernate" bash -c \
+    'systemd-analyze cat-config systemd/sleep.conf | grep -Fxq "AllowSuspendThenHibernate=yes"'
+  check "systemd-logind owns the lid policy" bash -c \
+    'systemd-analyze cat-config systemd/logind.conf | grep -Fxq "HandleLidSwitch=suspend-then-hibernate"'
+  check_or_warn "systemd-logind reports hibernation available after rebooting the rebuilt UKI" bash -c \
+    'busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanHibernate | grep -Eq "\\\"(yes|challenge)\\\""'
 else
-  pass "Lenovo WWAN service journal has no known SAR-file error"
+  skip "Btrfs hibernation and resume checks" \
+    "capability hibernation=false" "hibernation"
 fi
 
-if mmcli -L -J 2>/dev/null |
-  jq -e '."modem-list" | length > 0' >/dev/null 2>&1; then
-  pass "ModemManager detects a modem"
+check "NetworkManager active" systemctl is-active --quiet NetworkManager.service
+if capability wwan; then
+  check "ModemManager active" systemctl is-active --quiet ModemManager.service
+  check "Lenovo WWAN configuration service enabled" systemctl is-enabled --quiet lenovo-cfgservice.service
+  check "Lenovo WWAN SAR configuration completed successfully" lenovo_sar_run_succeeded
+  for regulatory_profile in 29619 30007; do
+    check "Gen 13 RM520N-GL SAR profile installed: $regulatory_profile" bash -c \
+      "compgen -G '/opt/fcc_lenovo/sar_config_files/cs25/*RM520NGL*ThinkPad-X1-Carbon-Gen-13*21NX*$regulatory_profile.bin' >/dev/null"
+  done
+  check_or_warn "at least one GSM connection profile exists (manual APN credentials if absent)" bash -c \
+    "nmcli -g TYPE connection show | grep -Fxq gsm"
+  check "WWAN fallback dispatcher installed" test -x /etc/NetworkManager/dispatcher.d/90-wwan-fallback
+  check "WWAN shutdown quiesce service enabled" \
+    systemctl is-enabled --quiet enoshima-wwan-quiesce.service
+  check "WWAN shutdown helper installed" test -x /usr/local/libexec/enoshima-wwan-quiesce
+  # The command substitution must run in the child shell used by the check.
+  # shellcheck disable=SC2016
+  check "ModemManager stop timeout is bounded" bash -c \
+    '[[ $(systemctl show ModemManager.service -P TimeoutStopUSec) == 15s ]]'
+
+  if journalctl -b -u lenovo-cfgservice.service --no-pager 2>/dev/null |
+    grep -Eqi '(No such file|SAR.*(fail|error)|failed to open.*\.bin)'; then
+    warn "Lenovo WWAN service journal still contains a SAR-file error"
+  else
+    pass "Lenovo WWAN service journal has no known SAR-file error"
+  fi
+
+  if mmcli -L -J 2>/dev/null |
+    jq -e '."modem-list" | length > 0' >/dev/null 2>&1; then
+    pass "ModemManager detects a modem"
+  else
+    warn "no modem is currently visible (check BIOS, SIM, RF kill, and Lenovo service)"
+  fi
 else
-  warn "no modem is currently visible (check BIOS, SIM, RF kill, and Lenovo service)"
+  skip "WWAN modem, SAR, dispatcher, and shutdown checks" \
+    "capability wwan=false" "wwan-modem"
+fi
+
+if capability camera; then
+  check "RGB UVC camera present" grep -qs '^Integrated Camera: Integrated C' /sys/class/video4linux/*/name
+  check "IR UVC camera present" grep -qs '^Integrated Camera: Integrated I' /sys/class/video4linux/*/name
+else
+  skip "integrated camera device checks" \
+    "capability camera=false" "camera-device"
+fi
+
+if capability fingerprint; then
+  check "fingerprint reader present" bash -c \
+    "lsusb | grep -Fq '06cb:0123'"
+else
+  skip "fingerprint reader device check" \
+    "capability fingerprint=false" "fingerprint-device"
+fi
+
+if ! capability thunderbolt; then
+  skip "Thunderbolt controller checks" \
+    "capability thunderbolt=false" "thunderbolt-controller"
+fi
+if ! capability external_display; then
+  skip "physical external-display checks" \
+    "capability external_display=false" "external-display"
+fi
+if ! capability boot_artifacts; then
+  skip "managed boot artifact checks" \
+    "capability boot_artifacts=false" "boot-artifacts"
+fi
+if ! capability secure_boot; then
+  skip "Secure Boot enforcement checks" \
+    "capability secure_boot=false" "secure-boot"
+fi
+if ! capability tpm; then
+  skip "TPM enrollment and unlock checks" \
+    "capability tpm=false" "tpm-unlock"
 fi
 
 echo "==> Desktop session"
@@ -853,7 +1035,56 @@ else
   warn "one or more session/application user units are failed; inspect after the next graphical login"
 fi
 
-printf '\nPostflight result: %d failure(s), %d warning(s).\n' "$failures" "$warnings"
+printf '\nPostflight result: %d failure(s), %d warning(s), %d skip(s).\n' \
+  "$failures" "$warnings" "$skips"
 printf 'Manual checks still required: sudo/Enoshima Auth fingerprint, fallback SDDM rollback, Hyprlock, Wi-Fi/WWAN handoff, Kakao login/files/clipboard/tray, and Parsec input/video.\n'
+
+if [[ $report_format == json ]]; then
+  report_destination=${report_output:-$results_file.json}
+  if [[ -n $report_output ]]; then
+    install -d -m 0700 "${report_destination%/*}"
+  fi
+  /usr/bin/python - \
+    "$results_file" "$profile" "$failures" "$warnings" "$skips" \
+    "$report_destination" <<'PY'
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import sys
+
+results_path = Path(sys.argv[1])
+checks = [
+    json.loads(line)
+    for line in results_path.read_text(encoding="utf-8").splitlines()
+    if line
+]
+payload = {
+    "schema": 1,
+    "profile": sys.argv[2],
+    "result": "failed" if int(sys.argv[3]) else "passed",
+    "summary": {
+        "pass": sum(check["status"] == "pass" for check in checks),
+        "fail": int(sys.argv[3]),
+        "warn": int(sys.argv[4]),
+        "skip": int(sys.argv[5]),
+    },
+    "checks": checks,
+}
+Path(sys.argv[6]).write_text(
+    json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
+  if [[ -n $report_stdout_fd ]]; then
+    cat -- "$report_destination" >&3
+  fi
+elif [[ -n $report_output ]]; then
+  install -d -m 0700 "${report_output%/*}"
+  {
+    printf 'Postflight result: %d failure(s), %d warning(s), %d skip(s).\n' \
+      "$failures" "$warnings" "$skips"
+  } >"$report_output"
+fi
 
 ((failures == 0))

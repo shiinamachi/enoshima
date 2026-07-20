@@ -13,6 +13,21 @@
       tags:
         - always
 
+    - name: Validate the Enoshima environment and capability contract
+      ansible.builtin.assert:
+        that:
+          - enoshima_environment in ['physical', 'vm']
+          - enoshima_capabilities is mapping
+          - >-
+            (enoshima_required_capabilities
+            | difference(enoshima_capabilities.keys() | list)
+            | length) == 0
+        fail_msg: >-
+          Every inventory host must declare the complete Enoshima capability
+          map instead of relying on DMI or hardware-name detection.
+      tags:
+        - always
+
   roles:
     - role: packages
       tags:

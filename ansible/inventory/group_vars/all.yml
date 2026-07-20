@@ -5,6 +5,23 @@ target_user_shell: /bin/zsh
 target_user_groups:
   - wheel
 
+enoshima_environment: physical
+enoshima_required_capabilities:
+  - battery
+  - boot_artifacts
+  - btrfs_layout
+  - camera
+  - external_display
+  - fingerprint
+  - graphical_session
+  - hibernation
+  - root_luks
+  - secure_boot
+  - thunderbolt
+  - tpm
+  - virtual_gpu_3d
+  - wwan
+
 system_timezone: Asia/Seoul
 system_locale: en_US.UTF-8
 system_locales:

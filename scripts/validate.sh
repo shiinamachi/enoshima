@@ -163,6 +163,27 @@ if state.exists():
         "user-units-enabled.txt",
     ):
         assert (state / required).is_file(), f"missing observed-state file: {required}"
+
+group_vars = yaml.safe_load(
+    (root / "ansible/inventory/group_vars/all.yml").read_text(encoding="utf-8")
+)
+required_capabilities = set(group_vars["enoshima_required_capabilities"])
+inventory = yaml.safe_load(
+    (root / "ansible/inventory/hosts.yml").read_text(encoding="utf-8")
+)
+for host in inventory["all"]["hosts"]:
+    host_vars = yaml.safe_load(
+        (root / f"ansible/inventory/host_vars/{host}.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    capabilities = host_vars["enoshima_capabilities"]
+    assert set(capabilities) == required_capabilities, (
+        f"{host} capability keys do not match the inventory contract"
+    )
+    assert all(isinstance(value, bool) for value in capabilities.values()), (
+        f"{host} capabilities must be explicit booleans"
+    )
 PY
 
 echo "==> Checking repository-local design skills"

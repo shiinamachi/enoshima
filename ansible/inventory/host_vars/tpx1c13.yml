@@ -1,5 +1,21 @@
 ---
 system_hostname: tpx1c13
+enoshima_environment: physical
+enoshima_capabilities:
+  battery: true
+  boot_artifacts: true
+  btrfs_layout: true
+  camera: true
+  external_display: true
+  fingerprint: true
+  graphical_session: true
+  hibernation: true
+  root_luks: true
+  secure_boot: true
+  thunderbolt: true
+  tpm: true
+  virtual_gpu_3d: false
+  wwan: true
 
 # Hardware-bound inventory. Replace these values after repartitioning.
 root_mapper_name: cryptroot

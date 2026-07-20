@@ -1,0 +1,49 @@
+---
+system_hostname: enoshima-vm
+enoshima_environment: vm
+enoshima_capabilities:
+  battery: false
+  boot_artifacts: false
+  btrfs_layout: false
+  camera: false
+  external_display: false
+  fingerprint: false
+  graphical_session: true
+  hibernation: false
+  root_luks: false
+  secure_boot: false
+  thunderbolt: false
+  tpm: false
+  virtual_gpu_3d: true
+  wwan: false
+
+manage_boot_config: false
+manage_fstab: false
+snapper_configure_root: false
+desktop_hibernation_enabled: false
+desktop_hibernation_swap_size_gib: 0
+desktop_login_manager: greetd
+desktop_expansion_sddm_theme_enabled: true
+
+system_units_started:
+  - NetworkManager.service
+  - rtkit-daemon.service
+  - systemd-timesyncd.service
+  - systemd-userdbd.socket
+  - remote-fs.target
+  - paccache.timer
+
+system_units_enabled_only:
+  - getty@.service
+
+user_units_started:
+  - hypridle.service
+  - hyprpaper.service
+  - hyprpolkitagent.service
+  - swaync.service
+  - waybar.service
+  - wireplumber.service
+  - xdg-user-dirs.service
+  - p11-kit-server.socket
+  - pipewire-pulse.socket
+  - pipewire.socket
