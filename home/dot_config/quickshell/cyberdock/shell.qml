@@ -651,7 +651,9 @@ ShellRoot {
 
     Timer {
         id: snapshotTimer
-        interval: 1000
+        // Hyprland's event bridge drives normal refreshes. This timer only
+        // reconciles health after a missed event.
+        interval: 5000
         repeat: true
         running: true
         triggeredOnStart: true
@@ -932,6 +934,10 @@ ShellRoot {
                         root.launchApp(app);
                     } else if (windows.length > 1) {
                         showChooser(app);
+                    } else if (windows[0].minimized) {
+                        root.activateWindow(windows[0].address);
+                    } else if (windows[0].address === root.snapshot.activeAddress) {
+                        root.minimizeWindow(windows[0].address);
                     } else if (windows[0].address !== root.snapshot.activeAddress) {
                         root.activateWindow(windows[0].address);
                     }
@@ -1093,7 +1099,10 @@ ShellRoot {
                                     required property int index
                                     readonly property var app: modelData
                                     readonly property bool running: app.windows.length > 0
-                                    readonly property bool minimized: app.windows.some(window => window.minimized)
+                                    readonly property int minimizedCount: app.windows.filter(window => window.minimized).length
+                                    readonly property int visibleCount: app.windows.length - minimizedCount
+                                    readonly property bool allMinimized: running && minimizedCount === app.windows.length
+                                    readonly property bool someMinimized: minimizedCount > 0 && !allMinimized
                                     readonly property bool transitioning: app.windows.some(window =>
                                         ["minimizing", "restoring", "closing"]
                                             .includes(String(window.state || "")))
@@ -1115,15 +1124,17 @@ ShellRoot {
 
                                     Accessible.role: Accessible.Button
                                     Accessible.name: app.name
-                                    Accessible.description: appItem.minimized
-                                        ? "최소화됨, 선택하면 복원"
-                                        : (appItem.active
+                                    Accessible.description: appItem.allMinimized
+                                        ? "모든 창이 최소화됨, 선택하면 복원"
+                                        : (appItem.someMinimized
+                                            ? `${appItem.minimizedCount}개 창 최소화됨`
+                                            : (appItem.active
                                         ? "현재 활성화된 애플리케이션"
                                         : (appItem.app.unavailable
                                             ? "현재 설치되어 있지 않은 고정 애플리케이션"
                                             : (appItem.running
                                                 ? "실행 중인 애플리케이션"
-                                                : "애플리케이션 열기")))
+                                                : "애플리케이션 열기"))))
                                     Accessible.pressed: appMouse.pressed
                                     Accessible.onPressAction:
                                         dockWindow.performPrimaryAction(appItem.app)
@@ -1174,7 +1185,8 @@ ShellRoot {
                                             "application-x-executable")
                                         opacity: appItem.app.unavailable
                                             ? 0.38
-                                            : (appItem.minimized ? 0.62 : 1)
+                                            : (appItem.allMinimized ? 0.62
+                                                : (appItem.someMinimized ? 0.84 : 1))
                                         scale: appMouse.containsMouse ? 1.09 : 1
                                         Behavior on scale {
                                             enabled: !root.reducedMotion
@@ -1210,7 +1222,7 @@ ShellRoot {
                                         }
 
                                         Row {
-                                            visible: appItem.minimized
+                                            visible: appItem.allMinimized
                                             anchors.centerIn: parent
                                             spacing: 2
 
@@ -1234,6 +1246,16 @@ ShellRoot {
                                             height: 3
                                             radius: 1.5
                                             color: root.theme.colorWarning
+                                        }
+
+                                        Rectangle {
+                                            visible: appItem.someMinimized
+                                            anchors.right: parent.right
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 5
+                                            height: 3
+                                            radius: 1
+                                            color: root.theme.colorAccent
                                         }
 
                                         Behavior on opacity {
@@ -1642,6 +1664,7 @@ ShellRoot {
             displayStatus: root.displayStatus
             theme: root.theme
             reducedMotion: root.reducedMotion
+            strings: root.i18nStrings
             onCloseRequested: root.displayOverlayOpen = false
         }
     }

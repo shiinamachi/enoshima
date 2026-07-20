@@ -5,6 +5,7 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/home/dot_local/bin/executable_desktop-display-mode
 overlay_qml=$repo_root/home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
+ko_catalog=$repo_root/home/dot_config/enoshima/i18n/ko-KR.json
 event_listener=$repo_root/home/dot_local/bin/executable_desktop-display-event-listener
 event_service=$repo_root/home/dot_config/systemd/user/desktop-display-events.service
 hyprland_config=$repo_root/home/dot_config/hypr/hyprland.lua
@@ -437,7 +438,9 @@ grep -Fq 'id: applyResultCollector' "$overlay_qml" ||
   fail 'projection overlay does not capture apply results'
 grep -Fq 'Accessible.role: Accessible.AlertMessage' "$overlay_qml" ||
   fail 'projection overlay error is not exposed to accessibility clients'
-grep -Fq '호환되는 복제 모드가 없습니다.' "$overlay_qml" ||
+grep -Fq 'tr("display.errorMirror")' "$overlay_qml" ||
+  fail 'projection overlay does not use the localized duplicate-mode recovery message'
+jq -e '."display.errorMirror" | startswith("호환되는 복제 모드가 없습니다.")' "$ko_catalog" >/dev/null ||
   fail 'projection overlay lacks the duplicate-mode recovery message'
 if grep -Fq 'command: ["desktop-display-mode", "status", "--json"]' "$overlay_qml"; then
   fail 'projection overlay still starts a polling process'

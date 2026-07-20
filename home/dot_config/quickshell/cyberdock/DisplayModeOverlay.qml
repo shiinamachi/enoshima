@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Widgets
 
 // Quickshell's generated qmltypes marks this runtime-provided interface as
 // uncreatable even though the layer-shell plugin creates it at runtime.
@@ -18,6 +19,7 @@ PanelWindow {
     required property var displayStatus
     required property var theme
     required property bool reducedMotion
+    required property var strings
 
     signal closeRequested()
 
@@ -32,11 +34,13 @@ PanelWindow {
             ? Math.max(0, Math.ceil(deadline - Date.now() / 1000))
             : Number(displayStatus.seconds_remaining || 0);
     }
+    readonly property bool koreanLocale:
+        String(Quickshell.env("LANG") || "").toLowerCase().startsWith("ko")
     readonly property var choices: [
-        {"id": "internal", "label": "PC 화면만", "description": "노트북 화면만 사용"},
-        {"id": "mirror", "label": "복제", "description": "두 화면에 같은 내용 표시"},
-        {"id": "extend", "label": "확장", "description": "두 화면을 하나의 작업 공간으로 사용"},
-        {"id": "external", "label": "두 번째 화면만", "description": "외부 화면만 사용"}
+        {"id": "internal", "label": tr("display.internal"), "description": tr("display.internalDescription")},
+        {"id": "mirror", "label": tr("display.mirror"), "description": tr("display.mirrorDescription")},
+        {"id": "extend", "label": tr("display.extend"), "description": tr("display.extendDescription")},
+        {"id": "external", "label": tr("display.external"), "description": tr("display.externalDescription")}
     ]
 
     screen: targetScreen
@@ -59,6 +63,13 @@ PanelWindow {
         ? WlrKeyboardFocus.Exclusive
         : WlrKeyboardFocus.None
 
+    function tr(key) {
+        const value = strings?.[key];
+        if (value !== undefined && String(value) !== "")
+            return String(value);
+        return key;
+    }
+
     function choiceAvailable(index) {
         return index === 0 || Number(displayStatus.external_count || 0) > 0;
     }
@@ -79,10 +90,10 @@ PanelWindow {
     function applyFailureMessage(detail) {
         const normalized = String(detail || "").toLowerCase();
         if (normalized.includes("no compatible duplicate mode"))
-            return "호환되는 복제 모드가 없습니다. 고급 디스플레이 설정에서 해상도를 확인하세요.";
+            return tr("display.errorMirror");
         if (normalized.includes("no external output"))
-            return "연결된 외부 화면을 찾지 못했습니다. 케이블 연결을 확인한 뒤 다시 시도하세요.";
-        return "디스플레이 설정을 적용하지 못했습니다. 다시 시도하거나 고급 설정을 여세요.";
+            return tr("display.errorExternal");
+        return tr("display.errorGeneric");
     }
 
     function confirm() {
@@ -226,7 +237,7 @@ PanelWindow {
             anchors.leftMargin: 28
             anchors.rightMargin: 28
             anchors.topMargin: 24
-            text: confirmation.visible ? "디스플레이 설정 유지" : "프로젝션 모드"
+            text: confirmation.visible ? overlay.tr("display.keepHeading") : overlay.tr("display.heading")
             color: overlay.theme.colorText
             font.family: "Pretendard"
             font.pixelSize: 22
@@ -240,8 +251,8 @@ PanelWindow {
             anchors.top: heading.bottom
             anchors.topMargin: 7
             text: confirmation.visible
-                ? overlay.secondsRemaining + "초 후 이전 설정으로 자동 복원됩니다."
-                : "연결된 화면을 어떻게 사용할지 선택하세요."
+                ? overlay.tr("display.rollbackPrefix") + " " + overlay.secondsRemaining + " " + overlay.tr("display.rollbackSuffix")
+                : overlay.tr("display.supporting")
             color: confirmation.visible
                 ? overlay.theme.colorWarning
                 : overlay.theme.colorTextMuted
@@ -271,7 +282,7 @@ PanelWindow {
                     required property int index
                     readonly property bool available: overlay.choiceAvailable(index)
                     width: Math.floor((choiceGrid.width - choiceGrid.columnSpacing) / 2)
-                    height: 94
+                    height: 100
                     radius: overlay.theme.radiusControl
                     color: !available
                         ? overlay.theme.colorSurfaceSubtle
@@ -305,48 +316,136 @@ PanelWindow {
                         NumberAnimation { duration: overlay.theme.durationFast }
                     }
 
-                    Text {
+                    Rectangle {
+                        id: shortcut
                         anchors.left: parent.left
-                        anchors.right: shortcut.left
                         anchors.top: parent.top
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 8
-                        anchors.topMargin: 15
-                        text: choiceButton.modelData.label
-                        color: choiceButton.available
-                            ? overlay.theme.colorText
-                            : overlay.theme.colorTextMuted
-                        font.family: "Pretendard"
-                        font.pixelSize: 15
-                        font.bold: true
-                        elide: Text.ElideRight
+                        anchors.leftMargin: 10
+                        anchors.topMargin: 10
+                        width: 24
+                        height: 24
+                        radius: 5
+                        color: choiceButton.index === overlay.selectedIndex
+                            ? overlay.theme.colorSelectionStrong : overlay.theme.colorRaisedSoft
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: String(choiceButton.index + 1)
+                            color: overlay.theme.colorText
+                            font.family: "JetBrains Mono"
+                            font.pixelSize: 13
+                            font.bold: true
+                        }
+                    }
+
+                    Item {
+                        id: diagram
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.topMargin: 10
+                        width: 92
+                        height: 34
+
+                        Rectangle {
+                            id: laptopDiagram
+                            x: choiceButton.modelData.id === "mirror" ? 16 : 4
+                            y: choiceButton.modelData.id === "mirror" ? 8 : 10
+                            width: choiceButton.modelData.id === "extend" ? 39 : 36
+                            height: 21
+                            radius: 2
+                            color: "transparent"
+                            border.width: 2
+                            border.color: choiceButton.available
+                                ? overlay.theme.colorText : overlay.theme.colorTextMuted
+                            opacity: choiceButton.modelData.id === "external" ? 0.35 : 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                visible: ["mirror", "extend"].includes(choiceButton.modelData.id)
+                                text: "1"
+                                color: overlay.theme.colorText
+                                font.family: "JetBrains Mono"
+                                font.pixelSize: 10
+                            }
+                        }
+
+                        Rectangle {
+                            x: choiceButton.modelData.id === "mirror" ? 39 : 49
+                            y: choiceButton.modelData.id === "mirror" ? 3 : 6
+                            width: choiceButton.modelData.id === "extend" ? 39 : 40
+                            height: 25
+                            radius: 2
+                            color: "transparent"
+                            border.width: 2
+                            border.color: choiceButton.available
+                                ? overlay.theme.colorText : overlay.theme.colorTextMuted
+                            opacity: choiceButton.modelData.id === "internal" ? 0.35 : 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                visible: ["mirror", "extend"].includes(choiceButton.modelData.id)
+                                text: choiceButton.modelData.id === "mirror" ? "1" : "2"
+                                color: overlay.theme.colorText
+                                font.family: "JetBrains Mono"
+                                font.pixelSize: 10
+                            }
+                        }
+                    }
+
+                    IconImage {
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.rightMargin: 10
+                        anchors.topMargin: 11
+                        width: 20
+                        height: 20
+                        visible: !choiceButton.available
+                            || choiceButton.index === overlay.selectedIndex
+                        source: Quickshell.iconPath(
+                            !choiceButton.available ? "action-unavailable-symbolic"
+                                : (overlay.applying ? "process-working-symbolic" : "emblem-default-symbolic"),
+                            "dialog-information-symbolic")
+                        RotationAnimator on rotation {
+                            running: choiceButton.visible && choiceButton.available
+                                && overlay.applying && choiceButton.index === overlay.selectedIndex
+                                && !overlay.reducedMotion
+                            from: 0
+                            to: 360
+                            duration: 900
+                            loops: Animation.Infinite
+                        }
                     }
 
                     Text {
-                        id: shortcut
+                        anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.top: parent.top
+                        anchors.leftMargin: 14
                         anchors.rightMargin: 14
-                        anchors.topMargin: 15
-                        text: String(choiceButton.index + 1)
-                        color: overlay.theme.colorFocus
-                        font.family: "Jetendard"
-                        font.pixelSize: 13
+                        anchors.topMargin: 48
+                        horizontalAlignment: Text.AlignHCenter
+                        text: choiceButton.modelData.label
+                        color: choiceButton.available
+                            ? overlay.theme.colorText : overlay.theme.colorTextMuted
+                        font.family: "Pretendard"
+                        font.pixelSize: 14
+                        font.bold: true
+                        elide: Text.ElideRight
                     }
 
                     Text {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 14
-                        anchors.bottomMargin: 15
-                        text: choiceButton.modelData.description
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        anchors.bottomMargin: 10
+                        horizontalAlignment: Text.AlignHCenter
+                        text: overlay.applying && choiceButton.index === overlay.selectedIndex
+                            ? overlay.tr("display.applying") : choiceButton.modelData.description
                         color: overlay.theme.colorTextMuted
                         font.family: "Pretendard"
-                        font.pixelSize: 12
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 2
+                        font.pixelSize: 11
                         elide: Text.ElideRight
                     }
 
@@ -404,7 +503,7 @@ PanelWindow {
             border.color: overlay.theme.colorQuietBorder
 
             Accessible.role: Accessible.Button
-            Accessible.name: "고급 디스플레이 설정"
+            Accessible.name: overlay.tr("display.advanced")
             Accessible.onPressAction: {
                 Quickshell.execDetached(["uwsm", "app", "--", "nwg-displays"]);
                 overlay.closeRequested();
@@ -412,7 +511,7 @@ PanelWindow {
 
             Text {
                 anchors.centerIn: parent
-                text: overlay.applying ? "적용 중…" : "고급 디스플레이 설정"
+                text: overlay.applying ? overlay.tr("display.applying") : overlay.tr("display.advanced")
                 color: overlay.theme.colorText
                 font.family: "Pretendard"
                 font.pixelSize: 14
@@ -431,6 +530,67 @@ PanelWindow {
             }
         }
 
+        Rectangle {
+            id: confirmationPreview
+            visible: confirmation.visible
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: supportingText.bottom
+            anchors.topMargin: 18
+            width: 280
+            height: 100
+            radius: overlay.theme.radiusControl
+            color: overlay.theme.colorSurfaceSubtle
+            border.width: 1
+            border.color: overlay.theme.colorQuietBorder
+
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 15
+                width: 124
+                height: 42
+
+                Rectangle {
+                    x: 4
+                    y: 12
+                    width: 48
+                    height: 27
+                    radius: 3
+                    color: "transparent"
+                    border.width: 2
+                    border.color: overlay.theme.colorText
+                    opacity: overlay.displayStatus.mode === "external" ? 0.35 : 1
+                }
+                Rectangle {
+                    x: overlay.displayStatus.mode === "mirror" ? 42 : 68
+                    y: overlay.displayStatus.mode === "mirror" ? 4 : 8
+                    width: 52
+                    height: 31
+                    radius: 3
+                    color: "transparent"
+                    border.width: 2
+                    border.color: overlay.theme.colorText
+                    opacity: overlay.displayStatus.mode === "internal" ? 0.35 : 1
+                }
+            }
+
+            Text {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                anchors.bottomMargin: 12
+                horizontalAlignment: Text.AlignHCenter
+                text: (overlay.choices.find(choice =>
+                    choice.id === overlay.displayStatus.mode) || overlay.choices[0]).label
+                color: overlay.theme.colorText
+                font.family: "Pretendard"
+                font.pixelSize: 13
+                font.bold: true
+            }
+        }
+
         Row {
             id: confirmation
             visible: overlay.displayStatus.pending
@@ -445,8 +605,8 @@ PanelWindow {
 
             Repeater {
                 model: [
-                    {"label": "되돌리기", "primary": false},
-                    {"label": "변경 내용 유지", "primary": true}
+                    {"label": overlay.tr("display.revert"), "primary": false},
+                    {"label": overlay.tr("display.keep"), "primary": true}
                 ]
 
                 delegate: Rectangle {

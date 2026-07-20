@@ -236,6 +236,14 @@ grep -Fq 'if (next.version === 2)' "$shell_qml" ||
 if grep -Fq 'if (next.version === 1)' "$shell_qml"; then
   fail 'Quickshell still accepts only the retired Cyberdock snapshot schema'
 fi
+grep -Fq 'interval: 5000' "$shell_qml" ||
+  fail 'Cyberdock polling is not limited to health reconciliation'
+grep -Fq 'readonly property bool allMinimized' "$shell_qml" ||
+  fail 'Cyberdock does not distinguish fully minimized app groups'
+grep -Fq 'readonly property bool someMinimized' "$shell_qml" ||
+  fail 'Cyberdock does not distinguish mixed minimized app groups'
+grep -Fq 'windows[0].address === root.snapshot.activeAddress' "$shell_qml" ||
+  fail 'focused single-window click does not use taskbar minimize toggle behavior'
 jq -e 'all(.windows[]; .workspace.name != "special:tray" and .class != "xembed-sni-proxy")' \
   <<<"$snapshot" >/dev/null || fail 'tray bridge surface leaked into the dock snapshot'
 [[ $(stat -c %a "$XDG_RUNTIME_DIR/cyberdock") == 700 ]] || fail 'runtime directory mode is not 0700'

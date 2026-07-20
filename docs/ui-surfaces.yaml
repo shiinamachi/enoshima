@@ -93,6 +93,8 @@ surfaces:
   display-mode:
     implementation:
       - home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
+      - home/dot_config/enoshima/i18n/en-US.json
+      - home/dot_config/enoshima/i18n/ko-KR.json
     token_mode: consumer
     concept:
       status: approved
