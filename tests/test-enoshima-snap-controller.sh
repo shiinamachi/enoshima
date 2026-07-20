@@ -145,7 +145,7 @@ if grep -Fq 'executor()->spawn(std::format("enoshima-snap-controller preview' \
   exit 1
 fi
 if sed -n '/bool CHyprBar::sendSnapRequest/,/^}/p' \
-    "$repo_root/native/enoshima-decoration/src/barDeco.cpp" | grep -Eq 'recv\(|connect\('; then
+  "$repo_root/native/enoshima-decoration/src/barDeco.cpp" | grep -Eq 'recv\(|connect\('; then
   printf 'Pointer input still performs synchronous socket I/O.\n' >&2
   exit 1
 fi

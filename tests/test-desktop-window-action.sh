@@ -147,17 +147,17 @@ grep -Fq 'movewindowpixel exact 120 80,address:0xbbb' "$WINDOW_TEST_LOG" ||
 
 printf '%s\n' '==> grouped windows and reused addresses fail closed'
 if run_action begin-adjust --address 0xddd --transaction grouped-window-0001 \
-    --mode resize --json | jq -e '.ok' >/dev/null; then
+  --mode resize --json | jq -e '.ok' >/dev/null; then
   fail 'grouped window unexpectedly entered an independent adjustment'
 fi
 reuse_transaction=window-adjustment-reuse-0001
-run_action begin-adjust --address 0xbbb --transaction "$reuse_transaction" --mode resize --json \
-  | jq -e '.ok' >/dev/null
+run_action begin-adjust --address 0xbbb --transaction "$reuse_transaction" --mode resize --json |
+  jq -e '.ok' >/dev/null
 jq 'map(if .address == "0xbbb" then .stableId = "replacement" else . end)' \
   "$WINDOW_TEST_ROOT/clients.json" >"$WINDOW_TEST_ROOT/clients.next.json"
 mv "$WINDOW_TEST_ROOT/clients.next.json" "$WINDOW_TEST_ROOT/clients.json"
-if run_action cancel-adjust --transaction "$reuse_transaction" --json \
-    | jq -e '.ok' >/dev/null; then
+if run_action cancel-adjust --transaction "$reuse_transaction" --json |
+  jq -e '.ok' >/dev/null; then
   fail 'reused address unexpectedly restored another window'
 fi
 run_action commit-adjust --transaction "$reuse_transaction" --json | jq -e '.ok' >/dev/null
