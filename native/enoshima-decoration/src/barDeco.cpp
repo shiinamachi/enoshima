@@ -137,8 +137,11 @@ void CHyprBar::onMouseButton(Event::SCallbackInfo& info, IPointer::SButtonEvent 
             const auto window = m_pWindow.lock();
             if (window) {
                 Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
-                const auto address = std::format("0x{:x}", reinterpret_cast<uintptr_t>(window.get()));
-                Config::Supplementary::executor()->spawn(std::format("enoshima-window-menu {}", address));
+                const auto cursor = g_pInputManager->getMouseCoordsInternal();
+                const auto address = ownerAddress();
+                Config::Supplementary::executor()->spawn(std::format(
+                    "enoshima-window-menu --address {} --anchor-x {} --anchor-y {} --source titlebar", address,
+                    std::lround(cursor.x), std::lround(cursor.y)));
                 info.cancelled = true;
             }
         }
@@ -169,6 +172,8 @@ void CHyprBar::onMouseMove(Vector2D) {
         damageOnButtonHover();
 
     if (m_bDraggingThis && !m_bTouchEv) {
+        if (const auto window = m_pWindow.lock(); window && Desktop::focusState()->window() != window)
+            Desktop::focusState()->fullWindowFocus(window, Desktop::FOCUS_REASON_CLICK);
         updateSnapPreview(g_pInputManager->getMouseCoordsInternal());
         return;
     }
@@ -202,12 +207,14 @@ void CHyprBar::onTouchMove(Event::SCallbackInfo&, ITouch::SMotionEvent e) {
 
     if (!m_bDraggingThis) {
         // Initial setup for dragging a window.
-        g_pKeybindManager->m_dispatchers["setfloating"]("activewindow");
-        g_pKeybindManager->m_dispatchers["resizewindowpixel"]("exact 50% 50%,activewindow");
+        const auto selector = std::format("address:{}", ownerAddress());
+        g_pKeybindManager->m_dispatchers["setfloating"](selector);
+        g_pKeybindManager->m_dispatchers["resizewindowpixel"](std::format("exact 50% 50%,{}", selector));
         // pin it so you can change workspaces while dragging a window
-        g_pKeybindManager->m_dispatchers["pin"]("activewindow");
+        g_pKeybindManager->m_dispatchers["pin"](selector);
     }
-    g_pKeybindManager->m_dispatchers["movewindowpixel"](std::format("exact {} {},activewindow", (int)(COORDS.x - (assignedBoxGlobal().w / 2)), (int)COORDS.y));
+    g_pKeybindManager->m_dispatchers["movewindowpixel"](
+        std::format("exact {} {},address:{}", (int)(COORDS.x - (assignedBoxGlobal().w / 2)), (int)COORDS.y, ownerAddress()));
     m_bDraggingThis = true;
     updateSnapPreview(COORDS);
 }
@@ -239,7 +246,7 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
 
         if (m_bDraggingThis) {
             if (m_bTouchEv)
-                g_pKeybindManager->m_dispatchers["settiled"]("activewindow");
+                g_pKeybindManager->m_dispatchers["settiled"](std::format("address:{}", ownerAddress()));
             g_pKeybindManager->m_dispatchers["mouse"]("0movewindow");
             Log::logger->log(Log::DEBUG, "[enoshima-decoration] Dragging ended on {:x}", (uintptr_t)PWINDOW.get());
         }
@@ -264,7 +271,7 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
 
     if (!ON_DOUBLE_CLICK.empty() &&
         std::chrono::duration_cast<std::chrono::milliseconds>(Time::steadyNow() - m_lastMouseDown).count() < 400 /* Arbitrary delay I found suitable */) {
-        Config::Supplementary::executor()->spawn(ON_DOUBLE_CLICK);
+        executeForOwner(ON_DOUBLE_CLICK);
         m_bDragPending = false;
     } else {
         m_lastMouseDown = Time::steadyNow();
@@ -273,7 +280,7 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
 }
 
 void CHyprBar::handleUpEvent(Event::SCallbackInfo& info) {
-    if (m_pWindow.lock() != Desktop::focusState()->window())
+    if (!m_pWindow.lock())
         return;
 
     if (m_bCancelledDown)
@@ -326,6 +333,31 @@ void CHyprBar::commitSnapPreview() {
     Config::Supplementary::executor()->spawn(std::format("enoshima-snap-controller commit --address {}", address));
 }
 
+std::string CHyprBar::ownerAddress() const {
+    const auto window = m_pWindow.lock();
+    if (!window)
+        return {};
+    return std::format("0x{:x}", reinterpret_cast<uintptr_t>(window.get()));
+}
+
+std::string CHyprBar::commandForOwner(const std::string& command) const {
+    auto expanded      = command;
+    const auto address = ownerAddress();
+    if (address.empty())
+        return {};
+
+    constexpr std::string_view PLACEHOLDER = "{address}";
+    for (size_t offset = expanded.find(PLACEHOLDER); offset != std::string::npos; offset = expanded.find(PLACEHOLDER, offset + address.size()))
+        expanded.replace(offset, PLACEHOLDER.size(), address);
+    return expanded;
+}
+
+void CHyprBar::executeForOwner(const std::string& command) const {
+    const auto expanded = commandForOwner(command);
+    if (!expanded.empty())
+        Config::Supplementary::executor()->spawn(expanded);
+}
+
 bool CHyprBar::doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButtonPadding, Config::INTEGER barHeight, Vector2D COORDS, const bool BUTTONSRIGHT) {
     //check if on a button
     float offset = barPadding;
@@ -336,7 +368,7 @@ bool CHyprBar::doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButt
 
         if (VECINRECT(COORDS, currentPos.x, 0, currentPos.x + b.size + barButtonPadding, barHeight - 1)) {
             // hit on close
-            g_pKeybindManager->m_dispatchers["exec"](b.cmd);
+            executeForOwner(b.cmd);
             return true;
         }
 

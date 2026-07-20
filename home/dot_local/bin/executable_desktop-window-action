@@ -15,6 +15,8 @@ usage() {
   cat >&2 <<'EOF'
 usage: desktop-window-action status --json
        desktop-window-action {minimize|restore|maximize|close|focus} (--active | --address ADDRESS) [--origin ORIGIN]
+       desktop-window-action {move-by|resize-by} --address ADDRESS --x DELTA --y DELTA [--origin ORIGIN]
+       desktop-window-action restore-geometry --address ADDRESS --x X --y Y --width WIDTH --height HEIGHT --floating BOOL --fullscreen MODE --fullscreen-client MODE
 EOF
   exit 2
 }
@@ -83,6 +85,89 @@ dispatch_maximize() {
     >/dev/null
 }
 
+dispatch_fullscreen_state() {
+  local address=$1 internal=$2 client=$3
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.fullscreen_state({ internal = $internal, client = $client, action = \"set\", window = \"address:$address\" })" \
+    >/dev/null
+}
+
+dispatch_float() {
+  local address=$1 action=$2
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.float({ action = \"$action\", window = \"address:$address\" })" \
+    >/dev/null
+}
+
+dispatch_geometry_delta() {
+  local action=$1 address=$2 delta_x=$3 delta_y=$4 dispatcher
+  dispatcher=movewindowpixel
+  [[ $action == move-by ]] || dispatcher=resizewindowpixel
+  dispatch_fullscreen_state "$address" 0 0
+  dispatch_float "$address" set
+  "$hyprctl_bin" dispatch "$dispatcher" "$delta_x $delta_y,address:$address" >/dev/null
+}
+
+valid_integer() {
+  [[ $1 =~ ^-?[0-9]+$ ]]
+}
+
+parse_geometry_delta() {
+  address=''
+  delta_x=''
+  delta_y=''
+  origin=titlebar
+  while (($# > 0)); do
+    case $1 in
+      --address) (($# >= 2)) || usage; address=$2; shift 2 ;;
+      --x) (($# >= 2)) || usage; delta_x=$2; shift 2 ;;
+      --y) (($# >= 2)) || usage; delta_y=$2; shift 2 ;;
+      --origin) (($# >= 2)) || usage; origin=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [[ $origin =~ ^(client|titlebar|dock|keyboard|compositor)$ ]] || usage
+  if ! valid_integer "$delta_x" || ! valid_integer "$delta_y"; then
+    usage
+  fi
+  resolve_address --address "$address"
+}
+
+restore_geometry() {
+  local address='' x='' y='' width='' height='' floating=''
+  local fullscreen='' fullscreen_client=''
+  while (($# > 0)); do
+    case $1 in
+      --address) (($# >= 2)) || usage; address=$2; shift 2 ;;
+      --x) (($# >= 2)) || usage; x=$2; shift 2 ;;
+      --y) (($# >= 2)) || usage; y=$2; shift 2 ;;
+      --width) (($# >= 2)) || usage; width=$2; shift 2 ;;
+      --height) (($# >= 2)) || usage; height=$2; shift 2 ;;
+      --floating) (($# >= 2)) || usage; floating=$2; shift 2 ;;
+      --fullscreen) (($# >= 2)) || usage; fullscreen=$2; shift 2 ;;
+      --fullscreen-client) (($# >= 2)) || usage; fullscreen_client=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  if ! valid_integer "$x" || ! valid_integer "$y" ||
+    ! valid_integer "$width" || ! valid_integer "$height"; then
+    usage
+  fi
+  ((width > 0 && height > 0)) || usage
+  [[ $floating == true || $floating == false ]] || usage
+  [[ $fullscreen =~ ^[0-3]$ && $fullscreen_client =~ ^[0-3]$ ]] || usage
+  resolve_address --address "$address"
+
+  dispatch_fullscreen_state "$address" 0 0
+  dispatch_float "$address" set
+  "$hyprctl_bin" dispatch resizewindowpixel "exact $width $height,address:$address" >/dev/null
+  "$hyprctl_bin" dispatch movewindowpixel "exact $x $y,address:$address" >/dev/null
+  if [[ $floating == false ]]; then
+    dispatch_float "$address" unset
+  fi
+  dispatch_fullscreen_state "$address" "$fullscreen" "$fullscreen_client"
+}
+
 status_command() {
   local active snapshot minimized=false
   active=$(hypr_json activewindow)
@@ -121,6 +206,16 @@ case ${1:-} in
       close) CYBERDOCK_TRANSITION_ORIGIN=$origin "$state_bin" close "$address" ;;
       focus) CYBERDOCK_TRANSITION_ORIGIN=$origin "$state_bin" activate "$address" ;;
     esac
+    ;;
+  move-by | resize-by)
+    action=$1
+    shift
+    parse_geometry_delta "$@"
+    dispatch_geometry_delta "$action" "$address" "$delta_x" "$delta_y"
+    ;;
+  restore-geometry)
+    shift
+    restore_geometry "$@"
     ;;
   *) usage ;;
 esac

@@ -29,7 +29,9 @@ case ${1:-} in
     cat "$root/$1.json"
     ;;
   dispatch)
-    printf 'hyprctl dispatch %s\n' "${2:?}" >>"${WINDOW_TEST_LOG:?}"
+    printf 'hyprctl' >>"${WINDOW_TEST_LOG:?}"
+    for argument in "$@"; do printf ' %s' "$argument" >>"${WINDOW_TEST_LOG:?}"; done
+    printf '\n' >>"${WINDOW_TEST_LOG:?}"
     ;;
   *) exit 64 ;;
 esac
@@ -94,6 +96,22 @@ grep -Fq 'window = "address:0xbbb"' "$WINDOW_TEST_LOG" ||
   fail 'maximize did not target the requested address'
 grep -Fq 'mode = "maximized"' "$WINDOW_TEST_LOG" ||
   fail 'maximize did not use the work-area state'
+
+printf '%s\n' '==> system-menu geometry changes retain the exact target and roll back'
+run_action move-by --address 0xbbb --x -20 --y 20 --origin titlebar
+run_action resize-by --address 0xbbb --x 20 --y -20 --origin titlebar
+run_action restore-geometry --address 0xbbb --x 120 --y 80 \
+  --width 1280 --height 840 --floating true --fullscreen 1 --fullscreen-client 1
+grep -Fq 'movewindowpixel -20 20,address:0xbbb' "$WINDOW_TEST_LOG" ||
+  fail 'move-by did not retain its exact address'
+grep -Fq 'resizewindowpixel 20 -20,address:0xbbb' "$WINDOW_TEST_LOG" ||
+  fail 'resize-by did not retain its exact address'
+grep -Fq 'resizewindowpixel exact 1280 840,address:0xbbb' "$WINDOW_TEST_LOG" ||
+  fail 'geometry rollback did not restore the original size'
+grep -Fq 'movewindowpixel exact 120 80,address:0xbbb' "$WINDOW_TEST_LOG" ||
+  fail 'geometry rollback did not restore the original position'
+grep -Fq 'internal = 1, client = 1' "$WINDOW_TEST_LOG" ||
+  fail 'geometry rollback did not restore fullscreen state'
 
 printf '%s\n' '==> stale and malformed addresses are rejected before dispatch'
 before=$(wc -l <"$WINDOW_TEST_LOG")

@@ -98,6 +98,9 @@ class CHyprBar : public IHyprWindowDecoration {
     void handleMovement();
     void updateSnapPreview(Vector2D coords);
     void commitSnapPreview();
+    std::string ownerAddress() const;
+    std::string commandForOwner(const std::string& command) const;
+    void executeForOwner(const std::string& command) const;
     bool doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButtonPadding, Config::INTEGER barHeight, Vector2D COORDS, bool BUTTONSRIGHT);
 
     CBox assignedBoxGlobal();

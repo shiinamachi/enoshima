@@ -58,18 +58,47 @@ static bool windowIsAllowlisted(PHLWINDOW window) {
     return window && (classMatchesAllowlist(window->m_class) || classMatchesAllowlist(window->m_initialClass));
 }
 
+static auto findBar(PHLWINDOW window) {
+    return std::find_if(g_pGlobalState->bars.begin(), g_pGlobalState->bars.end(), [window](const auto& bar) {
+        return bar && bar->getOwner() == window;
+    });
+}
+
+static bool wantsDecoration(PHLWINDOW window) {
+    return window && g_pGlobalState->config.enabled->value() && windowIsAllowlisted(window) && !window->m_X11DoesntWantBorders &&
+        window->m_ruleApplicator->decorate().valueOrDefault();
+}
+
+static void syncDecoration(PHLWINDOW window) {
+    if (!window)
+        return;
+
+    const auto BARIT    = findBar(window);
+    const bool EXISTING = BARIT != g_pGlobalState->bars.end();
+    const bool WANTED   = wantsDecoration(window);
+
+    if (!WANTED && EXISTING) {
+        // removeWindowDecoration owns destruction. CHyprBar's destructor also
+        // removes its weak reference from g_pGlobalState->bars, so do not erase
+        // the iterator a second time here.
+        HyprlandAPI::removeWindowDecoration(PHANDLE, BARIT->get());
+        window->updateWindowDecos();
+        return;
+    }
+
+    if (!WANTED || EXISTING)
+        return;
+
+    auto bar = makeUnique<CHyprBar>(window);
+    g_pGlobalState->bars.emplace_back(bar);
+    bar->m_self = bar;
+    HyprlandAPI::addWindowDecoration(PHANDLE, window, std::move(bar));
+}
+
 static void onNewWindow(PHLWINDOW window) {
     // Ownership is positive-allowlist only. A newly installed CSD client cannot
     // receive a duplicate compositor title bar by default.
-    if (windowIsAllowlisted(window) && !window->m_X11DoesntWantBorders) {
-        if (std::ranges::any_of(window->m_windowDecorations, [](const auto& d) { return d->getDisplayName() == "EnoshimaDecoration"; }))
-            return;
-
-        auto bar = makeUnique<CHyprBar>(window);
-        g_pGlobalState->bars.emplace_back(bar);
-        bar->m_self = bar;
-        HyprlandAPI::addWindowDecoration(PHANDLE, window, std::move(bar));
-    }
+    syncDecoration(window);
 }
 
 static void onPreConfigReload() {
@@ -77,6 +106,15 @@ static void onPreConfigReload() {
 }
 
 static void onConfigReloaded() {
+    // Reconcile in both directions. A class change, an allowlist removal, a
+    // border opt-out, or disabling the plugin must remove stale compositor
+    // chrome just as reliably as an allowlist addition attaches it.
+    for (auto& window : g_pCompositor->m_windows) {
+        if (!window->m_isMapped)
+            continue;
+        syncDecoration(window);
+    }
+
     for (auto& b : g_pGlobalState->bars) {
         if (!b)
             continue;
@@ -86,13 +124,10 @@ static void onConfigReloaded() {
 }
 
 static void onUpdateWindowRules(PHLWINDOW window) {
-    const auto BARIT = std::find_if(g_pGlobalState->bars.begin(), g_pGlobalState->bars.end(), [window](const auto& bar) { return bar->getOwner() == window; });
-
-    if (BARIT == g_pGlobalState->bars.end()) {
-        if (windowIsAllowlisted(window))
-            onNewWindow(window);
+    syncDecoration(window);
+    const auto BARIT = findBar(window);
+    if (BARIT == g_pGlobalState->bars.end())
         return;
-    }
 
     (*BARIT)->updateRules();
     window->updateWindowDecos();

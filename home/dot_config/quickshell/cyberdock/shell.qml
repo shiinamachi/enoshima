@@ -23,6 +23,9 @@ ShellRoot {
     property bool windowMenuOpen: false
     property string windowMenuScreenName: ""
     property string windowMenuAddress: ""
+    property int windowMenuAnchorX: 14
+    property int windowMenuAnchorY: 48
+    property string windowMenuSource: "keyboard"
     property bool kakaoFocusPulseActive: false
     property string kakaoFocusScreenName: ""
     property string kakaoFocusTargetAddress: ""
@@ -410,7 +413,8 @@ ShellRoot {
     IpcHandler {
         target: "windowmenu"
 
-        function open(address: string): void {
+        function open(address: string, anchorX: int, anchorY: int,
+                source: string): void {
             if (!/^0x[0-9A-Fa-f]+$/.test(address)
                     || Object.keys(root.windowByAddress(address)).length === 0)
                 return;
@@ -419,6 +423,9 @@ ShellRoot {
             root.powerMenuOpen = false;
             root.windowMenuAddress = address;
             root.windowMenuScreenName = root.screenForWindow(address);
+            root.windowMenuAnchorX = anchorX;
+            root.windowMenuAnchorY = anchorY;
+            root.windowMenuSource = source;
             root.windowMenuOpen = true;
         }
         function close(): void { root.windowMenuOpen = false; }
@@ -1450,6 +1457,9 @@ ShellRoot {
             activeScreenName: root.windowMenuScreenName
             targetAddress: root.windowMenuAddress
             targetWindow: root.windowByAddress(root.windowMenuAddress)
+            anchorX: root.windowMenuAnchorX
+            anchorY: root.windowMenuAnchorY
+            invocationSource: root.windowMenuSource
             theme: root.theme
             reducedMotion: root.reducedMotion
             onCloseRequested: root.windowMenuOpen = false

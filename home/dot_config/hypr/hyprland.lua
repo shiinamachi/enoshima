@@ -236,7 +236,7 @@ local function configureEnoshimaDecoration()
                 bar_part_of_window = true,
                 bar_precedence_over_border = false,
                 icon_on_hover = false,
-                on_double_click = "desktop-window-action maximize --active --origin titlebar",
+                on_double_click = "desktop-window-action maximize --address {address} --origin titlebar",
             },
         },
     })
@@ -246,17 +246,17 @@ local function configureEnoshimaDecoration()
     hl.plugin.enoshima_decoration.add_button({
         bg_color = "rgba(00000000)", fg_color = "rgba(f2ecffff)",
         size = 28, icon = "×",
-        action = "desktop-window-action close --active --origin titlebar",
+        action = "desktop-window-action close --address {address} --origin titlebar",
     })
     hl.plugin.enoshima_decoration.add_button({
         bg_color = "rgba(00000000)", fg_color = "rgba(f2ecffff)",
         size = 28, icon = "□",
-        action = "desktop-window-action maximize --active --origin titlebar",
+        action = "desktop-window-action maximize --address {address} --origin titlebar",
     })
     hl.plugin.enoshima_decoration.add_button({
         bg_color = "rgba(00000000)", fg_color = "rgba(f2ecffff)",
         size = 28, icon = "−",
-        action = "desktop-window-action minimize --active --origin titlebar",
+        action = "desktop-window-action minimize --address {address} --origin titlebar",
     })
 end
 

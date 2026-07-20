@@ -5,10 +5,45 @@ qs_bin=${ENOSHIMA_WINDOW_MENU_QS:-qs}
 config_path=${ENOSHIMA_WINDOW_MENU_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/cyberdock}
 hyprctl_bin=${ENOSHIMA_WINDOW_MENU_HYPRCTL:-hyprctl}
 
-address=${1:-}
+address=
+anchor_x=
+anchor_y=
+source=keyboard
+while (($# > 0)); do
+  case $1 in
+    --address) (($# >= 2)) || exit 64; address=$2; shift 2 ;;
+    --anchor-x) (($# >= 2)) || exit 64; anchor_x=$2; shift 2 ;;
+    --anchor-y) (($# >= 2)) || exit 64; anchor_y=$2; shift 2 ;;
+    --source) (($# >= 2)) || exit 64; source=$2; shift 2 ;;
+    *)
+      # Preserve the original one-positional-argument interface for callers
+      # upgraded independently from this helper.
+      [[ -z $address ]] || exit 64
+      address=$1
+      shift
+      ;;
+  esac
+done
+
+clients=$($hyprctl_bin clients -j)
 if [[ -z $address ]]; then
   address=$($hyprctl_bin activewindow -j | jq -r '.address // ""')
 fi
 [[ $address =~ ^0x[0-9A-Fa-f]+$ ]] || exit 0
+window=$(jq -ce --arg address "$address" '.[] | select(.address == $address)' <<<"$clients") || exit 0
 
-"$qs_bin" -p "$config_path" ipc call -- windowmenu open "$address" >/dev/null
+if [[ ! $anchor_x =~ ^-?[0-9]+$ || ! $anchor_y =~ ^-?[0-9]+$ ]]; then
+  anchor_x=$(jq -r '.at[0] // 0' <<<"$window")
+  anchor_y=$(jq -r '(.at[1] // 0) + 36' <<<"$window")
+fi
+[[ $source == titlebar || $source == keyboard ]] || source=keyboard
+
+monitor_id=$(jq -r '.monitor // -1' <<<"$window")
+monitor=$($hyprctl_bin monitors -j | jq -ce --argjson id "$monitor_id" '.[] | select(.id == $id)') || exit 0
+monitor_x=$(jq -r '.x // 0' <<<"$monitor")
+monitor_y=$(jq -r '.y // 0' <<<"$monitor")
+local_x=$((anchor_x - monitor_x))
+local_y=$((anchor_y - monitor_y))
+
+"$qs_bin" -p "$config_path" ipc call -- windowmenu open \
+  "$address" "$local_x" "$local_y" "$source" >/dev/null
