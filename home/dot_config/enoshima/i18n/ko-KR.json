@@ -1,0 +1,18 @@
+{
+  "mode.signIn": "ENOSHIMA // 로그인",
+  "mode.unlock": "ENOSHIMA // 잠금 해제",
+  "user.other": "다른 사용자",
+  "field.username": "사용자 이름",
+  "field.password": "암호",
+  "action.continue": "계속",
+  "action.signIn": "로그인",
+  "action.unlock": "잠금 해제",
+  "action.fingerprint": "지문 사용",
+  "action.restart": "다시 시작",
+  "action.shutdown": "시스템 종료",
+  "status.capsLock": "Caps Lock이 켜져 있습니다",
+  "status.fingerprint": "지문 센서를 터치하세요…",
+  "status.offline": "오프라인",
+  "status.battery": "배터리",
+  "status.charging": "충전 중"
+}

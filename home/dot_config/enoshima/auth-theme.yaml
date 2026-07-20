@@ -1,6 +1,10 @@
 schema: 1
 surface: auth
 direction: outline-frame
+layout: home/dot_config/enoshima/auth-layout.yaml
+i18n:
+  en-US: home/dot_config/enoshima/i18n/en-US.json
+  ko-KR: home/dot_config/enoshima/i18n/ko-KR.json
 geometry:
   content_width: 420
   frame_width: 468

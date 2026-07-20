@@ -164,6 +164,11 @@ for contract in \
   'start_session' \
   'auth_message_type' \
   'org.freedesktop.login1.Manager' \
+  'org.freedesktop.NetworkManager' \
+  'gtk_drop_down_new_from_strings' \
+  'gtk_window_fullscreen_on_monitor' \
+  'avatar-default-symbolic' \
+  'system-reboot-symbolic' \
   'G_APPLICATION_NON_UNIQUE' \
   'gtk_window_fullscreen'; do
   assert_contains "$greeter_source" "$contract"
@@ -173,11 +178,32 @@ assert_not_contains "$greeter_source" 'popen('
 assert_contains "$greeter_pkgbuild" "depends=('glib2' 'greetd' 'gtk4' 'json-glib')"
 read -r -a greeter_cflags <<<"$(pkg-config --cflags gtk4 json-glib-1.0 gio-unix-2.0)"
 read -r -a greeter_libs <<<"$(pkg-config --libs gtk4 json-glib-1.0 gio-unix-2.0)"
-cc -std=c17 -O2 \
+cc -std=c17 -Wall -Wextra -Werror -O2 \
   "${greeter_cflags[@]}" \
   "$greeter_source" -o "$work/enoshima-greeter" \
   "${greeter_libs[@]}"
 "$work/enoshima-greeter" --self-test >/dev/null
+assert_contains home/dot_config/enoshima/auth-layout.yaml 'policy: serialized'
+assert_contains docs/concepts/auth.yaml 'PAM requests are serialized'
+assert_contains home/dot_config/enoshima/i18n/en-US.json '"action.signIn": "Sign In"'
+assert_contains home/dot_config/enoshima/i18n/ko-KR.json '"action.signIn": "로그인"'
+assert_not_contains "$greeter_source" '한 · Korean'
+assert_not_contains "$greeter_source" '◎  지문 인식기를 터치하세요'
+mkdir -p "$work/status-bin"
+cat >"$work/status-bin/nmcli" <<'SH'
+#!/usr/bin/env sh
+printf '%s\n' disconnected
+SH
+chmod 0755 "$work/status-bin/nmcli"
+auth_status=home/dot_local/bin/executable_enoshima-auth-status
+[[ $(env LC_ALL=C PATH="$work/status-bin:/usr/bin" "$auth_status" network) == '○ Offline' ]] ||
+  fail 'auth status did not render the English offline state'
+[[ $(env LC_ALL=ko_KR.UTF-8 PATH="$work/status-bin:/usr/bin" "$auth_status" network) == '○ 오프라인' ]] ||
+  fail 'auth status did not render the Korean offline state'
+[[ $(env LC_ALL=C PATH="$work/status-bin:/usr/bin" "$auth_status" mode-unlock) == 'ENOSHIMA // UNLOCK' ]] ||
+  fail 'auth status did not render the English unlock mode'
+[[ $(env LC_ALL=ko_KR.UTF-8 PATH="$work/status-bin:/usr/bin" "$auth_status" mode-unlock) == 'ENOSHIMA // 잠금 해제' ]] ||
+  fail 'auth status did not render the Korean unlock mode'
 assert_contains "$login_tasks" 'mode: "0644"'
 assert_contains "$login_tasks" 'dest: /etc/greetd/background-16x10.jpg'
 assert_contains "$login_tasks" 'dest: /etc/greetd/enoshima-greeter.css'

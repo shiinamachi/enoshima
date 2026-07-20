@@ -165,6 +165,9 @@ surfaces:
     implementation:
       - home/dot_config/hypr/hyprlock.conf
       - home/dot_config/enoshima/auth-theme.yaml
+      - home/dot_config/enoshima/auth-layout.yaml
+      - home/dot_config/enoshima/i18n/en-US.json
+      - home/dot_config/enoshima/i18n/ko-KR.json
       - home/dot_local/bin/executable_enoshima-auth-status
       - packages/local/enoshima-greeter/enoshima-greeter.c
       - ansible/roles/system/templates/enoshima-greeter.css.j2

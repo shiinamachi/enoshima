@@ -1,26 +1,72 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-network='○ 오프라인'
-if command -v nmcli >/dev/null 2>&1 &&
-  [[ $(nmcli -t -f STATE general 2>/dev/null || true) == connected* ]]; then
-  network='● 네트워크'
+locale_name=${LC_ALL:-${LC_MESSAGES:-${LANG:-en_US.UTF-8}}}
+is_korean=false
+[[ $locale_name == ko_* ]] && is_korean=true
+
+if $is_korean; then
+  offline='○ 오프라인'
+  connected='● 연결됨'
+  battery_prefix='배터리'
+  charging_prefix='충전 중'
+  power_pending='전원 확인 중'
+  mode_unlock='ENOSHIMA // 잠금 해제'
+  submit_unlock='Enter  ·  잠금 해제'
+else
+  offline='○ Offline'
+  connected='● Connected'
+  battery_prefix='Battery'
+  charging_prefix='Charging'
+  power_pending='Checking power'
+  mode_unlock='ENOSHIMA // UNLOCK'
+  submit_unlock='Enter  ·  Unlock'
 fi
 
-battery='전원 확인 중'
-if [[ -r /sys/class/power_supply/BAT0/capacity ]]; then
-  read -r capacity </sys/class/power_supply/BAT0/capacity
+network=$offline
+if command -v nmcli >/dev/null 2>&1 &&
+  [[ $(nmcli -t -f STATE general 2>/dev/null || true) == connected* ]]; then
+  connection=$(nmcli -g GENERAL.CONNECTION device show 2>/dev/null |
+    awk 'NF && $0 != "--" { print; exit }')
+  network=$connected
+  [[ -n $connection ]] && network="● $connection"
+fi
+
+layout='EN'
+if command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  keymap=$(hyprctl -j devices 2>/dev/null |
+    jq -r '.keyboards[] | select(.main == true) | .active_keymap' |
+    head -n 1 || true)
+  case $keymap in
+    *Korean*|*Hangul*|*한국*) layout='한' ;;
+    '') ;;
+    *) layout='EN' ;;
+  esac
+fi
+
+battery=$power_pending
+shopt -s nullglob
+batteries=(/sys/class/power_supply/BAT*)
+if ((${#batteries[@]} > 0)) && [[ -r ${batteries[0]}/capacity ]]; then
+  read -r capacity <"${batteries[0]}/capacity"
+  status=''
+  [[ -r ${batteries[0]}/status ]] && read -r status <"${batteries[0]}/status"
   if [[ $capacity =~ ^[0-9]+$ ]]; then
-    battery="배터리 ${capacity}%"
+    prefix=$battery_prefix
+    [[ $status == Charging || $status == Full ]] && prefix=$charging_prefix
+    battery="$prefix ${capacity}%"
   fi
 fi
 
 case ${1:-summary} in
-  summary) printf '%s  ·  한  ·  %s\n' "$network" "$battery" ;;
+  summary) printf '%s  ·  %s  ·  %s\n' "$network" "$layout" "$battery" ;;
   network) printf '%s\n' "$network" ;;
+  layout) printf '%s\n' "$layout" ;;
   battery) printf '%s\n' "$battery" ;;
+  mode-unlock) printf '%s\n' "$mode_unlock" ;;
+  submit-unlock) printf '%s\n' "$submit_unlock" ;;
   *)
-    printf 'usage: enoshima-auth-status [summary|network|battery]\n' >&2
+    printf 'usage: enoshima-auth-status [summary|network|layout|battery|mode-unlock|submit-unlock]\n' >&2
     exit 64
     ;;
 esac

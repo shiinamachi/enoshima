@@ -12,7 +12,8 @@ invariants:
   - Password input remains masked and authentication failure never exposes a shell.
   - Only boot mode shows restart and shutdown.
 behavior:
-  - Password and fingerprint may complete concurrently but only one success transitions.
+  - Password and fingerprint remain available together, but PAM requests are serialized; submitting a password cancels an in-flight fingerprint request before password authentication starts.
+  - Exactly one successful authentication may transition the session.
   - Primary monitor owns input; secondary monitors show wallpaper and status only.
   - Boot power actions use login1 with an explicit confirmation.
 acceptance:

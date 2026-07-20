@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import re
 import sys
 
@@ -10,6 +11,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 THEME = ROOT / "home/dot_config/enoshima/auth-theme.yaml"
+LAYOUT = ROOT / "home/dot_config/enoshima/auth-layout.yaml"
 CSS = ROOT / "ansible/roles/system/templates/enoshima-greeter.css.j2"
 LOCK = ROOT / "home/dot_config/hypr/hyprlock.conf"
 
@@ -23,10 +25,26 @@ def rgb(hex_color: str) -> str:
 
 def main() -> int:
     theme = yaml.safe_load(THEME.read_text(encoding="utf-8"))
+    layout = yaml.safe_load(LAYOUT.read_text(encoding="utf-8"))
     css = CSS.read_text(encoding="utf-8")
     lock = LOCK.read_text(encoding="utf-8")
     if theme.get("schema") != 1 or theme.get("direction") != "outline-frame":
         raise SystemExit("auth theme schema/direction is invalid")
+    if layout.get("schema") != 1 or layout.get("surface") != "auth":
+        raise SystemExit("auth layout schema/surface is invalid")
+    if layout.get("authentication", {}).get("policy") != "serialized":
+        raise SystemExit("auth layout must declare serialized PAM policy")
+    if theme.get("layout") != str(LAYOUT.relative_to(ROOT)):
+        raise SystemExit("auth theme does not reference the shared layout")
+
+    catalogs: dict[str, dict[str, str]] = {}
+    for locale, relative in theme.get("i18n", {}).items():
+        path = ROOT / relative
+        catalogs[locale] = json.loads(path.read_text(encoding="utf-8"))
+    if set(catalogs) != {"en-US", "ko-KR"}:
+        raise SystemExit("auth theme must reference English and Korean catalogs")
+    if set(catalogs["en-US"]) != set(catalogs["ko-KR"]):
+        raise SystemExit("auth translation catalogs do not have matching keys")
 
     for name, value in theme["colors"].items():
         expected = f"@define-color cyber_{name} {value};"
@@ -36,6 +54,20 @@ def main() -> int:
             raise SystemExit(f"Hyprlock is missing auth token: {name}={value}")
 
     geometry = theme["geometry"]
+    layout_geometry = layout["card"] | layout["controls"]
+    shared_geometry = {
+        "content_width": "content_width",
+        "frame_width": "frame_width",
+        "frame_height": "frame_height",
+        "primary_height": "primary_height",
+        "control_radius": "radius",
+        "focus_width": "focus_width",
+    }
+    for theme_key, layout_key in shared_geometry.items():
+        if geometry[theme_key] != layout_geometry[layout_key]:
+            raise SystemExit(
+                f"auth geometry drift between theme and layout: {theme_key}"
+            )
     contracts = {
         f"size = {geometry['frame_width']}, {geometry['frame_height']}",
         f"size = {geometry['content_width']}, 58",

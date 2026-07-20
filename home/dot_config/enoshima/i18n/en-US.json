@@ -1,0 +1,18 @@
+{
+  "mode.signIn": "ENOSHIMA // SIGN IN",
+  "mode.unlock": "ENOSHIMA // UNLOCK",
+  "user.other": "Other user",
+  "field.username": "User name",
+  "field.password": "Password",
+  "action.continue": "Continue",
+  "action.signIn": "Sign In",
+  "action.unlock": "Unlock",
+  "action.fingerprint": "Use fingerprint",
+  "action.restart": "Restart",
+  "action.shutdown": "Shut Down",
+  "status.capsLock": "Caps Lock is on",
+  "status.fingerprint": "Touch the fingerprint sensor…",
+  "status.offline": "Offline",
+  "status.battery": "Battery",
+  "status.charging": "Charging"
+}
