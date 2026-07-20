@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly brightnessctl_bin=${DESKTOP_KEYBOARD_BRIGHTNESSCTL:-brightnessctl}
+readonly osd_bin=${DESKTOP_KEYBOARD_BRIGHTNESS_OSD:-desktop-osd-event}
+readonly device=${DESKTOP_KEYBOARD_BRIGHTNESS_DEVICE:-*kbd_backlight*}
+
+case ${1:-} in
+  raise) setting=10%+ ;;
+  lower) setting=10%- ;;
+  *) printf 'usage: desktop-keyboard-backlight-control {raise|lower}\n' >&2; exit 2 ;;
+esac
+[[ $# -eq 1 ]] || exit 2
+"$brightnessctl_bin" --device "$device" set "$setting"
+"$osd_bin" keyboard-backlight

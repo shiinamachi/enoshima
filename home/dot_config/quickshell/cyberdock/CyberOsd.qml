@@ -18,6 +18,46 @@ PanelWindow {
     required property bool osdMuted
     required property var theme
     required property bool reducedMotion
+    readonly property bool koreanLocale:
+        String(Quickshell.env("LANG") || "").toLowerCase().startsWith("ko")
+    readonly property bool criticalState:
+        osdMuted && (osdKind === "volume" || osdKind === "microphone")
+
+    function titleFor(kind) {
+        const labels = {
+            "volume": ["음량", "Volume"],
+            "microphone": ["마이크", "Microphone"],
+            "brightness": ["밝기", "Brightness"],
+            "keyboard-backlight": ["키보드 백라이트", "Keyboard backlight"],
+            "airplane-mode": ["비행기 모드", "Airplane mode"]
+        };
+        const value = labels[String(kind || "")] || ["시스템", "System"];
+        return koreanLocale ? value[0] : value[1];
+    }
+
+    function valueText() {
+        if (osdKind === "airplane-mode")
+            return osdMuted
+                ? (koreanLocale ? "켜짐" : "On")
+                : (koreanLocale ? "꺼짐" : "Off");
+        if (osdMuted)
+            return koreanLocale ? "음소거" : "Muted";
+        return osdValue + "%";
+    }
+
+    function iconName() {
+        if (osdKind === "brightness")
+            return "xfpm-brightness-lcd";
+        if (osdKind === "keyboard-backlight")
+            return "keyboard-brightness-symbolic";
+        if (osdKind === "microphone")
+            return osdMuted ? "microphone-sensitivity-muted-symbolic" : "audio-input-microphone-symbolic";
+        if (osdKind === "airplane-mode")
+            return osdMuted ? "airplane-mode-symbolic" : "network-wireless-signal-good-symbolic";
+        return osdMuted ? "audio-volume-muted"
+            : (osdValue < 34 ? "audio-volume-low"
+                : (osdValue < 67 ? "audio-volume-medium" : "audio-volume-high"));
+    }
 
     screen: targetScreen
     // Keep the transparent layer mapped so Quickshell has a valid content
@@ -60,8 +100,8 @@ PanelWindow {
         border.color: osd.theme.colorFocusBorder
 
         Accessible.role: Accessible.ProgressBar
-        Accessible.name: osd.osdKind === "brightness" ? "밝기" : "음량"
-        Accessible.description: osd.osdMuted ? "음소거" : osd.osdValue + "%"
+        Accessible.name: osd.titleFor(osd.osdKind)
+        Accessible.description: osd.valueText()
 
         IconImage {
             anchors.left: parent.left
@@ -69,15 +109,7 @@ PanelWindow {
             anchors.verticalCenter: parent.verticalCenter
             implicitWidth: 24
             implicitHeight: 24
-            source: Quickshell.iconPath(osd.osdKind === "brightness"
-                ? "xfpm-brightness-lcd"
-                : (osd.osdMuted
-                    ? "audio-volume-muted"
-                    : (osd.osdValue < 34
-                        ? "audio-volume-low"
-                        : (osd.osdValue < 67
-                            ? "audio-volume-medium"
-                            : "audio-volume-high"))),
+            source: Quickshell.iconPath(osd.iconName(),
                 "audio-volume-high")
             opacity: osd.osdMuted ? 0.82 : 1
             Accessible.ignored: true
@@ -88,7 +120,7 @@ PanelWindow {
             anchors.leftMargin: 58
             anchors.top: parent.top
             anchors.topMargin: 9
-            text: osd.osdKind === "brightness" ? "밝기" : "음량"
+            text: osd.titleFor(osd.osdKind)
             color: osd.theme.colorTextMuted
             font.family: "Pretendard"
             font.pixelSize: 12
@@ -100,8 +132,8 @@ PanelWindow {
             anchors.rightMargin: 16
             anchors.top: parent.top
             anchors.topMargin: 8
-            text: osd.osdMuted ? "음소거" : osd.osdValue + "%"
-            color: osd.osdMuted ? osd.theme.colorCritical : osd.theme.colorText
+            text: osd.valueText()
+            color: osd.criticalState ? osd.theme.colorCritical : osd.theme.colorText
             font.family: "Pretendard"
             font.pixelSize: 13
             font.bold: true
@@ -122,9 +154,10 @@ PanelWindow {
                 width: parent.width * Math.max(0, Math.min(100, osd.osdValue)) / 100
                 height: parent.height
                 radius: height / 2
-                color: osd.osdMuted
+                color: osd.criticalState
                     ? osd.theme.colorCritical
-                    : osd.theme.colorSelection
+                    : (osd.osdKind === "airplane-mode" && osd.osdMuted
+                        ? osd.theme.colorInfo : osd.theme.colorSelection)
 
                 Behavior on width {
                     enabled: !osd.reducedMotion

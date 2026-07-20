@@ -1,32 +1,84 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly kind=${1:-}
 readonly qs_bin=${CYBEROSD_QS:-qs}
 readonly wpctl_bin=${CYBEROSD_WPCTL:-wpctl}
 readonly brightnessctl_bin=${CYBEROSD_BRIGHTNESSCTL:-brightnessctl}
+readonly nmcli_bin=${CYBEROSD_NMCLI:-nmcli}
+readonly keyboard_device=${CYBEROSD_KEYBOARD_DEVICE:-*kbd_backlight*}
 readonly config_path=${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/cyberdock
 
+usage() {
+  printf '%s\n' \
+    'usage: cyberosd-show {volume|microphone|brightness|keyboard-backlight|airplane-mode}' \
+    '       cyberosd-show show --kind KIND --value 0..100 [--state normal|muted|active]' >&2
+  exit 2
+}
+
+emit() {
+  local kind=$1 value=$2 state=$3 active=false
+  [[ $kind =~ ^(volume|microphone|brightness|keyboard-backlight|airplane-mode)$ ]] || usage
+  [[ $value =~ ^[0-9]+$ ]] || usage
+  ((value > 100)) && value=100
+  case $state in
+    muted | active) active=true ;;
+    normal) active=false ;;
+    *) usage ;;
+  esac
+  "$qs_bin" -p "$config_path" ipc call -- osd show "$kind" "$value" "$active" \
+    >/dev/null 2>&1 || true
+}
+
+if [[ ${1:-} == show ]]; then
+  shift
+  kind=''
+  value=''
+  state=normal
+  while (($#)); do
+    case $1 in
+      --kind) kind=${2:-}; shift 2 ;;
+      --value) value=${2:-}; shift 2 ;;
+      --state) state=${2:-}; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [[ -n $kind && -n $value ]] || usage
+  emit "$kind" "$value" "$state"
+  exit 0
+fi
+
+kind=${1:-}
+[[ $# -eq 1 ]] || usage
 value=0
-muted=false
+state=normal
 
 case $kind in
   volume)
     output=$("$wpctl_bin" get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null) || exit 0
     value=$(awk '{ printf "%.0f", $2 * 100 }' <<<"$output")
-    [[ $output == *'[MUTED]'* ]] && muted=true
+    [[ $output == *'[MUTED]'* ]] && state=muted
+    ;;
+  microphone)
+    output=$("$wpctl_bin" get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null) || exit 0
+    value=$(awk '{ printf "%.0f", $2 * 100 }' <<<"$output")
+    [[ $output == *'[MUTED]'* ]] && state=muted
     ;;
   brightness)
     output=$("$brightnessctl_bin" -m info 2>/dev/null) || exit 0
     value=$(awk -F, '{ value=$4; gsub(/[^0-9]/, "", value); print value }' <<<"$output")
     ;;
-  *)
-    printf 'cyberosd-show: usage: cyberosd-show {volume|brightness}\n' >&2
-    exit 2
+  keyboard-backlight)
+    output=$("$brightnessctl_bin" --device "$keyboard_device" -m info 2>/dev/null) || exit 0
+    value=$(awk -F, '{ value=$4; gsub(/[^0-9]/, "", value); print value }' <<<"$output")
     ;;
+  airplane-mode)
+    output=$("$nmcli_bin" -t -f WIFI,WWAN radio 2>/dev/null) || exit 0
+    if ! grep -Eq '(^|:)(enabled|on)(:|$)' <<<"$output"; then
+      state=active
+      value=100
+    fi
+    ;;
+  *) usage ;;
 esac
 
-[[ $value =~ ^[0-9]+$ ]] || exit 0
-((value > 100)) && value=100
-"$qs_bin" -p "$config_path" ipc call -- osd show "$kind" "$value" "$muted" \
-  >/dev/null 2>&1 || true
+emit "$kind" "$value" "$state"

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly wpctl_bin=${DESKTOP_MICROPHONE_WPCTL:-wpctl}
+readonly osd_bin=${DESKTOP_MICROPHONE_OSD:-desktop-osd-event}
+[[ ${1:-} == toggle-mute && $# -eq 1 ]] || {
+  printf 'usage: desktop-microphone-control toggle-mute\n' >&2
+  exit 2
+}
+"$wpctl_bin" set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+"$osd_bin" microphone

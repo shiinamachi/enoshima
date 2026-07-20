@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly nmcli_bin=${DESKTOP_AIRPLANE_NMCLI:-nmcli}
+readonly osd_bin=${DESKTOP_AIRPLANE_OSD:-desktop-osd-event}
+[[ ${1:-} == toggle && $# -eq 1 ]] || {
+  printf 'usage: desktop-airplane-control toggle\n' >&2
+  exit 2
+}
+
+if "$nmcli_bin" -t -f WIFI radio 2>/dev/null | grep -Eq '^(enabled|on)$'; then
+  "$nmcli_bin" radio all off
+else
+  "$nmcli_bin" radio all on
+fi
+"$osd_bin" airplane-mode

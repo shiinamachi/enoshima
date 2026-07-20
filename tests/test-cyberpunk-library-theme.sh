@@ -360,7 +360,7 @@ assert_contains "$launcher" '↑↓  이동     Enter  실행'
 
 osd=home/dot_config/quickshell/cyberdock/CyberOsd.qml
 assert_contains "$osd" 'WlrLayershell.namespace: "cyberosd"'
-assert_contains "$osd" 'osd.osdValue + "%"'
+assert_contains "$osd" 'return osdValue + "%"'
 assert_contains "$osd" 'mask: Region {}'
 assert_contains "$osd" 'visible: true'
 assert_contains "$osd" 'readonly property bool showing:'
@@ -369,6 +369,9 @@ assert_contains "$osd" 'required property var theme'
 assert_contains "$osd" 'required property bool reducedMotion'
 assert_contains "$osd" 'xfpm-brightness-lcd'
 assert_contains "$osd" 'audio-volume-muted'
+assert_contains "$osd" 'microphone-sensitivity-muted-symbolic'
+assert_contains "$osd" 'keyboard-brightness-symbolic'
+assert_contains "$osd" 'airplane-mode-symbolic'
 assert_contains "$osd" 'Accessible.role: Accessible.ProgressBar'
 assert_count 1 "$osd" 'enabled: !osd.reducedMotion'
 
