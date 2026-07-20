@@ -116,7 +116,8 @@ idempotency, reboot, desktop, visual, Secure Boot, and harness failures.
 Collected evidence includes package state, failed and configured system/user
 units, current-boot journal, `dmesg`, cloud-init status, bootstrap JSON/logs,
 postflight JSON, Hyprland JSON, screenshots, and boot-security reports. The
-runner preserves reports after deleting mutable VM media.
+runner also writes one JUnit testcase per suite step and preserves reports after
+deleting mutable VM media.
 
 All postflight skips are explicit. A suite has a checked allowlist, and any
 unexpected skip fails the run. A background watchdog enforces the suite's

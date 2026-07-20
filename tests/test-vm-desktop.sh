@@ -37,5 +37,7 @@ grep -Fq 'record.pop("login_password", None)' "$watchdog" ||
   fail 'watchdog cleanup retains the greetd password reference'
 grep -Fq 'captured compositor evidence is not a PNG' "$service" ||
   fail 'compositor screenshots are not structurally validated'
+grep -Fq 'junit.xml' "$service" ||
+  fail 'suite steps are not exported as JUnit evidence'
 
 printf 'VM desktop and greetd contract tests passed.\n'

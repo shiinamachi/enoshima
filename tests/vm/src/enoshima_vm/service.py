@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -312,6 +313,48 @@ class VMService:
         )
         path.write_text(str(result["stdout"]) + stderr, encoding="utf-8")
         return path
+
+    def _write_junit(self, record: dict[str, Any]) -> Path:
+        steps = record.get("steps", [])
+        failures = sum(1 for step in steps if step.get("status") == "failed")
+        elapsed = sum(float(step.get("duration_seconds", 0)) for step in steps)
+        suite = ET.Element(
+            "testsuite",
+            {
+                "name": f"enoshima-vm.{record['suite']}",
+                "tests": str(len(steps)),
+                "failures": str(failures),
+                "errors": "0",
+                "skipped": "0",
+                "time": f"{elapsed:.3f}",
+            },
+        )
+        for step in steps:
+            case = ET.SubElement(
+                suite,
+                "testcase",
+                {
+                    "classname": f"enoshima_vm.{record['suite']}",
+                    "name": str(step["action"]),
+                    "time": f"{float(step.get('duration_seconds', 0)):.3f}",
+                },
+            )
+            if step.get("status") == "failed":
+                failure = ET.SubElement(
+                    case,
+                    "failure",
+                    {
+                        "type": str(record.get("category") or "HARNESS_ERROR"),
+                        "message": str(record.get("error") or "suite step failed"),
+                    },
+                )
+                failure.text = str(record.get("error") or "suite step failed")
+        destination = Path(record["artifact_dir"]) / "junit.xml"
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        ET.ElementTree(suite).write(
+            destination, encoding="utf-8", xml_declaration=True
+        )
+        return destination
 
     def _run_checked(
         self,
@@ -1052,13 +1095,40 @@ class VMService:
                 record["current_step_index"] = index
                 record["updated_at"] = utc_now()
                 self._write_record(record)
-                self._execute_step(record, suite, action, config)
+                step_started = time.monotonic()
+                try:
+                    self._execute_step(record, suite, action, config)
+                except Exception:
+                    record = self.load_record(record["run_id"])
+                    record.setdefault("steps", []).append(
+                        {
+                            "index": index,
+                            "action": action,
+                            "status": "failed",
+                            "duration_seconds": round(
+                                time.monotonic() - step_started, 3
+                            ),
+                        }
+                    )
+                    self._write_record(record)
+                    raise
+                record = self.load_record(record["run_id"])
+                record.setdefault("steps", []).append(
+                    {
+                        "index": index,
+                        "action": action,
+                        "status": "passed",
+                        "duration_seconds": round(time.monotonic() - step_started, 3),
+                    }
+                )
+                self._write_record(record)
             record = self.load_record(record["run_id"])
             record["result"] = "passed"
             record["status"] = "passed"
             record["category"] = None
             record["updated_at"] = utc_now()
             self._write_record(record)
+            self._write_junit(record)
             self.destroy(record["run_id"])
             return self.load_record(record["run_id"])
         except Exception as error:
@@ -1076,6 +1146,7 @@ class VMService:
                 record["details"] = error.details
             record["updated_at"] = utc_now()
             self._write_record(record)
+            self._write_junit(record)
             try:
                 self.collect(record["run_id"])
             except Exception as collection_error:
