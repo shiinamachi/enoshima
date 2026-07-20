@@ -129,6 +129,7 @@ after=$(wc -l <"$WINDOW_TEST_LOG")
 
 printf '%s\n' '==> socket events are reconciled only by the state machine'
 export CYBERDOCK_EVENT_STATE=$work/bin/event-state
+export CYBERDOCK_EVENT_QS=$work/bin/event-qs
 export EVENT_STATE_FILE=$work/event-state.json
 cat >"$CYBERDOCK_EVENT_STATE" <<'FAKE'
 #!/usr/bin/env bash
@@ -142,6 +143,14 @@ for argument in "$@"; do printf ' %q' "$argument" >>"$WINDOW_TEST_LOG"; done
 printf '\n' >>"$WINDOW_TEST_LOG"
 FAKE
 chmod 0700 "$CYBERDOCK_EVENT_STATE"
+cat >"$CYBERDOCK_EVENT_QS" <<'FAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'event-qs' >>"${WINDOW_TEST_LOG:?}"
+for argument in "$@"; do printf ' %q' "$argument" >>"$WINDOW_TEST_LOG"; done
+printf '\n' >>"$WINDOW_TEST_LOG"
+FAKE
+chmod 0700 "$CYBERDOCK_EVENT_QS"
 cat >"$EVENT_STATE_FILE" <<'JSON'
 {"version":1,"windows":[{"address":"0xaaa","minimized":false},{"address":"0xbbb","minimized":false}]}
 JSON
@@ -172,6 +181,8 @@ if grep -Fq 'debounce' "$bridge" || grep -Fq 'minimize\>\>* |' "$bridge"; then
 fi
 grep -Fxq 'event-state prune' "$WINDOW_TEST_LOG" ||
   fail 'close event did not prune runtime state'
+grep -Fq 'ipc call -- dock refresh' "$WINDOW_TEST_LOG" ||
+  fail 'state-changing events do not refresh the rendered dock'
 printf '%s\n' 'closewindow>>0xbbb' | bash "$bridge" --stdin
 # shellcheck disable=SC2016 # Match the literal command in the managed helper.
 grep -Fq '"$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT' "$bridge" ||

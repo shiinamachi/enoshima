@@ -26,6 +26,9 @@ ShellRoot {
     property int windowMenuAnchorX: 14
     property int windowMenuAnchorY: 48
     property string windowMenuSource: "keyboard"
+    property bool dockKeyboardOpen: false
+    property string dockKeyboardScreenName: ""
+    property int dockKeyboardIndex: 0
     property bool kakaoFocusPulseActive: false
     property string kakaoFocusScreenName: ""
     property string kakaoFocusTargetAddress: ""
@@ -452,6 +455,21 @@ ShellRoot {
         }
     }
 
+    IpcHandler {
+        target: "dock"
+
+        function keyboard(): void {
+            root.dockKeyboardScreenName = root.focusedScreenName();
+            root.dockKeyboardIndex = 0;
+            root.dockKeyboardOpen = true;
+        }
+        function close(): void { root.dockKeyboardOpen = false; }
+        function refresh(): void {
+            if (!snapshotProcess.running)
+                snapshotProcess.running = true;
+        }
+    }
+
     Timer {
         id: osdHideTimer
         interval: root.theme.durationOsdVisible
@@ -601,7 +619,7 @@ ShellRoot {
 
     Timer {
         id: refreshSoon
-        interval: 180
+        interval: 140
         repeat: false
         onTriggered: {
             if (!snapshotProcess.running)
@@ -631,6 +649,8 @@ ShellRoot {
                 property var menuApp: null
                 property real menuCenterX: width / 2
                 property bool pinDragActive: false
+                readonly property bool keyboardMode: root.dockKeyboardOpen
+                    && String(root.dockKeyboardScreenName) === String(modelData.name || "")
                 readonly property int dockBottomMargin: 7
                 readonly property var monitorState: (root.snapshot.monitors || []).find(monitor =>
                     String(monitor.name || "") === String(modelData.name || "")) || null
@@ -650,7 +670,7 @@ ShellRoot {
                     });
                 }
                 readonly property bool revealed:
-                    !root.launcherOpen && (!fullscreenActive || manualReveal)
+                    !root.launcherOpen && (!fullscreenActive || manualReveal || keyboardMode)
                 readonly property bool pointerInInteractiveArea:
                     hotspotHover.hovered || dockAreaHover.hovered
                     || contextMenuHover.hovered || chooserHover.hovered
@@ -658,13 +678,14 @@ ShellRoot {
                 screen: modelData
                 color: "transparent"
                 aboveWindows: true
-                focusable: false
+                focusable: keyboardMode
                 exclusiveZone: fullscreenActive ? 0 : 74
                 implicitHeight: 380
 
                 WlrLayershell.namespace: "cyberdock"
                 WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+                WlrLayershell.keyboardFocus: keyboardMode
+                    ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
                 anchors {
                     left: true
@@ -693,6 +714,19 @@ ShellRoot {
                         reveal();
                     else
                         scheduleHide();
+                }
+
+                onKeyboardModeChanged: {
+                    if (keyboardMode) {
+                        manualReveal = true;
+                        Qt.callLater(() => dockKeyboardInput.forceActiveFocus());
+                    }
+                }
+
+                function moveKeyboardSelection(delta) {
+                    if (dockApps.length === 0)
+                        return;
+                    root.dockKeyboardIndex = (root.dockKeyboardIndex + delta + dockApps.length) % dockApps.length;
                 }
 
                 function reveal() {
@@ -962,6 +996,35 @@ ShellRoot {
                         }
                     }
 
+                    Item {
+                        id: dockKeyboardInput
+                        anchors.fill: parent
+                        focus: dockWindow.keyboardMode
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Escape) {
+                                root.dockKeyboardOpen = false;
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Backtab
+                                    || (event.key === Qt.Key_Tab && event.modifiers & Qt.ShiftModifier)) {
+                                dockWindow.moveKeyboardSelection(-1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Tab) {
+                                dockWindow.moveKeyboardSelection(1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Home) {
+                                root.dockKeyboardIndex = 0;
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_End) {
+                                root.dockKeyboardIndex = Math.max(0, dockWindow.dockApps.length - 1);
+                                event.accepted = true;
+                            } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                    || event.key === Qt.Key_Space) && dockWindow.dockApps.length > 0) {
+                                dockWindow.performPrimaryAction(dockWindow.dockApps[root.dockKeyboardIndex]);
+                                event.accepted = true;
+                            }
+                        }
+                    }
+
                     Flickable {
                         anchors.fill: parent
                         anchors.margins: 6
@@ -983,6 +1046,7 @@ ShellRoot {
                                 delegate: Item {
                                     id: appItem
                                     required property var modelData
+                                    required property int index
                                     readonly property var app: modelData
                                     readonly property bool running: app.windows.length > 0
                                     readonly property bool minimized: app.windows.some(window => window.minimized)
@@ -991,10 +1055,14 @@ ShellRoot {
                                             .includes(String(window.state || "")))
                                     readonly property bool active: app.windows.some(window =>
                                         window.address === root.snapshot.activeAddress)
+                                    readonly property bool urgent: app.windows.some(window =>
+                                        Boolean(window.urgent))
+                                    readonly property bool keyboardFocused:
+                                        dockWindow.keyboardMode && index === root.dockKeyboardIndex
                                     property real dragOffsetX: 0
                                     property bool dragWasActive: false
 
-                                    width: app.id === "launcher" ? 54 : 44
+                                    width: 56
                                     height: 46
                                     scale: pinDrag.active ? 1.04 : (appMouse.pressed ? 0.97 : 1)
                                     z: pinDrag.active ? 2 : 0
@@ -1041,10 +1109,15 @@ ShellRoot {
                                             : (appItem.active
                                                 ? root.theme.colorFocusSelected
                                                 : "transparent"))
-                                        border.width: pinDrag.active || appItem.active ? 1 : 0
-                                        border.color: pinDrag.active
+                                        border.width: pinDrag.active || appItem.active
+                                            || appItem.keyboardFocused || appItem.urgent ? 2 : 0
+                                        border.color: appItem.urgent
+                                            ? root.theme.colorCritical
+                                            : (appItem.keyboardFocused
                                             ? root.theme.colorFocus
-                                            : root.theme.colorSelectionBorder
+                                            : (pinDrag.active
+                                            ? root.theme.colorFocus
+                                            : root.theme.colorSelectionBorder))
                                     }
 
                                     IconImage {
@@ -1117,13 +1190,6 @@ ShellRoot {
                                             height: 3
                                             radius: 1.5
                                             color: root.theme.colorWarning
-
-                                            SequentialAnimation on opacity {
-                                                running: appItem.transitioning && !root.reducedMotion
-                                                loops: Animation.Infinite
-                                                NumberAnimation { to: 0.32; duration: root.theme.durationStandard }
-                                                NumberAnimation { to: 1; duration: root.theme.durationStandard }
-                                            }
                                         }
 
                                         Behavior on opacity {
@@ -1151,6 +1217,20 @@ ShellRoot {
                                             font.pixelSize: 11
                                             font.bold: true
                                         }
+                                    }
+
+                                    Rectangle {
+                                        visible: appItem.urgent
+                                        anchors.left: parent.left
+                                        anchors.top: parent.top
+                                        anchors.leftMargin: 4
+                                        anchors.topMargin: 4
+                                        width: 8
+                                        height: 8
+                                        radius: 4
+                                        color: root.theme.colorCritical
+                                        border.width: 1
+                                        border.color: root.theme.colorText
                                     }
 
                                     MouseArea {

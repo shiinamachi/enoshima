@@ -5,6 +5,8 @@ set -euo pipefail
 readonly socat_bin=${CYBERDOCK_EVENT_SOCAT:-socat}
 readonly state_bin=${CYBERDOCK_EVENT_STATE:-cyberdock-state}
 readonly jq_bin=${CYBERDOCK_EVENT_JQ:-jq}
+readonly qs_bin=${CYBERDOCK_EVENT_QS:-qs}
+readonly config_path=${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/cyberdock
 
 die() {
   printf 'cyberdock-event-bridge: %s\n' "$*" >&2
@@ -27,15 +29,24 @@ handle_minimize() {
     "$state_bin" observe-minimized "$address" "$state" || true
 }
 
+refresh_shell() {
+  "$qs_bin" -p "$config_path" ipc call -- dock refresh >/dev/null 2>&1 || true
+}
+
 handle_event() {
   local event=$1 payload
   case $event in
     minimized\>\>*)
       payload=${event#*>>}
       handle_minimize "$payload"
+      refresh_shell
       ;;
     closewindow\>\>*)
       "$state_bin" prune >/dev/null 2>&1 || true
+      refresh_shell
+      ;;
+    activewindow\>\>* | openwindow\>\>* | movewindow\>\>* | workspace\>\>* | fullscreen\>\>*)
+      refresh_shell
       ;;
   esac
 }
