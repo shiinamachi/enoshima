@@ -35,6 +35,9 @@ typedef struct {
     GtkWidget *caps_lock;
     GSocketConnection *connection;
     GNetworkMonitor *network_monitor;
+    GDBusProxy *network_manager_proxy;
+    GDBusProxy *active_connection_proxy;
+    GCancellable *dbus_cancellable;
     GListModel *monitors;
     GPtrArray *secondary_windows;
     GPtrArray *secondary_clocks;
@@ -43,6 +46,7 @@ typedef struct {
     gchar *pending_error;
     gchar *pending_power;
     guint power_reset_source;
+    guint success_source;
     AuthPhase phase;
     gboolean awaiting_input;
     gboolean input_is_secret;
@@ -54,6 +58,11 @@ typedef struct {
     Greeter *greeter;
     gchar *payload;
 } IpcRequest;
+
+typedef struct {
+    Greeter *greeter;
+    gchar *action;
+} PowerRequest;
 
 static GtkWidget *label_with_class(const gchar *text,
                                    const gchar *css_class);
@@ -71,6 +80,7 @@ static const gchar *localized(Greeter *greeter, const gchar *key) {
         {"auth-cancelled", "Authentication was cancelled. Try again.", "인증이 취소되었습니다. 다시 시도하세요."},
         {"auth-input", "Enter your authentication response.", "인증 정보를 입력하세요."},
         {"auth-failed", "Authentication failed. Try again.", "인증에 실패했습니다. 다시 시도하세요."},
+        {"auth-success", "Authenticated", "인증되었습니다"},
         {"username-required", "Enter a user name.", "사용자 이름을 입력하세요."},
         {"fingerprint-ready", "Use fingerprint", "지문 사용"},
         {"fingerprint-progress", "Touch the fingerprint sensor…", "지문 센서를 터치하세요…"},
@@ -173,6 +183,7 @@ static gchar *json_start_session(void) {
 static void set_message(Greeter *greeter, const gchar *text,
                         gboolean is_error) {
     gtk_label_set_text(GTK_LABEL(greeter->message), text != NULL ? text : "");
+    gtk_widget_remove_css_class(greeter->message, "success-message");
     if (is_error)
         gtk_widget_add_css_class(greeter->message, "error-message");
     else
@@ -283,6 +294,13 @@ static void ipc_worker(GTask *task, gpointer source_object,
 
 static void send_request(Greeter *greeter, gchar *payload, AuthPhase phase);
 
+static gboolean start_session_after_success(gpointer user_data) {
+    Greeter *greeter = user_data;
+    greeter->success_source = 0;
+    send_request(greeter, json_start_session(), PHASE_START);
+    return G_SOURCE_REMOVE;
+}
+
 static void handle_response(Greeter *greeter, const gchar *response) {
     JsonParser *parser = json_parser_new();
     GError *error = NULL;
@@ -314,7 +332,14 @@ static void handle_response(Greeter *greeter, const gchar *response) {
                        message != NULL);
             g_free(message);
         } else {
-            send_request(greeter, json_start_session(), PHASE_START);
+            set_message(greeter, localized(greeter, "auth-success"), FALSE);
+            gtk_widget_add_css_class(greeter->message, "success-message");
+            set_busy(greeter, TRUE);
+            if (greeter->success_source != 0)
+                g_source_remove(greeter->success_source);
+            greeter->success_source = g_timeout_add(
+                greeter->korean ? 200 : 180, start_session_after_success,
+                greeter);
         }
         g_object_unref(parser);
         return;
@@ -453,6 +478,46 @@ static gboolean reset_power_confirmation(gpointer user_data) {
     return G_SOURCE_REMOVE;
 }
 
+static void power_request_free(PowerRequest *request) {
+    g_free(request->action);
+    g_free(request);
+}
+
+static void power_call_finished(GObject *source, GAsyncResult *result,
+                                gpointer user_data) {
+    PowerRequest *request = user_data;
+    GError *error = NULL;
+    GVariant *reply = g_dbus_connection_call_finish(
+        G_DBUS_CONNECTION(source), result, &error);
+    if (reply != NULL)
+        g_variant_unref(reply);
+    else if (!g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+        set_message(request->greeter, error->message, TRUE);
+    g_clear_error(&error);
+    power_request_free(request);
+}
+
+static void power_bus_ready(GObject *source, GAsyncResult *result,
+                            gpointer user_data) {
+    (void)source;
+    PowerRequest *request = user_data;
+    GError *error = NULL;
+    GDBusConnection *bus = g_bus_get_finish(result, &error);
+    if (bus == NULL) {
+        if (!g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+            set_message(request->greeter, error->message, TRUE);
+        g_clear_error(&error);
+        power_request_free(request);
+        return;
+    }
+    g_dbus_connection_call(
+        bus, "org.freedesktop.login1", "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager", request->action,
+        g_variant_new("(b)", TRUE), NULL, G_DBUS_CALL_FLAGS_NONE, 10000,
+        request->greeter->dbus_cancellable, power_call_finished, request);
+    g_object_unref(bus);
+}
+
 static void power_clicked(GtkButton *button, gpointer user_data) {
     Greeter *greeter = user_data;
     const gchar *action = g_object_get_data(G_OBJECT(button), "power-action");
@@ -472,24 +537,11 @@ static void power_clicked(GtkButton *button, gpointer user_data) {
         return;
     }
 
-    GError *error = NULL;
-    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
-    if (bus == NULL) {
-        set_message(greeter, error->message, TRUE);
-        g_clear_error(&error);
-        return;
-    }
-    GVariant *reply = g_dbus_connection_call_sync(
-        bus, "org.freedesktop.login1", "/org/freedesktop/login1",
-        "org.freedesktop.login1.Manager", action, g_variant_new("(b)", TRUE),
-        NULL, G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &error);
-    if (reply != NULL)
-        g_variant_unref(reply);
-    else {
-        set_message(greeter, error->message, TRUE);
-        g_clear_error(&error);
-    }
-    g_object_unref(bus);
+    PowerRequest *request = g_new0(PowerRequest, 1);
+    request->greeter = greeter;
+    request->action = g_strdup(action);
+    g_bus_get(G_BUS_TYPE_SYSTEM, greeter->dbus_cancellable, power_bus_ready,
+              request);
 }
 
 static gboolean update_clock(gpointer user_data) {
@@ -526,67 +578,119 @@ static void update_secondary_status(Greeter *greeter) {
     g_free(summary);
 }
 
-static gchar *dbus_string_property(GDBusConnection *bus,
-                                   const gchar *destination,
-                                   const gchar *path,
-                                   const gchar *interface,
-                                   const gchar *property) {
-    GError *error = NULL;
-    GVariant *reply = g_dbus_connection_call_sync(
-        bus, destination, path, "org.freedesktop.DBus.Properties", "Get",
-        g_variant_new("(ss)", interface, property), G_VARIANT_TYPE("(v)"),
-        G_DBUS_CALL_FLAGS_NONE, 1200, NULL, &error);
-    if (reply == NULL) {
-        g_clear_error(&error);
-        return NULL;
-    }
-
-    GVariant *boxed = NULL;
-    g_variant_get(reply, "(@v)", &boxed);
-    GVariant *value = g_variant_get_variant(boxed);
-    gchar *result = NULL;
-    if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) ||
-        g_variant_is_of_type(value, G_VARIANT_TYPE_OBJECT_PATH))
-        result = g_variant_dup_string(value, NULL);
-    g_variant_unref(value);
-    g_variant_unref(boxed);
-    g_variant_unref(reply);
-    return result;
-}
-
-static gchar *network_connection_name(void) {
-    GError *error = NULL;
-    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
-    if (bus == NULL) {
-        g_clear_error(&error);
-        return NULL;
-    }
-    gchar *primary = dbus_string_property(
-        bus, "org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager",
-        "org.freedesktop.NetworkManager", "PrimaryConnection");
-    gchar *name = NULL;
-    if (primary != NULL && !g_str_equal(primary, "/"))
-        name = dbus_string_property(
-            bus, "org.freedesktop.NetworkManager", primary,
-            "org.freedesktop.NetworkManager.Connection.Active", "Id");
-    g_free(primary);
-    g_object_unref(bus);
-    return name;
-}
-
-static void update_network(GNetworkMonitor *monitor, gboolean available,
-                           gpointer user_data) {
-    (void)monitor;
-    Greeter *greeter = user_data;
-    gchar *connection = available ? network_connection_name() : NULL;
-    gchar *label = connection != NULL
+static void set_network_label(Greeter *greeter, const gchar *connection,
+                              gboolean available) {
+    gchar *label = connection != NULL && *connection != '\0'
                        ? g_strdup_printf("● %s", connection)
                        : g_strdup(localized(
                              greeter, available ? "connected" : "offline"));
     gtk_label_set_text(GTK_LABEL(greeter->network), label);
     g_free(label);
-    g_free(connection);
     update_secondary_status(greeter);
+}
+
+static void active_connection_properties_changed(
+    GDBusProxy *proxy, GVariant *changed_properties,
+    const gchar *const *invalidated_properties, gpointer user_data) {
+    (void)changed_properties;
+    (void)invalidated_properties;
+    Greeter *greeter = user_data;
+    GVariant *id = g_dbus_proxy_get_cached_property(proxy, "Id");
+    const gchar *name = id != NULL ? g_variant_get_string(id, NULL) : NULL;
+    set_network_label(greeter, name, TRUE);
+    g_clear_pointer(&id, g_variant_unref);
+}
+
+static void active_connection_ready(GObject *source, GAsyncResult *result,
+                                    gpointer user_data) {
+    (void)source;
+    Greeter *greeter = user_data;
+    GError *error = NULL;
+    GDBusProxy *proxy = g_dbus_proxy_new_for_bus_finish(result, &error);
+    if (proxy == NULL) {
+        if (!g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+            set_network_label(greeter, NULL,
+                              g_network_monitor_get_network_available(
+                                  greeter->network_monitor));
+        g_clear_error(&error);
+        return;
+    }
+    GVariant *primary = g_dbus_proxy_get_cached_property(
+        greeter->network_manager_proxy, "PrimaryConnection");
+    const gchar *wanted = primary != NULL
+                              ? g_variant_get_string(primary, NULL)
+                              : "/";
+    if (!g_str_equal(g_dbus_proxy_get_object_path(proxy), wanted)) {
+        g_clear_pointer(&primary, g_variant_unref);
+        g_object_unref(proxy);
+        return;
+    }
+    g_clear_pointer(&primary, g_variant_unref);
+    g_set_object(&greeter->active_connection_proxy, proxy);
+    g_signal_connect(proxy, "g-properties-changed",
+                     G_CALLBACK(active_connection_properties_changed),
+                     greeter);
+    active_connection_properties_changed(proxy, NULL, NULL, greeter);
+    g_object_unref(proxy);
+}
+
+static void refresh_network_connection(Greeter *greeter) {
+    gboolean available = g_network_monitor_get_network_available(
+        greeter->network_monitor);
+    if (greeter->network_manager_proxy == NULL) {
+        set_network_label(greeter, NULL, available);
+        return;
+    }
+    GVariant *primary = g_dbus_proxy_get_cached_property(
+        greeter->network_manager_proxy, "PrimaryConnection");
+    const gchar *path = primary != NULL ? g_variant_get_string(primary, NULL)
+                                        : "/";
+    if (!available || g_str_equal(path, "/")) {
+        g_clear_object(&greeter->active_connection_proxy);
+        set_network_label(greeter, NULL, available);
+        g_clear_pointer(&primary, g_variant_unref);
+        return;
+    }
+    g_dbus_proxy_new_for_bus(
+        G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_GET_INVALIDATED_PROPERTIES, NULL,
+        "org.freedesktop.NetworkManager", path,
+        "org.freedesktop.NetworkManager.Connection.Active",
+        greeter->dbus_cancellable, active_connection_ready, greeter);
+    g_clear_pointer(&primary, g_variant_unref);
+}
+
+static void network_manager_properties_changed(
+    GDBusProxy *proxy, GVariant *changed_properties,
+    const gchar *const *invalidated_properties, gpointer user_data) {
+    (void)proxy;
+    (void)changed_properties;
+    (void)invalidated_properties;
+    refresh_network_connection(user_data);
+}
+
+static void network_manager_ready(GObject *source, GAsyncResult *result,
+                                  gpointer user_data) {
+    (void)source;
+    Greeter *greeter = user_data;
+    GError *error = NULL;
+    GDBusProxy *proxy = g_dbus_proxy_new_for_bus_finish(result, &error);
+    if (proxy == NULL) {
+        g_clear_error(&error);
+        refresh_network_connection(greeter);
+        return;
+    }
+    g_set_object(&greeter->network_manager_proxy, proxy);
+    g_signal_connect(proxy, "g-properties-changed",
+                     G_CALLBACK(network_manager_properties_changed), greeter);
+    g_object_unref(proxy);
+    refresh_network_connection(greeter);
+}
+
+static void update_network(GNetworkMonitor *monitor, gboolean available,
+                           gpointer user_data) {
+    (void)monitor;
+    (void)available;
+    refresh_network_connection(user_data);
 }
 
 static void update_battery(Greeter *greeter) {
@@ -655,15 +759,34 @@ static void layout_changed(GObject *object, GParamSpec *parameter,
                            gpointer user_data) {
     (void)parameter;
     (void)user_data;
+    static const struct {
+        const gchar *id;
+        const gchar *layout;
+        const gchar *variant;
+        const gchar *options;
+    } layouts[] = {
+        {"en-US", "us", "", ""},
+        {"ko-KR", "kr", "", ""},
+    };
     guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(object));
-    GError *error = NULL;
-    GSubprocess *process = g_subprocess_new(
-        G_SUBPROCESS_FLAGS_STDOUT_SILENCE | G_SUBPROCESS_FLAGS_STDERR_SILENCE,
-        &error, "hyprctl", "keyword", "input:kb_layout",
-        selected == 1 ? "kr" : "us", NULL);
-    if (process != NULL)
-        g_object_unref(process);
-    g_clear_error(&error);
+    if (selected >= G_N_ELEMENTS(layouts))
+        return;
+    const gchar *properties[] = {
+        "input:kb_layout", "input:kb_variant", "input:kb_options"};
+    const gchar *values[] = {layouts[selected].layout,
+                             layouts[selected].variant,
+                             layouts[selected].options};
+    for (guint index = 0; index < G_N_ELEMENTS(properties); index++) {
+        GError *error = NULL;
+        GSubprocess *process = g_subprocess_new(
+            G_SUBPROCESS_FLAGS_STDOUT_SILENCE |
+                G_SUBPROCESS_FLAGS_STDERR_SILENCE,
+            &error, "hyprctl", "keyword", properties[index], values[index],
+            NULL);
+        if (process != NULL)
+            g_object_unref(process);
+        g_clear_error(&error);
+    }
 }
 
 static GtkWidget *icon_button(const gchar *label, const gchar *icon_name) {
@@ -1007,12 +1130,18 @@ static void activate(GtkApplication *application, gpointer user_data) {
 
     greeter->network_monitor = g_network_monitor_get_default();
     g_object_ref(greeter->network_monitor);
+    greeter->dbus_cancellable = g_cancellable_new();
     update_network(greeter->network_monitor,
                    g_network_monitor_get_network_available(
                        greeter->network_monitor),
                    greeter);
     g_signal_connect(greeter->network_monitor, "network-changed",
                      G_CALLBACK(update_network), greeter);
+    g_dbus_proxy_new_for_bus(
+        G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_GET_INVALIDATED_PROPERTIES, NULL,
+        "org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager",
+        "org.freedesktop.NetworkManager", greeter->dbus_cancellable,
+        network_manager_ready, greeter);
     update_battery(greeter);
     update_clock(greeter);
     g_timeout_add_seconds(1, update_clock, greeter);
@@ -1069,8 +1198,15 @@ int main(int argc, char **argv) {
 
     if (greeter.power_reset_source != 0)
         g_source_remove(greeter.power_reset_source);
+    if (greeter.success_source != 0)
+        g_source_remove(greeter.success_source);
+    if (greeter.dbus_cancellable != NULL)
+        g_cancellable_cancel(greeter.dbus_cancellable);
     g_clear_object(&greeter.connection);
     g_clear_object(&greeter.network_monitor);
+    g_clear_object(&greeter.network_manager_proxy);
+    g_clear_object(&greeter.active_connection_proxy);
+    g_clear_object(&greeter.dbus_cancellable);
     if (greeter.secondary_clocks != NULL)
         g_ptr_array_unref(greeter.secondary_clocks);
     if (greeter.secondary_statuses != NULL)

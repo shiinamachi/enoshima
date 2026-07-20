@@ -175,6 +175,13 @@ for contract in \
 done
 assert_not_contains "$greeter_source" 'system('
 assert_not_contains "$greeter_source" 'popen('
+assert_not_contains "$greeter_source" 'g_bus_get_sync'
+assert_not_contains "$greeter_source" 'g_dbus_connection_call_sync'
+assert_contains "$greeter_source" 'g_dbus_proxy_new_for_bus'
+assert_contains "$greeter_source" 'g-properties-changed'
+assert_contains "$greeter_source" 'input:kb_variant'
+assert_contains "$greeter_source" 'input:kb_options'
+assert_contains "$greeter_source" 'start_session_after_success'
 assert_contains "$greeter_pkgbuild" "depends=('glib2' 'greetd' 'gtk4' 'json-glib')"
 read -r -a greeter_cflags <<<"$(pkg-config --cflags gtk4 json-glib-1.0 gio-unix-2.0)"
 read -r -a greeter_libs <<<"$(pkg-config --libs gtk4 json-glib-1.0 gio-unix-2.0)"
@@ -184,6 +191,7 @@ cc -std=c17 -Wall -Wextra -Werror -O2 \
   "${greeter_libs[@]}"
 "$work/enoshima-greeter" --self-test >/dev/null
 assert_contains home/dot_config/enoshima/auth-layout.yaml 'policy: serialized'
+assert_contains home/dot_config/enoshima/auth-layout.yaml 'keyboard_layouts:'
 assert_contains docs/concepts/auth.yaml 'PAM requests are serialized'
 assert_contains home/dot_config/enoshima/i18n/en-US.json '"action.signIn": "Sign In"'
 assert_contains home/dot_config/enoshima/i18n/ko-KR.json '"action.signIn": "로그인"'

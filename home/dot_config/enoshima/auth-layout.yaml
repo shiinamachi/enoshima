@@ -32,3 +32,14 @@ outputs:
   secondary:
     owns: [wallpaper, clock, network, battery]
 locales: [en-US, ko-KR]
+keyboard_layouts:
+  - id: en-US
+    xkb_layout: us
+    xkb_variant: ""
+    xkb_options: []
+    label: English (US)
+  - id: ko-KR
+    xkb_layout: kr
+    xkb_variant: ""
+    xkb_options: []
+    label: 한국어 (Korean)

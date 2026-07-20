@@ -1,7 +1,7 @@
 # Maintainer: local workstation configuration
 pkgname=enoshima-greeter
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Enoshima Auth frontend for greetd'
 arch=('x86_64')
 url='https://github.com/shiinamachi/enoshima'
@@ -11,7 +11,7 @@ makedepends=('pkgconf')
 options=('!debug')
 source=('enoshima-greeter.c' 'LICENSE')
 sha256sums=(
-  'c0001150d86fba506d5c06f428e569e69a193ab7f417bfe1afe54c5d030d9180'
+  '3afcac05806132b715d3e5a9ef44290a8716f0130e5cb00165eafb3d996c8087'
   '77ee8b4e2b59cde22db339c6518e2d647f1c3863d06294156f12c6be8c27d833'
 )
 
