@@ -13,14 +13,19 @@ from datetime import date
 from pathlib import Path
 
 
-WEIGHTS = {
-    "hierarchy": 0.20,
-    "geometry_spacing": 0.20,
-    "controls_icons": 0.15,
-    "state_coverage": 0.20,
-    "typography_color": 0.10,
-    "accessibility_localization": 0.15,
+AUTOMATED_WEIGHTS = {
+    "geometry": 0.20,
+    "color_tokens": 0.10,
+    "text_overflow": 0.10,
+    "perceptual": 0.10,
 }
+MANUAL_WEIGHTS = {
+    "hierarchy": 0.15,
+    "interaction": 0.15,
+    "state_meaning": 0.10,
+    "accessibility_localization": 0.10,
+}
+WEIGHTS = AUTOMATED_WEIGHTS | MANUAL_WEIGHTS
 
 
 def yaml(path: Path) -> dict:
@@ -42,8 +47,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--surface", required=True)
     parser.add_argument("--reviewer", required=True)
+    parser.add_argument("--automated-report", required=True, type=Path)
     parser.add_argument("--repo-root", type=Path)
-    for category in WEIGHTS:
+    for category in MANUAL_WEIGHTS:
         parser.add_argument(f"--{category.replace('_', '-')}", required=True, type=float)
     args = parser.parse_args()
 
@@ -52,7 +58,27 @@ def main() -> None:
     entry = manifest.get("surfaces", {}).get(args.surface)
     if not isinstance(entry, dict):
         raise SystemExit(f"unknown surface: {args.surface}")
-    scores = {category: float(getattr(args, category)) for category in WEIGHTS}
+    automated_path = args.automated_report.resolve()
+    if not automated_path.is_file() or automated_path.is_symlink():
+        raise SystemExit("automated report must be a regular JSON file")
+    try:
+        automated_relative = automated_path.relative_to(root).as_posix()
+    except ValueError as error:
+        raise SystemExit("automated report must stay inside the repository") from error
+    automated = json.loads(automated_path.read_text(encoding="utf-8"))
+    current_digest = implementation_digest(root, entry["implementation"])
+    if (
+        automated.get("schema") != 1
+        or automated.get("surface_id") != args.surface
+        or automated.get("implementation_digest") != current_digest
+        or automated.get("concept_sha256") != entry["concept"]["sha256"]
+    ):
+        raise SystemExit("automated report is stale or belongs to another surface")
+    if automated.get("text_overflow_failures"):
+        raise SystemExit("automated report contains text overflow failures")
+    automatic_scores = automated.get("scores", {})
+    scores = {category: float(automatic_scores.get(category, -1)) for category in AUTOMATED_WEIGHTS}
+    scores.update({category: float(getattr(args, category)) for category in MANUAL_WEIGHTS})
     invalid = {category: score for category, score in scores.items() if not 0 <= score <= 100}
     if invalid:
         raise SystemExit(f"scores must be between 0 and 100: {invalid}")
@@ -62,12 +88,14 @@ def main() -> None:
         raise SystemExit(f"review does not pass: total={total}, below_floor={below_floor}")
 
     review = {
-        "schema": 1,
+        "schema": 2,
         "surface_id": args.surface,
         "reviewer": args.reviewer,
         "reviewed_at": date.today().isoformat(),
-        "implementation_digest": implementation_digest(root, entry["implementation"]),
+        "implementation_digest": current_digest,
         "concept_sha256": entry["concept"]["sha256"],
+        "automated_report": automated_relative,
+        "automated_report_sha256": hashlib.sha256(automated_path.read_bytes()).hexdigest(),
         "scores": scores,
         "total": total,
     }

@@ -5,6 +5,7 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 validator=$repo_root/.agents/skills/enoshima-concept-art/scripts/validate-concept-manifest
 capture=$repo_root/scripts/ui-capture/capture-surface
 score=$repo_root/scripts/ui-capture/score-surface
+analyze=$repo_root/scripts/ui-capture/analyze-surface
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
@@ -77,13 +78,28 @@ for locale in en_US.UTF-8 ko_KR.UTF-8; do
     sidecars+=("$(python3 "$capture" \
       --repo-root "$work" --surface test-surface --state default \
       --locale "$locale" --scale "$scale" --logical-size "$logical" \
-      --display internal --source "$work/sources/$scale.png")")
+      --display internal --text-overflow-count 0 \
+      --source "$work/sources/$scale.png")")
   done
 done
 implementation_digest=$(jq -r '.implementation_digest' "$work/${sidecars[0]}")
+{
+  printf '{"schema":1,"surface_id":"test-surface","comparisons":['
+  separator=
+  for sidecar in "${sidecars[@]}"; do
+    printf '%s' "$separator"
+    jq -cn --arg sidecar "$sidecar" \
+      '{sidecar:$sidecar,reference_crop:[0,0,100,100],implementation_crop:[0,0,100,100]}'
+    separator=,
+  done
+  printf ']}\n'
+} >"$work/mapping.json"
+automated=$(python3 "$analyze" --repo-root "$work" --surface test-surface \
+  --mapping "$work/mapping.json")
 review=$(python3 "$score" --repo-root "$work" --surface test-surface \
-  --reviewer test --hierarchy 90 --geometry-spacing 90 --controls-icons 90 \
-  --state-coverage 90 --typography-color 90 --accessibility-localization 90)
+  --reviewer test --automated-report "$work/$automated" \
+  --hierarchy 90 --interaction 90 --state-meaning 90 \
+  --accessibility-localization 90)
 
 {
   cat <<EOF

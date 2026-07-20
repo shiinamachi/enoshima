@@ -7,15 +7,22 @@ grim -o eDP-1 /tmp/power-default.png
 scripts/ui-capture/capture-surface \
   --surface power-menu --state default --locale en_US.UTF-8 \
   --scale 2.0 --logical-size 1440x900 --display internal \
-  --source /tmp/power-default.png
+  --text-overflow-count 0 --source /tmp/power-default.png
 ```
 
-Repeat the complete `required_states × required_locales × required_scales` matrix from `docs/ui-surfaces.yaml`. Add every emitted JSON sidecar path to the surface's `evidence.captures`, set its current `implementation_digest`, and record the six-category review:
+Repeat the complete `required_states × required_locales × required_scales` matrix from `docs/ui-surfaces.yaml`. Add every emitted JSON sidecar path to the surface's `evidence.captures`, then map each real surface crop to its concept-board reference crop in a JSON file and compute the automated scores:
+
+```bash
+scripts/ui-capture/analyze-surface --surface power-menu \
+  --mapping docs/evidence/power-menu/mapping.json
+```
+
+The analyzer derives geometry, color, text-overflow, and perceptual scores from digest-bound images. Record only the remaining interaction-oriented manual scores:
 
 ```bash
 scripts/ui-capture/score-surface --surface power-menu --reviewer kentakang \
-  --hierarchy 94 --geometry-spacing 92 --controls-icons 91 \
-  --state-coverage 96 --typography-color 93 \
+  --automated-report docs/evidence/power-menu/automated.json \
+  --hierarchy 94 --interaction 92 --state-meaning 93 \
   --accessibility-localization 91
 ```
 

@@ -27,13 +27,16 @@ VISIBLE_PATTERNS = (
 DIRECT_COLOR = re.compile(r"(?:#[0-9a-fA-F]{6,8}|\b(?:rgba?|hsla?)\s*\()")
 HASH = re.compile(r"[0-9a-f]{64}")
 REVIEW_WEIGHTS = {
-    "hierarchy": 0.20,
-    "geometry_spacing": 0.20,
-    "controls_icons": 0.15,
-    "state_coverage": 0.20,
-    "typography_color": 0.10,
-    "accessibility_localization": 0.15,
+    "geometry": 0.20,
+    "color_tokens": 0.10,
+    "text_overflow": 0.10,
+    "perceptual": 0.10,
+    "hierarchy": 0.15,
+    "interaction": 0.15,
+    "state_meaning": 0.10,
+    "accessibility_localization": 0.10,
 }
+AUTOMATED_CATEGORIES = {"geometry", "color_tokens", "text_overflow", "perceptual"}
 
 
 def load_yaml(path: Path) -> object:
@@ -93,7 +96,7 @@ def validate_review(
     except (OSError, json.JSONDecodeError) as error:
         fail(errors, f"{label}.review: cannot read JSON: {error}")
         return
-    if review.get("schema") != 1 or review.get("surface_id") != surface_id:
+    if review.get("schema") != 2 or review.get("surface_id") != surface_id:
         fail(errors, f"{label}.review: schema/surface_id mismatch")
     if review.get("implementation_digest") != current_digest or review.get("concept_sha256") != concept_hash:
         fail(errors, f"{label}.review: stale implementation or concept digest")
@@ -101,6 +104,31 @@ def validate_review(
     if not isinstance(scores, dict):
         fail(errors, f"{label}.review.scores: expected a mapping")
         return
+    automated_path = relative_path(root, review.get("automated_report"), errors, f"{label}.review.automated_report")
+    automated_scores: dict[str, Any] = {}
+    if automated_path is None or not automated_path.is_file():
+        fail(errors, f"{label}.review.automated_report: report does not exist")
+    else:
+        try:
+            automated = json.loads(automated_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            fail(errors, f"{label}.review.automated_report: cannot read JSON: {error}")
+            automated = {}
+        if review.get("automated_report_sha256") != sha256(automated_path):
+            fail(errors, f"{label}.review.automated_report: report hash mismatch")
+        if (
+            automated.get("schema") != 1
+            or automated.get("surface_id") != surface_id
+            or automated.get("implementation_digest") != current_digest
+            or automated.get("concept_sha256") != concept_hash
+        ):
+            fail(errors, f"{label}.review.automated_report: stale schema or digest")
+        if automated.get("text_overflow_failures"):
+            fail(errors, f"{label}.review.automated_report: text overflow failures remain")
+        value = automated.get("scores", {})
+        if isinstance(value, dict):
+            automated_scores = value
+
     weighted = 0.0
     for category, weight in REVIEW_WEIGHTS.items():
         score = scores.get(category)
@@ -109,6 +137,8 @@ def validate_review(
             continue
         if score < 85:
             fail(errors, f"{label}.review.scores.{category}: {score} is below the 85 category floor")
+        if category in AUTOMATED_CATEGORIES and automated_scores.get(category) != score:
+            fail(errors, f"{label}.review.scores.{category}: must equal the automated report")
         weighted += float(score) * weight
     if round(weighted, 2) < 90:
         fail(errors, f"{label}.review: weighted score {weighted:.2f} is below 90")

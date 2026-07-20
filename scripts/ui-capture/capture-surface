@@ -54,6 +54,7 @@ def main() -> None:
     parser.add_argument("--logical-size", required=True, help="WIDTHxHEIGHT")
     parser.add_argument("--display", required=True, choices=("internal", "external"))
     parser.add_argument("--source", required=True, type=Path)
+    parser.add_argument("--text-overflow-count", required=True, type=int)
     parser.add_argument("--repo-root", type=Path)
     args = parser.parse_args()
 
@@ -72,6 +73,8 @@ def main() -> None:
     if not match:
         raise SystemExit("logical size must look like 1920x1200")
     logical_width, logical_height = (int(value) for value in match.groups())
+    if args.text_overflow_count < 0:
+        raise SystemExit("text overflow count must be zero or greater")
     source = args.source.resolve()
     if not source.is_file() or source.is_symlink():
         raise SystemExit("source screenshot must be a regular non-symlink file")
@@ -118,6 +121,7 @@ def main() -> None:
         "implementation_digest": current_digest,
         "concept_sha256": concept_hash,
         "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "text_overflow_count": args.text_overflow_count,
     }
     descriptor, temporary_sidecar = tempfile.mkstemp(prefix=".capture-", suffix=".json", dir=evidence_dir, text=True)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
