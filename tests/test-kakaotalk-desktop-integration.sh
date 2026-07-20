@@ -172,7 +172,9 @@ if grep -Fq 'name = "hide-wine-shell-surface"' "$hyprland"; then
   exit 1
 fi
 grep -Fq 'target: "kakaofocus"' "$shell_qml"
-grep -Fq '"label": "입력 포커스 복구"' "$shell_qml"
+grep -Fq '"label": root.tr("dock.repairInputFocus")' "$shell_qml"
+grep -Fq '"dock.repairInputFocus": "입력 포커스 복구"' \
+  "$repo_root/home/dot_config/enoshima/i18n/ko-KR.json"
 # shellcheck disable=SC2016 # Match the literal command in the managed helper.
 grep -Fq '"$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT' "$guard"
 grep -Fxq 'Restart=always' "$guard_service"
