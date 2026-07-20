@@ -30,9 +30,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <format>
 #include <linux/input-event-codes.h>
 #include <random>
+#include <unordered_map>
 
 using namespace Render::GL;
 
@@ -88,13 +90,134 @@ static SP<Render::ITexture> svgTexture(const std::string& path, int pixels, std:
     return texture;
 }
 
+static std::string normalizedDesktopKey(std::string value) {
+    std::ranges::transform(value, value.begin(), [](unsigned char c) { return std::tolower(c); });
+    return value;
+}
+
+static std::string iconPathForName(const std::string& iconName) {
+    if (iconName.empty())
+        return {};
+    if (iconName.starts_with('/') && std::filesystem::is_regular_file(iconName))
+        return iconName;
+    if (!std::ranges::all_of(iconName, [](unsigned char c) { return std::isalnum(c) || c == '.' || c == '_' || c == '-'; }))
+        return {};
+
+    for (const auto& root : {
+             std::filesystem::path{"/usr/share/icons/Papirus/16x16/apps"},
+             std::filesystem::path{"/usr/share/icons/Papirus/22x22/apps"},
+             std::filesystem::path{"/usr/share/icons/hicolor/scalable/apps"},
+             std::filesystem::path{"/usr/share/pixmaps"},
+         }) {
+        for (const auto& extension : {".svg", ".png"}) {
+            const auto candidate = root / (iconName + extension);
+            if (std::filesystem::is_regular_file(candidate))
+                return candidate.string();
+        }
+    }
+    return {};
+}
+
+static std::vector<std::filesystem::path> applicationDirectories() {
+    std::vector<std::filesystem::path> directories;
+    if (const auto dataHome = std::getenv("XDG_DATA_HOME"); dataHome && dataHome[0] == '/')
+        directories.emplace_back(std::filesystem::path{dataHome} / "applications");
+    else if (const auto home = std::getenv("HOME"); home && home[0] == '/')
+        directories.emplace_back(std::filesystem::path{home} / ".local/share/applications");
+
+    const std::string dataDirs = std::getenv("XDG_DATA_DIRS") ? std::getenv("XDG_DATA_DIRS") : "/usr/local/share:/usr/share";
+    size_t            offset   = 0;
+    while (offset <= dataDirs.size()) {
+        const auto end   = dataDirs.find(':', offset);
+        const auto value = dataDirs.substr(offset, end == std::string::npos ? std::string::npos : end - offset);
+        if (!value.empty() && value.starts_with('/'))
+            directories.emplace_back(std::filesystem::path{value} / "applications");
+        if (end == std::string::npos)
+            break;
+        offset = end + 1;
+    }
+    return directories;
+}
+
+static uint64_t applicationDirectorySignature(const std::vector<std::filesystem::path>& directories) {
+    uint64_t signature = 0;
+    for (const auto& directory : directories) {
+        std::error_code error;
+        const auto      timestamp = std::filesystem::last_write_time(directory, error);
+        if (!error)
+            signature ^= static_cast<uint64_t>(timestamp.time_since_epoch().count()) + 0x9e3779b97f4a7c15ULL + (signature << 6U) + (signature >> 2U);
+    }
+    return signature;
+}
+
+static std::unordered_map<std::string, std::string> buildDesktopIconIndex(const std::vector<std::filesystem::path>& directories) {
+    std::unordered_map<std::string, std::string> index;
+    for (const auto& directory : directories) {
+        std::error_code error;
+        for (std::filesystem::directory_iterator iterator(directory, std::filesystem::directory_options::skip_permission_denied, error), end; !error && iterator != end;
+             iterator.increment(error)) {
+            if (!iterator->is_regular_file(error) || iterator->path().extension() != ".desktop")
+                continue;
+            std::ifstream stream(iterator->path());
+            std::string   line, icon, startupClass, executable;
+            bool          desktopEntry = false;
+            while (std::getline(stream, line)) {
+                if (line.starts_with('[')) {
+                    desktopEntry = line == "[Desktop Entry]";
+                    continue;
+                }
+                if (!desktopEntry)
+                    continue;
+                if (line.starts_with("Icon="))
+                    icon = line.substr(5);
+                else if (line.starts_with("StartupWMClass="))
+                    startupClass = line.substr(15);
+                else if (line.starts_with("Exec=")) {
+                    executable = line.substr(5);
+                    if (const auto space = executable.find(' '); space != std::string::npos)
+                        executable.resize(space);
+                    executable = std::filesystem::path{executable}.filename().string();
+                }
+            }
+            const auto path = iconPathForName(icon);
+            if (path.empty())
+                continue;
+            for (auto key : {iterator->path().stem().string(), startupClass, executable}) {
+                key = normalizedDesktopKey(key);
+                if (!key.empty())
+                    index.try_emplace(std::move(key), path);
+            }
+        }
+    }
+    return index;
+}
+
 static std::string iconPathForClass(std::string className) {
-    std::ranges::transform(className, className.begin(), [](unsigned char c) { return std::tolower(c); });
+    static uint64_t                                     signature = 0;
+    static std::unordered_map<std::string, std::string> index;
+    const auto directories      = applicationDirectories();
+    const auto currentSignature = applicationDirectorySignature(directories);
+    if (index.empty() || signature != currentSignature) {
+        index     = buildDesktopIconIndex(directories);
+        signature = currentSignature;
+    }
+
+    className = normalizedDesktopKey(std::move(className));
+    if (const auto found = index.find(className); found != index.end())
+        return found->second;
+    if (const auto direct = iconPathForName(className); !direct.empty())
+        return direct;
     if (className.find("zathura") != std::string::npos)
-        return "/usr/share/icons/Papirus/16x16/apps/org.pwmt.zathura.svg";
-    if (className == "mpv" || className.find("mpv") != std::string::npos)
-        return "/usr/share/icons/Papirus/16x16/apps/mpv.svg";
+        return iconPathForName("org.pwmt.zathura");
+    if (className.find("mpv") != std::string::npos)
+        return iconPathForName("mpv");
+    if (className == "imv")
+        return iconPathForName("image-viewer");
     return "/usr/share/icons/Papirus/16x16/mimetypes/image-x-generic.svg";
+}
+
+void warmDesktopIconIndex() {
+    (void)iconPathForClass("");
 }
 
 CHyprBar::CHyprBar(PHLWINDOW pWindow) : IHyprWindowDecoration(pWindow) {

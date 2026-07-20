@@ -44,6 +44,10 @@ grep -Fq 'enoshima-window-menu' "$plugin/src/barDeco.cpp"
 grep -Fq 'commandForOwner' "$plugin/src/barDeco.cpp"
 grep -Fq 'rsvg_handle_render_document' "$plugin/src/barDeco.cpp"
 grep -Fq 'iconPathForClass' "$plugin/src/barDeco.cpp"
+grep -Fq 'StartupWMClass=' "$plugin/src/barDeco.cpp"
+grep -Fq 'XDG_DATA_DIRS' "$plugin/src/barDeco.cpp"
+grep -Fq 'applicationDirectorySignature' "$plugin/src/barDeco.cpp"
+grep -Fq 'warmDesktopIconIndex();' "$plugin/src/main.cpp"
 grep -Fq 'FSMODE_MAXIMIZED' "$plugin/src/barDeco.cpp"
 grep -Fq 'renderButtonTooltip' "$plugin/src/barDeco.cpp"
 grep -Fq -- '--anchor-x' "$plugin/src/barDeco.cpp"
@@ -70,8 +74,15 @@ if sed -n '/local function configureEnoshimaDecoration()/,/configureEnoshimaDeco
   printf 'Decoration actions still depend on the active window.\n' >&2
   exit 1
 fi
-grep -Fq 'adjustmentMode === "move" ? "move-by" : "resize-by"' "$window_menu"
-grep -Fq '"desktop-window-action", "restore-geometry"' "$window_menu"
+grep -Fq '"desktop-window-action", "begin-adjust"' "$window_menu"
+grep -Fq '"adjust-step"' "$window_menu"
+grep -Fq 'commit ? "commit-adjust" : "cancel-adjust"' "$window_menu"
+grep -Fq 'event.key === Qt.Key_F4' "$window_menu"
+grep -Fq 'event.modifiers & Qt.AltModifier' "$window_menu"
+grep -Fq 'function moveSelection(delta)' "$window_menu"
+grep -Fq 'interval: 1500' "$window_menu"
+grep -Fq 'dialog-error-symbolic' "$window_menu"
+grep -Fq 'required property var strings' "$window_menu"
 grep -Fq 'window-minimize-symbolic' "$window_menu"
 
 grep -Fq 'recorded_abi == "$abi"' "$loader"

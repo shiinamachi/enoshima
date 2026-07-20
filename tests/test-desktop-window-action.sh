@@ -12,6 +12,7 @@ export DESKTOP_WINDOW_HYPRCTL=$work/bin/hyprctl
 export DESKTOP_WINDOW_STATE=$work/bin/cyberdock-state
 export WINDOW_TEST_ROOT=$work/state
 export WINDOW_TEST_LOG=$work/commands.log
+export DESKTOP_WINDOW_RUNTIME_DIR=$work/runtime/window-adjust
 mkdir -p "$work/bin" "$WINDOW_TEST_ROOT"
 
 fail() {
@@ -24,7 +25,7 @@ cat >"$DESKTOP_WINDOW_HYPRCTL" <<'FAKE'
 set -euo pipefail
 root=${WINDOW_TEST_ROOT:?}
 case ${1:-} in
-  activewindow | clients)
+  activewindow | clients | monitors)
     [[ ${2:-} == -j ]]
     cat "$root/$1.json"
     ;;
@@ -52,8 +53,15 @@ chmod 0700 "$work"/bin/*
 
 cat >"$WINDOW_TEST_ROOT/clients.json" <<'JSON'
 [
-  {"address":"0xaaa","title":"Editor","class":"dev.zed.Zed","floating":false,"fullscreen":0},
-  {"address":"0xbbb","title":"Browser","class":"google-chrome","floating":true,"fullscreen":1}
+  {"address":"0xaaa","stableId":"stable-a","title":"Editor","class":"dev.zed.Zed","at":[20,60],"size":[1200,800],"workspace":{"id":2,"name":"2"},"monitor":0,"floating":false,"pinned":false,"fullscreen":0,"fullscreenClient":0,"grouped":[]},
+  {"address":"0xbbb","stableId":"stable-b","title":"Browser","class":"google-chrome","at":[120,80],"size":[1280,840],"workspace":{"id":3,"name":"3"},"monitor":1,"floating":true,"pinned":false,"fullscreen":1,"fullscreenClient":1,"grouped":[]},
+  {"address":"0xddd","stableId":"stable-d","title":"Grouped","class":"grouped-app","at":[0,0],"size":[800,600],"workspace":{"id":4,"name":"4"},"monitor":0,"floating":false,"pinned":false,"fullscreen":0,"fullscreenClient":0,"grouped":["0xddd","0xeee"]}
+]
+JSON
+cat >"$WINDOW_TEST_ROOT/monitors.json" <<'JSON'
+[
+  {"id":0,"name":"eDP-1"},
+  {"id":1,"name":"DP-1"}
 ]
 JSON
 jq -c '.[] | select(.address == "0xaaa")' "$WINDOW_TEST_ROOT/clients.json" \
@@ -112,6 +120,47 @@ grep -Fq 'movewindowpixel exact 120 80,address:0xbbb' "$WINDOW_TEST_LOG" ||
   fail 'geometry rollback did not restore the original position'
 grep -Fq 'internal = 1, client = 1' "$WINDOW_TEST_LOG" ||
   fail 'geometry rollback did not restore fullscreen state'
+
+printf '%s\n' '==> system-menu adjustment transactions restore complete exact-target state'
+transaction=window-adjustment-0001
+jq -e '.ok and .code == "adjustment-started"' \
+  < <(run_action begin-adjust --address 0xbbb --transaction "$transaction" --mode move --json) \
+  >/dev/null || fail 'adjustment transaction did not start'
+jq -e '
+  .schema == 1 and .address == "0xbbb" and .stableId == "stable-b"
+  and .workspace.id == 3 and .monitor.name == "DP-1"
+  and .geometry == {x:120,y:80,width:1280,height:840}
+  and .floating == true and .fullscreen == 1 and .fullscreenClient == 1
+  and .pinned == false and .pseudo == false and .grouped == []
+' "$DESKTOP_WINDOW_RUNTIME_DIR/$transaction.json" >/dev/null ||
+  fail 'adjustment transaction omitted window state'
+run_action adjust-step --transaction "$transaction" --x -20 --y 20 --json | jq -e '.ok' >/dev/null
+run_action cancel-adjust --transaction "$transaction" --json | jq -e '.ok' >/dev/null
+[[ ! -e $DESKTOP_WINDOW_RUNTIME_DIR/$transaction.json ]] ||
+  fail 'cancelled adjustment transaction was not removed'
+grep -Fq 'hl.dsp.window.move({ workspace = 3, follow = false, window = "address:0xbbb" })' \
+  "$WINDOW_TEST_LOG" || fail 'adjustment rollback did not restore the workspace'
+grep -Fq 'resizewindowpixel exact 1280 840,address:0xbbb' "$WINDOW_TEST_LOG" ||
+  fail 'transaction rollback did not restore size'
+grep -Fq 'movewindowpixel exact 120 80,address:0xbbb' "$WINDOW_TEST_LOG" ||
+  fail 'transaction rollback did not restore position'
+
+printf '%s\n' '==> grouped windows and reused addresses fail closed'
+if run_action begin-adjust --address 0xddd --transaction grouped-window-0001 \
+    --mode resize --json | jq -e '.ok' >/dev/null; then
+  fail 'grouped window unexpectedly entered an independent adjustment'
+fi
+reuse_transaction=window-adjustment-reuse-0001
+run_action begin-adjust --address 0xbbb --transaction "$reuse_transaction" --mode resize --json \
+  | jq -e '.ok' >/dev/null
+jq 'map(if .address == "0xbbb" then .stableId = "replacement" else . end)' \
+  "$WINDOW_TEST_ROOT/clients.json" >"$WINDOW_TEST_ROOT/clients.next.json"
+mv "$WINDOW_TEST_ROOT/clients.next.json" "$WINDOW_TEST_ROOT/clients.json"
+if run_action cancel-adjust --transaction "$reuse_transaction" --json \
+    | jq -e '.ok' >/dev/null; then
+  fail 'reused address unexpectedly restored another window'
+fi
+run_action commit-adjust --transaction "$reuse_transaction" --json | jq -e '.ok' >/dev/null
 
 printf '%s\n' '==> stale and malformed addresses are rejected before dispatch'
 before=$(wc -l <"$WINDOW_TEST_LOG")

@@ -22,6 +22,8 @@ namespace Event {
     struct SCallbackInfo;
 }
 
+void warmDesktopIconIndex();
+
 class CHyprBar : public IHyprWindowDecoration {
   public:
     CHyprBar(PHLWINDOW);

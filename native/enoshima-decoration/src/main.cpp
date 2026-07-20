@@ -340,6 +340,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     g_pGlobalState->config.allowlist = makeShared<Config::Values::CStringValue>(
         "plugin:enoshima_decoration:allowlist", "Comma-separated positive class globs that receive Enoshima system chrome", "");
 
+    warmDesktopIconIndex();
+
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.barColor);
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.textColor);
     HyprlandAPI::addConfigValueV2(PHANDLE, g_pGlobalState->config.inactiveButtonColor);

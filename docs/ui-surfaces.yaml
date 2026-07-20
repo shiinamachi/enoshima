@@ -129,6 +129,8 @@ surfaces:
       - native/enoshima-decoration/src/main.cpp
       - home/dot_config/enoshima/window-interaction.yaml
       - home/dot_config/quickshell/cyberdock/EnoshimaWindowMenu.qml
+      - home/dot_config/enoshima/i18n/en-US.json
+      - home/dot_config/enoshima/i18n/ko-KR.json
     token_mode: external
     concept:
       status: approved

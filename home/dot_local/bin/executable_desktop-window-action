@@ -5,17 +5,53 @@ set -euo pipefail
 readonly hyprctl_bin=${DESKTOP_WINDOW_HYPRCTL:-hyprctl}
 readonly state_bin=${DESKTOP_WINDOW_STATE:-cyberdock-state}
 readonly jq_bin=${DESKTOP_WINDOW_JQ:-jq}
+runtime_root=${DESKTOP_WINDOW_RUNTIME_DIR:-}
+if [[ -z $runtime_root && -n ${XDG_RUNTIME_DIR:-} ]]; then
+  runtime_root=$XDG_RUNTIME_DIR/enoshima/window-adjust
+fi
+readonly runtime_root
 
-die() {
+json_output=false
+filtered_arguments=()
+for argument in "$@"; do
+  if [[ $argument == --json ]]; then
+    json_output=true
+  else
+    filtered_arguments+=("$argument")
+  fi
+done
+set -- "${filtered_arguments[@]}"
+
+emit_result() {
+  local ok=$1 code=$2 message_key=$3 detail=${4:-}
+  [[ $json_output == true ]] || return 0
+  "$jq_bin" -cn \
+    --argjson ok "$ok" \
+    --arg code "$code" \
+    --arg messageKey "$message_key" \
+    --arg detail "$detail" \
+    '{schema:1,ok:$ok,code:$code,messageKey:$messageKey,detail:$detail}'
+}
+
+die_code() {
+  local code=$1 message_key=$2
+  shift 2
+  emit_result false "$code" "$message_key" "$*" || true
   printf 'desktop-window-action: %s\n' "$*" >&2
   exit 1
+}
+
+die() {
+  die_code action-failed windowMenu.actionFailed "$*"
 }
 
 usage() {
   cat >&2 <<'EOF'
 usage: desktop-window-action status --json
        desktop-window-action {minimize|restore|maximize|close|focus} (--active | --address ADDRESS) [--origin ORIGIN]
-       desktop-window-action {move-by|resize-by} --address ADDRESS --x DELTA --y DELTA [--origin ORIGIN]
+       desktop-window-action begin-adjust --address ADDRESS --transaction ID --mode {move|resize} [--json]
+       desktop-window-action adjust-step --transaction ID --x DELTA --y DELTA [--json]
+       desktop-window-action {commit-adjust|cancel-adjust} --transaction ID [--json]
        desktop-window-action restore-geometry --address ADDRESS --x X --y Y --width WIDTH --height HEIGHT --floating BOOL --fullscreen MODE --fullscreen-client MODE
 EOF
   exit 2
@@ -46,10 +82,10 @@ resolve_address() {
       ;;
     *) usage ;;
   esac
-  valid_address "$address" || die 'no valid target window address is available'
+  valid_address "$address" || die_code invalid-target windowMenu.invalidTarget 'no valid target window address is available'
   clients=$(hypr_json clients)
   "$jq_bin" -e --arg address "$address" 'any(.[]; .address == $address)' \
-    <<<"$clients" >/dev/null || die "window does not exist: $address"
+    <<<"$clients" >/dev/null || die_code window-not-found windowMenu.windowClosed "window does not exist: $address"
 }
 
 parse_target() {
@@ -110,6 +146,223 @@ dispatch_geometry_delta() {
 
 valid_integer() {
   [[ $1 =~ ^-?[0-9]+$ ]]
+}
+
+valid_transaction() {
+  [[ $1 =~ ^[A-Za-z0-9._-]{16,128}$ ]]
+}
+
+transaction_path() {
+  local transaction=$1
+  valid_transaction "$transaction" || die_code invalid-transaction windowMenu.adjustmentFailed 'invalid adjustment transaction'
+  [[ $runtime_root == /* ]] || die_code runtime-unavailable windowMenu.adjustmentFailed 'XDG_RUNTIME_DIR must be absolute'
+  mkdir -p -- "$runtime_root"
+  [[ ! -L $runtime_root ]] || die_code runtime-unavailable windowMenu.adjustmentFailed 'adjustment runtime directory is a symbolic link'
+  chmod 0700 "$runtime_root"
+  printf '%s/%s.json\n' "$runtime_root" "$transaction"
+}
+
+load_transaction() {
+  local path=$1
+  [[ -f $path && ! -L $path ]] || die_code transaction-not-found windowMenu.adjustmentFailed 'adjustment transaction does not exist'
+  [[ $(stat -c %u "$path") -eq $(id -u) ]] || die_code transaction-owner windowMenu.adjustmentFailed 'adjustment transaction has an invalid owner'
+  "$jq_bin" -c -e 'select(.schema == 1 and (.address | test("^0x[0-9A-Fa-f]+$")))' "$path" ||
+    die_code invalid-transaction windowMenu.adjustmentFailed 'adjustment transaction is invalid'
+}
+
+workspace_lua_value() {
+  local workspace_id=$1 workspace_name=$2
+  if [[ $workspace_id =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s' "$workspace_id"
+  elif [[ $workspace_name =~ ^(name:|special:)?[[:alnum:]_.-]+$ ]]; then
+    printf '"%s"' "$workspace_name"
+  else
+    return 1
+  fi
+}
+
+move_window_to_workspace() {
+  local address=$1 workspace_id=$2 workspace_name=$3 value
+  value=$(workspace_lua_value "$workspace_id" "$workspace_name") ||
+    die_code invalid-workspace windowMenu.adjustmentFailed 'saved workspace cannot be restored'
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.move({ workspace = $value, follow = false, window = \"address:$address\" })" \
+    >/dev/null
+}
+
+begin_adjustment() {
+  local address='' transaction='' mode='' path client monitors snapshot temporary
+  while (($# > 0)); do
+    case $1 in
+      --address)
+        (($# >= 2)) || usage
+        address=$2
+        shift 2
+        ;;
+      --transaction)
+        (($# >= 2)) || usage
+        transaction=$2
+        shift 2
+        ;;
+      --mode)
+        (($# >= 2)) || usage
+        mode=$2
+        shift 2
+        ;;
+      *) usage ;;
+    esac
+  done
+  [[ $mode == move || $mode == resize ]] || usage
+  path=$(transaction_path "$transaction")
+  [[ ! -e $path ]] || die_code transaction-exists windowMenu.adjustmentFailed 'adjustment transaction already exists'
+  resolve_address --address "$address"
+  client=$("$jq_bin" -c -e --arg address "$address" '.[] | select(.address == $address)' <<<"$clients") ||
+    die_code window-not-found windowMenu.windowClosed "window does not exist: $address"
+  if "$jq_bin" -e '(.grouped // []) | length > 0' <<<"$client" >/dev/null; then
+    die_code grouped-window windowMenu.groupedAdjustmentUnavailable 'grouped windows cannot be adjusted independently'
+  fi
+  monitors=$(hypr_json monitors)
+  snapshot=$(
+    "$jq_bin" -c -n \
+      --arg transaction "$transaction" \
+      --arg mode "$mode" \
+      --argjson client "$client" \
+      --argjson monitors "$monitors" '
+        ($monitors | map(select(.id == ($client.monitor // -1)))[0].name // "") as $monitorName
+        | {
+            schema: 1,
+            transaction: $transaction,
+            mode: $mode,
+            address: $client.address,
+            stableId: ($client.stableId // ""),
+            workspace: ($client.workspace // {id:-1,name:""}),
+            monitor: {id: ($client.monitor // -1), name: $monitorName},
+            geometry: {
+              x: ($client.at[0] // 0), y: ($client.at[1] // 0),
+              width: ($client.size[0] // 1), height: ($client.size[1] // 1)
+            },
+            floating: ($client.floating // false),
+            fullscreen: ($client.fullscreen // 0),
+            fullscreenClient: ($client.fullscreenClient // $client.fullscreen // 0),
+            pinned: ($client.pinned // false),
+            pseudo: ($client.pseudo // false),
+            grouped: ($client.grouped // []),
+            createdAt: (now | floor)
+          }
+      '
+  )
+  temporary=$(mktemp "$runtime_root/.adjust.XXXXXX")
+  chmod 0600 "$temporary"
+  printf '%s\n' "$snapshot" >"$temporary"
+  if ! ln -- "$temporary" "$path"; then
+    unlink -- "$temporary"
+    die_code transaction-exists windowMenu.adjustmentFailed 'adjustment transaction already exists'
+  fi
+  unlink -- "$temporary"
+  emit_result true adjustment-started windowMenu.adjustmentStarted "$transaction"
+}
+
+parse_transaction_only() {
+  transaction=''
+  while (($# > 0)); do
+    case $1 in
+      --transaction)
+        (($# >= 2)) || usage
+        transaction=$2
+        shift 2
+        ;;
+      *) usage ;;
+    esac
+  done
+  transaction_file=$(transaction_path "$transaction")
+  transaction_document=$(load_transaction "$transaction_file")
+}
+
+adjust_step() {
+  local transaction='' delta_x='' delta_y='' document address mode
+  while (($# > 0)); do
+    case $1 in
+      --transaction)
+        (($# >= 2)) || usage
+        transaction=$2
+        shift 2
+        ;;
+      --x)
+        (($# >= 2)) || usage
+        delta_x=$2
+        shift 2
+        ;;
+      --y)
+        (($# >= 2)) || usage
+        delta_y=$2
+        shift 2
+        ;;
+      *) usage ;;
+    esac
+  done
+  if ! valid_integer "$delta_x" || ! valid_integer "$delta_y"; then
+    usage
+  fi
+  transaction_file=$(transaction_path "$transaction")
+  document=$(load_transaction "$transaction_file")
+  address=$("$jq_bin" -r '.address' <<<"$document")
+  mode=$("$jq_bin" -r '.mode' <<<"$document")
+  resolve_address --address "$address"
+  dispatch_geometry_delta "$mode-by" "$address" "$delta_x" "$delta_y"
+  emit_result true adjustment-updated windowMenu.adjustmentUpdated "$transaction"
+}
+
+restore_adjustment() {
+  local document=$1 address current stable_id saved_stable_id current_grouped saved_grouped
+  local workspace_id workspace_name x y width height floating fullscreen fullscreen_client
+  local pinned pseudo current_pinned current_pseudo
+  address=$("$jq_bin" -r '.address' <<<"$document")
+  resolve_address --address "$address"
+  current=$("$jq_bin" -c -e --arg address "$address" '.[] | select(.address == $address)' <<<"$clients") ||
+    die_code window-not-found windowMenu.windowClosed "window does not exist: $address"
+  stable_id=$("$jq_bin" -r '.stableId // ""' <<<"$current")
+  saved_stable_id=$("$jq_bin" -r '.stableId // ""' <<<"$document")
+  if [[ -n $saved_stable_id && $stable_id != "$saved_stable_id" ]]; then
+    die_code window-replaced windowMenu.windowClosed 'the original window address was reused'
+  fi
+  current_grouped=$("$jq_bin" -cS '.grouped // []' <<<"$current")
+  saved_grouped=$("$jq_bin" -cS '.grouped // []' <<<"$document")
+  [[ $current_grouped == "$saved_grouped" ]] ||
+    die_code group-changed windowMenu.adjustmentFailed 'window group membership changed during adjustment'
+
+  workspace_id=$("$jq_bin" -r '.workspace.id // -1' <<<"$document")
+  workspace_name=$("$jq_bin" -r '.workspace.name // ""' <<<"$document")
+  x=$("$jq_bin" -r '.geometry.x' <<<"$document")
+  y=$("$jq_bin" -r '.geometry.y' <<<"$document")
+  width=$("$jq_bin" -r '.geometry.width' <<<"$document")
+  height=$("$jq_bin" -r '.geometry.height' <<<"$document")
+  floating=$("$jq_bin" -r '.floating' <<<"$document")
+  fullscreen=$("$jq_bin" -r '.fullscreen' <<<"$document")
+  fullscreen_client=$("$jq_bin" -r '.fullscreenClient' <<<"$document")
+  pinned=$("$jq_bin" -r '.pinned' <<<"$document")
+  pseudo=$("$jq_bin" -r '.pseudo' <<<"$document")
+  current_pinned=$("$jq_bin" -r '.pinned // false' <<<"$current")
+  current_pseudo=$("$jq_bin" -r '.pseudo // false' <<<"$current")
+
+  dispatch_fullscreen_state "$address" 0 0
+  dispatch_float "$address" set
+  move_window_to_workspace "$address" "$workspace_id" "$workspace_name"
+  "$hyprctl_bin" dispatch resizewindowpixel "exact $width $height,address:$address" >/dev/null
+  "$hyprctl_bin" dispatch movewindowpixel "exact $x $y,address:$address" >/dev/null
+  if [[ $floating == false ]]; then
+    dispatch_float "$address" unset
+  fi
+  if [[ $pinned != "$current_pinned" ]]; then
+    "$hyprctl_bin" dispatch \
+      "hl.dsp.window.pin({ action = \"$([[ $pinned == true ]] && printf set || printf unset)\", window = \"address:$address\" })" \
+      >/dev/null
+  fi
+  if [[ $pseudo != "$current_pseudo" ]]; then
+    "$hyprctl_bin" dispatch \
+      "hl.dsp.window.pseudo({ action = \"$([[ $pseudo == true ]] && printf set || printf unset)\", window = \"address:$address\" })" \
+      >/dev/null
+  fi
+  dispatch_fullscreen_state "$address" "$fullscreen" "$fullscreen_client"
 }
 
 parse_geometry_delta() {
@@ -216,6 +469,19 @@ restore_geometry() {
   dispatch_fullscreen_state "$address" "$fullscreen" "$fullscreen_client"
 }
 
+commit_adjustment() {
+  parse_transaction_only "$@"
+  unlink -- "$transaction_file"
+  emit_result true adjustment-committed windowMenu.adjustmentCommitted "$transaction"
+}
+
+cancel_adjustment() {
+  parse_transaction_only "$@"
+  restore_adjustment "$transaction_document"
+  unlink -- "$transaction_file"
+  emit_result true adjustment-cancelled windowMenu.adjustmentCancelled "$transaction"
+}
+
 status_command() {
   local active snapshot minimized=false
   active=$(hypr_json activewindow)
@@ -240,7 +506,7 @@ status_command() {
 
 case ${1:-} in
   status)
-    [[ $# -eq 2 && $2 == --json ]] || usage
+    [[ $# -eq 1 && $json_output == true ]] || usage
     status_command
     ;;
   minimize | restore | maximize | close | focus)
@@ -254,16 +520,35 @@ case ${1:-} in
       close) CYBERDOCK_TRANSITION_ORIGIN=$origin "$state_bin" close "$address" ;;
       focus) CYBERDOCK_TRANSITION_ORIGIN=$origin "$state_bin" activate "$address" ;;
     esac
+    emit_result true action-completed windowMenu.actionCompleted "$action"
     ;;
   move-by | resize-by)
     action=$1
     shift
     parse_geometry_delta "$@"
     dispatch_geometry_delta "$action" "$address" "$delta_x" "$delta_y"
+    emit_result true adjustment-updated windowMenu.adjustmentUpdated "$action"
+    ;;
+  begin-adjust)
+    shift
+    begin_adjustment "$@"
+    ;;
+  adjust-step)
+    shift
+    adjust_step "$@"
+    ;;
+  commit-adjust)
+    shift
+    commit_adjustment "$@"
+    ;;
+  cancel-adjust)
+    shift
+    cancel_adjustment "$@"
     ;;
   restore-geometry)
     shift
     restore_geometry "$@"
+    emit_result true adjustment-cancelled windowMenu.adjustmentCancelled restore-geometry
     ;;
   *) usage ;;
 esac

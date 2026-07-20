@@ -54,6 +54,9 @@ ShellRoot {
             : Quickshell.env("HOME") + "/.config";
     }
     readonly property string runtimeHome: Quickshell.env("XDG_RUNTIME_DIR")
+    readonly property bool koreanLocale:
+        String(Quickshell.env("LANG") || "").toLowerCase().startsWith("ko")
+    readonly property var translations: parseTranslations(i18nFile.text())
     property int snapClock: 0
     readonly property var snapState: parseSnapState(snapStateFile.text, snapClock)
     readonly property var displayStatus: parseDisplayStatus(displayStatusFile.text)
@@ -139,6 +142,25 @@ ShellRoot {
         printErrors: false
         watchChanges: true
         onFileChanged: reload()
+    }
+
+    FileView {
+        id: i18nFile
+        path: root.configHome + "/enoshima/i18n/"
+            + (root.koreanLocale ? "ko-KR.json" : "en-US.json")
+        preload: true
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+    }
+
+    function parseTranslations(text) {
+        try {
+            return JSON.parse(text || "{}");
+        } catch (error) {
+            console.warn("enoshima: invalid translation catalog:", error);
+            return {};
+        }
     }
 
     function parseSnapState(text, clock) {
@@ -1562,6 +1584,7 @@ ShellRoot {
             anchorX: root.windowMenuAnchorX
             anchorY: root.windowMenuAnchorY
             invocationSource: root.windowMenuSource
+            strings: root.translations
             theme: root.theme
             reducedMotion: root.reducedMotion
             onCloseRequested: root.windowMenuOpen = false

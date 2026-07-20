@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
 
@@ -18,6 +19,7 @@ PanelWindow {
     required property int anchorX
     required property int anchorY
     required property string invocationSource
+    required property var strings
     required property var theme
     required property bool reducedMotion
 
@@ -25,7 +27,13 @@ PanelWindow {
 
     property int selectedIndex: 0
     property string adjustmentMode: ""
-    property var originalGeometry: null
+    property string adjustmentTransaction: ""
+    property string adjustmentProcessPhase: ""
+    property string pendingAdjustmentMode: ""
+    property bool actionRunning: false
+    property string lastAttemptedAction: ""
+    property string failedActionId: ""
+    property string actionErrorKey: ""
     readonly property bool koreanLocale:
         String(Quickshell.env("LANG") || "").toLowerCase().startsWith("ko")
     readonly property bool showing: menuOpen
@@ -33,12 +41,12 @@ PanelWindow {
         && /^0x[0-9A-Fa-f]+$/.test(targetAddress)
         && Object.keys(targetWindow || {}).length > 0
     readonly property var entries: [
-        {"id": "restore", "ko": "복원", "en": "Restore", "icon": "window-restore-symbolic", "key": "R"},
-        {"id": "move", "ko": "이동", "en": "Move", "icon": "transform-move-symbolic", "key": "M"},
-        {"id": "resize", "ko": "크기 조절", "en": "Resize", "icon": "transform-scale-symbolic", "key": "S"},
-        {"id": "minimize", "ko": "최소화", "en": "Minimize", "icon": "window-minimize-symbolic", "key": "N"},
-        {"id": "maximize", "ko": "최대화", "en": "Maximize", "icon": "window-maximize-symbolic", "key": "X"},
-        {"id": "close", "ko": "닫기", "en": "Close", "icon": "window-close-symbolic", "key": "Alt+F4"}
+        {"id": "restore", "labelKey": "windowMenu.restore", "icon": "window-restore-symbolic", "key": "R"},
+        {"id": "move", "labelKey": "windowMenu.move", "icon": "transform-move-symbolic", "key": "M"},
+        {"id": "resize", "labelKey": "windowMenu.resize", "icon": "transform-scale-symbolic", "key": "S"},
+        {"id": "minimize", "labelKey": "windowMenu.minimize", "icon": "window-minimize-symbolic", "key": "N"},
+        {"id": "maximize", "labelKey": "windowMenu.maximize", "icon": "window-maximize-symbolic", "key": "X"},
+        {"id": "close", "labelKey": "windowMenu.close", "icon": "window-close-symbolic", "key": "Alt+F4"}
     ]
 
     screen: targetScreen
@@ -67,18 +75,32 @@ PanelWindow {
         if (showing) {
             selectedIndex = 0;
             adjustmentMode = "";
-            originalGeometry = null;
+            adjustmentTransaction = "";
+            actionRunning = false;
+            actionErrorKey = "";
+            failedActionId = "";
+            selectedIndex = firstEnabledIndex();
             Qt.callLater(() => scrimInput.forceActiveFocus());
         }
     }
 
     onTargetWindowChanged: {
-        if (menuOpen && Object.keys(targetWindow || {}).length === 0)
-            closeRequested();
+        if (menuOpen && Object.keys(targetWindow || {}).length === 0) {
+            if (actionRunning && lastAttemptedAction === "close")
+                return;
+            if (actionRunning || adjustmentMode !== "" || adjustmentProcess.running)
+                showActionError("windowMenu.windowClosed", lastAttemptedAction);
+            else
+                closeRequested();
+        }
+    }
+
+    function textFor(key, fallback) {
+        return String(strings && strings[key] || fallback || key);
     }
 
     function labelFor(entry) {
-        return koreanLocale ? entry.ko : entry.en;
+        return textFor(entry.labelKey, entry.id);
     }
 
     function isFullscreen() {
@@ -86,63 +108,118 @@ PanelWindow {
     }
 
     function entryEnabled(entry) {
+        if (actionRunning || actionErrorKey !== "")
+            return false;
         if (entry.id === "restore")
             return isFullscreen();
         if (entry.id === "maximize")
             return !isFullscreen();
-        if (entry.id === "move" || entry.id === "resize")
-            return !isFullscreen();
+        if (entry.id === "move" || entry.id === "resize") {
+            const grouped = targetWindow.grouped || [];
+            return !isFullscreen() && grouped.length === 0;
+        }
         return true;
     }
 
-    function captureGeometry() {
-        const position = targetWindow.at || [0, 0];
-        const size = targetWindow.size || [640, 480];
-        return {
-            "x": Number(position[0] || 0),
-            "y": Number(position[1] || 0),
-            "width": Math.max(1, Number(size[0] || 640)),
-            "height": Math.max(1, Number(size[1] || 480)),
-            "floating": Boolean(targetWindow.floating),
-            "fullscreen": Number(targetWindow.fullscreen || 0),
-            "fullscreenClient": Number(targetWindow.fullscreenClient
-                || targetWindow.fullscreen || 0)
-        };
+    function firstEnabledIndex() {
+        return Math.max(0, entries.findIndex(entry => entryEnabled(entry)));
+    }
+
+    function moveSelection(delta) {
+        let candidate = selectedIndex;
+        for (let step = 0; step < entries.length; ++step) {
+            candidate = (candidate + delta + entries.length) % entries.length;
+            if (entryEnabled(entries[candidate])) {
+                selectedIndex = candidate;
+                return;
+            }
+        }
+    }
+
+    function processResult(text) {
+        const lines = String(text || "").trim().split("\n").filter(line => line !== "");
+        for (let index = lines.length - 1; index >= 0; --index) {
+            try {
+                const result = JSON.parse(lines[index]);
+                if (result.schema === 1)
+                    return result;
+            } catch (error) {
+                // A backend may have written diagnostics before the result.
+            }
+        }
+        return {};
+    }
+
+    function showActionError(messageKey, actionId) {
+        if (adjustmentTransaction !== "")
+            Quickshell.execDetached(["desktop-window-action", "commit-adjust",
+                "--transaction", adjustmentTransaction, "--json"]);
+        adjustmentTransaction = "";
+        adjustmentMode = "";
+        pendingAdjustmentMode = "";
+        actionRunning = false;
+        failedActionId = String(actionId || lastAttemptedAction || "close");
+        actionErrorKey = String(messageKey || "windowMenu.actionFailed");
+        errorDismissTimer.restart();
+        Qt.callLater(() => scrimInput.forceActiveFocus());
     }
 
     function finishAdjustment(commit) {
-        if (!commit && originalGeometry) {
-            Quickshell.execDetached([
-                "desktop-window-action", "restore-geometry",
-                "--address", targetAddress,
-                "--x", String(originalGeometry.x),
-                "--y", String(originalGeometry.y),
-                "--width", String(originalGeometry.width),
-                "--height", String(originalGeometry.height),
-                "--floating", originalGeometry.floating ? "true" : "false",
-                "--fullscreen", String(originalGeometry.fullscreen),
-                "--fullscreen-client", String(originalGeometry.fullscreenClient)
-            ]);
-        }
-        adjustmentMode = "";
-        originalGeometry = null;
-        closeRequested();
+        if (adjustmentTransaction === "" || adjustmentProcess.running)
+            return;
+        adjustmentProcessPhase = "finish";
+        actionRunning = true;
+        adjustmentProcess.command = [
+            "desktop-window-action", commit ? "commit-adjust" : "cancel-adjust",
+            "--transaction", adjustmentTransaction, "--json"
+        ];
+        adjustmentProcess.running = true;
     }
 
     function dismiss() {
+        if (actionErrorKey !== "") {
+            closeRequested();
+            return;
+        }
         if (adjustmentMode !== "")
             finishAdjustment(false);
         else
             closeRequested();
     }
 
-    function runWindowAction(action) {
-        Quickshell.execDetached([
+    function runWindowAction(action, displayAction) {
+        if (actionProcess.running)
+            return;
+        lastAttemptedAction = String(displayAction || action);
+        failedActionId = lastAttemptedAction;
+        actionRunning = true;
+        actionProcess.command = [
             "desktop-window-action", action,
             "--address", targetAddress,
-            "--origin", "titlebar"
-        ]);
-        closeRequested();
+            "--origin", "titlebar", "--json"
+        ];
+        actionProcess.running = true;
+    }
+
+    function beginAdjustment(mode) {
+        if (adjustmentProcess.running)
+            return;
+        const transaction = String(targetAddress).replace(/^0x/, "")
+            + "-" + String(Date.now());
+        lastAttemptedAction = mode;
+        failedActionId = mode;
+        pendingAdjustmentMode = mode;
+        adjustmentTransaction = transaction;
+        adjustmentProcessPhase = "begin";
+        actionRunning = true;
+        adjustmentProcess.command = [
+            "desktop-window-action", "begin-adjust",
+            "--address", targetAddress,
+            "--transaction", transaction,
+            "--mode", mode,
+            "--json"
+        ];
+        adjustmentProcess.running = true;
     }
 
     function trigger(entry) {
@@ -151,12 +228,11 @@ PanelWindow {
         switch (entry.id) {
         case "restore":
             if (Number(targetWindow.fullscreen || targetWindow.fullscreenClient || 0) > 0)
-                runWindowAction("maximize");
+                runWindowAction("maximize", "restore");
             break;
         case "move":
         case "resize":
-            originalGeometry = captureGeometry();
-            adjustmentMode = entry.id;
+            beginAdjustment(entry.id);
             break;
         case "minimize":
         case "maximize":
@@ -180,17 +256,36 @@ PanelWindow {
             y = step;
         else
             return false;
-        Quickshell.execDetached([
+        if (adjustmentProcess.running)
+            return false;
+        adjustmentProcessPhase = "step";
+        adjustmentProcess.command = [
             "desktop-window-action",
-            adjustmentMode === "move" ? "move-by" : "resize-by",
-            "--address", targetAddress,
+            "adjust-step",
+            "--transaction", adjustmentTransaction,
             "--x", String(x), "--y", String(y),
-            "--origin", "titlebar"
-        ]);
+            "--json"
+        ];
+        adjustmentProcess.running = true;
         return true;
     }
 
     function handleKey(event) {
+        if (actionErrorKey !== "") {
+            if (event.key === Qt.Key_Escape || event.key === Qt.Key_Return
+                    || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                closeRequested();
+                event.accepted = true;
+            }
+            return;
+        }
+        if (actionRunning) {
+            if (event.key === Qt.Key_Escape && adjustmentMode === "") {
+                closeRequested();
+                event.accepted = true;
+            }
+            return;
+        }
         if (event.key === Qt.Key_Escape) {
             if (adjustmentMode !== "")
                 finishAdjustment(false);
@@ -208,11 +303,21 @@ PanelWindow {
             }
             return;
         }
+        if (event.key === Qt.Key_F4
+                && (event.modifiers & Qt.AltModifier)) {
+            const closeIndex = entries.findIndex(entry => entry.id === "close");
+            if (closeIndex >= 0) {
+                selectedIndex = closeIndex;
+                trigger(entries[closeIndex]);
+                event.accepted = true;
+            }
+            return;
+        }
         if (event.key === Qt.Key_Up) {
-            selectedIndex = (selectedIndex + entries.length - 1) % entries.length;
+            moveSelection(-1);
             event.accepted = true;
         } else if (event.key === Qt.Key_Down) {
-            selectedIndex = (selectedIndex + 1) % entries.length;
+            moveSelection(1);
             event.accepted = true;
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             trigger(entries[selectedIndex]);
@@ -227,6 +332,61 @@ PanelWindow {
             }
         }
     }
+
+    Timer {
+        id: errorDismissTimer
+        interval: 1500
+        repeat: false
+        onTriggered: menu.closeRequested()
+    }
+
+    // Quickshell's qmltypes omit the private QProcess exit-status enum while
+    // the runtime signal remains available.
+    // qmllint disable signal-handler-parameters
+    Process {
+        id: actionProcess
+        stdout: StdioCollector {
+            id: actionOutput
+            waitForEnd: true
+        }
+        onExited: exitCode => {
+            const result = menu.processResult(actionOutput.text);
+            menu.actionRunning = false;
+            if (exitCode === 0 && result.ok !== false)
+                menu.closeRequested();
+            else
+                menu.showActionError(result.messageKey || "windowMenu.actionFailed",
+                    menu.lastAttemptedAction);
+        }
+    }
+
+    Process {
+        id: adjustmentProcess
+        stdout: StdioCollector {
+            id: adjustmentOutput
+            waitForEnd: true
+        }
+        onExited: exitCode => {
+            const result = menu.processResult(adjustmentOutput.text);
+            if (exitCode !== 0 || result.ok === false) {
+                menu.showActionError(result.messageKey || "windowMenu.adjustmentFailed",
+                    menu.lastAttemptedAction);
+                return;
+            }
+            if (menu.adjustmentProcessPhase === "begin") {
+                menu.adjustmentMode = menu.pendingAdjustmentMode;
+                menu.pendingAdjustmentMode = "";
+                menu.actionRunning = false;
+            } else if (menu.adjustmentProcessPhase === "finish") {
+                menu.actionRunning = false;
+                menu.adjustmentMode = "";
+                menu.adjustmentTransaction = "";
+                menu.closeRequested();
+            }
+            menu.adjustmentProcessPhase = "";
+        }
+    }
+    // qmllint enable signal-handler-parameters
 
     Rectangle {
         id: scrimInput
@@ -248,14 +408,16 @@ PanelWindow {
             y: Math.max(14, Math.min(menu.anchorY,
                 parent.height - height - 14))
             width: 300
-            height: menu.adjustmentMode === "" ? 354 : 164
+            height: menu.adjustmentMode === ""
+                ? 354 + (menu.actionErrorKey !== "" ? 12 : 0)
+                : 164
             radius: menu.theme.radiusPanel
             color: menu.theme.colorSurfaceOverlay
             border.width: 1
             border.color: menu.theme.colorFocusBorder
 
             Accessible.role: Accessible.List
-            Accessible.name: "시스템 창 메뉴"
+            Accessible.name: menu.textFor("windowMenu.systemMenu", "System window menu")
 
             MouseArea {
                 anchors.fill: parent
@@ -271,8 +433,11 @@ PanelWindow {
                     width: parent.width
                     height: 34
                     text: menu.adjustmentMode === ""
-                        ? String(menu.targetWindow.title || "애플리케이션")
-                        : (menu.adjustmentMode === "move" ? "창 이동" : "창 크기 조절")
+                        ? String(menu.targetWindow.title
+                            || menu.textFor("windowMenu.application", "Application"))
+                        : (menu.adjustmentMode === "move"
+                            ? menu.textFor("windowMenu.moveTitle", "Move window")
+                            : menu.textFor("windowMenu.resizeTitle", "Resize window"))
                     elide: Text.ElideRight
                     color: menu.theme.colorText
                     font.family: "Pretendard"
@@ -294,28 +459,39 @@ PanelWindow {
                         id: menuEntry
                         required property var modelData
                         required property int index
+                        readonly property bool errorRow:
+                            menu.actionErrorKey !== ""
+                            && modelData.id === menu.failedActionId
                         readonly property bool available:
                             menu.entryEnabled(modelData)
                         width: parent.width
-                        height: 44
+                        height: errorRow ? 56 : 44
                         radius: menu.theme.radiusSmall
-                        color: !available
+                        color: errorRow
+                            ? menu.theme.colorSurfaceSubtle
+                            : (!available
                             ? "transparent"
                             : (index === menu.selectedIndex
                             ? menu.theme.colorFocusSelected
                             : (entryMouse.containsMouse
                                 ? menu.theme.colorFocusHover
-                                : "transparent"))
-                        border.width: index === menu.selectedIndex && available ? 1 : 0
-                        border.color: menu.theme.colorFocus
-                        opacity: available ? 1 : 0.5
+                                : "transparent")))
+                        border.width: errorRow || (index === menu.selectedIndex && available) ? 1 : 0
+                        border.color: errorRow
+                            ? menu.theme.colorCritical : menu.theme.colorFocus
+                        opacity: available || errorRow ? 1 : 0.5
 
                         Accessible.role: Accessible.ListItem
-                        Accessible.name: menu.labelFor(menuEntry.modelData)
-                        Accessible.description: menuEntry.available
+                        Accessible.name: menuEntry.errorRow
+                            ? menu.textFor(menu.actionErrorKey, "The window action could not be completed")
+                            : menu.labelFor(menuEntry.modelData)
+                        Accessible.description: menuEntry.errorRow
+                            ? menu.textFor("windowMenu.dismiss", "Dismiss")
+                            : (menuEntry.available
                             ? menuEntry.modelData.key
-                            : (menu.koreanLocale ? "사용할 수 없음" : "Unavailable")
-                        Accessible.onPressAction: menu.trigger(menuEntry.modelData)
+                            : menu.textFor("windowMenu.unavailable", "Unavailable"))
+                        Accessible.onPressAction: menuEntry.errorRow
+                            ? menu.closeRequested() : menu.trigger(menuEntry.modelData)
 
                         IconImage {
                             anchors.left: parent.left
@@ -323,31 +499,56 @@ PanelWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             implicitWidth: 18
                             implicitHeight: 18
-                            source: Quickshell.iconPath(menuEntry.modelData.icon,
+                            source: Quickshell.iconPath(menuEntry.errorRow
+                                ? "dialog-error-symbolic" : menuEntry.modelData.icon,
                                 "application-x-executable")
                             opacity: menuEntry.available ? 1 : 0.56
                             Accessible.ignored: true
                         }
 
-                        Text {
+                        Column {
                             anchors.left: parent.left
                             anchors.leftMargin: 42
+                            anchors.right: parent.right
+                            anchors.rightMargin: 48
                             anchors.verticalCenter: parent.verticalCenter
-                            text: menu.labelFor(menuEntry.modelData)
-                            color: menuEntry.modelData.id === "close"
-                                    && (menuEntry.index === menu.selectedIndex
-                                        || entryMouse.containsMouse)
-                                ? menu.theme.colorCritical : menu.theme.colorText
-                            font.family: "Pretendard"
-                            font.pixelSize: 13
-                            font.bold: true
+                            spacing: 1
+
+                            Text {
+                                width: parent.width
+                                text: menuEntry.errorRow
+                                    ? menu.textFor(menu.actionErrorKey,
+                                        "The window action could not be completed")
+                                    : menu.labelFor(menuEntry.modelData)
+                                elide: Text.ElideRight
+                                color: menuEntry.errorRow
+                                        || (menuEntry.modelData.id === "close"
+                                            && (menuEntry.index === menu.selectedIndex
+                                                || entryMouse.containsMouse))
+                                    ? menu.theme.colorCritical : menu.theme.colorText
+                                font.family: "Pretendard"
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+
+                            Text {
+                                visible: menuEntry.errorRow && menu.koreanLocale
+                                    && menu.actionErrorKey === "windowMenu.windowClosed"
+                                width: parent.width
+                                text: menu.textFor("windowMenu.windowClosedSecondary",
+                                    "The window has already closed")
+                                elide: Text.ElideRight
+                                color: menu.theme.colorTextMuted
+                                font.family: "Pretendard"
+                                font.pixelSize: 10
+                            }
                         }
 
                         Text {
                             anchors.right: parent.right
                             anchors.rightMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
-                            text: menuEntry.modelData.key
+                            text: menuEntry.errorRow ? "×" : menuEntry.modelData.key
                             color: menu.theme.colorTextMuted
                             font.family: "Pretendard"
                             font.pixelSize: 10
@@ -357,9 +558,13 @@ PanelWindow {
                             id: entryMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            enabled: menuEntry.available
-                            onEntered: menu.selectedIndex = menuEntry.index
-                            onClicked: menu.trigger(menuEntry.modelData)
+                            enabled: menuEntry.available || menuEntry.errorRow
+                            onEntered: {
+                                if (menuEntry.available)
+                                    menu.selectedIndex = menuEntry.index;
+                            }
+                            onClicked: menuEntry.errorRow
+                                ? menu.closeRequested() : menu.trigger(menuEntry.modelData)
                         }
                     }
                 }
@@ -371,7 +576,8 @@ PanelWindow {
 
                     Text {
                         width: parent.width
-                        text: "방향키로 20px씩 조절합니다."
+                        text: menu.textFor("windowMenu.adjustInstruction",
+                            "Use arrow keys to adjust by 20 px.")
                         color: menu.theme.colorTextMuted
                         font.family: "Pretendard"
                         font.pixelSize: 12
@@ -380,7 +586,8 @@ PanelWindow {
 
                     Text {
                         width: parent.width
-                        text: "Enter 완료  ·  Esc 취소"
+                        text: menu.textFor("windowMenu.finishHint",
+                            "Enter to finish · Esc to cancel")
                         color: menu.theme.colorInfo
                         font.family: "Pretendard"
                         font.pixelSize: 11
