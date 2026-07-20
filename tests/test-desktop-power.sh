@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/home/dot_local/bin/executable_desktop-power
+power_menu=$repo_root/home/dot_config/quickshell/cyberdock/PowerMenu.qml
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
@@ -16,6 +17,7 @@ export DESKTOP_POWER_SYSTEMCTL=$work/bin/systemctl
 export DESKTOP_POWER_LOGINCTL=$work/bin/loginctl
 export DESKTOP_POWER_BUSCTL=$work/bin/busctl
 export DESKTOP_POWER_HYPRSHUTDOWN=$work/bin/hyprshutdown
+export DESKTOP_POWER_HYPRCTL=$work/bin/hyprctl
 export DESKTOP_POWER_JOURNALCTL=$work/bin/journalctl
 export DESKTOP_POWER_INHIBIT=$work/bin/systemd-inhibit
 export POWER_TEST_LOG=$work/commands.log
@@ -73,6 +75,13 @@ printf '\n' >>"$POWER_TEST_LOG"
 [[ ${POWER_HYPRSHUTDOWN_FAIL:-false} != true ]]
 FAKE
 
+cat >"$DESKTOP_POWER_HYPRCTL" <<'FAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $* == 'clients -j' ]]
+printf '[{"address":"0xabc","mapped":true},{"address":"0xdef","mapped":true}]\n'
+FAKE
+
 chmod 0700 "$work"/bin/*
 
 run_power() {
@@ -105,7 +114,7 @@ grep -Fxq 'systemctl suspend' "$POWER_TEST_LOG" || fail 'suspend did not use sys
 
 printf '%s\n' '==> reboot closes applications while the graphical session remains alive'
 reset_log
-run_power reboot
+reboot_events=$(run_power reboot)
 pending=$XDG_STATE_HOME/enoshima/power/pending.json
 jq -e '
   .schema == 1 and .action == "reboot" and .phase == "login1_dispatching" and
@@ -115,6 +124,10 @@ grep -Fxq 'hyprshutdown --no-exit --no-fork --verbose' "$POWER_TEST_LOG" ||
   fail 'reboot did not keep Hyprland alive during application close'
 grep -Fxq 'busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager Reboot b true' "$POWER_TEST_LOG" ||
   fail 'reboot did not reach the login1 manager'
+grep -Fq '"phase":"closing-apps"' <<<"$reboot_events" ||
+  fail 'reboot does not stream the application-close phase'
+grep -Fq '"phase":"dispatching"' <<<"$reboot_events" ||
+  fail 'reboot does not stream the login1 dispatch phase'
 if grep -Fq 'systemd-run --user' "$POWER_TEST_LOG" || grep -Fq -- '--post-cmd' "$POWER_TEST_LOG"; then
   fail 'reboot still depends on a user-scoped post command'
 fi
@@ -173,5 +186,17 @@ fi
 printf '%s\n' '==> no checkpoint verification is a clean no-op'
 jq -e '.schema == 1 and (.pending | not)' \
   < <(run_power verify-last-action) >/dev/null || fail 'empty verification is invalid'
+
+printf '%s\n' '==> power menu follows the approved grouped progress contract'
+grep -Fq 'width: Math.min(parent.width - 48, 380)' "$power_menu" ||
+  fail 'power card does not use the approved 380px width'
+for group in session power system; do
+  grep -Fq "\"group\": \"$group\"" "$power_menu" || fail "power group is missing: $group"
+done
+grep -Fq 'stdout: SplitParser' "$power_menu" || fail 'transition events are not consumed live'
+grep -Fq 'function retryAction()' "$power_menu" || fail 'power failures have no retry path'
+if grep -Fq 'execDetached(["desktop-power"' "$power_menu"; then
+  fail 'a power action still bypasses the observable Process path'
+fi
 
 printf 'Desktop power controller tests passed.\n'

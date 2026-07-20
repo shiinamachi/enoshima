@@ -5,6 +5,7 @@ readonly systemctl_bin=${DESKTOP_POWER_SYSTEMCTL:-systemctl}
 readonly loginctl_bin=${DESKTOP_POWER_LOGINCTL:-loginctl}
 readonly busctl_bin=${DESKTOP_POWER_BUSCTL:-busctl}
 readonly hyprshutdown_bin=${DESKTOP_POWER_HYPRSHUTDOWN:-hyprshutdown}
+readonly hyprctl_bin=${DESKTOP_POWER_HYPRCTL:-hyprctl}
 readonly qs_bin=${DESKTOP_POWER_QS:-qs}
 readonly journalctl_bin=${DESKTOP_POWER_JOURNALCTL:-journalctl}
 readonly inhibit_bin=${DESKTOP_POWER_INHIBIT:-systemd-inhibit}
@@ -63,6 +64,33 @@ write_json() {
   printf '%s\n' "$content" >"$temporary"
   sync -f "$temporary" 2>/dev/null || true
   mv -f -- "$temporary" "$destination"
+}
+
+emit_event() {
+  local request_id=$1 phase=$2 action=$3 remaining=${4:-null} total=${5:-null} message=${6:-}
+  jq -c -n \
+    --arg requestId "$request_id" \
+    --arg phase "$phase" \
+    --arg action "$action" \
+    --arg message "$message" \
+    --argjson remaining "$remaining" \
+    --argjson total "$total" \
+    '{schema:1,requestId:$requestId,phase:$phase,action:$action,remaining:$remaining,total:$total,message:$message}'
+}
+
+checkpoint_phase() {
+  local phase=$1 checkpoint
+  checkpoint=$(jq -c --arg phase "$phase" '. + {phase:$phase}' "$pending_file")
+  write_json "$pending_file" "$checkpoint"
+}
+
+client_count() {
+  if ! command -v "$hyprctl_bin" >/dev/null 2>&1; then
+    printf '0\n'
+    return
+  fi
+  "$hyprctl_bin" clients -j 2>/dev/null |
+    jq '[.[] | select((.mapped // true) == true)] | length' 2>/dev/null || printf '0\n'
 }
 
 can_action() {
@@ -130,35 +158,47 @@ status_command() {
 }
 
 record_checkpoint() {
-  local action=$1 checkpoint
+  local action=$1 request_id=$2 checkpoint
   checkpoint=$(jq -c -n \
     --arg action "$action" \
     --arg requestedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg bootId "$(current_boot_id)" \
     --arg session "${XDG_SESSION_ID:-unknown}" \
-    '{schema:1,action:$action,phase:"requested",requested_at:$requestedAt,boot_id_before:$bootId,session:$session}')
+    --arg requestId "$request_id" \
+    '{schema:1,action:$action,phase:"requested",request_id:$requestId,requested_at:$requestedAt,boot_id_before:$bootId,session:$session}')
   write_json "$pending_file" "$checkpoint"
 }
 
 run_power_transition() {
-  local action=$1 capability_method=$2 login1_method=$3 status result checkpoint
+  local action=$1 capability_method=$2 login1_method=$3 status result checkpoint request_id total remaining close_log
   require_available "$capability_method" "$action"
   command -v "$hyprshutdown_bin" >/dev/null 2>&1 ||
     die "hyprshutdown command not found: $hyprshutdown_bin"
-  record_checkpoint "$action"
+  request_id="$(date +%s%N)-$$"
+  record_checkpoint "$action" "$request_id"
+  emit_event "$request_id" requested "$action"
+  checkpoint_phase closing_apps
+  total=$(client_count)
+  emit_event "$request_id" closing-apps "$action" "$total" "$total"
+  close_log=$(mktemp "$state_dir/.hyprshutdown.XXXXXX")
+  chmod 0600 "$close_log"
 
   # Keep Hyprland and the user manager alive while applications process their
   # normal close requests. The system transition must not be a post-command of
   # a user-scoped unit because that unit disappears with the graphical session.
-  if "$hyprshutdown_bin" --no-exit --no-fork --verbose; then
-    :
+  if "$hyprshutdown_bin" --no-exit --no-fork --verbose >"$close_log" 2>&1; then
+    remaining=$(client_count)
+    emit_event "$request_id" closing-apps "$action" "$remaining" "$total"
+    rm -f -- "$close_log"
   else
     status=$?
+    emit_event "$request_id" error "$action" null "$total" application-close-failed
     result=$(jq -c --arg verifiedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
       --arg status app_close_failed --argjson exitCode "$status" \
       '. + {verified_at:$verifiedAt,status:$status,app_close_exit_code:$exitCode}' "$pending_file")
     write_json "$result_file" "$result"
     rm -f -- "$pending_file"
+    rm -f -- "$close_log"
     die "application close phase failed before $action"
   fi
 
@@ -167,6 +207,7 @@ run_power_transition() {
     '. + {phase:"login1_dispatching",login1_dispatch_started_at:$dispatchedAt}' \
     "$pending_file")
   write_json "$pending_file" "$checkpoint"
+  emit_event "$request_id" dispatching "$action" 0 "$total"
 
   # login1 is the authority for polkit and inhibitors. If the direct D-Bus
   # call cannot be made, systemctl is the supported logind-aware fallback.
@@ -186,6 +227,7 @@ run_power_transition() {
     '. + {verified_at:$verifiedAt,status:$status,dispatch_exit_code:$exitCode}' "$pending_file")
   write_json "$result_file" "$result"
   rm -f -- "$pending_file"
+  emit_event "$request_id" error "$action" null "$total" login1-dispatch-failed
   die "failed to dispatch $action through systemd-logind"
 }
 
