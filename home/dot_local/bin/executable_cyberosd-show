@@ -11,17 +11,22 @@ readonly config_path=${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/cyberdock
 usage() {
   printf '%s\n' \
     'usage: cyberosd-show {volume|microphone|brightness|keyboard-backlight|airplane-mode}' \
-    '       cyberosd-show show --kind KIND --value 0..100 [--state normal|muted|active]' >&2
+    '       cyberosd-show show --kind KIND --value 0..100 [--state normal|muted|active|error]' >&2
   exit 2
 }
 
 emit() {
   local kind=$1 value=$2 state=$3 active=false
-  [[ $kind =~ ^(volume|microphone|brightness|keyboard-backlight|airplane-mode)$ ]] || usage
+  [[ $kind =~ ^(volume|microphone|brightness|keyboard-backlight|airplane-mode|airplane-mode-error)$ ]] || usage
   [[ $value =~ ^[0-9]+$ ]] || usage
   ((value > 100)) && value=100
   case $state in
     muted | active) active=true ;;
+    error)
+      [[ $kind == airplane-mode ]] || usage
+      kind=airplane-mode-error
+      active=true
+      ;;
     normal) active=false ;;
     *) usage ;;
   esac

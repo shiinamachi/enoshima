@@ -3,14 +3,114 @@ set -euo pipefail
 
 readonly nmcli_bin=${DESKTOP_AIRPLANE_NMCLI:-nmcli}
 readonly osd_bin=${DESKTOP_AIRPLANE_OSD:-desktop-osd-event}
+runtime_dir=${DESKTOP_AIRPLANE_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-}}
 [[ ${1:-} == toggle && $# -eq 1 ]] || {
   printf 'usage: desktop-airplane-control toggle\n' >&2
   exit 2
 }
+[[ $runtime_dir == /* ]] || {
+  printf 'desktop-airplane-control: XDG_RUNTIME_DIR must be available\n' >&2
+  exit 1
+}
 
-if "$nmcli_bin" -t -f WIFI radio 2>/dev/null | grep -Eq '^(enabled|on)$'; then
-  "$nmcli_bin" radio all off
-else
-  "$nmcli_bin" radio all on
+readonly state_dir=$runtime_dir/enoshima
+readonly state_file=$state_dir/airplane-state.json
+readonly lock_file=$state_dir/airplane.lock
+install -d -m 0700 "$state_dir"
+[[ ! -L $state_dir ]] || {
+  printf 'desktop-airplane-control: runtime state directory must not be a symbolic link\n' >&2
+  exit 1
+}
+exec 9>"$lock_file"
+chmod 0600 "$lock_file"
+flock -x 9
+
+normalize_radio() {
+  case ${1,,} in
+    enabled | on) printf true ;;
+    disabled | off) printf false ;;
+    *) return 1 ;;
+  esac
+}
+
+read_radios() {
+  local output wifi_raw wwan_raw wifi wwan
+  output=$("$nmcli_bin" -t -f WIFI,WWAN radio 2>/dev/null) || return 1
+  IFS=: read -r wifi_raw wwan_raw <<<"${output%%$'\n'*}"
+  wifi=$(normalize_radio "$wifi_raw") || return 1
+  wwan=$(normalize_radio "$wwan_raw") || return 1
+  jq -c -n --argjson wifi "$wifi" --argjson wwan "$wwan" \
+    '{wifi:$wifi,wwan:$wwan}'
+}
+
+write_state() {
+  local document=$1 temporary
+  [[ ! -L $state_file ]] || return 1
+  temporary=$(mktemp "$state_dir/.airplane.XXXXXX")
+  chmod 0600 "$temporary"
+  printf '%s\n' "$document" >"$temporary"
+  mv -f -- "$temporary" "$state_file"
+}
+
+set_radio() {
+  local radio=$1 enabled=$2 value=off
+  [[ $enabled == true ]] && value=on
+  "$nmcli_bin" radio "$radio" "$value" >/dev/null
+}
+
+show_state() {
+  local state=$1
+  case $state in
+    on) "$osd_bin" show --kind airplane-mode --value 100 --state active ;;
+    off) "$osd_bin" show --kind airplane-mode --value 0 --state normal ;;
+    error) "$osd_bin" show --kind airplane-mode --value 0 --state error ;;
+  esac
+}
+
+fail_transition() {
+  show_state error || true
+  printf 'desktop-airplane-control: radio transition did not reach the requested state\n' >&2
+  exit 1
+}
+
+current=$(read_radios) || fail_transition
+if [[ -f $state_file && ! -L $state_file ]] &&
+  saved=$(jq -c -e 'select(.schema == 1 and .active == true and
+    (.wifiBefore | type == "boolean") and (.wwanBefore | type == "boolean"))' \
+    "$state_file" 2>/dev/null); then
+  wifi_before=$(jq -r '.wifiBefore' <<<"$saved")
+  wwan_before=$(jq -r '.wwanBefore' <<<"$saved")
+  if ! set_radio wifi "$wifi_before" || ! set_radio wwan "$wwan_before"; then
+    fail_transition
+  fi
+  final=$(read_radios) || fail_transition
+  jq -e --argjson wifi "$wifi_before" --argjson wwan "$wwan_before" \
+    '.wifi == $wifi and .wwan == $wwan' <<<"$final" >/dev/null || fail_transition
+  rm -f -- "$state_file"
+  show_state off
+  exit 0
 fi
-"$osd_bin" airplane-mode
+
+wifi_before=$(jq -r '.wifi' <<<"$current")
+wwan_before=$(jq -r '.wwan' <<<"$current")
+saved=$(jq -c -n \
+  --argjson wifi "$wifi_before" \
+  --argjson wwan "$wwan_before" \
+  --arg enabledAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{schema:1,active:true,wifiBefore:$wifi,wwanBefore:$wwan,enabledAt:$enabledAt}')
+write_state "$saved" || fail_transition
+
+if ! set_radio wifi false || ! set_radio wwan false; then
+  set_radio wifi "$wifi_before" 2>/dev/null || true
+  set_radio wwan "$wwan_before" 2>/dev/null || true
+  rm -f -- "$state_file"
+  fail_transition
+fi
+final=$(read_radios) || fail_transition
+if ! jq -e '.wifi == false and .wwan == false' <<<"$final" >/dev/null; then
+  set_radio wifi "$wifi_before" 2>/dev/null || true
+  set_radio wwan "$wwan_before" 2>/dev/null || true
+  rm -f -- "$state_file"
+  fail_transition
+fi
+show_state on

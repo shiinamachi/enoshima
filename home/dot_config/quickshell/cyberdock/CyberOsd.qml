@@ -21,7 +21,8 @@ PanelWindow {
     readonly property bool koreanLocale:
         String(Quickshell.env("LANG") || "").toLowerCase().startsWith("ko")
     readonly property bool criticalState:
-        osdMuted && (osdKind === "volume" || osdKind === "microphone")
+        osdKind === "airplane-mode-error"
+        || (osdMuted && (osdKind === "volume" || osdKind === "microphone"))
 
     function titleFor(kind) {
         const labels = {
@@ -29,13 +30,16 @@ PanelWindow {
             "microphone": ["마이크", "Microphone"],
             "brightness": ["밝기", "Brightness"],
             "keyboard-backlight": ["키보드 백라이트", "Keyboard backlight"],
-            "airplane-mode": ["비행기 모드", "Airplane mode"]
+            "airplane-mode": ["비행기 모드", "Airplane mode"],
+            "airplane-mode-error": ["비행기 모드", "Airplane mode"]
         };
         const value = labels[String(kind || "")] || ["시스템", "System"];
         return koreanLocale ? value[0] : value[1];
     }
 
     function valueText() {
+        if (osdKind === "airplane-mode-error")
+            return koreanLocale ? "전환 실패" : "Failed";
         if (osdKind === "airplane-mode")
             return osdMuted
                 ? (koreanLocale ? "켜짐" : "On")
@@ -52,6 +56,8 @@ PanelWindow {
             return "keyboard-brightness-symbolic";
         if (osdKind === "microphone")
             return osdMuted ? "microphone-sensitivity-muted-symbolic" : "audio-input-microphone-symbolic";
+        if (osdKind === "airplane-mode-error")
+            return "dialog-error-symbolic";
         if (osdKind === "airplane-mode")
             return osdMuted ? "airplane-mode-symbolic" : "network-wireless-signal-good-symbolic";
         return osdMuted ? "audio-volume-muted"
@@ -97,7 +103,8 @@ PanelWindow {
         radius: osd.theme.radiusPanel
         color: osd.theme.colorSurfaceOverlay
         border.width: 1
-        border.color: osd.theme.colorFocusBorder
+        border.color: osd.criticalState
+            ? osd.theme.colorCritical : osd.theme.colorFocusBorder
 
         Accessible.role: Accessible.ProgressBar
         Accessible.name: osd.titleFor(osd.osdKind)

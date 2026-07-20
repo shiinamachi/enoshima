@@ -20,13 +20,20 @@ PanelWindow {
     signal closeRequested()
 
     property int selectedIndex: 0
-    property string confirmationAction: ""
+    property string selectedAction: ""
+    property string pendingConfirmationAction: ""
+    property string lastAttemptedAction: ""
+    property string currentRequestId: ""
     property bool applying: false
     property string actionPhase: "browsing"
     property string actionError: ""
     property string stderrDetail: ""
     property int phaseRemaining: 0
     property int phaseTotal: 0
+    readonly property bool showingActionDetail:
+        pendingConfirmationAction !== "" || applying || actionPhase === "error"
+    readonly property bool canCancelTransition:
+        applying && actionPhase === "closing-apps" && currentRequestId !== ""
     property var powerStatus: ({
         "availability": {
             "lock": "yes", "logout": "yes", "suspend": "unknown",
@@ -87,8 +94,9 @@ PanelWindow {
         if (!actionAvailable(index) || applying)
             return;
         const action = actions[index].id;
+        selectedAction = action;
         if (action === "reboot" || action === "poweroff") {
-            confirmationAction = action;
+            pendingConfirmationAction = action;
             actionPhase = "confirming";
             actionError = "";
             return;
@@ -103,19 +111,41 @@ PanelWindow {
         stderrDetail = "";
         phaseRemaining = 0;
         phaseTotal = 0;
+        selectedAction = action;
+        lastAttemptedAction = action;
+        currentRequestId = "";
+        pendingConfirmationAction = "";
         actionPhase = "requested";
         applying = true;
         actionProcess.exec(["desktop-power", action]);
     }
 
     function confirmAction() {
-        if (confirmationAction !== "")
-            runAction(confirmationAction);
+        if (pendingConfirmationAction !== "")
+            runAction(pendingConfirmationAction);
     }
 
     function retryAction() {
-        if (confirmationAction !== "")
-            runAction(confirmationAction);
+        if (lastAttemptedAction !== "")
+            runAction(lastAttemptedAction);
+    }
+
+    function resetActionDetail() {
+        selectedAction = "";
+        pendingConfirmationAction = "";
+        currentRequestId = "";
+        actionPhase = "browsing";
+        actionError = "";
+        stderrDetail = "";
+    }
+
+    function cancelAction() {
+        if (canCancelTransition) {
+            cancelProcess.exec(["desktop-power", "cancel", "--request-id", currentRequestId]);
+            return;
+        }
+        if (!applying)
+            resetActionDetail();
     }
 
     function actionFailureMessage(detail) {
@@ -134,11 +164,15 @@ PanelWindow {
             const event = JSON.parse(String(line || ""));
             if (event.schema !== 1)
                 return;
+            if (event.requestId)
+                currentRequestId = String(event.requestId);
             actionPhase = String(event.phase || actionPhase);
             phaseRemaining = Number(event.remaining ?? phaseRemaining);
             phaseTotal = Number(event.total ?? phaseTotal);
             if (actionPhase === "error")
                 actionError = actionFailureMessage(event.message);
+            if (actionPhase === "cancelled")
+                resetActionDetail();
         } catch (error) {
             console.warn("cyberpower: invalid transition event:", line);
         }
@@ -198,6 +232,10 @@ PanelWindow {
         onExited: exitCode => {
             menu.applying = false;
             menu.stderrDetail = errorCollector.text;
+            if (menu.actionPhase === "cancelled" || exitCode === 130) {
+                menu.resetActionDetail();
+                return;
+            }
             if (exitCode === 0) {
                 menu.actionError = "";
                 menu.actionPhase = "completed";
@@ -209,12 +247,28 @@ PanelWindow {
             }
         }
     }
+    Process {
+        id: cancelProcess
+        stderr: StdioCollector {
+            id: cancelErrorCollector
+            waitForEnd: false
+        }
+        onExited: exitCode => {
+            if (exitCode !== 0) {
+                menu.actionPhase = "error";
+                menu.actionError = menu.actionFailureMessage(cancelErrorCollector.text);
+            }
+        }
+    }
     // qmllint enable signal-handler-parameters
 
     onVisibleChanged: {
         if (visible) {
             selectedIndex = 0;
-            confirmationAction = "";
+            selectedAction = "";
+            pendingConfirmationAction = "";
+            lastAttemptedAction = "";
+            currentRequestId = "";
             applying = false;
             actionPhase = "browsing";
             actionError = "";
@@ -256,10 +310,10 @@ PanelWindow {
             focus: true
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Escape) {
-                    if (!menu.applying && menu.confirmationAction !== "") {
-                        menu.confirmationAction = "";
-                        menu.actionPhase = "browsing";
-                        menu.actionError = "";
+                    if (menu.canCancelTransition) {
+                        menu.cancelAction();
+                    } else if (!menu.applying && menu.showingActionDetail) {
+                        menu.resetActionDetail();
                     } else if (!menu.applying) {
                         menu.closeRequested();
                     }
@@ -273,7 +327,7 @@ PanelWindow {
                 } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
                     if (menu.actionPhase === "error")
                         menu.retryAction();
-                    else if (menu.confirmationAction !== "")
+                    else if (menu.pendingConfirmationAction !== "")
                         menu.confirmAction();
                     else
                         menu.requestAction(menu.selectedIndex);
@@ -289,11 +343,13 @@ PanelWindow {
 
             Text {
                 width: parent.width
-                text: menu.confirmationAction === ""
+                text: !menu.showingActionDetail
                     ? (menu.koreanLocale ? "전원 및 세션" : "Power & Session")
-                    : (menu.confirmationAction === "reboot"
+                    : (menu.selectedAction === "reboot"
                         ? (menu.koreanLocale ? "시스템을 다시 시작할까요?" : "Restart the system?")
-                        : (menu.koreanLocale ? "시스템을 종료할까요?" : "Shut down the system?"))
+                        : (menu.selectedAction === "poweroff"
+                            ? (menu.koreanLocale ? "시스템을 종료할까요?" : "Shut down the system?")
+                            : menu.label(menu.actions.find(entry => entry.id === menu.selectedAction) || menu.actions[0])))
                 color: menu.theme.colorText
                 font.family: "Pretendard"
                 font.pixelSize: 20
@@ -303,7 +359,7 @@ PanelWindow {
             Text {
                 width: parent.width
                 height: 34
-                text: menu.confirmationAction === ""
+                text: !menu.showingActionDetail
                     ? (menu.koreanLocale ? "원하는 작업을 선택하세요." : "Choose what the computer should do.")
                     : (menu.applying ? menu.phaseText()
                         : (menu.koreanLocale ? "열린 앱을 정리한 뒤 진행합니다." : "Open apps will close before continuing."))
@@ -315,7 +371,7 @@ PanelWindow {
 
             Column {
                 id: actionList
-                visible: menu.confirmationAction === ""
+                visible: !menu.showingActionDetail
                 width: parent.width
                 spacing: 5
 
@@ -409,7 +465,7 @@ PanelWindow {
             }
 
             Column {
-                visible: menu.confirmationAction !== ""
+                visible: menu.showingActionDetail
                 width: parent.width
                 spacing: 14
 
@@ -430,7 +486,7 @@ PanelWindow {
                         height: 28
                         source: Quickshell.iconPath(
                             menu.actionPhase === "error" ? "dialog-error-symbolic"
-                                : (menu.confirmationAction === "reboot" ? "system-reboot-symbolic" : "system-shutdown-symbolic"),
+                                : ((menu.actions.find(entry => entry.id === menu.selectedAction) || menu.actions[0]).icon),
                             "system-run-symbolic")
                     }
 
@@ -487,8 +543,8 @@ PanelWindow {
                         width: Math.floor((parent.width - parent.spacing) / 2)
                         height: 48
                         radius: menu.theme.radiusControl
-                        opacity: menu.applying ? 0.45 : 1
-                        color: cancelMouse.containsMouse && !menu.applying
+                        opacity: menu.applying && !menu.canCancelTransition ? 0.45 : 1
+                        color: cancelMouse.containsMouse && (!menu.applying || menu.canCancelTransition)
                             ? menu.theme.colorFocusHover : "transparent"
                         border.width: 1
                         border.color: menu.theme.colorQuietBorder
@@ -507,12 +563,8 @@ PanelWindow {
                             id: cancelMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            enabled: !menu.applying
-                            onClicked: {
-                                menu.confirmationAction = "";
-                                menu.actionPhase = "browsing";
-                                menu.actionError = "";
-                            }
+                            enabled: !menu.applying || menu.canCancelTransition
+                            onClicked: menu.cancelAction()
                         }
                     }
 
@@ -531,9 +583,11 @@ PanelWindow {
                         Accessible.role: Accessible.Button
                         Accessible.name: menu.actionPhase === "error"
                             ? (menu.koreanLocale ? "다시 시도" : "Retry")
-                            : (menu.confirmationAction === "reboot"
+                            : (menu.selectedAction === "reboot"
                                 ? (menu.koreanLocale ? "다시 시작 확인" : "Confirm restart")
-                                : (menu.koreanLocale ? "종료 확인" : "Confirm shutdown"))
+                                : (menu.selectedAction === "poweroff"
+                                    ? (menu.koreanLocale ? "종료 확인" : "Confirm shutdown")
+                                    : menu.label(menu.actions.find(entry => entry.id === menu.selectedAction) || menu.actions[0])))
 
                         Text {
                             anchors.centerIn: parent
@@ -541,9 +595,11 @@ PanelWindow {
                                 ? (menu.koreanLocale ? "처리 중…" : "Working…")
                                 : (menu.actionPhase === "error"
                                     ? (menu.koreanLocale ? "다시 시도" : "Retry")
-                                    : (menu.confirmationAction === "reboot"
+                                    : (menu.selectedAction === "reboot"
                                         ? (menu.koreanLocale ? "다시 시작" : "Restart")
-                                        : (menu.koreanLocale ? "시스템 종료" : "Shut Down")))
+                                        : (menu.selectedAction === "poweroff"
+                                            ? (menu.koreanLocale ? "시스템 종료" : "Shut Down")
+                                            : menu.label(menu.actions.find(entry => entry.id === menu.selectedAction) || menu.actions[0]))))
                             color: menu.theme.colorText
                             font.family: "Pretendard"
                             font.pixelSize: 13

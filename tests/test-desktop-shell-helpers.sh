@@ -41,10 +41,19 @@ FAKE
 cat >"$work/nmcli" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
+read -r wifi wwan <"${RADIO_STATE:?}"
 if [[ $* == '-t -f WIFI,WWAN radio' ]]; then
-  printf 'disabled:disabled\n'
+  printf '%s:%s\n' "$wifi" "$wwan"
 elif [[ $* == '-t -f WIFI radio' ]]; then
-  printf 'enabled\n'
+  printf '%s\n' "$wifi"
+elif [[ ${1:-} == radio && ${2:-} == wifi && ${3:-} =~ ^(on|off)$ ]]; then
+  [[ $3 == on ]] && wifi=enabled || wifi=disabled
+  printf '%s %s\n' "$wifi" "$wwan" >"$RADIO_STATE"
+  printf '%s\n' "$*" >>"${NMCLI_LOG:?}"
+elif [[ ${1:-} == radio && ${2:-} == wwan && ${3:-} =~ ^(on|off)$ ]]; then
+  [[ $3 == on ]] && wwan=enabled || wwan=disabled
+  printf '%s %s\n' "$wifi" "$wwan" >"$RADIO_STATE"
+  printf '%s\n' "$*" >>"${NMCLI_LOG:?}"
 else
   printf '%s\n' "$*" >>"${NMCLI_LOG:?}"
 fi
@@ -60,11 +69,14 @@ chmod 0700 "$work/qs" "$work/wpctl" "$work/brightnessctl" "$work/nmcli" "$work/o
 
 export HOME=$work/home
 export XDG_CONFIG_HOME=$HOME/.config
+export XDG_RUNTIME_DIR=$work/runtime
 export QS_LOG=$work/qs.log
 export BRIGHTNESS_LOG=$work/brightness.log
 export OSD_LOG=$work/osd.log
 export NMCLI_LOG=$work/nmcli.log
-mkdir -p "$HOME"
+export RADIO_STATE=$work/radio-state
+mkdir -p "$HOME" "$XDG_RUNTIME_DIR"
+printf 'disabled disabled\n' >"$RADIO_STATE"
 
 printf '%s\n' '==> OSD values are normalized before IPC'
 CYBEROSD_QS=$work/qs \
@@ -140,7 +152,32 @@ grep -Fxq keyboard-backlight "$OSD_LOG" || fail 'keyboard control omitted OSD fe
 
 DESKTOP_AIRPLANE_NMCLI=$work/nmcli DESKTOP_AIRPLANE_OSD=$work/osd \
   bash "$airplane_helper" toggle
-grep -Fxq 'radio all off' "$NMCLI_LOG" || fail 'airplane toggle did not disable radios'
-grep -Fxq airplane-mode "$OSD_LOG" || fail 'airplane control omitted OSD feedback'
+grep -Fxq 'radio wifi off' "$NMCLI_LOG" || fail 'airplane toggle did not disable Wi-Fi'
+grep -Fxq 'radio wwan off' "$NMCLI_LOG" || fail 'airplane toggle did not disable WWAN'
+grep -Fxq 'show --kind airplane-mode --value 100 --state active' "$OSD_LOG" ||
+  fail 'airplane control omitted final-state OSD feedback'
+
+printf '%s\n' '==> airplane mode preserves asymmetric Wi-Fi and WWAN state'
+: >"$NMCLI_LOG"
+: >"$OSD_LOG"
+rm -f -- "$XDG_RUNTIME_DIR/enoshima/airplane-state.json"
+printf 'disabled enabled\n' >"$RADIO_STATE"
+DESKTOP_AIRPLANE_NMCLI=$work/nmcli DESKTOP_AIRPLANE_OSD=$work/osd \
+  bash "$airplane_helper" toggle
+grep -Fxq 'disabled disabled' "$RADIO_STATE" || fail 'airplane mode did not disable both radios'
+jq -e '.active == true and .wifiBefore == false and .wwanBefore == true' \
+  "$XDG_RUNTIME_DIR/enoshima/airplane-state.json" >/dev/null ||
+  fail 'airplane mode did not remember asymmetric radio state'
+DESKTOP_AIRPLANE_NMCLI=$work/nmcli DESKTOP_AIRPLANE_OSD=$work/osd \
+  bash "$airplane_helper" toggle
+grep -Fxq 'disabled enabled' "$RADIO_STATE" || fail 'airplane mode did not restore prior radio state'
+[[ ! -e $XDG_RUNTIME_DIR/enoshima/airplane-state.json ]] ||
+  fail 'restored airplane state was not cleared'
+
+CYBEROSD_QS=$work/qs bash "$osd_helper" show \
+  --kind airplane-mode --value 0 --state error
+grep -Fxq -- \
+  "-p $HOME/.config/quickshell/cyberdock ipc call -- osd show airplane-mode-error 0 true" \
+  "$QS_LOG" || fail 'airplane failure OSD payload is wrong'
 
 printf 'Desktop shell helper tests passed.\n'
