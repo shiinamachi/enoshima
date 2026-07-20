@@ -452,6 +452,7 @@ for test_script in \
   tests/test-ui-evidence-gate.sh \
   tests/test-vm-boot-security.sh \
   tests/test-vm-ci.sh \
+  tests/test-vm-desktop.sh \
   tests/test-vm-profile.sh \
   tests/test-wwan-shutdown.sh \
   tests/test-desktop-window-action.sh \

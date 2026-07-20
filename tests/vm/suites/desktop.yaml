@@ -22,11 +22,50 @@ steps:
       report: first
   - reboot
   - start_desktop
+  - configure_virtual_displays:
+      monitors:
+        - name: HEADLESS-INTERNAL
+          mode: 2880x1800@60
+          position: 0x0
+          scale: 1.5
+        - name: HEADLESS-EXTERNAL
+          mode: 2560x1440@60
+          position: 1920x0
+          scale: 1.0
   - send_key:
       keys: [KEY_LEFTMETA, KEY_ENTER]
+  - wait_for_client:
+      class: "^(com\\.mitchellh\\.ghostty|ghostty)$"
+      workspace: "1"
+      timeout_seconds: 120
+  - send_key:
+      keys: [KEY_LEFTMETA, KEY_2]
+  - assert_desktop_state:
+      active_workspace: "2"
+      require_keyboard: true
+      monitors:
+        - name: HEADLESS-INTERNAL
+          width: 2880
+          height: 1800
+          x: 0
+          y: 0
+          scale: 1.5
+        - name: HEADLESS-EXTERNAL
+          width: 2560
+          height: 1440
+          x: 1920
+          y: 0
+          scale: 1.0
   - query_desktop
   - screenshot:
       name: desktop
+  - send_key:
+      keys: [KEY_LEFTMETA, KEY_SPACE]
+  - wait_for_layer:
+      namespace: cyberlauncher
+      timeout_seconds: 60
+  - screenshot:
+      name: launcher
   - run_postflight:
       report: desktop
   - assert_expected_skips

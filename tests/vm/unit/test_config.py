@@ -18,7 +18,14 @@ from enoshima_vm.config import (
 
 def test_repository_suites_obey_resource_and_network_boundaries() -> None:
     paths = RuntimePaths.discover()
-    for name in ("smoke", "converge", "reboot", "desktop", "boot-security"):
+    for name in (
+        "smoke",
+        "converge",
+        "reboot",
+        "desktop",
+        "login",
+        "boot-security",
+    ):
         suite = load_suite(name, paths)
         assert suite.resources.vcpus <= MAX_VCPUS
         assert suite.resources.memory_mib <= MAX_MEMORY_MIB

@@ -97,7 +97,7 @@ def vm_poweroff(run_id: str) -> dict[str, str]:
 
 
 @mcp.tool(annotations=WRITE)
-def vm_screenshot(run_id: str, name: str = "desktop") -> dict[str, str]:
+def vm_screenshot(run_id: str, name: str = "desktop") -> dict[str, object]:
     """Capture a PNG from the guest compositor into the managed artifact root."""
     return service().screenshot(run_id, name)
 

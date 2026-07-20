@@ -5,6 +5,7 @@ import os
 import re
 import secrets
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -50,6 +51,7 @@ from .security import (
 REMOTE_ROOT = PurePosixPath("/home/kentakang/enoshima-test")
 REMOTE_SOURCE = REMOTE_ROOT / "source"
 REMOTE_ARTIFACTS = REMOTE_ROOT / "artifacts"
+REMOTE_LOGIN_PASSWORD = REMOTE_ROOT / "secrets" / "login-password"
 
 
 def utc_now() -> str:
@@ -529,6 +531,8 @@ class VMService:
 
     def _start_desktop(self, record: dict[str, Any]) -> None:
         guest = self._guest(record)
+        guest.exec(["sudo", "systemctl", "stop", "greetd.service"], check=False)
+        time.sleep(2)
         command = [
             "systemd-run",
             "--user",
@@ -577,7 +581,14 @@ class VMService:
         record = self.load_record(run_id)
         guest = self._guest(record)
         result: dict[str, object] = {}
-        for name in ("monitors", "workspaces", "clients", "activewindow", "devices"):
+        for name in (
+            "monitors",
+            "workspaces",
+            "clients",
+            "activewindow",
+            "activeworkspace",
+            "devices",
+        ):
             command = self._hypr_command(f"hyprctl -j {name}")
             value = guest.exec(command, timeout=30, check=False)
             if value.returncode:
@@ -590,7 +601,244 @@ class VMService:
         self._audit("vm_query_desktop", run_id=run_id)
         return result
 
-    def screenshot(self, run_id: str, name: str = "desktop") -> dict[str, str]:
+    def _configure_virtual_displays(
+        self, record: dict[str, Any], config: Any
+    ) -> None:
+        if not isinstance(config, dict) or not isinstance(
+            config.get("monitors"), list
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "configure_virtual_displays requires a monitor list",
+            )
+        guest = self._guest(record)
+        for monitor in config["monitors"]:
+            if not isinstance(monitor, dict):
+                raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor")
+            name = str(monitor.get("name", ""))
+            mode = str(monitor.get("mode", ""))
+            position = str(monitor.get("position", ""))
+            scale = str(monitor.get("scale", ""))
+            if not re.fullmatch(r"HEADLESS-[A-Z]+", name):
+                raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor name")
+            if not re.fullmatch(r"[0-9]{3,5}x[0-9]{3,5}@[0-9]{2,3}", mode):
+                raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor mode")
+            if not re.fullmatch(r"[0-9]{1,5}x[0-9]{1,5}", position):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR, "invalid monitor position"
+                )
+            if not re.fullmatch(r"[0-9](?:\.[0-9]+)?", scale):
+                raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor scale")
+            create = guest.exec(
+                self._hypr_command(f"hyprctl output create headless {name}"),
+                timeout=30,
+                check=False,
+            )
+            if create.returncode and "already" not in (
+                create.stdout + create.stderr
+            ).lower():
+                raise VMError(
+                    FailureCategory.DESKTOP_SESSION_FAILED,
+                    f"cannot create virtual output: {name}",
+                    {"stderr": create.stderr[-2000:]},
+                )
+            self._run_checked(
+                record,
+                f"configure-{name.lower()}",
+                self._hypr_command(
+                    f"hyprctl keyword monitor {name},{mode},{position},{scale}"
+                ),
+                FailureCategory.DESKTOP_SESSION_FAILED,
+                timeout_seconds=30,
+            )
+
+    def _wait_for_client(self, record: dict[str, Any], config: Any) -> None:
+        values = config if isinstance(config, dict) else {}
+        pattern = str(values.get("class", ""))
+        workspace = str(values.get("workspace", ""))
+        if not pattern or not workspace:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "wait_for_client requires class and workspace",
+            )
+        try:
+            matcher = re.compile(pattern, re.IGNORECASE)
+        except re.error as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR, "invalid client regex"
+            ) from error
+        guest = self._guest(record)
+        deadline = time.monotonic() + int(values.get("timeout_seconds", 120))
+        last: list[object] = []
+        while time.monotonic() < deadline:
+            result = guest.exec(
+                self._hypr_command("hyprctl -j clients"), timeout=15, check=False
+            )
+            if result.returncode == 0:
+                last = json.loads(result.stdout)
+                for client in last:
+                    class_name = str(client.get("class", ""))
+                    initial_class = str(client.get("initialClass", ""))
+                    client_workspace = str(client.get("workspace", {}).get("name", ""))
+                    if (
+                        matcher.search(class_name) or matcher.search(initial_class)
+                    ) and client_workspace == workspace:
+                        return
+            time.sleep(2)
+        raise VMError(
+            FailureCategory.DESKTOP_SESSION_FAILED,
+            "expected client did not appear on its routed workspace",
+            {"class": pattern, "workspace": workspace, "clients": last},
+        )
+
+    def _assert_desktop_state(self, record: dict[str, Any], config: Any) -> None:
+        values = config if isinstance(config, dict) else {}
+        expected_monitors = values.get("monitors", [])
+        if not isinstance(expected_monitors, list):
+            raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor assertions")
+        desktop = self.query_desktop(record["run_id"])
+        actual = {monitor["name"]: monitor for monitor in desktop["monitors"]}
+        failures: list[str] = []
+        for expected in expected_monitors:
+            name = str(expected["name"])
+            monitor = actual.get(name)
+            if monitor is None:
+                failures.append(f"missing monitor {name}")
+                continue
+            for key in ("width", "height", "x", "y"):
+                if key in expected and int(monitor.get(key, -1)) != int(expected[key]):
+                    failures.append(
+                        f"{name}.{key}={monitor.get(key)!r}, expected {expected[key]!r}"
+                    )
+            if "scale" in expected and abs(
+                float(monitor.get("scale", 0)) - float(expected["scale"])
+            ) > 0.01:
+                failures.append(
+                    f"{name}.scale={monitor.get('scale')!r}, "
+                    f"expected {expected['scale']!r}"
+                )
+        active_workspace = str(
+            desktop.get("activeworkspace", {}).get("name", "")
+        )
+        if values.get("active_workspace") and active_workspace != str(
+            values["active_workspace"]
+        ):
+            failures.append(
+                f"active workspace={active_workspace!r}, "
+                f"expected {values['active_workspace']!r}"
+            )
+        devices = desktop.get("devices", {})
+        if values.get("require_keyboard") and not devices.get("keyboards"):
+            failures.append("no keyboard reported by Hyprland")
+        if failures:
+            raise VMError(
+                FailureCategory.DESKTOP_SESSION_FAILED,
+                "desktop structural assertions failed",
+                {"failures": failures, "desktop": desktop},
+            )
+
+    def _wait_for_layer(self, record: dict[str, Any], config: Any) -> None:
+        values = config if isinstance(config, dict) else {}
+        namespace = str(values.get("namespace", ""))
+        if not re.fullmatch(r"[a-z0-9-]+", namespace):
+            raise VMError(FailureCategory.HARNESS_ERROR, "invalid layer namespace")
+        guest = self._guest(record)
+        deadline = time.monotonic() + int(values.get("timeout_seconds", 60))
+        while time.monotonic() < deadline:
+            result = guest.exec(
+                self._hypr_command("hyprctl -j layers"), timeout=15, check=False
+            )
+            if result.returncode == 0:
+                layers = json.loads(result.stdout)
+                namespaces: list[str] = []
+
+                def visit(value: object) -> None:
+                    if isinstance(value, dict):
+                        if isinstance(value.get("namespace"), str):
+                            namespaces.append(value["namespace"])
+                        for child in value.values():
+                            visit(child)
+                    elif isinstance(value, list):
+                        for child in value:
+                            visit(child)
+
+                visit(layers)
+                if namespace in namespaces:
+                    return
+            time.sleep(1)
+        raise VMError(
+            FailureCategory.DESKTOP_SESSION_FAILED,
+            f"expected layer did not appear: {namespace}",
+        )
+
+    def _prepare_login(self, record: dict[str, Any]) -> None:
+        secret_dir = self._run_dir(record["run_id"]) / "secrets"
+        secret_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        password_path = secret_dir / "login-password"
+        password_path.write_text(secrets.token_hex(16) + "\n", encoding="utf-8")
+        password_path.chmod(0o600)
+        credential = secret_dir / "chpasswd-input"
+        credential.write_text(
+            f"kentakang:{password_path.read_text(encoding='utf-8').strip()}\n",
+            encoding="utf-8",
+        )
+        credential.chmod(0o600)
+        guest = self._guest(record)
+        guest.upload_file(credential, REMOTE_LOGIN_PASSWORD)
+        try:
+            self._run_checked(
+                record,
+                "prepare-greetd-login",
+                self._remote_shell(f"sudo chpasswd < {REMOTE_LOGIN_PASSWORD}"),
+                FailureCategory.LOGIN_SESSION_FAILED,
+            )
+        finally:
+            credential.unlink(missing_ok=True)
+            guest.exec(["rm", "-f", str(REMOTE_LOGIN_PASSWORD)], check=False)
+        record["login_password"] = str(password_path)
+        self._write_record(record)
+
+    def _login_greetd(self, record: dict[str, Any]) -> None:
+        password_path = confined_path(
+            self._run_dir(record["run_id"]), Path(record.get("login_password", ""))
+        )
+        if not password_path.is_file():
+            raise VMError(
+                FailureCategory.LOGIN_SESSION_FAILED,
+                "disposable greetd password is unavailable",
+            )
+        guest = self._guest(record)
+        self._run_checked(
+            record,
+            "assert-greetd-active",
+            ["systemctl", "is-active", "greetd.service"],
+            FailureCategory.LOGIN_SESSION_FAILED,
+        )
+        time.sleep(10)
+        evidence = Path(record["artifact_dir"]) / "screenshots" / "greetd.ppm"
+        self.backend.screenshot(record["domain"], evidence)
+        self.backend.type_text(
+            record["domain"], password_path.read_text(encoding="utf-8").strip()
+        )
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            result = guest.exec(
+                self._hypr_command("hyprctl -j monitors"), timeout=15, check=False
+            )
+            if result.returncode == 0:
+                return
+            time.sleep(2)
+        journal = guest.exec(
+            ["sudo", "journalctl", "-u", "greetd.service", "-b", "--no-pager"],
+            check=False,
+        )
+        raise VMError(
+            FailureCategory.LOGIN_SESSION_FAILED,
+            "greetd did not start the user Hyprland session",
+            {"journal": journal.stdout[-8000:]},
+        )
+
+    def screenshot(self, run_id: str, name: str = "desktop") -> dict[str, object]:
         if not re.fullmatch(r"[a-z0-9-]+", name):
             raise VMError(FailureCategory.HARNESS_ERROR, "invalid screenshot name")
         record = self.load_record(run_id)
@@ -610,8 +858,21 @@ class VMService:
             )
         local = Path(record["artifact_dir"]) / "screenshots" / f"{name}.png"
         self._guest(record).download(remote, local)
+        header = local.read_bytes()[:24]
+        if len(header) != 24 or header[:8] != b"\x89PNG\r\n\x1a\n":
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "captured compositor evidence is not a PNG",
+            )
+        width, height = struct.unpack(">II", header[16:24])
+        if width < 1280 or height < 720:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "captured compositor evidence is unexpectedly small",
+                {"width": width, "height": height},
+            )
         self._audit("vm_screenshot", run_id=run_id)
-        return {"path": str(local)}
+        return {"path": str(local), "width": width, "height": height}
 
     def collect(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
@@ -647,6 +908,7 @@ class VMService:
         record["updated_at"] = utc_now()
         record.pop("private_key", None)
         record.pop("recovery_key", None)
+        record.pop("login_password", None)
         self._write_record(record)
         self._audit("vm_destroy", run_id=run_id)
         return {"run_id": run_id, "removed": removed, "recoverable": False}
@@ -723,6 +985,18 @@ class VMService:
             self.reboot(record["run_id"])
         elif action == "start_desktop":
             self._start_desktop(record)
+        elif action == "configure_virtual_displays":
+            self._configure_virtual_displays(record, config)
+        elif action == "wait_for_client":
+            self._wait_for_client(record, config)
+        elif action == "assert_desktop_state":
+            self._assert_desktop_state(record, config)
+        elif action == "wait_for_layer":
+            self._wait_for_layer(record, config)
+        elif action == "prepare_login":
+            self._prepare_login(record)
+        elif action == "login_greetd":
+            self._login_greetd(record)
         elif action == "send_key":
             if not isinstance(config, dict) or not isinstance(config.get("keys"), list):
                 raise VMError(FailureCategory.HARNESS_ERROR, "send_key requires keys")

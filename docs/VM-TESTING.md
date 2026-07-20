@@ -12,7 +12,7 @@ maintain a second installation path.
 | T0 | Current worktree | Shell, YAML, Ansible, QML/config, package, and runner unit checks |
 | T1 | Latest Arch cloud VM | Clean bootstrap and structured postflight report |
 | T2 | Pinned Arch cloud VM | Second convergence, package/chezmoi idempotency, reboot |
-| T3 | Pinned Arch desktop VM | Hyprland IPC, synthetic key input, screenshot, user units |
+| T3 | Pinned Arch desktop VM | Hyprland IPC, virtual displays, key input, greetd login, screenshots |
 | T4 | OVMF/vTPM boot VM | GPT, LUKS2, Btrfs, UKIs, Secure Boot rejection, TPM and recovery |
 | T5 | Physical `tpx1c13` | OLED/EDID/120 Hz, i915/VPU, camera, fingerprint, WWAN, battery, suspend, dock, Lenovo firmware |
 
@@ -60,6 +60,7 @@ make vm-smoke
 make vm-converge
 make vm-reboot
 make vm-desktop
+make vm-login
 make vm-boot-security
 make vm-full
 ```
@@ -67,11 +68,17 @@ make vm-full
 The lanes have distinct purposes:
 
 - `smoke` follows the latest signed Arch cloud image and current repositories.
-- `converge`, `reboot`, and `desktop` use a versioned signed image and the
+- `converge`, `reboot`, `desktop`, and `login` use a versioned signed image and the
   complete Arch Linux Archive repository snapshot declared in
   `tests/vm/images/manifest.yaml`.
-- `desktop` enables virtio-gpu 3D/SPICE, starts Hyprland, queries `hyprctl -j`,
-  sends an input event, and captures a compositor screenshot.
+- `desktop` enables virtio-gpu 3D/SPICE, starts Hyprland directly, creates
+  2880×1800 at 1.5× and 2560×1440 at 1× headless outputs, proves the Ghostty
+  and workspace key bindings, validates monitor/input/client IPC state, waits
+  for the launcher layer, and validates desktop and launcher PNG evidence.
+- `login` leaves production greetd enabled, assigns a per-run hex password,
+  captures the greeter console, types the password through QEMU input, and
+  proves the real user Hyprland session becomes reachable. It never adds
+  autologin to production configuration.
 - `boot-security` creates a separate 96 GiB sparse disk, partitions only guest
   `/dev/vdb`, builds LUKS2 and Btrfs subvolumes, creates and signs UKIs with
   disposable keys, enrolls the VM firmware, tests PCR 7 TPM unlock, proves the
@@ -80,8 +87,8 @@ The lanes have distinct purposes:
 The boot-security lane initially unlocks with a randomly generated disposable
 recovery key because Secure Boot changes PCR 7 after key enrollment. It then
 enrolls the vTPM and proves both automatic unlock and recovery after removing
-the TPM slot. The key, boot disk, OVMF NVRAM, vTPM state, seed, overlay, and SSH
-key are removed on cleanup.
+the TPM slot. The login password, recovery key, boot disk, OVMF NVRAM, vTPM
+state, seed, overlay, and SSH key are removed on cleanup.
 
 Use the CLI directly for investigation:
 
@@ -169,8 +176,8 @@ References: [official Arch cloud image index](https://geo.mirror.pkgbuild.com/im
 GitHub-hosted infrastructure for pushes and pull requests. It never reaches a
 self-hosted hypervisor.
 
-`.github/workflows/vm-trusted.yml` runs fast, convergence, reboot, and desktop
-lanes only for trusted `main` pushes or manual dispatch. The separate
+`.github/workflows/vm-trusted.yml` runs fast, convergence, reboot, desktop, and
+greetd-login lanes only for trusted `main` pushes or manual dispatch. The separate
 `.github/workflows/vm-boot-security.yml` runs on a manual or scheduled trusted
 host. Both require the `self-hosted`, `linux`, `x64`, `enoshima-kvm`, and
 `trusted` labels, use read-only repository permissions, serialize all KVM jobs,

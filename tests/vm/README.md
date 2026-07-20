@@ -17,7 +17,7 @@ uv run --locked enoshima-vm preflight smoke
 Key directories:
 
 - `images/`: signed latest and reproducible base-image definitions
-- `suites/`: declarative test order, resources, and allowed skips
+- `suites/`: declarative convergence, desktop, greetd, and boot-security order
 - `templates/`: NoCloud and constrained libvirt definitions
 - `scripts/`: guest-only boot-security disk preparation
 - `src/enoshima_vm/`: shared CLI/MCP service and safety boundaries

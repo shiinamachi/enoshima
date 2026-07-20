@@ -54,6 +54,7 @@ def expire_run(run_id: str, uri: str, paths: RuntimePaths | None = None) -> bool
     record["updated_at"] = datetime.now(UTC).isoformat()
     record.pop("private_key", None)
     record.pop("recovery_key", None)
+    record.pop("login_password", None)
     temporary = record_path.with_suffix(".json.watchdog")
     temporary.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     temporary.chmod(0o600)
