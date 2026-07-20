@@ -384,7 +384,7 @@ display_overlay=home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
 assert_contains "$display_overlay" 'WlrLayershell.namespace: "cyberdisplay"'
 assert_contains "$display_overlay" '"id": "mirror", "label": "복제"'
 assert_contains "$display_overlay" '"label": "변경 내용 유지"'
-assert_contains "$display_overlay" 'overlay.displayStatus.seconds_remaining'
+assert_contains "$display_overlay" 'overlay.secondsRemaining'
 assert_contains "$display_overlay" 'Accessible.role: Accessible.Button'
 
 if grep -Eq '#[[:xdigit:]]{6,8}' "$launcher" "$osd"; then

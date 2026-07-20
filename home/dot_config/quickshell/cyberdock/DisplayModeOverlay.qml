@@ -15,6 +15,7 @@ PanelWindow {
     required property var targetScreen
     required property bool overlayOpen
     required property string activeScreenName
+    required property var displayStatus
     required property var theme
     required property bool reducedMotion
 
@@ -23,12 +24,14 @@ PanelWindow {
     property int selectedIndex: 0
     property bool applying: false
     property string applyError: ""
-    property var displayStatus: ({
-        "mode": "none",
-        "pending": false,
-        "seconds_remaining": 0,
-        "external_count": 0
-    })
+    property int statusClock: 0
+    readonly property int secondsRemaining: {
+        void statusClock;
+        const deadline = Number(displayStatus.deadline || 0);
+        return deadline > 0
+            ? Math.max(0, Math.ceil(deadline - Date.now() / 1000))
+            : Number(displayStatus.seconds_remaining || 0);
+    }
     readonly property var choices: [
         {"id": "internal", "label": "PC 화면만", "description": "노트북 화면만 사용"},
         {"id": "mirror", "label": "복제", "description": "두 화면에 같은 내용 표시"},
@@ -103,32 +106,11 @@ PanelWindow {
         }
     }
 
-    Process {
-        id: statusProcess
-        command: ["desktop-display-mode", "status", "--json"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const next = JSON.parse(text);
-                    if (next.schema === 1)
-                        overlay.displayStatus = next;
-                } catch (error) {
-                    console.warn("cyberdisplay: invalid status:", error);
-                }
-            }
-        }
-    }
-
     Timer {
-        id: statusTimer
-        interval: 500
+        interval: 1000
         repeat: true
-        running: overlay.visible
-        triggeredOnStart: true
-        onTriggered: {
-            if (!statusProcess.running)
-                statusProcess.running = true;
-        }
+        running: overlay.visible && Boolean(overlay.displayStatus.pending)
+        onTriggered: overlay.statusClock += 1
     }
 
     Process {
@@ -149,8 +131,6 @@ PanelWindow {
                     console.warn("cyberdisplay: apply failed:", exitCode,
                         detail.trim());
                 }
-                if (!statusProcess.running)
-                    statusProcess.running = true;
             }
         }
     }
@@ -163,6 +143,12 @@ PanelWindow {
                 choice.id === displayStatus.mode));
             Qt.callLater(() => keyHandler.forceActiveFocus());
         }
+    }
+
+    onDisplayStatusChanged: {
+        if (visible && !applying)
+            selectedIndex = Math.max(0, choices.findIndex(choice =>
+                choice.id === displayStatus.mode));
     }
 
     Rectangle {
@@ -254,7 +240,7 @@ PanelWindow {
             anchors.top: heading.bottom
             anchors.topMargin: 7
             text: confirmation.visible
-                ? overlay.displayStatus.seconds_remaining + "초 후 이전 설정으로 자동 복원됩니다."
+                ? overlay.secondsRemaining + "초 후 이전 설정으로 자동 복원됩니다."
                 : "연결된 화면을 어떻게 사용할지 선택하세요."
             color: confirmation.visible
                 ? overlay.theme.colorWarning

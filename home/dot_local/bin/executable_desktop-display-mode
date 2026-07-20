@@ -15,6 +15,7 @@ readonly user_dir=$config_home/enoshima/user/display-topologies
 readonly state_dir=$state_home/enoshima/display
 readonly runtime_dir=$runtime_home/enoshima/display
 readonly pending_file=$runtime_dir/pending.json
+readonly status_file=$runtime_dir/status.json
 readonly lock_file=$runtime_dir/controller.lock
 
 die() {
@@ -32,6 +33,7 @@ usage: desktop-display-mode menu
        desktop-display-mode confirm
        desktop-display-mode revert
        desktop-display-mode reconcile
+       desktop-display-mode publish
        desktop-display-mode identify
        desktop-display-mode import-current
        desktop-display-mode doctor
@@ -533,7 +535,7 @@ apply_mode() {
 }
 
 status_command() {
-  local monitors mode topology pending=null now remaining=0 external_count
+  local monitors mode topology pending=null now remaining=0 deadline=0 external_count
   monitors=$(monitors_all)
   mode=$(mode_from_monitors "$monitors")
   topology=$(topology_hash "$monitors")
@@ -543,21 +545,28 @@ status_command() {
     pending=$("$jq_bin" -c -e 'select((.schema == 1 or .schema == 2) and (.snapshot.monitors | length > 0))' "$pending_file" 2>/dev/null || printf null)
     if [[ $pending != null ]]; then
       now=$(date +%s)
-      remaining=$(($("$jq_bin" -r '.deadline' <<<"$pending") - now))
+      deadline=$("$jq_bin" -r '.deadline' <<<"$pending")
+      remaining=$((deadline - now))
       ((remaining > 0)) || remaining=0
     fi
   fi
   "$jq_bin" -c -n --arg mode "$mode" --arg topology "$topology" \
     --arg defaultProfile "$default_profile" \
-    --argjson remaining "$remaining" --argjson pending "$pending" \
+    --argjson remaining "$remaining" --argjson deadline "$deadline" --argjson pending "$pending" \
     --argjson externalCount "$external_count" \
-    '{schema:2,mode:$mode,topology:$topology,pending:($pending != null),seconds_remaining:$remaining,target_mode:($pending.target_mode // null),target_profile:($pending.target_profile // null),default_profile:$defaultProfile,external_count:$externalCount}'
+    '{schema:2,mode:$mode,topology:$topology,pending:($pending != null),deadline:$deadline,seconds_remaining:$remaining,target_mode:($pending.target_mode // null),target_profile:($pending.target_profile // null),default_profile:$defaultProfile,external_count:$externalCount}'
+}
+
+publish_status() {
+  write_json "$status_file" "$(status_command)"
 }
 
 case ${1:-} in
   status)
     [[ $# -eq 2 && $2 == --json ]] || usage
-    status_command
+    status=$(status_command)
+    write_json "$status_file" "$status"
+    printf '%s\n' "$status"
     ;;
   list)
     [[ $# -eq 2 && $2 == --json ]] || usage
@@ -576,11 +585,13 @@ case ${1:-} in
   apply)
     [[ $# -eq 2 ]] || usage
     apply_mode "$2" true "$default_profile"
+    publish_status
     ;;
   apply-profile)
     [[ $# -eq 2 ]] || usage
     valid_profile "$2" || die "unknown display profile: $2"
     apply_mode extend true "$2"
+    publish_status
     ;;
   confirm)
     [[ $# -eq 1 ]] || usage
@@ -591,6 +602,7 @@ case ${1:-} in
       "$("$jq_bin" -r '.target_profile // "custom"' <<<"$pending")"
     rm -f -- "$pending_file"
     cancel_revert
+    publish_status
     ;;
   revert)
     [[ $# -eq 1 ]] || usage
@@ -600,6 +612,7 @@ case ${1:-} in
     restore_snapshot "$("$jq_bin" -c '.snapshot' <<<"$pending")"
     rm -f -- "$pending_file"
     cancel_revert
+    publish_status
     ;;
   reconcile)
     [[ $# -eq 1 ]] || usage
@@ -624,6 +637,11 @@ case ${1:-} in
     else
       "$route_bin" >/dev/null 2>&1 || true
     fi
+    publish_status
+    ;;
+  publish)
+    [[ $# -eq 1 ]] || usage
+    publish_status
     ;;
   identify)
     [[ $# -eq 1 ]] || usage

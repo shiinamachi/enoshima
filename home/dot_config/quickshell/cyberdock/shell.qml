@@ -56,6 +56,7 @@ ShellRoot {
     readonly property string runtimeHome: Quickshell.env("XDG_RUNTIME_DIR")
     property int snapClock: 0
     readonly property var snapState: parseSnapState(snapStateFile.text, snapClock)
+    readonly property var displayStatus: parseDisplayStatus(displayStatusFile.text)
     readonly property string pinsPath:
         configHome + "/enoshima/user/cyberdock-pins.json"
     readonly property string appearanceMode: {
@@ -153,9 +154,30 @@ ShellRoot {
         return {"schema": 2, "active": false, "updatedAt": 0};
     }
 
+    function parseDisplayStatus(text) {
+        try {
+            const document = JSON.parse(text || "{}");
+            if (document.schema === 2)
+                return document;
+        } catch (error) {
+            // The persistent display listener publishes this file atomically.
+        }
+        return {"schema": 2, "mode": "none", "pending": false,
+            "deadline": 0, "external_count": 0};
+    }
+
     FileView {
         id: snapStateFile
         path: root.runtimeHome + "/enoshima/snap.json"
+        preload: true
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+    }
+
+    FileView {
+        id: displayStatusFile
+        path: root.runtimeHome + "/enoshima/display/status.json"
         preload: true
         printErrors: false
         watchChanges: true
@@ -1594,6 +1616,7 @@ ShellRoot {
             targetScreen: modelData
             overlayOpen: root.displayOverlayOpen
             activeScreenName: root.displayOverlayScreenName
+            displayStatus: root.displayStatus
             theme: root.theme
             reducedMotion: root.reducedMotion
             onCloseRequested: root.displayOverlayOpen = false

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # Assertions intentionally match literal shell source.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -438,6 +439,14 @@ grep -Fq 'Accessible.role: Accessible.AlertMessage' "$overlay_qml" ||
   fail 'projection overlay error is not exposed to accessibility clients'
 grep -Fq '호환되는 복제 모드가 없습니다.' "$overlay_qml" ||
   fail 'projection overlay lacks the duplicate-mode recovery message'
+if grep -Fq 'command: ["desktop-display-mode", "status", "--json"]' "$overlay_qml"; then
+  fail 'projection overlay still starts a polling process'
+fi
+grep -Fq 'path: root.runtimeHome + "/enoshima/display/status.json"' \
+  "$repo_root/home/dot_config/quickshell/cyberdock/shell.qml" ||
+  fail 'projection state is not consumed from the persistent watcher'
+grep -Fq '"$controller" publish' "$event_listener" ||
+  fail 'display listener does not seed persistent display state'
 # shellcheck disable=SC2016 # Match the literal command in the managed helper.
 grep -Fq '"$socat_bin" -u "UNIX-CONNECT:$socket" STDOUT' "$event_listener" ||
   fail 'display listener still closes its socket when service stdin reaches EOF'
