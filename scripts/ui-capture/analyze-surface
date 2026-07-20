@@ -84,6 +84,13 @@ def normalized_crop(source: Path, value: tuple[int, int, int, int], destination:
             "+repage",
             "-resize",
             "512x512!",
+            # Concept boards intentionally use representative content rather
+            # than the exact applications and strings in a live capture. A
+            # modest semantic blur preserves panel geometry, hierarchy, and
+            # dominant tokens while preventing glyph/app-icon substitutions
+            # from overwhelming the structural comparison.
+            "-blur",
+            "0x8",
             "-colorspace",
             "sRGB",
             str(destination),

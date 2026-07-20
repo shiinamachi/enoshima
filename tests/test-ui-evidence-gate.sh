@@ -6,6 +6,10 @@ validator=$repo_root/.agents/skills/enoshima-concept-art/scripts/validate-concep
 capture=$repo_root/scripts/ui-capture/capture-surface
 score=$repo_root/scripts/ui-capture/score-surface
 analyze=$repo_root/scripts/ui-capture/analyze-surface
+grep -Fq '"-blur"' "$analyze" || {
+  printf 'Visual analyzer omits semantic normalization.\n' >&2
+  exit 1
+}
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 

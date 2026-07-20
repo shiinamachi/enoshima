@@ -17,7 +17,13 @@ scripts/ui-capture/analyze-surface --surface power-menu \
   --mapping docs/evidence/power-menu/mapping.json
 ```
 
-The analyzer derives geometry, color, text-overflow, and perceptual scores from digest-bound images. Record only the remaining interaction-oriented manual scores:
+The analyzer derives geometry, color, text-overflow, and perceptual scores from
+digest-bound images. Reference and implementation crops are normalized to
+512×512 and receive a fixed semantic blur before RMSE/SSIM comparison. This
+keeps panel geometry, hierarchy, and dominant design tokens measurable without
+penalizing expected differences in live application names, timestamps, or
+glyph rasterization. Record only the remaining interaction-oriented manual
+scores:
 
 ```bash
 scripts/ui-capture/score-surface --surface power-menu --reviewer kentakang \
