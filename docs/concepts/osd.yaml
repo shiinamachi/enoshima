@@ -5,7 +5,7 @@ candidates: docs/assets/concepts/osd/osd-candidates-v1.png
 selection: >-
   Direction A, Slim Bar, matches the existing transient OSD geometry and gives
   feedback without competing with notifications or application content.
-states: [volume, muted, microphone-muted, brightness, keyboard-backlight, airplane-mode]
+states: [volume, muted, microphone-muted, brightness, keyboard-backlight, airplane-mode, airplane-mode-error]
 invariants:
   - One 330x64px OSD appears 86px above the dock safe area on the active monitor.
   - It is click-through, focus-free, and visible for about 1400ms.
@@ -14,6 +14,7 @@ acceptance:
   - Muted and off states use text and icon shape in addition to critical color.
   - Continuous and discrete values remain distinguishable.
   - Reduced motion uses opacity only and reduced transparency uses an opaque surface.
+  - Airplane-mode transition failure uses the approved compact critical state with an explicit error icon and Failed text, plus an empty non-progress track.
 generation:
   references:
     - docs/assets/concepts/cyberpunk-desktop-shell.png
@@ -22,3 +23,18 @@ generation:
     Explore three transient Enoshima OSD directions for volume, mute, microphone mute, brightness, keyboard backlight, and airplane mode. Place them above the dock, keep them click-through, active-monitor-only, and readable for 1400ms.
   final_prompt: >-
     Develop Direction A Slim Bar as a 330x64px implementation board with 24px Papirus icon, 12px label, 13px value, 8px track, six exact Korean states, active-monitor placement, repeated-key reuse, and reduced-mode behavior.
+  additions:
+    airplane_mode_error:
+      candidates: docs/assets/concepts/osd/osd-airplane-error-candidates-v2.png
+      asset: docs/assets/concepts/osd/osd-airplane-error-v2.png
+      selection: >-
+        Direction A, Compact Critical, preserves the approved slim geometry and
+        communicates the radio transition failure through a distinct error icon,
+        explicit bilingual text, and an empty track without adding a modal.
+      candidate_prompt: >-
+        Explore three Enoshima slim-bar treatments for an airplane-mode radio
+        transition failure while preserving the approved 330x64 OSD contract.
+      final_prompt: >-
+        Produce an implementation-ready redline for Direction A using
+        dialog-error-symbolic, Airplane mode, Failed, critical tokens, and an
+        empty track across Korean, English, reduced-motion, and opaque states.

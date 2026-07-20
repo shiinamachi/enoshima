@@ -84,7 +84,7 @@ surfaces:
       sha256: 58249834f2c4c98387655fe9a29366c9aea2da0d91ff4f5e5bbbbf97eddfd931
     evidence:
       status: pending
-      required_states: [volume, muted, microphone-muted, brightness, keyboard-backlight, airplane-mode]
+      required_states: [volume, muted, microphone-muted, brightness, keyboard-backlight, airplane-mode, airplane-mode-error]
       required_locales: [en_US.UTF-8, ko_KR.UTF-8]
       required_scales: [1.0, 1.25, 2.0]
       implementation_digest: null
