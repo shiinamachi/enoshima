@@ -15,6 +15,7 @@ usage: enoshima-power-doctor capture [--output FILE]
        enoshima-power-doctor test-hibernate
        enoshima-power-doctor measure-lid --duration DURATION
        enoshima-power-doctor report
+       enoshima-power-doctor export-evidence --hardware-id ID --implementation-sha SHA --output DIRECTORY
 EOF
   exit 2
 }
@@ -254,6 +255,77 @@ report() {
   }' "${results[@]}"
 }
 
+redact_capture() {
+  sed -E \
+    -e 's/([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}/<redacted-mac>/g' \
+    -e 's/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}/<redacted-uuid>/g' \
+    -e 's/((IMEI|DeviceIdentifier)[=: ]+)[0-9]{14,16}/\1<redacted>/Ig' \
+    -e 's/((SSID|connection)[=: ]+)[^[:space:]]+/\1<redacted>/Ig'
+}
+
+export_evidence() {
+  local hardware_id=$1 implementation_sha=$2 output_root=$3 machine_hash destination temporary_manifest
+  local -a results
+  [[ $hardware_id =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]] || die 'hardware ID must be a safe lowercase identifier'
+  [[ $implementation_sha =~ ^[0-9a-f]{40,64}$ ]] || die 'implementation SHA must be a 40-64 character lowercase hex digest'
+  [[ $output_root == /* ]] || die 'evidence output must be an absolute directory'
+  [[ ! -L $output_root ]] || die 'evidence output must not be a symbolic link'
+  [[ -d $state_dir ]] || die 'no power qualification runs are available'
+  machine_hash=unknown
+  if [[ -r /etc/machine-id ]]; then
+    machine_hash=$(sha256sum /etc/machine-id | cut -c1-12)
+  fi
+  destination=$output_root/${hardware_id}-${machine_hash}/$implementation_sha
+  [[ ! -e $destination ]] || die "evidence destination already exists: $destination"
+  install -d -m 0755 "$destination/runs"
+
+  local run result relative capture
+  for result in "$state_dir"/*/result.json; do
+    [[ -f $result && ! -L $result ]] || continue
+    run=${result%/*}
+    relative=${run##*/}
+    install -d -m 0755 "$destination/runs/$relative"
+    jq -S . "$result" >"$destination/runs/$relative/result.json"
+    chmod 0644 "$destination/runs/$relative/result.json"
+    for capture in before.txt after.txt; do
+      [[ -f $run/$capture && ! -L $run/$capture ]] || continue
+      redact_capture <"$run/$capture" >"$destination/runs/$relative/$capture"
+      chmod 0644 "$destination/runs/$relative/$capture"
+    done
+  done
+  results=("$destination"/runs/*/result.json)
+  [[ -e ${results[0]} ]] || die 'no completed power qualification result exists'
+  temporary_manifest=$(mktemp "$destination/.manifest.XXXXXX")
+  jq -s \
+    --arg hardware "$hardware_id" \
+    --arg machineHash "$machine_hash" \
+    --arg implementationSha "$implementation_sha" \
+    --arg exportedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+      {
+        schema: 1,
+        hardware: $hardware,
+        machine_id_hash: $machineHash,
+        implementation_sha: $implementationSha,
+        exported_at: $exportedAt,
+        privacy: {
+          hostname: "omitted", username: "omitted", ssid: "redacted",
+          imei: "redacted", mac: "redacted", filesystem_uuid: "redacted"
+        },
+        summary: {
+          total: length,
+          suspend: (map(select(.kind == "suspend")) | length),
+          hibernate: (map(select(.kind == "hibernate")) | length),
+          lid: (map(select(.kind == "lid")) | length),
+          successful_same_boot_resumes: (map(select(.resumed_same_boot == true)) | length)
+        },
+        results: .
+      }
+    ' "${results[@]}" >"$temporary_manifest"
+  chmod 0644 "$temporary_manifest"
+  mv -f -- "$temporary_manifest" "$destination/manifest.json"
+  printf '%s\n' "$destination"
+}
+
 case ${1:-} in
   capture)
     if [[ $# -eq 1 ]]; then
@@ -279,6 +351,10 @@ case ${1:-} in
   report)
     [[ $# -eq 1 ]] || usage
     report
+    ;;
+  export-evidence)
+    [[ $# -eq 7 && $2 == --hardware-id && $4 == --implementation-sha && $6 == --output ]] || usage
+    export_evidence "$3" "$5" "$7"
     ;;
   *) usage ;;
 esac

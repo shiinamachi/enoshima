@@ -71,14 +71,24 @@ for preset in "${presets[@]}"; do
 
   if [[ -e $destination ]]; then
     [[ -f $destination && ! -L $destination ]] || die "unsafe current UKI: $destination"
+    current_hash=$(sha256sum "$destination" | awk '{print $1}')
     cp -- "$destination" "$previous_candidate"
     chmod 0644 "$previous_candidate"
+    sync -f "$previous_candidate" 2>/dev/null || true
     mv -f -- "$previous_candidate" "$previous"
+    sync -f "${destination%/*}" 2>/dev/null || true
+    [[ $(sha256sum "$previous" | awk '{print $1}') == "$current_hash" ]] ||
+      die "rollback UKI verification failed: $previous"
   fi
   chmod 0644 "$candidate"
+  candidate_hash=$(sha256sum "$candidate" | awk '{print $1}')
   sync -f "$candidate" 2>/dev/null || true
   mv -f -- "$candidate" "$destination"
   sync -f "$destination" 2>/dev/null || true
+  sync -f "${destination%/*}" 2>/dev/null || true
+  [[ $(sha256sum "$destination" | awk '{print $1}') == "$candidate_hash" ]] ||
+    die "installed UKI verification failed: $destination"
+  [[ ! -e $previous || -s $previous ]] || die "rollback UKI is empty: $previous"
   printf 'Installed verified UKI %s; rollback is %s\n' "$destination" "$previous"
 
   trap - EXIT INT TERM

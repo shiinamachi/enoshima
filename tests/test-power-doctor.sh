@@ -47,4 +47,13 @@ grep -Fxq 'sleep 30m' "$POWER_DOCTOR_LOG"
 jq -e '.schema == 1 and .runs == 3 and .same_boot_resumes == 3' \
   < <(bash "$doctor" report) >/dev/null
 
+evidence_root=$work/evidence
+exported=$(bash "$doctor" export-evidence \
+  --hardware-id tpx1c13 --implementation-sha 0123456789abcdef0123456789abcdef01234567 \
+  --output "$evidence_root")
+jq -e '.schema == 1 and .hardware == "tpx1c13" and
+  .summary == {total:3,suspend:1,hibernate:1,lid:1,successful_same_boot_resumes:3} and
+  .privacy.imei == "redacted"' "$exported/manifest.json" >/dev/null
+[[ $(find "$exported/runs" -name result.json | wc -l) -eq 3 ]]
+
 printf 'Power doctor tests passed.\n'

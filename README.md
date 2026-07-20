@@ -115,9 +115,11 @@ such as fingerprint enrollment, APN credentials, a disconnected monitor, or a
 KakaoTalk login, or a failed third-party session unit. Those warnings do not
 turn a completed automated convergence into a failure.
 
-The desired login stack now uses greetd with ReGreet on an isolated,
-mixed-DPI Hyprland compositor. SDDM remains installed and responsively themed
-for a one-release rollback window; it is not the enabled display manager.
+The desired login stack now uses greetd with the Enoshima Greeter on an
+isolated, mixed-DPI Hyprland compositor. Hyprlock protects an existing desktop
+session while sharing the Enoshima Auth visual contract. SDDM remains installed
+and responsively themed for a one-release rollback window; it is not the
+enabled display manager.
 
 ## Desired versus observed packages
 

@@ -45,6 +45,10 @@ ENOSHIMA_UKI_ALLOW_UNPRIVILEGED=true \
 [[ $(<"$work/esp/arch-linux.efi") == candidate-uki ]]
 [[ $(<"$work/esp/arch-linux-previous.efi") == old-uki ]]
 [[ ! -e $work/esp/.arch-linux.efi.enoshima-new ]]
+# shellcheck disable=SC2016 # Match the literal helper source.
+grep -Fq 'sync -f "${destination%/*}"' "$helper"
+grep -Fq 'rollback UKI verification failed' "$helper"
+grep -Fq 'installed UKI verification failed' "$helper"
 
 # A failed candidate validation must preserve both bootable generations.
 printf 'known-good\n' >"$work/esp/arch-linux.efi"

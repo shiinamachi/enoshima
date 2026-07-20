@@ -68,6 +68,7 @@ grep -Fq 'test-suspend)' "$doctor" || fail 'power doctor omits suspend qualifica
 grep -Fq 'test-hibernate)' "$doctor" || fail 'power doctor omits hibernate qualification mode'
 grep -Fq 'measure-lid)' "$doctor" || fail 'power doctor omits lid measurement mode'
 grep -Fq 'report)' "$doctor" || fail 'power doctor omits summary mode'
+grep -Fq 'export-evidence)' "$doctor" || fail 'power doctor omits privacy-safe evidence export'
 grep -Fq '/sys/power/mem_sleep' "$doctor" || fail 'power doctor omits sleep mode'
 grep -Fq 'systemd-inhibit --list' "$doctor" || fail 'power doctor omits inhibitors'
 grep -Fq '/sys/kernel/debug/wakeup_sources' "$doctor" || fail 'power doctor omits wake sources'
