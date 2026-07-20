@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Import one real compositor screenshot as implementation-bound UI evidence."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def yaml(path: Path) -> dict:
+    result = subprocess.run(["yq", ".", str(path)], check=True, capture_output=True, text=True)
+    return json.loads(result.stdout)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def implementation_digest(root: Path, paths: list[str]) -> str:
+    digest = hashlib.sha256()
+    for value in sorted(paths):
+        digest.update(value.encode())
+        digest.update(b"\0")
+        digest.update((root / value).read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def png_size(path: Path) -> tuple[int, int]:
+    with path.open("rb") as stream:
+        header = stream.read(24)
+    if len(header) != 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+        raise ValueError("source must be a valid PNG image")
+    return struct.unpack(">II", header[16:24])
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--surface", required=True)
+    parser.add_argument("--state", required=True)
+    parser.add_argument("--locale", required=True, choices=("en_US.UTF-8", "ko_KR.UTF-8"))
+    parser.add_argument("--scale", required=True, type=float)
+    parser.add_argument("--logical-size", required=True, help="WIDTHxHEIGHT")
+    parser.add_argument("--display", required=True, choices=("internal", "external"))
+    parser.add_argument("--source", required=True, type=Path)
+    parser.add_argument("--repo-root", type=Path)
+    args = parser.parse_args()
+
+    root = (args.repo_root or Path(__file__).resolve().parents[2]).resolve()
+    manifest_path = root / "docs/ui-surfaces.yaml"
+    manifest = yaml(manifest_path)
+    entry = manifest.get("surfaces", {}).get(args.surface)
+    if not isinstance(entry, dict):
+        raise SystemExit(f"unknown surface: {args.surface}")
+    required = entry.get("evidence", {})
+    if args.state not in required.get("required_states", []):
+        raise SystemExit(f"state is not required by the surface contract: {args.state}")
+    if args.scale not in [float(value) for value in required.get("required_scales", [])]:
+        raise SystemExit(f"scale is not required by the surface contract: {args.scale:g}")
+    match = re.fullmatch(r"([1-9][0-9]*)x([1-9][0-9]*)", args.logical_size)
+    if not match:
+        raise SystemExit("logical size must look like 1920x1200")
+    logical_width, logical_height = (int(value) for value in match.groups())
+    source = args.source.resolve()
+    if not source.is_file() or source.is_symlink():
+        raise SystemExit("source screenshot must be a regular non-symlink file")
+    pixel_width, pixel_height = png_size(source)
+    expected_pixels = (round(logical_width * args.scale), round(logical_height * args.scale))
+    if (pixel_width, pixel_height) != expected_pixels:
+        raise SystemExit(
+            f"PNG is {pixel_width}x{pixel_height}, expected {expected_pixels[0]}x{expected_pixels[1]} for the logical size and scale"
+        )
+
+    concept = entry["concept"]
+    concept_path = root / concept["asset"]
+    concept_hash = sha256(concept_path)
+    if concept_hash != concept.get("sha256"):
+        raise SystemExit("concept hash does not match the registry")
+    current_digest = implementation_digest(root, entry["implementation"])
+    evidence_dir = root / "docs/evidence" / args.surface
+    evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+    safe_locale = args.locale.replace(".", "-")
+    stem = f"{args.state}--{safe_locale}--{args.scale:g}x--{args.display}"
+    image_path = evidence_dir / f"{stem}.png"
+    sidecar_path = evidence_dir / f"{stem}.json"
+    for target in (image_path, sidecar_path):
+        if target.is_symlink():
+            raise SystemExit(f"refusing to replace a symlink: {target}")
+
+    descriptor, temporary_image = tempfile.mkstemp(prefix=".capture-", suffix=".png", dir=evidence_dir)
+    os.close(descriptor)
+    shutil.copyfile(source, temporary_image)
+    os.chmod(temporary_image, 0o644)
+    os.replace(temporary_image, image_path)
+    relative_image = image_path.relative_to(root).as_posix()
+    sidecar = {
+        "schema": 1,
+        "surface_id": args.surface,
+        "state": args.state,
+        "locale": args.locale,
+        "display": args.display,
+        "logical_size": [logical_width, logical_height],
+        "pixel_size": [pixel_width, pixel_height],
+        "scale": args.scale,
+        "image": relative_image,
+        "image_sha256": sha256(image_path),
+        "implementation_digest": current_digest,
+        "concept_sha256": concept_hash,
+        "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    descriptor, temporary_sidecar = tempfile.mkstemp(prefix=".capture-", suffix=".json", dir=evidence_dir, text=True)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(sidecar, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+    os.chmod(temporary_sidecar, 0o644)
+    os.replace(temporary_sidecar, sidecar_path)
+    print(sidecar_path.relative_to(root).as_posix())
+
+
+if __name__ == "__main__":
+    main()

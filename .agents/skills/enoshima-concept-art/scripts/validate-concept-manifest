@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Validate the Enoshima UI surface registry and concept coverage."""
+"""Validate Enoshima concept coverage and implementation-bound visual evidence."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import itertools
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 
 VISIBLE_PATTERNS = (
@@ -21,19 +24,40 @@ VISIBLE_PATTERNS = (
     "ansible/roles/system/templates/regreet.css.j2",
     "ansible/roles/system/templates/regreet.toml.j2",
 )
-
 DIRECT_COLOR = re.compile(r"(?:#[0-9a-fA-F]{6,8}|\b(?:rgba?|hsla?)\s*\()")
+HASH = re.compile(r"[0-9a-f]{64}")
+REVIEW_WEIGHTS = {
+    "hierarchy": 0.20,
+    "geometry_spacing": 0.20,
+    "controls_icons": 0.15,
+    "state_coverage": 0.20,
+    "typography_color": 0.10,
+    "accessibility_localization": 0.15,
+}
 
 
 def load_yaml(path: Path) -> object:
-    """Use the managed yq package and parse its JSON output."""
-    completed = subprocess.run(
-        ["yq", ".", str(path)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    completed = subprocess.run(["yq", ".", str(path)], check=True, capture_output=True, text=True)
     return json.loads(completed.stdout)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def implementation_digest(root: Path, implementations: list[str]) -> str:
+    digest = hashlib.sha256()
+    for value in sorted(implementations):
+        path = root / value
+        digest.update(value.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -51,22 +75,150 @@ def relative_path(root: Path, value: object, errors: list[str], label: str) -> P
     return root / path
 
 
+def validate_review(
+    root: Path,
+    surface_id: str,
+    evidence: dict[str, Any],
+    current_digest: str,
+    concept_hash: str,
+    errors: list[str],
+) -> None:
+    label = f"surfaces.{surface_id}.evidence"
+    review_path = relative_path(root, evidence.get("review"), errors, f"{label}.review")
+    if review_path is None or not review_path.is_file():
+        fail(errors, f"{label}.review: approved evidence requires a review JSON file")
+        return
+    try:
+        review = json.loads(review_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        fail(errors, f"{label}.review: cannot read JSON: {error}")
+        return
+    if review.get("schema") != 1 or review.get("surface_id") != surface_id:
+        fail(errors, f"{label}.review: schema/surface_id mismatch")
+    if review.get("implementation_digest") != current_digest or review.get("concept_sha256") != concept_hash:
+        fail(errors, f"{label}.review: stale implementation or concept digest")
+    scores = review.get("scores", {})
+    if not isinstance(scores, dict):
+        fail(errors, f"{label}.review.scores: expected a mapping")
+        return
+    weighted = 0.0
+    for category, weight in REVIEW_WEIGHTS.items():
+        score = scores.get(category)
+        if not isinstance(score, (int, float)) or not 0 <= score <= 100:
+            fail(errors, f"{label}.review.scores.{category}: expected 0..100")
+            continue
+        if score < 85:
+            fail(errors, f"{label}.review.scores.{category}: {score} is below the 85 category floor")
+        weighted += float(score) * weight
+    if round(weighted, 2) < 90:
+        fail(errors, f"{label}.review: weighted score {weighted:.2f} is below 90")
+    if abs(float(review.get("total", -1)) - round(weighted, 2)) > 0.01:
+        fail(errors, f"{label}.review.total: must equal weighted score {weighted:.2f}")
+
+
+def validate_evidence(
+    root: Path,
+    surface_id: str,
+    entry: dict[str, Any],
+    spec_states: list[str],
+    concept_hash: str,
+    require_evidence: bool,
+    errors: list[str],
+    pending: list[str],
+) -> None:
+    label = f"surfaces.{surface_id}.evidence"
+    evidence = entry.get("evidence")
+    if not isinstance(evidence, dict):
+        fail(errors, f"{label}: schema 2 requires an evidence mapping")
+        return
+    status = evidence.get("status")
+    if status not in ("pending", "approved"):
+        fail(errors, f"{label}.status: expected pending or approved")
+        return
+    required_states = evidence.get("required_states")
+    required_locales = evidence.get("required_locales")
+    required_scales = evidence.get("required_scales")
+    if not isinstance(required_states, list) or set(required_states) != set(spec_states):
+        fail(errors, f"{label}.required_states: must exactly match the concept spec states")
+    if not isinstance(required_locales, list) or not {"en_US.UTF-8", "ko_KR.UTF-8"}.issubset(set(required_locales)):
+        fail(errors, f"{label}.required_locales: English and Korean are required")
+    if not isinstance(required_scales, list) or not {1.0, 1.25, 2.0}.issubset({float(value) for value in required_scales}):
+        fail(errors, f"{label}.required_scales: 1.0, 1.25, and 2.0 are required")
+
+    implementations = entry.get("implementation", [])
+    try:
+        current_digest = implementation_digest(root, implementations)
+    except OSError as error:
+        fail(errors, f"{label}: cannot hash implementation: {error}")
+        return
+
+    if status == "pending":
+        pending.append(surface_id)
+        if evidence.get("captures") or evidence.get("review") or evidence.get("implementation_digest"):
+            fail(errors, f"{label}: pending evidence must not carry partial approval artifacts")
+        if require_evidence:
+            fail(errors, f"{label}.status: visual release requires approved evidence")
+        return
+
+    if evidence.get("implementation_digest") != current_digest:
+        fail(errors, f"{label}.implementation_digest: stale or incorrect; expected {current_digest}")
+    captures = evidence.get("captures")
+    if not isinstance(captures, list) or not captures:
+        fail(errors, f"{label}.captures: approved evidence requires capture sidecars")
+        return
+
+    matrix: set[tuple[str, str, float]] = set()
+    for value in captures:
+        sidecar_path = relative_path(root, value, errors, f"{label}.captures")
+        if sidecar_path is None or not sidecar_path.is_file():
+            fail(errors, f"{label}.captures: sidecar does not exist: {value}")
+            continue
+        try:
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            fail(errors, f"{label}.captures: invalid sidecar {value}: {error}")
+            continue
+        if sidecar.get("schema") != 1 or sidecar.get("surface_id") != surface_id:
+            fail(errors, f"{label}.captures: schema/surface mismatch in {value}")
+        if sidecar.get("implementation_digest") != current_digest or sidecar.get("concept_sha256") != concept_hash:
+            fail(errors, f"{label}.captures: stale digest in {value}")
+        image_path = relative_path(root, sidecar.get("image"), errors, f"{label}.captures.image")
+        if image_path is None or not image_path.is_file():
+            fail(errors, f"{label}.captures: screenshot does not exist for {value}")
+        logical_size = sidecar.get("logical_size")
+        if not isinstance(logical_size, list) or len(logical_size) != 2 or not all(isinstance(item, int) and item > 0 for item in logical_size):
+            fail(errors, f"{label}.captures: invalid logical_size in {value}")
+        try:
+            matrix.add((str(sidecar["state"]), str(sidecar["locale"]), float(sidecar["scale"])))
+        except (KeyError, TypeError, ValueError):
+            fail(errors, f"{label}.captures: state/locale/scale missing in {value}")
+
+    expected = set(itertools.product(required_states, required_locales, (float(value) for value in required_scales)))
+    missing = expected - matrix
+    if missing:
+        preview = ", ".join(f"{state}/{locale}/{scale:g}" for state, locale, scale in sorted(missing)[:5])
+        fail(errors, f"{label}.captures: missing {len(missing)} matrix entries (for example {preview})")
+    validate_review(root, surface_id, evidence, current_digest, concept_hash, errors)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("manifest", nargs="?", default="docs/ui-surfaces.yaml")
+    parser.add_argument("--require-evidence", action="store_true")
     args = parser.parse_args()
 
     manifest = Path(args.manifest).resolve()
     root = manifest.parent.parent
     errors: list[str] = []
+    pending: list[str] = []
     try:
         data = load_yaml(manifest)
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
         print(f"concept manifest: cannot read {manifest}: {exc}", file=sys.stderr)
         return 1
 
-    if not isinstance(data, dict) or data.get("schema") != 1:
-        print("concept manifest: schema must be 1", file=sys.stderr)
+    if not isinstance(data, dict) or data.get("schema") != 2:
+        print("concept manifest: schema must be 2", file=sys.stderr)
         return 1
     surfaces = data.get("surfaces")
     exemptions = data.get("exemptions", {})
@@ -102,12 +254,20 @@ def main() -> int:
         if not isinstance(concept, dict) or concept.get("status") != "approved":
             fail(errors, f"{label}.concept.status: must be approved")
             continue
-        for key in ("asset", "spec"):
-            path = relative_path(root, concept.get(key), errors, f"{label}.concept.{key}")
-            if path is not None and not path.is_file():
-                fail(errors, f"{label}.concept.{key}: file does not exist: {concept.get(key)}")
+        asset_path = relative_path(root, concept.get("asset"), errors, f"{label}.concept.asset")
         spec_path = relative_path(root, concept.get("spec"), errors, f"{label}.concept.spec")
-        if spec_path is not None and spec_path.is_file():
+        concept_hash = str(concept.get("sha256", ""))
+        if not HASH.fullmatch(concept_hash):
+            fail(errors, f"{label}.concept.sha256: expected a SHA-256 digest")
+        elif asset_path is not None and asset_path.is_file() and sha256(asset_path) != concept_hash:
+            fail(errors, f"{label}.concept.sha256: concept asset has changed")
+        if asset_path is not None and not asset_path.is_file():
+            fail(errors, f"{label}.concept.asset: file does not exist")
+
+        spec_states: list[str] = []
+        if spec_path is None or not spec_path.is_file():
+            fail(errors, f"{label}.concept.spec: file does not exist")
+        else:
             try:
                 spec = load_yaml(spec_path)
             except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
@@ -115,8 +275,12 @@ def main() -> int:
                 spec = None
             if not isinstance(spec, dict) or spec.get("surface_id") != surface_id:
                 fail(errors, f"{label}.concept.spec: surface_id must equal {surface_id}")
-            elif not spec.get("states") or not spec.get("acceptance"):
+            elif not isinstance(spec.get("states"), list) or not spec.get("states") or not spec.get("acceptance"):
                 fail(errors, f"{label}.concept.spec: states and acceptance are required")
+            else:
+                spec_states = [str(value) for value in spec["states"]]
+
+        validate_evidence(root, str(surface_id), entry, spec_states, concept_hash, args.require_evidence, errors, pending)
 
         if entry.get("token_mode") == "consumer":
             for value in implementations:
@@ -146,7 +310,8 @@ def main() -> int:
         for error in errors:
             print(f"concept manifest: {error}", file=sys.stderr)
         return 1
-    print(f"concept manifest: {len(surfaces)} surfaces approved; coverage complete")
+    suffix = f"; {len(pending)} visual evidence sets pending" if pending else "; all visual evidence approved and current"
+    print(f"concept manifest: {len(surfaces)} surfaces approved and registered{suffix}")
     return 0
 
 

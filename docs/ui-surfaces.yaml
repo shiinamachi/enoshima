@@ -1,5 +1,5 @@
-schema: 1
-reviewed: 2026-07-17
+schema: 2
+reviewed: 2026-07-20
 
 surfaces:
   desktop-shell:
@@ -12,6 +12,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/cyberpunk-desktop-shell.png
       spec: docs/concepts/desktop-shell.yaml
+      sha256: c7821061e1f80f5ae525e25bffd43f2b2e25580efba854eb5710234d662615ee
+    evidence:
+      status: pending
+      required_states: [default, active-window, inactive-window, internal-display, external-display]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
   launcher:
     implementation:
       - home/dot_config/quickshell/cyberdock/CyberLauncher.qml
@@ -20,6 +29,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/cyberpunk-launcher.png
       spec: docs/concepts/launcher.yaml
+      sha256: 341350578089201d4d51300d948764c599f552ad4e36c0b444574d726ad9dc8f
+    evidence:
+      status: pending
+      required_states: [default, search, selected, empty, unavailable, error]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
   notification-center:
     implementation:
       - home/dot_config/swaync/config.json
@@ -29,6 +47,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/cyberpunk-notification-center.png
       spec: docs/concepts/notification-center.yaml
+      sha256: de21ad8cb32b8c53583d0faaba0f6e37ad8bde8243c3b1f684376b703bc7b9c1
+    evidence:
+      status: pending
+      required_states: [default, empty, do-not-disturb, notification, critical, action-error]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
   power-menu:
     implementation:
       - home/dot_config/quickshell/cyberdock/PowerMenu.qml
@@ -37,6 +64,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/power-menu/power-menu-v1.png
       spec: docs/concepts/power-menu.yaml
+      sha256: 0dd7c9c779c3faf3b938c873ce8a7cf905650ffe275c1a2269dee6d48c7196f5
+    evidence:
+      status: pending
+      required_states: [default, confirmation, closing-apps, dispatching, error, retry]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
   osd:
     implementation:
       - home/dot_config/quickshell/cyberdock/CyberOsd.qml
@@ -45,6 +81,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/osd/osd-v1.png
       spec: docs/concepts/osd.yaml
+      sha256: 58249834f2c4c98387655fe9a29366c9aea2da0d91ff4f5e5bbbbf97eddfd931
+    evidence:
+      status: pending
+      required_states: [volume, muted, microphone-muted, brightness, keyboard-backlight, airplane-mode]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
   display-mode:
     implementation:
       - home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
@@ -53,6 +98,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/display-mode/display-mode-v1.png
       spec: docs/concepts/display-mode.yaml
+      sha256: b31367a34c37cf59300d5cdf55df9d98c842e8ba21e99a72af8a29288ebfcb79
+    evidence:
+      status: pending
+      required_states: [default, hover, focus, selected, unavailable, applying, confirmation, error]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
   cyberdock-window-state:
     implementation:
       - home/dot_config/quickshell/cyberdock/shell.qml
@@ -61,6 +115,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/cyberdock-window-state/cyberdock-window-state-v1.png
       spec: docs/concepts/cyberdock-window-state.yaml
+      sha256: a35f5066f228bb79e5c3f0782400f2edfa1af9a90cf2e04a8b62ddd2b482cc4d
+    evidence:
+      status: pending
+      required_states: [pinned, running, focused, minimizing, minimized, restoring, multi-window, urgent, unavailable]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
   system-titlebar:
     implementation:
       - native/enoshima-decoration/src/main.cpp
@@ -71,6 +134,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/system-titlebar/system-titlebar-v1.png
       spec: docs/concepts/system-titlebar.yaml
+      sha256: 009401e3c6bc2c2fd014e936e4f037d0e00486651cc8a293b5f402089b7a189c
+    evidence:
+      status: pending
+      required_states: [active, inactive, keyboard-focus, hover, pressed, maximized, close-hover, system-menu]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
   snap-assist:
     implementation:
       - home/dot_config/quickshell/cyberdock/EnoshimaSnapAssist.qml
@@ -80,6 +152,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/snap-assist/snap-assist-v1.png
       spec: docs/concepts/snap-assist.yaml
+      sha256: ded09e8ba7b7b3a2b80ec91cfaba7300849e7d5b38321f4d7e60106cd9119bff
+    evidence:
+      status: pending
+      required_states: [left-half, right-half, maximize, corners, layout-chooser, cross-monitor, cancelled]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
   auth:
     implementation:
       - home/dot_config/hypr/hyprlock.conf
@@ -92,6 +173,15 @@ surfaces:
       status: approved
       asset: docs/assets/concepts/auth/auth-v1.png
       spec: docs/concepts/auth.yaml
+      sha256: a496fa355981d0f97f7df593a23340e7bf998141d450c59899213d645d993051
+    evidence:
+      status: pending
+      required_states: [password, fingerprint-ready, fingerprint-progress, success, failure, caps-lock, busy, power-confirmation]
+      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
+      required_scales: [1.0, 1.25, 2.0]
+      implementation_digest: null
+      captures: []
+      review: null
 
 exemptions:
   home/dot_config/quickshell/cyberdock/FocusSentinel.qml: >-

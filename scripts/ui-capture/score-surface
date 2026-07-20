@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Record the approved Enoshima 90-point visual review rubric."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import tempfile
+from datetime import date
+from pathlib import Path
+
+
+WEIGHTS = {
+    "hierarchy": 0.20,
+    "geometry_spacing": 0.20,
+    "controls_icons": 0.15,
+    "state_coverage": 0.20,
+    "typography_color": 0.10,
+    "accessibility_localization": 0.15,
+}
+
+
+def yaml(path: Path) -> dict:
+    result = subprocess.run(["yq", ".", str(path)], check=True, capture_output=True, text=True)
+    return json.loads(result.stdout)
+
+
+def implementation_digest(root: Path, paths: list[str]) -> str:
+    digest = hashlib.sha256()
+    for value in sorted(paths):
+        digest.update(value.encode())
+        digest.update(b"\0")
+        digest.update((root / value).read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--surface", required=True)
+    parser.add_argument("--reviewer", required=True)
+    parser.add_argument("--repo-root", type=Path)
+    for category in WEIGHTS:
+        parser.add_argument(f"--{category.replace('_', '-')}", required=True, type=float)
+    args = parser.parse_args()
+
+    root = (args.repo_root or Path(__file__).resolve().parents[2]).resolve()
+    manifest = yaml(root / "docs/ui-surfaces.yaml")
+    entry = manifest.get("surfaces", {}).get(args.surface)
+    if not isinstance(entry, dict):
+        raise SystemExit(f"unknown surface: {args.surface}")
+    scores = {category: float(getattr(args, category)) for category in WEIGHTS}
+    invalid = {category: score for category, score in scores.items() if not 0 <= score <= 100}
+    if invalid:
+        raise SystemExit(f"scores must be between 0 and 100: {invalid}")
+    below_floor = {category: score for category, score in scores.items() if score < 85}
+    total = round(sum(scores[category] * weight for category, weight in WEIGHTS.items()), 2)
+    if below_floor or total < 90:
+        raise SystemExit(f"review does not pass: total={total}, below_floor={below_floor}")
+
+    review = {
+        "schema": 1,
+        "surface_id": args.surface,
+        "reviewer": args.reviewer,
+        "reviewed_at": date.today().isoformat(),
+        "implementation_digest": implementation_digest(root, entry["implementation"]),
+        "concept_sha256": entry["concept"]["sha256"],
+        "scores": scores,
+        "total": total,
+    }
+    evidence_dir = root / "docs/evidence" / args.surface
+    evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+    output = evidence_dir / "review.json"
+    if output.is_symlink():
+        raise SystemExit("review output must not be a symbolic link")
+    descriptor, temporary = tempfile.mkstemp(prefix=".review-", suffix=".json", dir=evidence_dir, text=True)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(review, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, output)
+    print(output.relative_to(root).as_posix())
+
+
+if __name__ == "__main__":
+    main()

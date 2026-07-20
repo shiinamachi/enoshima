@@ -176,3 +176,12 @@ bootstrap/full upgrade; the repository does not perform a partial pacman
 transaction merely to preview the theme.
 Default, reduced-motion, reduced-transparency, and accessible appearance modes
 must all be included in that display review.
+
+Registry schema 2 separates concept approval from implementation evidence.
+`scripts/check-ui-concept-coverage` verifies the structural contract and reports
+surfaces whose evidence is still pending. `scripts/check-ui-visual-evidence` is
+the release gate: it requires the complete state × English/Korean × 1.0/1.25/2.0
+capture matrix, implementation and concept digests that still match the tree,
+and a weighted review score of at least 90 with no category below 85. Real
+screenshots are imported with `scripts/ui-capture/capture-surface`; generated
+concept pixels and mock renders are not acceptable implementation evidence.
