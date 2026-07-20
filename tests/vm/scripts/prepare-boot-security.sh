@@ -86,6 +86,11 @@ pacstrap -K "$target" \
   tpm2-tools \
   zsh
 
+# Preserve the suite's whole-repository Arch Linux Archive snapshot in the
+# installed target. This prevents its later bootstrap from becoming a partial
+# or moving-release package transaction.
+install -m 0644 /etc/pacman.d/mirrorlist "$target/etc/pacman.d/mirrorlist"
+
 root_luks_uuid=$(cryptsetup luksUUID "${disk}2")
 root_btrfs_uuid=$(btrfs filesystem show "/dev/mapper/$mapper" | sed -n 's/.*uuid: //p' | head -n1)
 esp_uuid=$(blkid -s UUID -o value "${disk}1")

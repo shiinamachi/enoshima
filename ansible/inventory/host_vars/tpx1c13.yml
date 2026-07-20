@@ -15,6 +15,7 @@ enoshima_capabilities:
   thunderbolt: true
   tpm: true
   virtual_gpu_3d: false
+  vm_test_host: true
   wwan: true
 
 # Hardware-bound inventory. Replace these values after repartitioning.

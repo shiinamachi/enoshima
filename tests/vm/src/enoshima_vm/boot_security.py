@@ -140,6 +140,7 @@ def create_runtime_inventory(service: VMService, record: dict[str, Any]) -> None
             "thunderbolt": False,
             "tpm": True,
             "virtual_gpu_3d": False,
+            "vm_test_host": False,
             "wwan": False,
         },
         "root_mapper_name": "cryptroot",

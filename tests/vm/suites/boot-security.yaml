@@ -3,7 +3,7 @@ name: boot-security
 base_image: arch-cloud-reproducible
 domain_template: domain-secure-boot.xml.j2
 profile: enoshima-vm-boot
-timeout_minutes: 360
+timeout_minutes: 330
 resources:
   vcpus: 6
   memory_mib: 12288

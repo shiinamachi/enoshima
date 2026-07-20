@@ -119,6 +119,7 @@ class ImageDefinition:
     signature_url: str | None
     signature_required: bool
     keyring: str
+    repository_snapshot: str | None = None
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -176,6 +177,14 @@ def load_images(paths: RuntimePaths | None = None) -> dict[str, ImageDefinition]
     data = _load_yaml(paths.project / "images" / "manifest.yaml")
     images: dict[str, ImageDefinition] = {}
     for name, raw in data.get("images", {}).items():
+        snapshot = raw.get("repository_snapshot")
+        if snapshot is not None and not re.fullmatch(
+            r"[0-9]{4}/[0-9]{2}/[0-9]{2}", str(snapshot)
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"invalid repository snapshot for image: {name}",
+            )
         images[name] = ImageDefinition(
             name=name,
             url=raw["url"],
@@ -184,5 +193,6 @@ def load_images(paths: RuntimePaths | None = None) -> dict[str, ImageDefinition]
             signature_url=raw.get("signature_url"),
             signature_required=raw.get("signature", "required") == "required",
             keyring=raw.get("keyring", "/usr/share/pacman/keyrings/archlinux.gpg"),
+            repository_snapshot=snapshot,
         )
     return images

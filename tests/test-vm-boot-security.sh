@@ -25,6 +25,9 @@ grep -Fq 'for subvolume in @ @home @var_log @swap' "$builder" ||
   fail 'boot target omits the managed Btrfs layout'
 grep -Fq 'sbctl enroll-keys -m' "$builder" ||
   fail 'VM-only Secure Boot key enrollment is missing'
+# shellcheck disable=SC2016
+grep -Fq '"$target/etc/pacman.d/mirrorlist"' "$builder" ||
+  fail 'boot target does not retain the reproducible repository snapshot'
 grep -Fq 'arch-linux-unsigned.efi' "$builder" ||
   fail 'negative unsigned-UKI fixture is missing'
 

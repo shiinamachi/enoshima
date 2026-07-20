@@ -15,6 +15,7 @@ enoshima_capabilities:
   thunderbolt: false
   tpm: false
   virtual_gpu_3d: true
+  vm_test_host: false
   wwan: false
 
 manage_boot_config: false

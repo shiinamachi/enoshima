@@ -9,7 +9,7 @@ export ANSIBLE_CONFIG
 
 .PHONY: audit validate postflight chezmoi-diff ansible-check apply bootstrap \
 	vm-preflight vm-smoke vm-converge vm-reboot vm-desktop vm-boot-security \
-	vm-full vm-clean vm-unit
+	vm-trusted vm-full vm-clean vm-unit
 
 audit:
 	./scripts/capture-state.sh "$(PROFILE)"
@@ -59,6 +59,8 @@ vm-desktop:
 vm-boot-security:
 	MISE_CONFIG_FILE="$(MISE_CONFIG_FILE)" mise exec -- \
 		uv run --locked --project tests/vm enoshima-vm run boot-security
+
+vm-trusted: vm-smoke vm-converge vm-reboot vm-desktop
 
 vm-full: vm-converge vm-desktop vm-boot-security
 

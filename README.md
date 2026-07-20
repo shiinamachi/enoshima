@@ -16,6 +16,9 @@ Library interface studies are kept in
 [docs/DESKTOP-UI-CONCEPT.md](docs/DESKTOP-UI-CONCEPT.md).
 The pinned, repository-only AI design workflow and its review rationale are
 documented in [docs/DESIGN-SKILLS.md](docs/DESIGN-SKILLS.md).
+Disposable Arch VM convergence, desktop, boot-security, agent-control, and
+trusted-CI workflows are documented in
+[docs/VM-TESTING.md](docs/VM-TESTING.md).
 
 The initial inventory was captured on 2026-07-13 from Arch Linux on
 `tpx1c13`:
@@ -53,6 +56,7 @@ Do not manage the same file with both Ansible and chezmoi.
 ├── home/                   # chezmoi source state
 ├── packages/               # desired package manifests
 ├── scripts/                # capture, source/AUR install and validation helpers
+├── tests/vm/               # disposable libvirt test runner and MCP server
 └── state/tpx1c13/          # observed state; not an install manifest
 ```
 
@@ -132,6 +136,8 @@ enabled display manager.
   dependencies with dependency install reason.
 - `packages/management.txt` contains tooling needed to reproduce the system
   but not explicitly installed at the time of the initial capture.
+- `packages/vm-host.txt` contains KVM/libvirt tooling installed only when the
+  host declares the `vm_test_host` capability.
 - `packages/absent.txt` declares packages deliberately removed from the
   workstation profile.
 - `packages/local/` contains reviewable PKGBUILDs for pinned fixes that are not

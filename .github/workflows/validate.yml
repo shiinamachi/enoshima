@@ -1,0 +1,47 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 45
+    steps:
+      - name: Install validation dependencies
+        run: >-
+          pacman -Syu --needed --noconfirm
+          actionlint ansible-core chezmoi git gtk3 gtk4 hyprland imagemagick jq
+          json-glib librsvg lua python python-gobject python-yaml ripgrep shellcheck
+          shfmt uv yq
+          && useradd --create-home --shell /bin/bash ci
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Prepare unprivileged validation user
+        run: |
+          chown -R ci:ci "$GITHUB_WORKSPACE"
+          install -d -m 0700 -o ci -g ci /tmp/enoshima-ci-runtime
+
+      - name: Install pinned Ansible collection
+        run: >-
+          runuser --user ci -- env HOME=/home/ci
+          ansible-galaxy collection install -r ansible/collections/requirements.yml
+
+      - name: Validate desired state
+        run: >-
+          runuser --user ci -- env HOME=/home/ci
+          XDG_RUNTIME_DIR=/tmp/enoshima-ci-runtime ./scripts/validate.sh
+
+      - name: Verify locked VM runner independently
+        run: |
+          runuser --user ci -- env HOME=/home/ci uv lock --check --project tests/vm
+          runuser --user ci -- env HOME=/home/ci uv run --locked --project tests/vm pytest
+          runuser --user ci -- env HOME=/home/ci uv run --locked --project tests/vm ruff check tests/vm/src tests/vm/unit

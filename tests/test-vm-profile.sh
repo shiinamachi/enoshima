@@ -28,9 +28,21 @@ jq -e '
     .enoshima_capabilities.secure_boot,
     .enoshima_capabilities.thunderbolt,
     .enoshima_capabilities.tpm,
+    .enoshima_capabilities.vm_test_host,
     .enoshima_capabilities.wwan
   ] | all(. == false))
 ' <<<"$inventory_json" >/dev/null || fail 'VM capability contract is invalid'
+
+for package in cloud-image-utils edk2-ovmf libvirt qemu-desktop swtpm; do
+  grep -Fxq "$package" "$repo_root/packages/vm-host.txt" ||
+    fail "VM host package manifest omits $package"
+  if grep -Fxq "$package" "$repo_root/packages/native.txt"; then
+    fail "VM host-only package leaks into every guest: $package"
+  fi
+done
+grep -Fq 'enoshima_capabilities.vm_test_host | bool' \
+  "$repo_root/ansible/roles/packages/tasks/main.yml" ||
+  fail 'VM host package installation is not capability-gated'
 
 for option in --inventory --report-dir --report-format; do
   "$repo_root/bootstrap.sh" --help | grep -Fq -- "$option" ||

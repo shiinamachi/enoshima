@@ -21,6 +21,18 @@
         | list
       }}
 
+- name: Read VM host package manifest
+  ansible.builtin.set_fact:
+    vm_host_packages: >-
+      {{
+        lookup('ansible.builtin.file', playbook_dir + '/../packages/vm-host.txt').splitlines()
+        | map('regex_replace', '#.*$', '')
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+  when: enoshima_capabilities.vm_test_host | bool
+
 - name: Read optional dependency manifest
   ansible.builtin.set_fact:
     optional_dependency_packages: >-
@@ -80,7 +92,14 @@
 
 - name: Install desired native and management packages
   community.general.pacman:
-    name: "{{ (native_packages + management_packages) | unique | list }}"
+    name: >-
+      {{
+        (native_packages
+        + management_packages
+        + (vm_host_packages | default([])))
+        | unique
+        | list
+      }}
     state: present
 
 - name: Install desired optional dependencies as dependencies

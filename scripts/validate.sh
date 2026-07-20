@@ -126,6 +126,7 @@ def manifest(path: Path) -> set[str]:
 
 native = manifest(root / "packages" / "native.txt")
 management = manifest(root / "packages" / "management.txt")
+vm_host = manifest(root / "packages" / "vm-host.txt")
 optional = manifest(root / "packages" / "optional-deps.txt")
 absent = manifest(root / "packages" / "absent.txt")
 aur = manifest(root / "packages" / "aur.txt")
@@ -135,7 +136,7 @@ for package in aur:
         f"invalid AUR package base in approval manifest: {package}"
     )
 
-pacman_desired = native | management | optional
+pacman_desired = native | management | vm_host | optional
 local_package_names = {
     path.parent.name
     for path in (root / "packages" / "local").glob("*/PKGBUILD")
@@ -194,6 +195,11 @@ assert vm_mcp["command"] == "uv"
 assert vm_mcp["default_tools_approval_mode"] == "writes"
 assert vm_mcp["tools"]["vm_destroy"]["approval_mode"] == "prompt"
 PY
+
+if command -v actionlint >/dev/null 2>&1; then
+  echo "==> Checking GitHub Actions workflows"
+  actionlint
+fi
 
 echo "==> Checking repository-local design skills"
 /usr/bin/python - "$repo_root" <<'PY'
@@ -362,6 +368,11 @@ for manifest in packages/*.txt; do
   fi
 done
 
+if git ls-files tests/vm | rg -q '\.(qcow2|iso)$'; then
+  echo "Disposable VM media must not be tracked under tests/vm." >&2
+  exit 1
+fi
+
 while IFS= read -r -d '' pkgbuild; do
   bash -n "$pkgbuild"
   (
@@ -440,6 +451,7 @@ for test_script in \
   tests/test-transactional-uki.sh \
   tests/test-ui-evidence-gate.sh \
   tests/test-vm-boot-security.sh \
+  tests/test-vm-ci.sh \
   tests/test-vm-profile.sh \
   tests/test-wwan-shutdown.sh \
   tests/test-desktop-window-action.sh \

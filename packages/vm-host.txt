@@ -1,0 +1,8 @@
+# Native packages required only when this workstation hosts disposable VMs.
+cloud-image-utils
+edk2-ovmf
+libvirt
+qemu-desktop
+swtpm
+virt-install
+virt-viewer

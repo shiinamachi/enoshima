@@ -8,6 +8,8 @@ tests/vm/.venv/
 tests/vm/.pytest_cache/
 tests/vm/.ruff_cache/
 tests/vm/**/__pycache__/
+*.qcow2
+tests/vm/**/*.iso
 
 # Secrets and credentials are intentionally outside this repository.
 .env

@@ -28,7 +28,13 @@ class CloudInitBuilder:
             keep_trailing_newline=True,
         )
 
-    def build(self, run_dir: Path, run_id: str, user: str) -> CloudInitResult:
+    def build(
+        self,
+        run_dir: Path,
+        run_id: str,
+        user: str,
+        repository_snapshot: str | None = None,
+    ) -> CloudInitResult:
         private_key = run_dir / "ssh" / "id_ed25519"
         private_key.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         try:
@@ -59,7 +65,12 @@ class CloudInitBuilder:
 
         cloud_dir = run_dir / "cloud-init"
         cloud_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        context = {"run_id": run_id, "user": user, "public_key": public_key_text}
+        context = {
+            "run_id": run_id,
+            "user": user,
+            "public_key": public_key_text,
+            "repository_snapshot": repository_snapshot,
+        }
         for name in ("user-data", "meta-data", "network-config"):
             rendered = self.environment.get_template(f"{name}.j2").render(**context)
             (cloud_dir / name).write_text(rendered, encoding="utf-8")

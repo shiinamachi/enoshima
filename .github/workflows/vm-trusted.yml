@@ -1,0 +1,71 @@
+name: Trusted VM integration
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Disposable VM suite to run
+        required: true
+        default: trusted
+        type: choice
+        options:
+          - trusted
+          - smoke
+          - converge
+          - reboot
+          - desktop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enoshima-kvm
+  cancel-in-progress: false
+
+jobs:
+  vm:
+    runs-on: [self-hosted, linux, x64, enoshima-kvm, trusted]
+    timeout-minutes: 360
+    env:
+      ENOSHIMA_VM_STATE_ROOT: /tmp/enoshima-vm-state-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Check out trusted source
+        uses: actions/checkout@v4
+
+      - name: Check KVM host boundary
+        run: make vm-preflight
+
+      - name: Run selected disposable suites
+        env:
+          REQUESTED_SUITE: ${{ inputs.suite || 'trusted' }}
+        run: |
+          case "$REQUESTED_SUITE" in
+            trusted) make vm-trusted ;;
+            smoke|converge|reboot|desktop) make "vm-$REQUESTED_SUITE" ;;
+            *) exit 2 ;;
+          esac
+
+      - name: Remove disposable domains and media
+        if: always()
+        run: make vm-clean
+
+      - name: Upload VM evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enoshima-vm-${{ github.run_id }}
+          path: |
+            ${{ env.ENOSHIMA_VM_STATE_ROOT }}/runs/*/run.json
+            ${{ env.ENOSHIMA_VM_STATE_ROOT }}/runs/*/artifacts/**
+            ${{ env.ENOSHIMA_VM_STATE_ROOT }}/audit.jsonl
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove uploaded run reports
+        if: always()
+        run: |
+          expected="/tmp/enoshima-vm-state-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test "$ENOSHIMA_VM_STATE_ROOT" = "$expected"
+          rm -rf -- "$expected"

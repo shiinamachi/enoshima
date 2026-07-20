@@ -50,7 +50,9 @@ def test_manifest_has_signed_reproducible_and_latest_images() -> None:
     assert set(images) == {"arch-cloud-reproducible", "arch-cloud-latest"}
     assert all(image.signature_required for image in images.values())
     assert images["arch-cloud-reproducible"].sha256
+    assert images["arch-cloud-reproducible"].repository_snapshot == "2026/07/15"
     assert images["arch-cloud-latest"].checksum_url
+    assert images["arch-cloud-latest"].repository_snapshot is None
 
 
 def test_suite_name_cannot_escape_suite_root(tmp_path: Path) -> None:

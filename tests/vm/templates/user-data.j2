@@ -17,6 +17,13 @@ users:
     ssh_authorized_keys:
       - {{ public_key }}
 write_files:
+{% if repository_snapshot %}
+  - path: /etc/pacman.d/mirrorlist
+    owner: root:root
+    permissions: '0644'
+    content: |
+      Server = https://archive.archlinux.org/repos/{{ repository_snapshot }}/$repo/os/$arch
+{% endif %}
   - path: /etc/nftables.conf
     owner: root:root
     permissions: '0600'

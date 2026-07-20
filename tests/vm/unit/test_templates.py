@@ -36,3 +36,27 @@ def test_domain_templates_render_as_xml_without_host_mounts(tmp_path: Path) -> N
         assert root.findall(".//filesystem") == []
         assert "hostfwd=tcp:127.0.0.1:22022-:22" in rendered
         assert "/dev/" not in rendered.replace("/dev/urandom", "")
+
+
+def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
+    paths = RuntimePaths.discover()
+    environment = Environment(
+        loader=FileSystemLoader(paths.project / "templates"),
+        autoescape=False,
+        undefined=StrictUndefined,
+    )
+    template = environment.get_template("user-data.j2")
+    common = {
+        "run_id": "run-012345abcdef",
+        "user": "kentakang",
+        "public_key": "ssh-ed25519 fixture",
+    }
+    reproducible = template.render(
+        **common,
+        repository_snapshot="2026/07/15",
+    )
+    latest = template.render(**common, repository_snapshot=None)
+    archive = "archive.archlinux.org/repos/2026/07/15/$repo/os/$arch"
+    assert archive in reproducible
+    assert "archive.archlinux.org" not in latest
+    assert "pacman, -Syu" in reproducible

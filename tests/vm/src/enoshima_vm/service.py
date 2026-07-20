@@ -185,7 +185,12 @@ class VMService:
         self._write_record(record)
         try:
             base_image = self.images.ensure(definition)
-            cloud = self.cloud_init.build(run_dir, run_id, "kentakang")
+            cloud = self.cloud_init.build(
+                run_dir,
+                run_id,
+                "kentakang",
+                definition.repository_snapshot,
+            )
             spec = self.backend.prepare_domain(
                 run_dir, run_id, suite, base_image, cloud.seed
             )

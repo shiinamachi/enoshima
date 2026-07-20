@@ -1,0 +1,54 @@
+name: Trusted VM boot security
+
+on:
+  schedule:
+    - cron: "0 18 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enoshima-kvm
+  cancel-in-progress: false
+
+jobs:
+  boot-security:
+    runs-on: [self-hosted, linux, x64, enoshima-kvm, trusted]
+    timeout-minutes: 360
+    env:
+      ENOSHIMA_VM_STATE_ROOT: /tmp/enoshima-vm-state-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Check out trusted source
+        uses: actions/checkout@v4
+
+      - name: Check Secure Boot VM host boundary
+        run: >-
+          MISE_CONFIG_FILE=home/dot_config/mise/config.toml mise exec --
+          uv run --locked --project tests/vm enoshima-vm preflight boot-security
+
+      - name: Run disposable boot-security lane
+        run: make vm-boot-security
+
+      - name: Remove disposable domain, keys, and media
+        if: always()
+        run: make vm-clean
+
+      - name: Upload boot-security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enoshima-boot-security-${{ github.run_id }}
+          path: |
+            ${{ env.ENOSHIMA_VM_STATE_ROOT }}/runs/*/run.json
+            ${{ env.ENOSHIMA_VM_STATE_ROOT }}/runs/*/artifacts/**
+            ${{ env.ENOSHIMA_VM_STATE_ROOT }}/audit.jsonl
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove uploaded run reports
+        if: always()
+        run: |
+          expected="/tmp/enoshima-vm-state-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test "$ENOSHIMA_VM_STATE_ROOT" = "$expected"
+          rm -rf -- "$expected"

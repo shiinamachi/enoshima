@@ -20,6 +20,7 @@ enoshima_required_capabilities:
   - thunderbolt
   - tpm
   - virtual_gpu_3d
+  - vm_test_host
   - wwan
 
 system_timezone: Asia/Seoul
