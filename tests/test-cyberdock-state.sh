@@ -17,6 +17,11 @@ fail() {
   exit 1
 }
 
+grep -Fq 'parseSnapState(snapStateFile.text(), snapClock)' "$shell_qml" ||
+  fail 'Snap state passes the FileView function instead of reading its text'
+grep -Fq 'parseDisplayStatus(displayStatusFile.text())' "$shell_qml" ||
+  fail 'display state passes the FileView function instead of reading its text'
+
 run_state() {
   bash "$helper" "$@"
 }
@@ -231,7 +236,7 @@ reset_fixture
 snapshot=$(run_state snapshot)
 jq -e '.version == 2 and .generation == 0 and (.windows | length == 2) and (.windows | all(.minimized == false))' \
   <<<"$snapshot" >/dev/null || fail 'unexpected initial snapshot'
-grep -Fq 'if (next.version === 2)' "$shell_qml" ||
+grep -Fq 'next.version === 2)' "$shell_qml" ||
   fail 'Quickshell does not consume the current Cyberdock snapshot schema'
 if grep -Fq 'if (next.version === 1)' "$shell_qml"; then
   fail 'Quickshell still accepts only the retired Cyberdock snapshot schema'

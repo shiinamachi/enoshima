@@ -204,7 +204,8 @@ jq -e '
   (has("custom/window-maximize") | not) and
   (has("custom/window-close") | not) and
   ."network"."on-click" == "swaync-client -t -sw" and
-  ."ext/workspaces"."format-icons"."3" == "DOCS"
+  ."ext/workspaces"."format-icons"."3" == "DOCS" and
+  ."ext/workspaces"."format-icons".default == ""
 ' "$waybar_config" >/dev/null
 waybar_style=home/dot_config/waybar/style.css
 assert_contains "$waybar_style" '@import url("../cyberpunk-library/palette.css");'
@@ -339,12 +340,14 @@ assert_contains "$launcher" 'DesktopEntries.applications.values'
 assert_contains "$launcher" 'ScriptModel {'
 assert_contains "$launcher" 'function launch(entry)'
 assert_contains "$launcher" 'required property var theme'
+assert_contains "$launcher" 'required property var strings'
 assert_contains "$launcher" 'required property bool reducedMotion'
 assert_contains "$launcher" 'required property var pinIds'
 assert_contains "$launcher" 'return applications.slice(0, 4);'
 assert_contains "$launcher" 'filter(entry => searchableText(entry).includes(query)).slice(0, 7)'
-assert_contains "$launcher" 'visible: launcher.queryEmpty && quickApps.values.length > 0'
-assert_contains "$launcher" 'text: "빠른 앱"'
+assert_contains "$launcher" 'visible: launcher.backendState === "ready"'
+assert_contains "$launcher" '&& launcher.queryEmpty && quickApps.values.length > 0'
+assert_contains "$launcher" 'launcher.tr("launcher.quickApps")'
 assert_contains "$launcher" 'text: "Ctrl+" + (index + 1)'
 assert_contains "$launcher" 'launcher.launchQuick(event.key - Qt.Key_1)'
 assert_contains "$launcher" 'if (searchField.inputMethodComposing)'
@@ -359,10 +362,32 @@ assert_contains "$launcher" 'Accessible.role: Accessible.EditableText'
 assert_contains "$launcher" 'Accessible.role: Accessible.ListItem'
 assert_contains "$launcher" 'Accessible.role: Accessible.Button'
 assert_count 4 "$launcher" 'enabled: !launcher.reducedMotion'
-assert_contains "$launcher" ': "Dock에 고정"'
+assert_contains "$launcher" 'launcher.tr("launcher.pinDock")'
 assert_contains "$launcher" 'text: "Ctrl+P"'
 assert_not_contains "$launcher" 'readonly property var favoriteOrder:'
-assert_contains "$launcher" '↑↓  이동     Enter  실행'
+assert_contains "$launcher" 'launcher.tr("launcher.footerMoveRun")'
+assert_contains "$launcher" 'value.split(placeholder).join(String(replacements[name]))'
+assert_not_contains "$launcher" 'replaceAll('
+assert_contains "$launcher" 'property string reviewState: ""'
+assert_contains "$dock" 'id: uiFixtureReadyFile'
+assert_contains "$dock" '"sequence": root.uiFixtureAppliedSequence'
+assert_contains "$launcher" 'launcher.tr("launcher.unavailable")'
+assert_contains "$launcher" 'launcher.tr("launcher.error")'
+if /usr/bin/python - "$launcher" <<'PY'; then
+import pathlib
+import re
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+raise SystemExit(0 if re.search(r'"[^"\n]*[\uac00-\ud7a3][^"\n]*"', text) else 1)
+PY
+  fail 'launcher contains a hard-coded Korean user-facing string'
+fi
+assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'strings: root.translations'
+assert_contains home/dot_config/enoshima/i18n/en-US.json '"launcher.search": "Search apps and actions"'
+assert_contains home/dot_config/enoshima/i18n/ko-KR.json '"launcher.search": "앱과 작업 검색"'
+assert_contains "$dock" 'Quickshell.env("ENOSHIMA_VM_UI_TEST") === "1"'
+assert_contains "$dock" 'onUiFixtureStateChanged: Qt.callLater(() => applyUiFixtureState())'
 
 osd=home/dot_config/quickshell/cyberdock/CyberOsd.qml
 assert_contains "$osd" 'WlrLayershell.namespace: "cyberosd"'
@@ -459,6 +484,42 @@ assert_contains "$hyprland" 'workspace = "special:tray silent"'
 assert_contains "$hyprland" 'no_focus = true'
 
 swaync_config=home/dot_config/swaync/config.json
+swaync_launcher=home/dot_local/bin/executable_enoshima-swaync
+swaync_dropin=home/dot_config/systemd/user/swaync.service.d/20-enoshima.conf
+bash -n "$swaync_launcher"
+# Literal source contracts include shell expansion syntax.
+# shellcheck disable=SC2016
+assert_contains "$swaync_launcher" 'if [[ ${locale,,} == ko* ]]'
+assert_contains "$swaync_launcher" '."text-empty" = "알림 없음"'
+# Literal source contracts include shell expansion syntax.
+# shellcheck disable=SC2016
+assert_contains "$swaync_launcher" 'exec /usr/bin/swaync -c "$runtime_config" -s "$style"'
+assert_contains "$swaync_dropin" 'ExecStart=%h/.local/bin/enoshima-swaync'
+swaync_work=$(mktemp -d)
+mkdir -p "$swaync_work/swaync-config/swaync" \
+  "$swaync_work/swaync-runtime" "$swaync_work/swaync-bin"
+cp "$swaync_config" "$swaync_work/swaync-config/swaync/config.json"
+cp home/dot_config/swaync/style.css "$swaync_work/swaync-config/swaync/style.css"
+cat >"$swaync_work/swaync-bin/swaync" <<'SH'
+#!/usr/bin/env bash
+cat -- "$2"
+SH
+chmod 0755 "$swaync_work/swaync-bin/swaync"
+sed "s#exec /usr/bin/swaync#exec $swaync_work/swaync-bin/swaync#" \
+  "$swaync_launcher" >"$swaync_work/enoshima-swaync"
+chmod 0755 "$swaync_work/enoshima-swaync"
+ko_swaync=$(env HOME="$swaync_work" \
+  XDG_CONFIG_HOME="$swaync_work/swaync-config" \
+  XDG_RUNTIME_DIR="$swaync_work/swaync-runtime" \
+  LC_ALL=ko_KR.UTF-8 LC_MESSAGES=ko_KR.UTF-8 LANG=ko_KR.UTF-8 \
+  "$swaync_work/enoshima-swaync")
+jq -e '
+  ."text-empty" == "알림 없음" and
+  ."widget-config".title.text == "알림" and
+  ."widget-config".dnd.text == "방해 금지" and
+  ."widget-config"."buttons-grid#quick-settings".actions[1].label == "블루투스"
+' <<<"$ko_swaync" >/dev/null
+rm -rf -- "$swaync_work"
 jq -e '
   ."$schema" == "/etc/xdg/swaync/configSchema.json" and
   .positionX == "right" and
@@ -511,11 +572,17 @@ done < <(
 swaync_quick_setting=home/dot_local/bin/executable_swaync-quick-setting
 bash -n "$swaync_quick_setting"
 for setting in wifi bluetooth night-light; do
-  case $(bash "$swaync_quick_setting" status "$setting") in
+  case $(ENOSHIMA_QUICK_SETTING_TIMEOUT_SECONDS=1 \
+    bash "$swaync_quick_setting" status "$setting") in
     true | false) ;;
     *) fail "$setting quick-setting status did not return a boolean" ;;
   esac
 done
+assert_contains "$swaync_quick_setting" '/usr/bin/timeout'
+if ENOSHIMA_QUICK_SETTING_TIMEOUT_SECONDS=0 \
+  bash "$swaync_quick_setting" status wifi >/dev/null 2>&1; then
+  fail 'the quick-setting helper accepted an invalid timeout'
+fi
 if SWAYNC_TOGGLE_STATE=invalid bash "$swaync_quick_setting" apply wifi >/dev/null 2>&1; then
   fail 'the quick-setting helper accepted an invalid toggle state'
 fi

@@ -33,7 +33,7 @@
             "3": "DOCS",
             "4": "REMOTE",
             "5": "MISC",
-            "default": "{name}"
+            "default": ""
         },
         "sort-by-id": true,
         "all-outputs": false,

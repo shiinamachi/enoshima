@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+readonly runtime_home=${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR is required}
+readonly source_config=$config_home/swaync/config.json
+readonly style=$config_home/swaync/style.css
+readonly runtime_dir=$runtime_home/enoshima/swaync
+readonly runtime_config=$runtime_dir/config.json
+
+install -d -m 0700 -- "$runtime_dir"
+
+locale=${LC_ALL:-${LC_MESSAGES:-${LANG:-en_US.UTF-8}}}
+temporary=$(mktemp --tmpdir="$runtime_dir" config.json.XXXXXX)
+trap 'rm -f -- "$temporary"' EXIT
+
+if [[ ${locale,,} == ko* ]]; then
+  jq '
+    ."text-empty" = "알림 없음"
+    | ."widget-config".title.text = "알림"
+    | ."widget-config".title."button-text" = "모두 지우기"
+    | ."widget-config".dnd.text = "방해 금지"
+    | ."widget-config"."buttons-grid#quick-settings".actions[0].label = "Wi-Fi"
+    | ."widget-config"."buttons-grid#quick-settings".actions[1].label = "블루투스"
+    | ."widget-config"."buttons-grid#quick-settings".actions[2].label = "야간 조명"
+    | ."widget-config"."buttons-grid#quick-settings".actions[3].label = "전원"
+    | ."widget-config"."buttons-grid#quick-settings".actions[4].label = "오디오"
+    | ."widget-config"."buttons-grid#quick-settings".actions[5].label = "디스플레이"
+    | ."widget-config".volume.label = "󰕾  음량"
+    | ."widget-config".backlight.label = "󰃠  밝기"
+  ' "$source_config" >"$temporary"
+else
+  jq . "$source_config" >"$temporary"
+fi
+
+chmod 0600 "$temporary"
+mv -f -- "$temporary" "$runtime_config"
+trap - EXIT
+
+exec /usr/bin/swaync -c "$runtime_config" -s "$style"

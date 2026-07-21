@@ -14,14 +14,19 @@ PanelWindow {
     required property bool launcherOpen
     required property string activeScreenName
     required property var theme
+    required property var strings
     required property bool reducedMotion
     required property var pinIds
+    property string reviewState: ""
 
     signal closeRequested()
     signal pinsChanged()
 
     property int selectedIndex: 0
     readonly property bool queryEmpty: searchField.text.trim().length === 0
+    readonly property string backendState:
+        reviewState === "unavailable" ? "unavailable"
+        : (reviewState === "error" ? "error" : "ready")
     property var selectedEntry: filteredApps.values.length > 0
         ? filteredApps.values[Math.min(selectedIndex, filteredApps.values.length - 1)]
         : null
@@ -48,6 +53,20 @@ PanelWindow {
 
     function normalized(value) {
         return String(value || "").toLocaleLowerCase();
+    }
+
+    function tr(key) {
+        const value = strings?.[key];
+        return value !== undefined && String(value) !== "" ? String(value) : key;
+    }
+
+    function format(key, replacements) {
+        let value = tr(key);
+        for (const name in replacements) {
+            const placeholder = "{" + name + "}";
+            value = value.split(placeholder).join(String(replacements[name]));
+        }
+        return value;
     }
 
     function desktopId(entry) {
@@ -94,6 +113,8 @@ PanelWindow {
     }
 
     function filteredApplications() {
+        if (backendState !== "ready")
+            return [];
         const query = normalized(searchField.text.trim());
         const applications = [...DesktopEntries.applications.values]
             .filter(entry => entry && entry.name);
@@ -154,13 +175,31 @@ PanelWindow {
         closeRequested();
     }
 
+    function applyReviewState() {
+        if (!visible || reviewState === "")
+            return;
+        selectedIndex = reviewState === "selected" ? 1 : 0;
+        if (reviewState === "search")
+            searchField.text = "Ghostty";
+        else if (reviewState === "empty")
+            searchField.text = "__enoshima_no_matching_application__";
+        else
+            searchField.text = "";
+        results.positionViewAtBeginning();
+    }
+
     onVisibleChanged: {
         if (visible) {
             searchField.text = "";
             selectedIndex = 0;
-            Qt.callLater(() => searchField.forceActiveFocus());
+            Qt.callLater(() => {
+                launcher.applyReviewState();
+                searchField.forceActiveFocus();
+            });
         }
     }
+
+    onReviewStateChanged: Qt.callLater(() => applyReviewState())
 
     ScriptModel {
         id: filteredApps
@@ -230,7 +269,7 @@ PanelWindow {
                 anchors.left: parent.left
                 anchors.leftMargin: 58
                 anchors.verticalCenter: parent.verticalCenter
-                text: "앱과 작업 검색"
+                text: launcher.tr("launcher.search")
                 visible: searchField.text.length === 0
                 color: launcher.theme.colorTextSubtle
                 font.family: "Pretendard"
@@ -252,8 +291,8 @@ PanelWindow {
                 clip: true
 
                 Accessible.role: Accessible.EditableText
-                Accessible.name: "앱과 작업 검색"
-                Accessible.description: "방향키로 결과를 선택하고 Enter로 실행합니다"
+                Accessible.name: launcher.tr("launcher.search")
+                Accessible.description: launcher.tr("launcher.searchDescription")
                 Accessible.editable: true
                 Accessible.focusable: true
                 Accessible.focused: activeFocus
@@ -300,7 +339,9 @@ PanelWindow {
             anchors.top: searchSurface.bottom
             anchors.leftMargin: 28
             anchors.topMargin: 20
-            text: searchField.text.length === 0 ? "빠른 실행" : "검색 결과"
+            text: searchField.text.length === 0
+                ? launcher.tr("launcher.quickLaunch")
+                : launcher.tr("launcher.searchResults")
             color: launcher.theme.colorAccent
             font.family: "Pretendard"
             font.pixelSize: 13
@@ -358,7 +399,8 @@ PanelWindow {
                         Accessible.role: Accessible.ListItem
                         Accessible.name: modelData.name
                         Accessible.description:
-                            modelData.genericName || modelData.comment || "애플리케이션"
+                            modelData.genericName || modelData.comment
+                                || launcher.tr("launcher.application")
                         Accessible.selectable: true
                         Accessible.selected: index === launcher.selectedIndex
                         Accessible.pressed: resultMouse.pressed
@@ -400,7 +442,8 @@ PanelWindow {
                             anchors.leftMargin: 58
                             anchors.rightMargin: 12
                             anchors.bottomMargin: 8
-                            text: modelData.genericName || modelData.comment || "애플리케이션"
+                            text: modelData.genericName || modelData.comment
+                                || launcher.tr("launcher.application")
                             color: launcher.theme.colorTextMuted
                             font.family: "Pretendard"
                             font.pixelSize: 12
@@ -434,19 +477,61 @@ PanelWindow {
                         }
                     }
 
-                    Text {
+                    Column {
                         anchors.centerIn: parent
                         visible: filteredApps.values.length === 0
-                        text: "일치하는 앱이 없습니다"
-                        color: launcher.theme.colorTextMuted
-                        font.family: "Pretendard"
-                        font.pixelSize: 15
+                        width: Math.min(parent.width - 40, 360)
+                        spacing: 8
+
+                        IconImage {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            implicitWidth: 34
+                            implicitHeight: 34
+                            source: Quickshell.iconPath(
+                                launcher.backendState === "error"
+                                    ? "dialog-error-symbolic"
+                                    : (launcher.backendState === "unavailable"
+                                        ? "action-unavailable-symbolic"
+                                        : "edit-find-symbolic"),
+                                "dialog-information-symbolic")
+                            Accessible.ignored: true
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: launcher.backendState === "error"
+                                ? launcher.tr("launcher.error")
+                                : (launcher.backendState === "unavailable"
+                                    ? launcher.tr("launcher.unavailable")
+                                    : launcher.tr("launcher.empty"))
+                            color: launcher.backendState === "error"
+                                ? launcher.theme.colorCritical
+                                : launcher.theme.colorTextMuted
+                            font.family: "Pretendard"
+                            font.pixelSize: 15
+                            font.bold: true
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: parent.width
+                            visible: launcher.backendState !== "ready"
+                            horizontalAlignment: Text.AlignHCenter
+                            text: launcher.backendState === "error"
+                                ? launcher.tr("launcher.errorDescription")
+                                : launcher.tr("launcher.unavailableDescription")
+                            color: launcher.theme.colorTextMuted
+                            font.family: "Pretendard"
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
 
                 Item {
                     id: quickAppsSection
-                    visible: launcher.queryEmpty && quickApps.values.length > 0
+                    visible: launcher.backendState === "ready"
+                        && launcher.queryEmpty && quickApps.values.length > 0
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
@@ -456,7 +541,7 @@ PanelWindow {
                         id: quickAppsHeading
                         anchors.left: parent.left
                         anchors.top: parent.top
-                        text: "빠른 앱"
+                        text: launcher.tr("launcher.quickApps")
                         color: launcher.theme.colorAccent
                         font.family: "Pretendard"
                         font.pixelSize: 13
@@ -494,7 +579,9 @@ PanelWindow {
 
                                 Accessible.role: Accessible.Button
                                 Accessible.name: modelData.name
-                                Accessible.description: "Ctrl+" + (index + 1) + "로 실행"
+                                Accessible.description: launcher.format(
+                                    "launcher.shortcutRun",
+                                    {"number": index + 1})
                                 Accessible.pressed: quickAppMouse.pressed
                                 Accessible.onPressAction: launcher.launch(modelData)
 
@@ -612,7 +699,8 @@ PanelWindow {
                     anchors.bottom: detailIcon.bottom
                     anchors.leftMargin: 16
                     text: launcher.selectedEntry
-                        ? (launcher.selectedEntry.genericName || "애플리케이션")
+                        ? (launcher.selectedEntry.genericName
+                            || launcher.tr("launcher.application"))
                         : ""
                     color: launcher.theme.colorTextMuted
                     font.family: "Pretendard"
@@ -627,7 +715,8 @@ PanelWindow {
                     anchors.top: detailIcon.bottom
                     anchors.topMargin: 24
                     text: launcher.selectedEntry
-                        ? (launcher.selectedEntry.comment || "선택한 애플리케이션을 실행합니다.")
+                        ? (launcher.selectedEntry.comment
+                            || launcher.tr("launcher.defaultDescription"))
                         : ""
                     color: launcher.theme.colorTextMuted
                     font.family: "Pretendard"
@@ -658,9 +747,10 @@ PanelWindow {
 
                     Accessible.role: Accessible.Button
                     Accessible.name: launcher.selectedEntry
-                        ? launcher.selectedEntry.name + " 열기"
-                        : "애플리케이션 열기"
-                    Accessible.description: "Enter로 실행"
+                        ? launcher.format("launcher.openNamed",
+                            {"name": launcher.selectedEntry.name})
+                        : launcher.tr("launcher.openApplication")
+                    Accessible.description: launcher.tr("launcher.enterToRun")
                     Accessible.defaultButton: true
                     Accessible.pressed: openMouse.pressed
                     Accessible.onPressAction: launcher.launch(launcher.selectedEntry)
@@ -674,7 +764,7 @@ PanelWindow {
                         anchors.left: parent.left
                         anchors.leftMargin: 16
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "열기"
+                        text: launcher.tr("launcher.open")
                         color: launcher.theme.colorText
                         font.family: "Pretendard"
                         font.pixelSize: 15
@@ -719,9 +809,9 @@ PanelWindow {
 
                     Accessible.role: Accessible.Button
                     Accessible.name: launcher.pinPosition(launcher.selectedEntry) >= 0
-                        ? "Dock에서 고정 해제"
-                        : "Dock에 고정"
-                    Accessible.description: "Ctrl+P로 전환"
+                        ? launcher.tr("launcher.unpinDock")
+                        : launcher.tr("launcher.pinDock")
+                    Accessible.description: launcher.tr("launcher.ctrlP")
                     Accessible.pressed: pinMouse.pressed
                     Accessible.onPressAction: launcher.togglePin(launcher.selectedEntry)
 
@@ -735,8 +825,8 @@ PanelWindow {
                         anchors.leftMargin: 16
                         anchors.verticalCenter: parent.verticalCenter
                         text: launcher.pinPosition(launcher.selectedEntry) >= 0
-                            ? "Dock에서 고정 해제"
-                            : "Dock에 고정"
+                            ? launcher.tr("launcher.unpinDock")
+                            : launcher.tr("launcher.pinDock")
                         color: launcher.theme.colorText
                         font.family: "Pretendard"
                         font.pixelSize: 14
@@ -784,7 +874,7 @@ PanelWindow {
                 anchors.left: parent.left
                 anchors.leftMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
-                text: "↑↓  이동     Enter  실행"
+                text: launcher.tr("launcher.footerMoveRun")
                 color: launcher.theme.colorTextMuted
                 font.family: "Jetendard"
                 font.pixelSize: 12
@@ -794,7 +884,7 @@ PanelWindow {
                 anchors.right: parent.right
                 anchors.rightMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Esc  닫기"
+                text: launcher.tr("launcher.footerClose")
                 color: launcher.theme.colorTextMuted
                 font.family: "Jetendard"
                 font.pixelSize: 12

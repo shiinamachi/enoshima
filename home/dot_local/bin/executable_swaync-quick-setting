@@ -9,25 +9,41 @@ usage() {
 [[ $# == 2 ]] || usage
 operation=$1
 setting=$2
+quick_setting_timeout=${ENOSHIMA_QUICK_SETTING_TIMEOUT_SECONDS:-5}
+
+if [[ ! $quick_setting_timeout =~ ^[1-9][0-9]?$ ]]; then
+  printf 'ENOSHIMA_QUICK_SETTING_TIMEOUT_SECONDS must be between 1 and 99\n' >&2
+  exit 64
+fi
+
+run_bounded() {
+  /usr/bin/timeout \
+    --signal=TERM \
+    --kill-after=1s \
+    "${quick_setting_timeout}s" \
+    "$@"
+}
 
 status() {
   case $setting in
     wifi)
-      if [[ $(LC_ALL=C nmcli radio wifi 2>/dev/null) == enabled ]]; then
+      if [[ $(LC_ALL=C run_bounded nmcli radio wifi 2>/dev/null) == enabled ]]; then
         printf 'true\n'
       else
         printf 'false\n'
       fi
       ;;
     bluetooth)
-      if LC_ALL=C bluetoothctl show 2>/dev/null | grep -Fq 'Powered: yes'; then
+      if LC_ALL=C run_bounded bluetoothctl show 2>/dev/null |
+        grep -Fq 'Powered: yes'; then
         printf 'true\n'
       else
         printf 'false\n'
       fi
       ;;
     night-light)
-      if systemctl --user is-active --quiet hyprsunset-quick.service 2>/dev/null; then
+      if run_bounded systemctl --user is-active --quiet \
+        hyprsunset-quick.service 2>/dev/null; then
         printf 'true\n'
       else
         printf 'false\n'
@@ -50,23 +66,23 @@ apply() {
   case $setting in
     wifi)
       if [[ $enabled == true ]]; then
-        nmcli radio wifi on
+        run_bounded nmcli radio wifi on
       else
-        nmcli radio wifi off
+        run_bounded nmcli radio wifi off
       fi
       ;;
     bluetooth)
       if [[ $enabled == true ]]; then
-        bluetoothctl power on
+        run_bounded bluetoothctl power on
       else
-        bluetoothctl power off
+        run_bounded bluetoothctl power off
       fi
       ;;
     night-light)
       if [[ $enabled == true ]]; then
-        systemctl --user start hyprsunset-quick.service
+        run_bounded systemctl --user start hyprsunset-quick.service
       else
-        systemctl --user stop hyprsunset-quick.service
+        run_bounded systemctl --user stop hyprsunset-quick.service
       fi
       ;;
     *) usage ;;

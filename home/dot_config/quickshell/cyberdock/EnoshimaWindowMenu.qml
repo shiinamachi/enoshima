@@ -22,6 +22,7 @@ PanelWindow {
     required property var strings
     required property var theme
     required property bool reducedMotion
+    required property string reviewState
 
     signal closeRequested()
 
@@ -80,8 +81,23 @@ PanelWindow {
             actionErrorKey = "";
             failedActionId = "";
             selectedIndex = firstEnabledIndex();
+            applyReviewState();
             Qt.callLater(() => scrimInput.forceActiveFocus());
         }
+    }
+
+    onReviewStateChanged: Qt.callLater(() => applyReviewState())
+
+    function applyReviewState() {
+        if (!showing || reviewState === "")
+            return;
+        actionRunning = reviewState === "action-running";
+        lastAttemptedAction = actionRunning ? "maximize" : "";
+        failedActionId = reviewState === "action-error" ? "maximize" : "";
+        actionErrorKey = reviewState === "action-error"
+            ? "windowMenu.actionFailed" : "";
+        if (actionErrorKey !== "")
+            errorDismissTimer.stop();
     }
 
     onTargetWindowChanged: {

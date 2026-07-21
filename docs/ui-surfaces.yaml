@@ -24,6 +24,8 @@ surfaces:
   launcher:
     implementation:
       - home/dot_config/quickshell/cyberdock/CyberLauncher.qml
+      - home/dot_config/enoshima/i18n/en-US.json
+      - home/dot_config/enoshima/i18n/ko-KR.json
     token_mode: consumer
     concept:
       status: approved
@@ -42,6 +44,8 @@ surfaces:
     implementation:
       - home/dot_config/swaync/config.json
       - home/dot_config/swaync/style.css
+      - home/dot_local/bin/executable_enoshima-swaync
+      - home/dot_config/systemd/user/swaync.service.d/20-enoshima.conf
     token_mode: external
     concept:
       status: approved

@@ -54,12 +54,29 @@ ShellRoot {
             : Quickshell.env("HOME") + "/.config";
     }
     readonly property string runtimeHome: Quickshell.env("XDG_RUNTIME_DIR")
+    readonly property bool uiFixtureEnabled:
+        Quickshell.env("ENOSHIMA_VM_UI_TEST") === "1"
+    readonly property string uiFixtureDir:
+        Quickshell.env("ENOSHIMA_UI_FIXTURE_DIR")
+    readonly property var uiFixtureState:
+        parseUiFixtureState(uiFixtureStateFile.text())
+    property int uiFixtureAppliedSequence: 0
     readonly property bool koreanLocale:
         String(Quickshell.env("LANG") || "").toLowerCase().startsWith("ko")
     readonly property var translations: parseTranslations(i18nFile.text())
     property int snapClock: 0
-    readonly property var snapState: parseSnapState(snapStateFile.text, snapClock)
-    readonly property var displayStatus: parseDisplayStatus(displayStatusFile.text)
+    readonly property var productionSnapState:
+        parseSnapState(snapStateFile.text(), snapClock)
+    readonly property var snapState:
+        uiFixtureEnabled && uiFixtureState.surface === "snap-assist"
+            ? fixtureSnapState(uiFixtureState.state, uiFixtureState.output)
+            : productionSnapState
+    readonly property var productionDisplayStatus:
+        parseDisplayStatus(displayStatusFile.text())
+    readonly property var displayStatus:
+        uiFixtureEnabled && uiFixtureState.surface === "display-mode"
+            ? fixtureDisplayStatus(uiFixtureState.state)
+            : productionDisplayStatus
     readonly property string pinsPath:
         configHome + "/enoshima/user/cyberdock-pins.json"
     readonly property string appearanceMode: {
@@ -154,6 +171,84 @@ ShellRoot {
         onFileChanged: reload()
     }
 
+    FileView {
+        id: uiFixtureStateFile
+        path: root.uiFixtureEnabled && root.uiFixtureDir !== ""
+            ? root.uiFixtureDir + "/state.json" : "/dev/null"
+        preload: true
+        printErrors: false
+        watchChanges: root.uiFixtureEnabled
+        onFileChanged: reload()
+    }
+
+    FileView {
+        id: uiFixtureReadyFile
+        path: root.uiFixtureEnabled && root.uiFixtureDir !== ""
+            ? root.uiFixtureDir + "/ready.json" : "/dev/null"
+        atomicWrites: true
+        blockWrites: true
+        printErrors: root.uiFixtureEnabled
+    }
+
+    Timer {
+        id: uiFixtureReadyTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!root.uiFixtureEnabled || root.uiFixtureAppliedSequence <= 0)
+                return;
+            uiFixtureReadyFile.setText(JSON.stringify({
+                "schema": 1,
+                "sequence": root.uiFixtureAppliedSequence,
+                "surface": String(root.uiFixtureState.surface || ""),
+                "state": String(root.uiFixtureState.state || ""),
+                "output": String(root.uiFixtureState.output || ""),
+                "text_overflow_count": root.countVisibleTextOverflow(root)
+            }) + "\n");
+        }
+    }
+
+    function countVisibleTextOverflow(object, depth) {
+        if (!object || Number(depth || 0) > 32)
+            return 0;
+        try {
+            if (object.visible === false || Number(object.opacity) <= 0)
+                return 0;
+        } catch (error) {
+            // Non-visual QObject children do not expose visibility or opacity.
+        }
+
+        let count = 0;
+        try {
+            const hasTextMetrics = typeof object.text === "string"
+                && typeof object.paintedWidth === "number"
+                && typeof object.paintedHeight === "number";
+            if (hasTextMetrics) {
+                const clippedHorizontally = Number(object.width) > 0
+                    && object.paintedWidth > Number(object.width) + 0.5;
+                const clippedVertically = Number(object.height) > 0
+                    && object.paintedHeight > Number(object.height) + 0.5;
+                if (Boolean(object.truncated) || clippedHorizontally
+                        || clippedVertically)
+                    count += 1;
+            }
+        } catch (error) {
+            // A destroyed delegate can disappear while the fixture settles.
+        }
+
+        try {
+            const children = object.children;
+            if (children) {
+                for (let index = 0; index < children.length; index++)
+                    count += countVisibleTextOverflow(children[index],
+                        Number(depth || 0) + 1);
+            }
+        } catch (error) {
+            // ShellRoot also owns non-visual objects without a children list.
+        }
+        return count;
+    }
+
     function parseTranslations(text) {
         try {
             return JSON.parse(text || "{}");
@@ -161,6 +256,215 @@ ShellRoot {
             console.warn("enoshima: invalid translation catalog:", error);
             return {};
         }
+    }
+
+    function parseUiFixtureState(text) {
+        if (!uiFixtureEnabled)
+            return {"schema": 1, "surface": "", "state": "", "output": ""};
+        try {
+            const document = JSON.parse(text || "{}");
+            if (document.schema === 1)
+                return document;
+        } catch (error) {
+            console.warn("enoshima: invalid VM UI fixture state:", error);
+        }
+        return {"schema": 1, "surface": "", "state": "", "output": ""};
+    }
+
+    function fixtureDisplayStatus(state) {
+        return {
+            "schema": 2,
+            "mode": state === "selected" || state === "applying"
+                ? "extend" : "internal",
+            "pending": state === "confirmation",
+            "deadline": state === "confirmation" ? Date.now() / 1000 + 12 : 0,
+            "seconds_remaining": state === "confirmation" ? 12 : 0,
+            "external_count": state === "unavailable" ? 0 : 1
+        };
+    }
+
+    function fixtureSnapState(state, output) {
+        const targets = {
+            "left-half": ["left-half", 10, 10, 620, 780],
+            "right-half": ["right-half", 650, 10, 620, 780],
+            "maximize": ["maximize", 10, 10, 1260, 780],
+            "corners": ["upper-left", 10, 10, 620, 380],
+            "cross-monitor": ["right-half", 650, 10, 620, 780]
+        };
+        const target = targets[state] || targets["left-half"];
+        const layouts = [
+            {"layoutId": "halves", "label": "1/2 + 1/2", "cells": [
+                {"cellId": "halves:0", "target": "left-half", "x": 0,
+                    "y": 0, "width": 0.5, "height": 1},
+                {"cellId": "halves:1", "target": "right-half", "x": 0.5,
+                    "y": 0, "width": 0.5, "height": 1}
+            ]},
+            {"layoutId": "third-two-thirds", "label": "1/3 + 2/3", "cells": [
+                {"cellId": "third-two-thirds:0", "target": "left-third",
+                    "x": 0, "y": 0, "width": 0.333, "height": 1},
+                {"cellId": "third-two-thirds:1", "target": "right-two-thirds",
+                    "x": 0.333, "y": 0, "width": 0.667, "height": 1}
+            ]},
+            {"layoutId": "quarters", "label": "2 × 2", "cells": [
+                {"cellId": "quarters:0", "target": "upper-left", "x": 0,
+                    "y": 0, "width": 0.5, "height": 0.5},
+                {"cellId": "quarters:1", "target": "upper-right", "x": 0.5,
+                    "y": 0, "width": 0.5, "height": 0.5},
+                {"cellId": "quarters:2", "target": "lower-left", "x": 0,
+                    "y": 0.5, "width": 0.5, "height": 0.5},
+                {"cellId": "quarters:3", "target": "lower-right", "x": 0.5,
+                    "y": 0.5, "width": 0.5, "height": 0.5}
+            ]},
+            {"layoutId": "maximize", "label": "MAX", "cells": [
+                {"cellId": "maximize:0", "target": "maximize", "x": 0,
+                    "y": 0, "width": 1, "height": 1}
+            ]}
+        ];
+        return {
+            "schema": 2,
+            "active": state !== "cancelled",
+            "session": "0123456789abcdef0123456789abcdef",
+            "sequence": 1,
+            "address": "0x100",
+            "monitor": String(output || ""),
+            "target": target[0],
+            "geometry": {"localX": target[1], "localY": target[2],
+                "width": target[3], "height": target[4]},
+            "chooser": {"visible": state === "layout-chooser",
+                "selectedCellId": "halves:0", "layouts": layouts},
+            "updatedAt": Date.now()
+        };
+    }
+
+    function fixtureWindow(address, options) {
+        const minimized = Boolean(options.minimized);
+        return {
+            "address": address,
+            "class": "com.mitchellh.ghostty",
+            "initialClass": "com.mitchellh.ghostty",
+            "title": options.title || "Enoshima UI Review",
+            "monitor": 0,
+            "workspace": {
+                "id": minimized ? -99 : 1,
+                "name": minimized ? "special:minimized" : "1"
+            },
+            "focusHistoryID": options.focusHistoryID || 0,
+            "fullscreen": 0,
+            "fullscreenClient": 0,
+            "floating": false,
+            "minimized": minimized,
+            "state": options.state || (minimized ? "minimized" : "visible"),
+            "urgent": Boolean(options.urgent)
+        };
+    }
+
+    function fixtureSnapshot(surface, state, output, address) {
+        const windows = [];
+        let activeAddress = "";
+        if (surface === "cyberdock-window-state") {
+            if (!["pinned", "unavailable"].includes(state)) {
+                windows.push(fixtureWindow("0x100", {
+                    "minimized": state === "minimized",
+                    "state": state,
+                    "urgent": state === "urgent",
+                    "focusHistoryID": 0
+                }));
+                if (state === "multi-window")
+                    windows.push(fixtureWindow("0x101", {"focusHistoryID": 1}));
+                if (state === "focused")
+                    activeAddress = "0x100";
+            }
+        } else if (surface === "system-titlebar") {
+            const fixtureAddress = /^0x[0-9A-Fa-f]+$/.test(String(address || ""))
+                ? String(address) : "0x100";
+            windows.push(fixtureWindow(fixtureAddress, {
+                "title": "Enoshima Titlebar Fixture",
+                "state": state,
+                "focusHistoryID": state === "inactive" ? 1 : 0
+            }));
+            if (state !== "inactive")
+                activeAddress = fixtureAddress;
+        } else if (["active-window", "inactive-window"].includes(state)) {
+            windows.push(fixtureWindow("0x100", {}));
+            if (state === "active-window")
+                activeAddress = "0x100";
+        }
+        return {
+            "version": 2,
+            "activeAddress": activeAddress,
+            "monitors": [{
+                "id": 0,
+                "name": output,
+                "focused": true,
+                "activeWorkspace": {"id": 1, "name": "1"},
+                "specialWorkspace": {"id": 0, "name": ""}
+            }],
+            "windows": windows
+        };
+    }
+
+    function applyUiFixtureState() {
+        if (!uiFixtureEnabled)
+            return;
+        const surface = String(uiFixtureState.surface || "");
+        const state = String(uiFixtureState.state || "");
+        const output = String(uiFixtureState.output || "");
+        if (output === "")
+            return;
+        launcherOpen = surface === "launcher";
+        displayOverlayOpen = surface === "display-mode";
+        powerMenuOpen = surface === "power-menu";
+        windowMenuOpen = false;
+        osdVisible = surface === "osd";
+        launcherScreenName = output;
+        displayOverlayScreenName = output;
+        powerMenuScreenName = output;
+        osdScreenName = output;
+        dockKeyboardOpen = surface === "cyberdock-window-state"
+            && state === "focused";
+        dockKeyboardScreenName = output;
+        dockKeyboardIndex = 0;
+        if (surface === "system-titlebar") {
+            windowMenuAddress = String(uiFixtureState.address || "0x100");
+            windowMenuScreenName = output;
+            windowMenuAnchorX = 950;
+            windowMenuAnchorY = 72;
+            windowMenuSource = "keyboard";
+            windowMenuOpen = ["keyboard-focus", "system-menu",
+                "action-running", "action-error"].includes(state);
+        }
+        snapshot = fixtureSnapshot(surface, state, output,
+            String(uiFixtureState.address || ""));
+        if (surface === "cyberdock-window-state") {
+            pinIds = state === "unavailable"
+                ? ["enoshima-unavailable.desktop"]
+                : (state === "pinned"
+                    ? ["com.mitchellh.ghostty.desktop"] : []);
+            pinsLoaded = true;
+        }
+        if (surface === "osd") {
+            const osdStates = {
+                "volume": ["volume", 68, false],
+                "muted": ["volume", 0, true],
+                "microphone-muted": ["microphone", 0, true],
+                "brightness": ["brightness", 42, false],
+                "keyboard-backlight": ["keyboard-backlight", 66, false],
+                "airplane-mode": ["airplane-mode", 100, true],
+                "airplane-mode-error": ["airplane-mode-error", 0, false]
+            };
+            const value = osdStates[state] || osdStates.volume;
+            osdKind = value[0];
+            osdValue = value[1];
+            osdMuted = value[2];
+        }
+        uiFixtureAppliedSequence = Number(uiFixtureState.sequence || 0);
+        uiFixtureReadyTimer.restart();
+    }
+
+    onUiFixtureStateChanged: Qt.callLater(() => applyUiFixtureState())
+    Component.onCompleted: {
+        if (uiFixtureEnabled)
+            Qt.callLater(() => applyUiFixtureState());
     }
 
     function tr(key) {
@@ -258,7 +562,8 @@ ShellRoot {
             onStreamFinished: {
                 try {
                     const document = JSON.parse(text);
-                    if (document.schema === 1 && Array.isArray(document.entries)) {
+                    if (!root.uiFixtureEnabled && document.schema === 1
+                            && Array.isArray(document.entries)) {
                         root.pinIds = document.entries.map(entry => String(entry));
                         root.pinsLoaded = true;
                     }
@@ -282,7 +587,7 @@ ShellRoot {
     Timer {
         interval: 5000
         repeat: true
-        running: !root.pinsLoaded
+        running: !root.uiFixtureEnabled && !root.pinsLoaded
         triggeredOnStart: true
         onTriggered: refreshPinsSoon.restart()
     }
@@ -632,7 +937,7 @@ ShellRoot {
             onStreamFinished: {
                 try {
                     const next = JSON.parse(text);
-                    if (next.version === 2) {
+                    if (!root.uiFixtureEnabled && next.version === 2) {
                         root.snapshot = next;
                         if (root.displayOverlayOpen
                                 && !next.monitors.some(monitor =>
@@ -660,7 +965,7 @@ ShellRoot {
         // reconciles health after a missed event.
         interval: 5000
         repeat: true
-        running: true
+        running: !root.uiFixtureEnabled
         triggeredOnStart: true
         onTriggered: {
             if (!snapshotProcess.running)
@@ -1614,6 +1919,9 @@ ShellRoot {
             strings: root.translations
             theme: root.theme
             reducedMotion: root.reducedMotion
+            reviewState: root.uiFixtureEnabled
+                && root.uiFixtureState.surface === "system-titlebar"
+                    ? String(root.uiFixtureState.state || "") : ""
             onCloseRequested: root.windowMenuOpen = false
         }
     }
@@ -1641,6 +1949,9 @@ ShellRoot {
             activeScreenName: root.powerMenuScreenName
             theme: root.theme
             reducedMotion: root.reducedMotion
+            reviewState: root.uiFixtureEnabled
+                && root.uiFixtureState.surface === "power-menu"
+                    ? String(root.uiFixtureState.state || "") : ""
             onCloseRequested: root.powerMenuOpen = false
         }
     }
@@ -1670,6 +1981,9 @@ ShellRoot {
             theme: root.theme
             reducedMotion: root.reducedMotion
             strings: root.translations
+            reviewState: root.uiFixtureEnabled
+                && root.uiFixtureState.surface === "display-mode"
+                    ? String(root.uiFixtureState.state || "") : ""
             onCloseRequested: root.displayOverlayOpen = false
         }
     }
@@ -1683,8 +1997,12 @@ ShellRoot {
             launcherOpen: root.launcherOpen
             activeScreenName: root.launcherScreenName
             theme: root.theme
+            strings: root.translations
             reducedMotion: root.reducedMotion
             pinIds: root.pinIds
+            reviewState: root.uiFixtureEnabled
+                && root.uiFixtureState.surface === "launcher"
+                    ? String(root.uiFixtureState.state || "") : ""
             onCloseRequested: root.launcherOpen = false
             onPinsChanged: root.schedulePinsRefresh()
         }

@@ -16,6 +16,7 @@ PanelWindow {
     required property string activeScreenName
     required property var theme
     required property bool reducedMotion
+    property string reviewState: ""
 
     signal closeRequested()
 
@@ -204,6 +205,28 @@ PanelWindow {
         }
     }
 
+    function applyReviewState() {
+        if (!visible || reviewState === "")
+            return;
+        selectedAction = "reboot";
+        lastAttemptedAction = "reboot";
+        pendingConfirmationAction = reviewState === "confirmation" ? "reboot" : "";
+        currentRequestId = reviewState === "closing-apps" ? "ui-review" : "";
+        applying = ["closing-apps", "dispatching"].includes(reviewState);
+        actionPhase = reviewState === "retry" ? "error" : reviewState;
+        actionError = ["error", "retry"].includes(reviewState)
+            ? actionFailureMessage("inhibitor") : "";
+        stderrDetail = ["error", "retry"].includes(reviewState)
+            ? "fixture: inhibitor refused the transition" : "";
+        phaseTotal = reviewState === "closing-apps" ? 7 : 0;
+        phaseRemaining = reviewState === "closing-apps" ? 3 : 0;
+        if (reviewState === "default") {
+            selectedAction = "";
+            lastAttemptedAction = "";
+            actionPhase = "browsing";
+        }
+    }
+
     // Quickshell's generated qmltypes references QProcess::ExitStatus without
     // importing QtCore's private enum metadata; the runtime signal is valid.
     // qmllint disable signal-handler-parameters
@@ -273,9 +296,14 @@ PanelWindow {
             actionPhase = "browsing";
             actionError = "";
             statusProcess.running = true;
-            Qt.callLater(() => keyHandler.forceActiveFocus());
+            Qt.callLater(() => {
+                menu.applyReviewState();
+                keyHandler.forceActiveFocus();
+            });
         }
     }
+
+    onReviewStateChanged: Qt.callLater(() => applyReviewState())
 
     Rectangle { anchors.fill: parent; color: menu.theme.colorScrim }
 
@@ -526,7 +554,8 @@ PanelWindow {
                         color: menu.theme.colorFocus
 
                         SequentialAnimation on x {
-                            running: menu.applying && menu.phaseTotal <= 0 && !menu.reducedMotion
+                            running: menu.applying && menu.phaseTotal <= 0
+                                && !menu.reducedMotion && menu.reviewState === ""
                             loops: Animation.Infinite
                             NumberAnimation { from: 0; to: 190; duration: 700; easing.type: Easing.InOutCubic }
                             NumberAnimation { from: 190; to: 0; duration: 700; easing.type: Easing.InOutCubic }

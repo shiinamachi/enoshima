@@ -20,6 +20,7 @@ PanelWindow {
     required property var theme
     required property bool reducedMotion
     required property var strings
+    property string reviewState: ""
 
     signal closeRequested()
 
@@ -117,6 +118,15 @@ PanelWindow {
         }
     }
 
+    function applyReviewState() {
+        if (!visible || reviewState === "")
+            return;
+        selectedIndex = ["hover", "focus", "selected", "applying"].includes(reviewState)
+            ? 2 : 0;
+        applying = reviewState === "applying";
+        applyError = reviewState === "error" ? tr("display.errorGeneric") : "";
+    }
+
     Timer {
         interval: 1000
         repeat: true
@@ -152,9 +162,14 @@ PanelWindow {
             applyError = "";
             selectedIndex = Math.max(0, choices.findIndex(choice =>
                 choice.id === displayStatus.mode));
-            Qt.callLater(() => keyHandler.forceActiveFocus());
+            Qt.callLater(() => {
+                overlay.applyReviewState();
+                keyHandler.forceActiveFocus();
+            });
         }
     }
+
+    onReviewStateChanged: Qt.callLater(() => applyReviewState())
 
     onDisplayStatusChanged: {
         if (visible && !applying)
@@ -340,16 +355,20 @@ PanelWindow {
                     required property var modelData
                     required property int index
                     readonly property bool available: overlay.choiceAvailable(index)
+                    readonly property bool hovered: choiceMouse.containsMouse
+                        || (overlay.reviewState === "hover" && index === 2)
+                    readonly property bool pressed: choiceMouse.pressed
+                        || (overlay.reviewState === "focus" && index === 2)
                     width: 280
                     height: 100
                     radius: overlay.theme.radiusControl
                     color: !available
                         ? overlay.theme.colorSurfaceSubtle
-                        : (choiceMouse.pressed
+                        : (pressed
                             ? overlay.theme.colorFocusSelected
                             : (index === overlay.selectedIndex
                                 ? overlay.theme.colorSelectionSoft
-                                : (choiceMouse.containsMouse
+                                : (hovered
                                     ? overlay.theme.colorFocusHover
                                     : overlay.theme.colorRaisedSoft)))
                     border.width: index === overlay.selectedIndex && available ? 2 : 1
@@ -357,7 +376,7 @@ PanelWindow {
                         ? overlay.theme.colorFocus
                         : overlay.theme.colorQuietBorder
                     opacity: available ? 1 : 0.5
-                    scale: choiceMouse.pressed ? 0.985 : 1
+                    scale: pressed ? 0.985 : 1
 
                     Accessible.role: Accessible.Button
                     Accessible.name: modelData.label
@@ -467,7 +486,7 @@ PanelWindow {
                         RotationAnimator on rotation {
                             running: choiceButton.visible && choiceButton.available
                                 && overlay.applying && choiceButton.index === overlay.selectedIndex
-                                && !overlay.reducedMotion
+                                && !overlay.reducedMotion && overlay.reviewState === ""
                             from: 0
                             to: 360
                             duration: 900
