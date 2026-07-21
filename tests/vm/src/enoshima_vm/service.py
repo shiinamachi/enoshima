@@ -971,7 +971,33 @@ class VMService:
             guest.exec(["unlink", str(REMOTE_LOGIN_PASSWORD)], check=False)
             guest.exec(["unlink", str(REMOTE_LOGIN_CREDENTIAL)], check=False)
         record["login_password"] = str(password_path)
+        if record.get("suite") == "ui-review":
+            self._suppress_ui_review_autostart(record)
         self._write_record(record)
+
+    def _suppress_ui_review_autostart(self, record: dict[str, Any]) -> None:
+        """Keep production app autostarts from contaminating visual captures."""
+        autostart_dir = "/home/kentakang/.config/autostart"
+        shell = (
+            "set -eu; "
+            f"install -d -m 0700 {autostart_dir}; "
+            "for entry in discord slack kakaotalk; do "
+            f"printf '[Desktop Entry]\\nType=Application\\nHidden=true\\n' "
+            f">{autostart_dir}/$entry.desktop; "
+            f"chmod 0600 {autostart_dir}/$entry.desktop; "
+            "done"
+        )
+        self._run_checked(
+            record,
+            "suppress-ui-review-autostart",
+            self._remote_shell(shell),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+        )
+        record.setdefault("observations", {})["ui_review_autostart_suppressed"] = [
+            "discord",
+            "slack",
+            "kakaotalk",
+        ]
 
     def _login_greetd(self, record: dict[str, Any]) -> None:
         password_path = confined_path(

@@ -197,6 +197,20 @@ def test_disposable_login_password_is_newline_free_for_gnome_keyring() -> None:
     assert "the password for the login keyring was invalid" in keyring
 
 
+def test_ui_review_login_suppresses_managed_application_autostarts() -> None:
+    source = (
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
+    ).read_text(encoding="utf-8")
+    prepare = source[
+        source.index("def _prepare_login") : source.index("def _login_greetd")
+    ]
+
+    assert 'record.get("suite") == "ui-review"' in prepare
+    assert "def _suppress_ui_review_autostart" in prepare
+    assert "for entry in discord slack kakaotalk" in prepare
+    assert "Hidden=true" in prepare
+
+
 def test_postflight_imports_the_live_graphical_environment_after_login() -> None:
     source = (
         RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
