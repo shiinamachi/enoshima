@@ -51,6 +51,18 @@ grep -Fq 'PACKAGE_WITH_UPDATER=1' "$codex_installer" ||
 if grep -Fq 'make bootstrap-native' "$codex_installer"; then
   fail 'Codex Desktop installer bypasses the managed native dependency manifests'
 fi
+if grep -Fq 'pacman.conf.j2' "$bootstrap"; then
+  fail 'bootstrap passes an unrendered Ansible pacman template to pacman'
+fi
+# shellcheck disable=SC2016 # Assertion intentionally matches literal bootstrap source.
+grep -Fq '"$SUDO_COMMAND_WRAPPER" pacman -Syu --needed --noconfirm' "$bootstrap" ||
+  fail 'bootstrap does not perform a full upgrade with the active pacman policy'
+grep -Fq 'register: pacman_configuration' \
+  "$repo_root/ansible/roles/packages/tasks/main.yml" ||
+  fail 'Ansible does not track pacman repository configuration changes'
+grep -Fq 'or (pacman_configuration is changed)' \
+  "$repo_root/ansible/roles/packages/tasks/main.yml" ||
+  fail 'Ansible can enable repositories without a full upgrade'
 
 # shellcheck disable=SC2016 # Assertion intentionally matches literal bootstrap source.
 grep -Fq 'PATH="/usr/bin:/bin:$PATH"' "$bootstrap" ||

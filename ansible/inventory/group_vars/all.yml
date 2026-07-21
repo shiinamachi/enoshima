@@ -32,6 +32,8 @@ system_keymap: us
 
 perform_full_upgrade: true
 manage_pacman_config: true
+pacman_parallel_downloads: 10
+pacman_disable_download_timeout: false
 manage_boot_config: false
 manage_fstab: false
 apply_boot_artifacts: false

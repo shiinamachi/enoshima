@@ -188,9 +188,11 @@ converge_hyprland_plugins() {
 }
 
 install_bootstrap_dependencies() {
-  "$SUDO_COMMAND_WRAPPER" pacman \
-    --config "$repo_root/ansible/roles/packages/templates/pacman.conf.j2" \
-    -Syu --needed --noconfirm \
+  # Bootstrap must use the machine's current, valid pacman configuration.
+  # The Ansible template is rendered only after Ansible is available; passing
+  # that Jinja source directly to pacman breaks profile-specific values and
+  # discards the VM snapshot archive's download policy.
+  "$SUDO_COMMAND_WRAPPER" pacman -Syu --needed --noconfirm \
     ansible-core \
     base-devel \
     chezmoi \

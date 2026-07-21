@@ -3,6 +3,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from enoshima_vm.config import RuntimePaths, load_suite
@@ -69,6 +70,10 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "enoshima-cloud-bootstrap" in reproducible
     assert "for attempt in 1 2 3 4 5 6 7 8" in reproducible
     assert "ParallelDownloads = 1" in reproducible
+    assert "DisableDownloadTimeout" in reproducible
+    enable_firewall = "systemctl enable --now nftables.service"
+    assert reproducible.index(enable_firewall) < reproducible.index("pacman -Syu")
+    assert "systemctl is-enabled --quiet nftables.service" in reproducible
     assert 'pacman -Syu --needed --noconfirm "${packages[@]}"' in reproducible
     for package in (
         "ansible",
@@ -90,6 +95,31 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "LANG=en_US.UTF-8" in reproducible
     assert 'command -v "$command"' in reproducible
     assert "touch /var/lib/enoshima-cloud-ready" in reproducible
+
+
+def test_vm_profile_keeps_the_snapshot_archive_download_policy_after_ansible() -> None:
+    repository = RuntimePaths.discover().repository
+    defaults = yaml.safe_load(
+        (repository / "ansible/inventory/group_vars/all.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    vm_vars = yaml.safe_load(
+        (repository / "ansible/inventory/host_vars/enoshima-vm.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    template = (
+        repository / "ansible/roles/packages/templates/pacman.conf.j2"
+    ).read_text(encoding="utf-8")
+
+    assert defaults["pacman_parallel_downloads"] == 10
+    assert defaults["pacman_disable_download_timeout"] is False
+    assert vm_vars["pacman_parallel_downloads"] == 1
+    assert vm_vars["pacman_disable_download_timeout"] is True
+    assert "ParallelDownloads = {{ pacman_parallel_downloads }}" in template
+    assert "{% if pacman_disable_download_timeout | bool %}" in template
+    assert "DisableDownloadTimeout" in template
 
 
 def test_cloud_init_network_matches_the_qemu_user_network_interface() -> None:
