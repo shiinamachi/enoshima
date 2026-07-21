@@ -214,7 +214,9 @@ GitHub-hosted infrastructure for pushes and pull requests. It never reaches a
 self-hosted hypervisor.
 
 `.github/workflows/vm-trusted.yml` runs fast, convergence, reboot, desktop, and
-greetd-login lanes only for trusted `main` pushes or manual dispatch. The separate
+greetd-login lanes for trusted `main` pushes. Manual dispatch additionally
+exposes the exhaustive `ui-review` and release-level `full` lanes without
+running untrusted pull-request code on the hypervisor. The separate
 `.github/workflows/vm-boot-security.yml` runs on a manual or scheduled trusted
 host. Both require the `self-hosted`, `linux`, `x64`, `enoshima-kvm`, and
 `trusted` labels, use read-only repository permissions, serialize all KVM jobs,

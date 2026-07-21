@@ -39,6 +39,12 @@ done
 
 grep -Fq 'branches: [main]' "$trusted" ||
   fail 'trusted integration is not restricted to main pushes'
+grep -Fq -- '- ui-review' "$trusted" ||
+  fail 'trusted manual dispatch does not expose exhaustive UI review'
+grep -Fq -- '- full' "$trusted" ||
+  fail 'trusted manual dispatch does not expose the release-level full lane'
+grep -Fq 'desktop|login|ui-review|full' "$trusted" ||
+  fail 'trusted suite dispatcher does not route exhaustive manual lanes'
 grep -Fq 'workflow_dispatch:' "$boot" ||
   fail 'boot-security workflow cannot be started manually'
 grep -Fq 'schedule:' "$boot" ||

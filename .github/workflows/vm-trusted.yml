@@ -17,6 +17,8 @@ on:
           - reboot
           - desktop
           - login
+          - ui-review
+          - full
 
 permissions:
   contents: read
@@ -44,7 +46,7 @@ jobs:
         run: |
           case "$REQUESTED_SUITE" in
             trusted) make vm-trusted ;;
-            smoke|converge|reboot|desktop|login) make "vm-$REQUESTED_SUITE" ;;
+            smoke|converge|reboot|desktop|login|ui-review|full) make "vm-$REQUESTED_SUITE" ;;
             *) exit 2 ;;
           esac
 
