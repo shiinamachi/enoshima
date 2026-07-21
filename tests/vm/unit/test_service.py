@@ -319,6 +319,58 @@ def test_ui_review_cleanup_preserves_reserved_tray_clients() -> None:
     assert [client["address"] for client in targets] == ["0x2", "0x3"]
 
 
+def test_ui_review_resets_quickshell_layers_at_every_surface_boundary() -> None:
+    source = (
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
+    ).read_text(encoding="utf-8")
+    review = source[
+        source.index("def _run_ui_review") : source.index(
+            "def _run_electron_qualification"
+        )
+    ]
+    reset = review.index("self._reset_ui_review_surface(record)")
+    branch = review.index('if case.surface == "auth"')
+    fixture_reset = review.index(
+        'record, "desktop-shell", "default", output', reset
+    )
+
+    assert reset < fixture_reset < branch
+    assert "self._wait_for_ui_fixture_ready(record, reset_sequence)" in review
+
+
+def test_ui_review_rejects_identical_required_states() -> None:
+    captures = [
+        {
+            "surface_id": "notification-center",
+            "state": state,
+            "locale": "en_US.UTF-8",
+            "scale": 1.0,
+            "image_sha256": "same-image",
+        }
+        for state in ("empty", "notification", "critical")
+    ]
+    captures.append(
+        {
+            "surface_id": "notification-center",
+            "state": "empty",
+            "locale": "ko_KR.UTF-8",
+            "scale": 1.0,
+            "image_sha256": "only-one-state",
+        }
+    )
+
+    failures = VMService._ui_review_identical_state_groups(captures)
+
+    assert failures == [
+        {
+            "surface": "notification-center",
+            "locale": "en_US.UTF-8",
+            "scale": 1.0,
+            "states": ["critical", "empty", "notification"],
+        }
+    ]
+
+
 def test_ui_review_resets_clients_at_every_surface_boundary() -> None:
     source = (
         RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"

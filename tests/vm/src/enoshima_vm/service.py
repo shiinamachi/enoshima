@@ -1978,6 +1978,31 @@ class VMService:
         self._stop_desktop_shell_review(record)
         self._close_ui_review_clients(record)
 
+    @staticmethod
+    def _ui_review_identical_state_groups(
+        captures: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        groups: dict[tuple[str, str, float], dict[str, set[str]]] = {}
+        for capture in captures:
+            key = (
+                str(capture.get("surface_id", "")),
+                str(capture.get("locale", "")),
+                float(capture.get("scale", 0)),
+            )
+            group = groups.setdefault(key, {"states": set(), "hashes": set()})
+            group["states"].add(str(capture.get("state", "")))
+            group["hashes"].add(str(capture.get("image_sha256", "")))
+        return [
+            {
+                "surface": surface,
+                "locale": locale,
+                "scale": scale,
+                "states": sorted(group["states"]),
+            }
+            for (surface, locale, scale), group in sorted(groups.items())
+            if len(group["states"]) > 1 and len(group["hashes"]) == 1
+        ]
+
     def _start_desktop_shell_review(
         self,
         record: dict[str, Any],
@@ -2140,6 +2165,15 @@ class VMService:
                 self._wait_for_ui_fixture_ready(record, sequence)
                 current_environment = environment
             self._reset_ui_review_surface(record)
+            # Hyprland client cleanup cannot dismiss Quickshell layer-shell
+            # surfaces.  Reset the production shell model at every boundary
+            # and wait for its exact sequence ACK before opening the next
+            # surface so a launcher or power panel can never obscure a
+            # greeter, SwayNC, or native titlebar capture.
+            reset_sequence = self._write_ui_fixture_state(
+                record, "desktop-shell", "default", output
+            )
+            self._wait_for_ui_fixture_ready(record, reset_sequence)
             if case.surface == "auth":
                 self._start_auth_review(record, case.locale, case.state)
             elif case.surface == "notification-center":
@@ -2243,6 +2277,7 @@ class VMService:
                         "image": str(image_path),
                     }
                 )
+        identical_state_failures = self._ui_review_identical_state_groups(captures)
         summary = {
             "schema": 1,
             "expected": len(matrix),
@@ -2251,6 +2286,7 @@ class VMService:
             "locales": sorted({case.locale for case in matrix}),
             "scales": sorted({case.scale for case in matrix}),
             "text_overflow_failures": overflow_failures,
+            "identical_state_failures": identical_state_failures,
         }
         (artifact_root / "summary.json").write_text(
             json.dumps(summary, indent=2) + "\n", encoding="utf-8"
@@ -2273,6 +2309,15 @@ class VMService:
                 {
                     "count": len(overflow_failures),
                     "failures": overflow_failures[:20],
+                },
+            )
+        if identical_state_failures:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "UI review rendered every required state identically",
+                {
+                    "count": len(identical_state_failures),
+                    "failures": identical_state_failures[:20],
                 },
             )
 
