@@ -1965,6 +1965,20 @@ class VMService:
             {"clients": remaining},
         )
 
+    def _reset_ui_review_surface(self, record: dict[str, Any]) -> None:
+        """Remove every prior review surface and late session-start client.
+
+        Desktop autostart applications can become mapped after the initial
+        review cleanup.  Resetting at every surface boundary prevents those
+        clients from tiling a greeter or obscuring a shell capture while still
+        preserving the reserved XEmbed tray infrastructure.
+        """
+        self._stop_auth_review(record)
+        self._stop_notification_review(record)
+        self._stop_titlebar_review(record)
+        self._stop_desktop_shell_review(record)
+        self._close_ui_review_clients(record)
+
     def _start_desktop_shell_review(
         self,
         record: dict[str, Any],
@@ -2126,20 +2140,12 @@ class VMService:
                 self._restart_ui_review_shell(record, case.locale)
                 self._wait_for_ui_fixture_ready(record, sequence)
                 current_environment = environment
+            self._reset_ui_review_surface(record)
             if case.surface == "auth":
-                self._stop_notification_review(record)
-                self._stop_titlebar_review(record)
-                self._stop_desktop_shell_review(record)
                 self._start_auth_review(record, case.locale, case.state)
             elif case.surface == "notification-center":
-                self._stop_auth_review(record)
-                self._stop_titlebar_review(record)
-                self._stop_desktop_shell_review(record)
                 self._start_notification_review(record, case.locale, case.state)
             elif case.surface == "system-titlebar":
-                self._stop_auth_review(record)
-                self._stop_notification_review(record)
-                self._stop_desktop_shell_review(record)
                 client = self._start_titlebar_review(
                     record, case.locale, case.state
                 )
@@ -2152,9 +2158,6 @@ class VMService:
                 )
                 fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
             elif case.surface == "desktop-shell":
-                self._stop_auth_review(record)
-                self._stop_notification_review(record)
-                self._stop_titlebar_review(record)
                 self._start_desktop_shell_review(
                     record, case.locale, case.state
                 )
@@ -2163,10 +2166,6 @@ class VMService:
                 )
                 fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
             else:
-                self._stop_auth_review(record)
-                self._stop_notification_review(record)
-                self._stop_titlebar_review(record)
-                self._stop_desktop_shell_review(record)
                 sequence = self._write_ui_fixture_state(
                     record, case.surface, case.state, output
                 )

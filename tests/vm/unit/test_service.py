@@ -298,6 +298,25 @@ def test_ui_review_cleanup_preserves_reserved_tray_clients() -> None:
     assert [client["address"] for client in targets] == ["0x2", "0x3"]
 
 
+def test_ui_review_resets_clients_at_every_surface_boundary() -> None:
+    source = (
+        RuntimePaths.discover().project
+        / "src"
+        / "enoshima_vm"
+        / "service.py"
+    ).read_text(encoding="utf-8")
+    reset = source[source.index("def _reset_ui_review_surface") :]
+    review = source[source.index("def _run_ui_review") :]
+
+    assert "self._stop_auth_review(record)" in reset
+    assert "self._stop_notification_review(record)" in reset
+    assert "self._stop_titlebar_review(record)" in reset
+    assert "self._stop_desktop_shell_review(record)" in reset
+    assert "self._close_ui_review_clients(record)" in reset
+    assert "for case in matrix:" in review
+    assert "self._reset_ui_review_surface(record)" in review
+
+
 def test_screenshot_can_target_one_compositor_output(tmp_path, monkeypatch) -> None:
     paths = RuntimePaths(
         tmp_path,
