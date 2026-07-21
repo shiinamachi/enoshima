@@ -115,6 +115,11 @@ grep -Fq 'internal = 1, client = 1' "$tmp/dispatch.log"
 
 # Super+Z exposes every approved layout family and commits an exact-address
 # thirds target through the same broker path.
+[[ $(grep -Fc 'hl.bind(mainMod .. " + Z"' home/dot_config/hypr/hyprland.lua) == 1 ]] ||
+  fail "Super+Z must have exactly one owner"
+grep -Fq 'hl.bind(mainMod .. " + Z", hl.dsp.exec_cmd("enoshima-snap-controller chooser")' \
+  home/dot_config/hypr/hyprland.lua ||
+  fail "Super+Z does not open the persistent Snap Layout chooser"
 "$controller" chooser --address 0xabc
 jq -e '
   .active == true and .source == "keyboard" and .chooser.visible == true
