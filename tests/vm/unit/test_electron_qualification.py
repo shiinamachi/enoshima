@@ -73,6 +73,11 @@ def test_electron_qualification_proves_fallback_and_system_chrome() -> None:
     assert "duplicate system decoration" in driver
     assert 'decoration = "system"' in driver
     assert '"clientNativeMinimizeExposed": False' in driver
+    assert "set_decoration_allowlist(system_allowlist)" in driver
+    assert "set_decoration_allowlist(original_allowlist)" in driver
+    native_probe = driver.index("probe_native_minimize_fallback(native_fixture)")
+    system_policy = driver.index("set_decoration_allowlist(system_allowlist)")
+    assert native_probe < system_policy
 
 
 def test_native_minimize_probe_records_the_managed_fallback(monkeypatch) -> None:

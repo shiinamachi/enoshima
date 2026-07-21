@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -77,6 +78,29 @@ def is_maximized(client: dict[str, Any] | None) -> bool:
 def has_enoshima_decoration(address: str) -> bool:
     completed = run("hyprctl", "decorations", f"address:{address}", check=False)
     return completed.returncode == 0 and "EnoshimaDecoration" in completed.stdout
+
+
+def decoration_allowlist() -> str:
+    completed = run(
+        "hyprctl",
+        "-j",
+        "getoption",
+        "plugin:enoshima_decoration:allowlist",
+    )
+    return str(json.loads(completed.stdout).get("str", ""))
+
+
+def set_decoration_allowlist(value: str) -> None:
+    if value and not re.fullmatch(
+        r"[A-Za-z0-9._,*?-]+(?:,[A-Za-z0-9._,*?-]+)*", value
+    ):
+        raise RuntimeError("unsafe Electron qualification allowlist")
+    expression = (
+        'hl.config({ plugin = { enoshima_decoration = { allowlist = "'
+        + value
+        + '" } } })'
+    )
+    run("hyprctl", "eval", expression)
 
 
 def dispatch_action(action: str, address: str, origin: str = "dock") -> None:
@@ -318,10 +342,18 @@ def fixture_generation(client: dict[str, Any]) -> int:
 
 def verify_decoration(fixture: Fixture, address: str) -> None:
     if fixture.decoration == "system":
-        wait_for(
-            lambda: has_enoshima_decoration(address),
-            "Enoshima system titlebar",
-        )
+        try:
+            wait_for(
+                lambda: has_enoshima_decoration(address),
+                "Enoshima system titlebar",
+            )
+        except RuntimeError as error:
+            client = find_address(address) or fixture.client
+            raise RuntimeError(
+                "Enoshima system titlebar did not attach to "
+                f"class={client.get('class', '')!r} "
+                f"initialClass={client.get('initialClass', '')!r}"
+            ) from error
     elif has_enoshima_decoration(address):
         raise RuntimeError(
             "client-owned Electron chrome received duplicate system decoration"
@@ -474,7 +506,17 @@ def main() -> int:
         "clientNativeMinimizeExposed": False,
         "nativeFallbackProbes": [],
     }
-    with results_path.open("w", encoding="utf-8") as results:
+    original_allowlist = decoration_allowlist()
+    allowlist_parts = [value for value in original_allowlist.split(",") if value]
+    for value in (
+        "enoshima-electron-qualification",
+        "EnoshimaElectronFixture",
+        "EnoshimaElectronFixtureSystem",
+    ):
+        if value not in allowlist_parts:
+            allowlist_parts.append(value)
+    system_allowlist = ",".join(allowlist_parts)
+    try:
         for backend in ("wayland", "x11"):
             native_fixture = Fixture(args.fixture_root, args.output, backend, "custom")
             try:
@@ -484,62 +526,63 @@ def main() -> int:
             finally:
                 native_fixture.close()
 
-            decoration = "system"
-            fixture = Fixture(args.fixture_root, args.output, backend, decoration)
-            try:
-                summary["combinations"] += 3
-                for mode in ("tiled", "floating", "maximized"):
-                    address = str(fixture.client["address"])
-                    for iteration in range(1, args.iterations + 1):
-                        initial = normalize_mode(address, mode)
-                        old_address = address
-                        record = {
-                            "backend": backend,
-                            "decoration": decoration,
-                            "decorationOwner": (
-                                "client"
-                                if decoration == "custom"
-                                else "enoshima-system"
-                            ),
-                            "mode": mode,
-                            "iteration": iteration,
-                            "pidBefore": fixture.process.pid,
-                            "addressBefore": address,
-                            "workspaceBefore": initial.get("workspace"),
-                            "xwayland": bool(initial.get("xwayland")),
-                            "rendering": (
-                                "electron-software"
-                                if backend == "x11"
-                                else "virtio-gpu"
-                            ),
-                        }
-                        try:
-                            address, actions = exercise_iteration(
-                                fixture, address, mode
-                            )
-                            summary["actions"] += actions
-                            record.update(
-                                {
-                                    "result": "pass",
-                                    "addressAfter": address,
-                                    "pidAfter": fixture.process.pid,
-                                    "processAlive": True,
-                                    "generationAfter": fixture_generation(
-                                        fixture.client
-                                    ),
-                                    "addressReused": address == old_address,
-                                }
-                            )
-                        except Exception as error:
-                            summary["failures"] += 1
-                            record.update({"result": "fail", "error": str(error)})
+        set_decoration_allowlist(system_allowlist)
+        with results_path.open("w", encoding="utf-8") as results:
+            for backend in ("wayland", "x11"):
+                decoration = "system"
+                fixture = Fixture(args.fixture_root, args.output, backend, decoration)
+                try:
+                    summary["combinations"] += 3
+                    for mode in ("tiled", "floating", "maximized"):
+                        address = str(fixture.client["address"])
+                        for iteration in range(1, args.iterations + 1):
+                            initial = normalize_mode(address, mode)
+                            old_address = address
+                            record = {
+                                "backend": backend,
+                                "decoration": decoration,
+                                "decorationOwner": "enoshima-system",
+                                "mode": mode,
+                                "iteration": iteration,
+                                "pidBefore": fixture.process.pid,
+                                "addressBefore": address,
+                                "workspaceBefore": initial.get("workspace"),
+                                "xwayland": bool(initial.get("xwayland")),
+                                "rendering": (
+                                    "electron-software"
+                                    if backend == "x11"
+                                    else "virtio-gpu"
+                                ),
+                            }
+                            try:
+                                address, actions = exercise_iteration(
+                                    fixture, address, mode
+                                )
+                                summary["actions"] += actions
+                                record.update(
+                                    {
+                                        "result": "pass",
+                                        "addressAfter": address,
+                                        "pidAfter": fixture.process.pid,
+                                        "processAlive": True,
+                                        "generationAfter": fixture_generation(
+                                            fixture.client
+                                        ),
+                                        "addressReused": address == old_address,
+                                    }
+                                )
+                            except Exception as error:
+                                summary["failures"] += 1
+                                record.update({"result": "fail", "error": str(error)})
+                                results.write(json.dumps(record, sort_keys=True) + "\n")
+                                results.flush()
+                                raise
                             results.write(json.dumps(record, sort_keys=True) + "\n")
                             results.flush()
-                            raise
-                        results.write(json.dumps(record, sort_keys=True) + "\n")
-                        results.flush()
-            finally:
-                fixture.close()
+                finally:
+                    fixture.close()
+    finally:
+        set_decoration_allowlist(original_allowlist)
 
     coredumps = run(
         "coredumpctl",

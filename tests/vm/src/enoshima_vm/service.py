@@ -2273,27 +2273,6 @@ class VMService:
             timeout=20,
         )
         current_allowlist = str(json.loads(current.stdout).get("str", ""))
-        qualification_classes = (
-            "enoshima-electron-qualification-system",
-            "EnoshimaElectronFixtureSystem",
-        )
-        allowlist_parts = [value for value in current_allowlist.split(",") if value]
-        for class_name in qualification_classes:
-            if class_name not in allowlist_parts:
-                allowlist_parts.append(class_name)
-        qualification_allowlist = ",".join(allowlist_parts)
-        self._run_checked(
-            record,
-            "allow-electron-qualification-fixture",
-            self._hypr_command(
-                "hyprctl eval "
-                + shlex.quote(
-                    self._decoration_allowlist_expression(qualification_allowlist)
-                )
-            ),
-            FailureCategory.DESKTOP_SESSION_FAILED,
-            timeout_seconds=20,
-        )
         try:
             self._run_checked(
                 record,
