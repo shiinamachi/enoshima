@@ -181,6 +181,14 @@ ShellRoot {
         printErrors: false
         watchChanges: root.uiFixtureEnabled
         onFileChanged: reload()
+        // The VM writes the first requested state before starting the shell.
+        // FileView preloads that file asynchronously, so there may be no
+        // file-change notification to drive the readonly uiFixtureState
+        // binding. Apply both the initial load and subsequent internal text
+        // updates explicitly; the sequence check makes repeated delivery safe.
+        onLoaded: Qt.callLater(() => root.applyUiFixtureState())
+        onInternalTextChanged:
+            Qt.callLater(() => root.applyUiFixtureState())
     }
 
     FileView {
@@ -434,6 +442,9 @@ ShellRoot {
         const output = String(uiFixtureState.output || "");
         if (output === "")
             return;
+        const sequence = Number(uiFixtureState.sequence || 0);
+        if (sequence <= 0 || sequence === uiFixtureAppliedSequence)
+            return;
         launcherOpen = surface === "launcher";
         displayOverlayOpen = surface === "display-mode";
         powerMenuOpen = surface === "power-menu";
@@ -480,7 +491,7 @@ ShellRoot {
             osdValue = value[1];
             osdMuted = value[2];
         }
-        uiFixtureAppliedSequence = Number(uiFixtureState.sequence || 0);
+        uiFixtureAppliedSequence = sequence;
         uiFixtureReadyTimer.restart();
     }
 
