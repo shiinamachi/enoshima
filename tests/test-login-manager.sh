@@ -78,6 +78,8 @@ for contract in \
   'monitor = ,preferred,auto-right,auto' \
   'env = GTK_USE_PORTAL,0' \
   'env = GDK_DEBUG,no-portals' \
+  'xwayland {' \
+  'enabled = false' \
   'bindl = , switch:on:Lid Switch, exec, /usr/local/lib/enoshima/greetd-session lid-closed' \
   'bindl = , switch:off:Lid Switch, exec, /usr/local/lib/enoshima/greetd-session lid-open' \
   'exec-once = /usr/local/lib/enoshima/greetd-session start'; do
@@ -178,6 +180,9 @@ assert_not_contains "$greeter_source" 'popen('
 assert_not_contains "$greeter_source" 'g_bus_get_sync'
 assert_not_contains "$greeter_source" 'g_dbus_connection_call_sync'
 assert_contains "$greeter_source" 'g_dbus_proxy_new_for_bus'
+assert_contains "$greeter_source" 'ENOSHIMA_VM_UI_TEST'
+assert_contains "$greeter_source" 'valid_review_state'
+assert_contains "$greeter_source" '--review-state'
 assert_contains "$greeter_source" 'g-properties-changed'
 assert_contains "$greeter_source" 'input:kb_variant'
 assert_contains "$greeter_source" 'input:kb_options'
@@ -202,7 +207,11 @@ cat >"$work/status-bin/nmcli" <<'SH'
 #!/usr/bin/env sh
 printf '%s\n' disconnected
 SH
-chmod 0755 "$work/status-bin/nmcli"
+cat >"$work/status-bin/hyprctl" <<'SH'
+#!/usr/bin/env sh
+printf '%s\n' 'Hyprland IPC is unavailable'
+SH
+chmod 0755 "$work/status-bin/nmcli" "$work/status-bin/hyprctl"
 auth_status=home/dot_local/bin/executable_enoshima-auth-status
 [[ $(env LC_ALL=C PATH="$work/status-bin:/usr/bin" "$auth_status" network) == '○ Offline' ]] ||
   fail 'auth status did not render the English offline state'
@@ -212,12 +221,18 @@ auth_status=home/dot_local/bin/executable_enoshima-auth-status
   fail 'auth status did not render the English unlock mode'
 [[ $(env LC_ALL=ko_KR.UTF-8 PATH="$work/status-bin:/usr/bin" "$auth_status" mode-unlock) == 'ENOSHIMA // 잠금 해제' ]] ||
   fail 'auth status did not render the Korean unlock mode'
+layout_result=$(env LC_ALL=C PATH="$work/status-bin:/usr/bin" \
+  "$auth_status" layout 2>"$work/auth-status.stderr")
+[[ $layout_result == EN ]] || fail 'auth status did not fail closed on invalid Hyprland JSON'
+[[ ! -s $work/auth-status.stderr ]] || fail 'auth status leaked a JSON parser warning'
 assert_contains "$login_tasks" 'mode: "0644"'
 assert_contains "$login_tasks" 'dest: /etc/greetd/background-16x10.jpg'
 assert_contains "$login_tasks" 'dest: /etc/greetd/enoshima-greeter.css'
 assert_contains "$login_tasks" 'dest: /etc/greetd/enoshima-user'
 assert_contains "$login_tasks" 'Remove superseded ReGreet configuration'
 assert_contains scripts/postflight.sh 'greetd is the boot display manager'
+assert_contains scripts/postflight.sh \
+  'starts and unlocks GNOME Keyring for the session'
 assert_contains scripts/postflight.sh 'fallback SDDM is disabled'
 assert_contains scripts/postflight.sh 'Enoshima Auth mixed-DPI compositor configuration parses'
 assert_contains scripts/postflight.sh 'Enoshima Auth lid-aware session helper is executable'
@@ -255,10 +270,17 @@ printf '%s\n' '==> greetd and fallback SDDM retain password-first fingerprint PA
 for pam_template in \
   ansible/roles/system/templates/pam-greetd.j2 \
   ansible/roles/system/templates/pam-sddm.j2; do
+  assert_contains "$pam_template" '{% if enoshima_capabilities.fingerprint | bool %}'
   assert_contains "$pam_template" 'pam_unix.so try_first_pass likeauth nullok'
   assert_contains "$pam_template" 'pam_fprintd.so timeout=15 max-tries=3'
+  assert_contains "$pam_template" 'auth        include     system-local-login'
+  assert_contains "$pam_template" 'pam_gnome_keyring.so'
 done
 assert_contains ansible/roles/system/tasks/authentication.yml 'dest: /etc/pam.d/greetd'
+assert_not_contains ansible/roles/system/tasks/main.yml \
+  'when: enoshima_capabilities.fingerprint | bool'
+assert_contains ansible/roles/system/tasks/authentication.yml \
+  'when: enoshima_capabilities.fingerprint | bool'
 
 printf '%s\n' '==> fallback SDDM has one geometry scale and a responsive root'
 assert_contains "$sddm_config" 'DisplayServer=x11'

@@ -45,6 +45,7 @@ typedef struct {
     gchar *default_user;
     gchar *pending_error;
     gchar *pending_power;
+    gchar *review_state;
     guint power_reset_source;
     guint success_source;
     AuthPhase phase;
@@ -947,6 +948,76 @@ static void connect_greetd(Greeter *greeter) {
     }
 }
 
+static gboolean valid_review_state(const gchar *state) {
+    static const gchar *const states[] = {
+        "password",          "fingerprint-ready", "fingerprint-progress",
+        "success",           "failure",           "caps-lock",
+        "busy",              "power-confirmation", NULL};
+    if (state == NULL || *state == '\0')
+        return FALSE;
+    for (guint index = 0; states[index] != NULL; index++) {
+        if (g_str_equal(state, states[index]))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static gboolean review_mode_enabled(Greeter *greeter) {
+    return g_strcmp0(g_getenv("ENOSHIMA_VM_UI_TEST"), "1") == 0 &&
+           valid_review_state(greeter->review_state);
+}
+
+static void apply_review_state(Greeter *greeter) {
+    const gchar *state = greeter->review_state;
+    greeter->phase = PHASE_AUTH;
+    greeter->awaiting_input = TRUE;
+    greeter->input_is_secret = TRUE;
+    gtk_stack_set_visible_child_name(GTK_STACK(greeter->response_stack),
+                                     "secret");
+    gtk_label_set_text(GTK_LABEL(greeter->prompt),
+                       localized(greeter, "password"));
+    gtk_label_set_text(GTK_LABEL(greeter->network),
+                       localized(greeter, "connected"));
+    gtk_label_set_text(GTK_LABEL(greeter->battery),
+                       greeter->korean ? "배터리 82%" : "Battery 82%");
+    gtk_widget_set_visible(greeter->caps_lock, FALSE);
+    gtk_widget_remove_css_class(greeter->fingerprint,
+                                "fingerprint-progress");
+    gtk_widget_remove_css_class(greeter->fingerprint,
+                                "fingerprint-failure");
+    gtk_button_set_label(GTK_BUTTON(greeter->fingerprint),
+                         localized(greeter, "fingerprint-ready"));
+    set_message(greeter, "", FALSE);
+    set_busy(greeter, FALSE);
+
+    if (g_str_equal(state, "fingerprint-ready")) {
+        gtk_widget_grab_focus(greeter->fingerprint);
+    } else if (g_str_equal(state, "fingerprint-progress")) {
+        gtk_button_set_label(GTK_BUTTON(greeter->fingerprint),
+                             localized(greeter, "fingerprint-progress"));
+        gtk_widget_add_css_class(greeter->fingerprint,
+                                 "fingerprint-progress");
+        set_message(greeter, localized(greeter, "fingerprint-progress"),
+                    FALSE);
+    } else if (g_str_equal(state, "success")) {
+        set_message(greeter, localized(greeter, "auth-success"), FALSE);
+        gtk_widget_add_css_class(greeter->message, "success-message");
+        set_busy(greeter, TRUE);
+    } else if (g_str_equal(state, "failure")) {
+        gtk_widget_add_css_class(greeter->fingerprint,
+                                 "fingerprint-failure");
+        set_message(greeter, localized(greeter, "auth-failed"), TRUE);
+    } else if (g_str_equal(state, "caps-lock")) {
+        gtk_widget_set_visible(greeter->caps_lock, TRUE);
+    } else if (g_str_equal(state, "busy")) {
+        set_busy(greeter, TRUE);
+    } else if (g_str_equal(state, "power-confirmation")) {
+        g_free(greeter->pending_power);
+        greeter->pending_power = g_strdup("Reboot");
+        set_message(greeter, localized(greeter, "restart-confirm"), FALSE);
+    }
+}
+
 static void activate(GtkApplication *application, gpointer user_data) {
     Greeter *greeter = user_data;
     greeter->application = application;
@@ -1128,21 +1199,24 @@ static void activate(GtkApplication *application, gpointer user_data) {
     g_signal_connect(keys, "key-pressed", G_CALLBACK(key_pressed), greeter);
     gtk_widget_add_controller(greeter->window, keys);
 
-    greeter->network_monitor = g_network_monitor_get_default();
-    g_object_ref(greeter->network_monitor);
-    greeter->dbus_cancellable = g_cancellable_new();
-    update_network(greeter->network_monitor,
-                   g_network_monitor_get_network_available(
-                       greeter->network_monitor),
-                   greeter);
-    g_signal_connect(greeter->network_monitor, "network-changed",
-                     G_CALLBACK(update_network), greeter);
-    g_dbus_proxy_new_for_bus(
-        G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_GET_INVALIDATED_PROPERTIES, NULL,
-        "org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager",
-        "org.freedesktop.NetworkManager", greeter->dbus_cancellable,
-        network_manager_ready, greeter);
-    update_battery(greeter);
+    if (!review_mode_enabled(greeter)) {
+        greeter->network_monitor = g_network_monitor_get_default();
+        g_object_ref(greeter->network_monitor);
+        greeter->dbus_cancellable = g_cancellable_new();
+        update_network(greeter->network_monitor,
+                       g_network_monitor_get_network_available(
+                           greeter->network_monitor),
+                       greeter);
+        g_signal_connect(greeter->network_monitor, "network-changed",
+                         G_CALLBACK(update_network), greeter);
+        g_dbus_proxy_new_for_bus(
+            G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_GET_INVALIDATED_PROPERTIES,
+            NULL, "org.freedesktop.NetworkManager",
+            "/org/freedesktop/NetworkManager",
+            "org.freedesktop.NetworkManager", greeter->dbus_cancellable,
+            network_manager_ready, greeter);
+        update_battery(greeter);
+    }
     update_clock(greeter);
     g_timeout_add_seconds(1, update_clock, greeter);
 
@@ -1151,8 +1225,12 @@ static void activate(GtkApplication *application, gpointer user_data) {
     rebuild_secondary_windows(greeter);
     g_signal_connect(greeter->monitors, "items-changed",
                      G_CALLBACK(monitors_changed), greeter);
-    connect_greetd(greeter);
-    gtk_widget_grab_focus(greeter->primary);
+    if (review_mode_enabled(greeter))
+        apply_review_state(greeter);
+    else {
+        connect_greetd(greeter);
+        gtk_widget_grab_focus(greeter->primary);
+    }
 }
 
 static gboolean self_test(void) {
@@ -1189,6 +1267,10 @@ int main(int argc, char **argv) {
             g_free(greeter.default_user);
             greeter.default_user = g_strdup(argv[++index]);
         }
+        if (g_str_equal(argv[index], "--review-state") && index + 1 < argc) {
+            g_free(greeter.review_state);
+            greeter.review_state = g_strdup(argv[++index]);
+        }
     }
 
     GtkApplication *application = gtk_application_new(
@@ -1217,6 +1299,7 @@ int main(int argc, char **argv) {
     g_clear_pointer(&greeter.default_user, g_free);
     g_clear_pointer(&greeter.pending_error, g_free);
     g_clear_pointer(&greeter.pending_power, g_free);
+    g_clear_pointer(&greeter.review_state, g_free);
     g_object_unref(application);
     return status;
 }

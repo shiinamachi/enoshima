@@ -153,6 +153,7 @@ button:focus-visible {
 
 .fingerprint-button {
   border: 1px solid alpha(@cyber_selection, 0.48);
+  background-image: none;
   background-color: alpha(@cyber_raised, 0.76);
   color: @cyber_muted;
 }
@@ -187,6 +188,7 @@ button:focus-visible {
 .primary-action {
   min-height: 48px;
   border: 1px solid alpha(@cyber_focus, 0.46);
+  background-image: none;
   background-color: @cyber_selection_strong;
   color: @cyber_text;
   font-weight: 700;
@@ -203,6 +205,7 @@ button:focus-visible {
 .secondary-action {
   min-width: 154px;
   border: 1px solid alpha(@cyber_focus, 0.38);
+  background-image: none;
   background-color: alpha(@cyber_surface, 0.88);
   color: @cyber_muted;
 }
@@ -212,7 +215,20 @@ button:focus-visible {
   color: @cyber_text;
 }
 
-button:disabled,
-entry:disabled {
-  opacity: 0.58;
+.fingerprint-button:disabled,
+.primary-action:disabled,
+.secondary-action:disabled {
+  border-color: alpha(@cyber_muted, 0.24);
+  background-image: none;
+  background-color: alpha(@cyber_raised, 0.72);
+  color: alpha(@cyber_muted, 0.72);
+  box-shadow: none;
+}
+
+.auth-entry:disabled,
+.auth-entry > text:disabled {
+  border-color: alpha(@cyber_muted, 0.24);
+  background-image: none;
+  background-color: alpha(@cyber_raised, 0.72);
+  color: alpha(@cyber_muted, 0.72);
 }

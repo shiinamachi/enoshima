@@ -108,7 +108,6 @@
 
 - name: Configure service-specific authentication
   ansible.builtin.import_tasks: authentication.yml
-  when: enoshima_capabilities.fingerprint | bool
 
 - name: Configure local desktop integration
   ansible.builtin.import_tasks: desktop.yml

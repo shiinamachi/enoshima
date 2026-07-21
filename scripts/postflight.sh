@@ -2,6 +2,9 @@
 set -uo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=lib/inventory-capabilities.sh
+# shellcheck disable=SC1091
+source "$repo_root/scripts/lib/inventory-capabilities.sh"
 inventory=$repo_root/ansible/inventory/hosts.yml
 profile=${PROFILE:-}
 report_format=text
@@ -113,13 +116,7 @@ PY
 }
 
 capability() {
-  local name=$1 value
-  if ! command -v jq >/dev/null 2>&1; then
-    return 0
-  fi
-  value=$(jq -r --arg name "$name" \
-    '.enoshima_capabilities[$name] // true' <<<"$inventory_host_json")
-  [[ $value == true ]]
+  inventory_capability "$inventory_host_json" "$1"
 }
 
 pass() {
@@ -371,6 +368,12 @@ else
 fi
 
 echo "==> Authentication and login"
+for pam_file in /etc/pam.d/greetd /etc/pam.d/sddm; do
+  check "$pam_file captures the login password for GNOME Keyring" \
+    grep -qE '^[[:space:]]*-?auth[[:space:]]+optional[[:space:]]+pam_gnome_keyring\.so' "$pam_file"
+  check "$pam_file starts and unlocks GNOME Keyring for the session" \
+    grep -qE '^[[:space:]]*-?session[[:space:]]+optional[[:space:]]+pam_gnome_keyring\.so[[:space:]]+auto_start' "$pam_file"
+done
 if capability fingerprint; then
   check_or_warn "fingerprint enrolled for the current user (manual enrollment if absent)" \
     fprintd-list "${USER:-$(id -un)}"
@@ -703,74 +706,87 @@ if command -v hyprctl >/dev/null 2>&1 && hyprctl monitors -j >/dev/null 2>&1; th
     display_status=$(desktop-display-mode status --json 2>/dev/null || true)
     display_mode=$(jq -r '.mode // "unknown"' <<<"$display_status" 2>/dev/null || printf unknown)
   fi
-  case $display_mode in
-    internal)
-      if jq -e 'length == 1 and .[0].name == "eDP-1"' <<<"$monitor_json" >/dev/null; then
-        pass "saved internal-only display mode is active"
-      else
-        fail "internal-only display mode does not have exactly one internal output"
-      fi
-      ;;
-    external)
-      if jq -e 'length == 1 and .[0].name != "eDP-1"' <<<"$monitor_json" >/dev/null; then
-        pass "saved external-only display mode is active"
-      else
-        fail "external-only display mode does not have exactly one external output"
-      fi
-      ;;
-    mirror)
-      if jq -e 'length >= 2 and any(.[]; (.mirrorOf // "none") != "none")' <<<"$monitor_json" >/dev/null; then
-        pass "saved duplicate display mode is active"
-      else
-        fail "duplicate display mode has no mirrored output"
-      fi
-      ;;
-    extend)
-      if jq -e '.[] | select(.name == "eDP-1") | select(.width == 2880 and .height == 1800 and .refreshRate >= 119 and .scale == 1.5 and .x == 0 and .y == 240)' \
-        <<<"$monitor_json" >/dev/null; then
-        pass "extended internal display uses the managed 2880x1800 seed"
-      else
-        warn "extended internal layout differs from the seed because a confirmed topology preference may be active"
-      fi
-      workspace_json=$(hyprctl workspaces -j)
-      mapfile -t external_outputs < <(
-        jq -r '
+  if [[ $profile == enoshima-vm ]] &&
+    jq -e 'length >= 1 and all(.[]; .name | test("^(HEADLESS-|Virtual-)"))' \
+      <<<"$monitor_json" >/dev/null; then
+    workspace_json=$(hyprctl workspaces -j)
+    if jq -e --argjson monitors "$monitor_json" \
+      'all(.[]; .monitor as $current | any($monitors[]; .name == $current))' \
+      <<<"$workspace_json" >/dev/null; then
+      pass "VM workspaces are confined to the reviewed virtual outputs"
+    else
+      fail "a VM workspace references an unavailable virtual output"
+    fi
+  else
+    case $display_mode in
+      internal)
+        if jq -e 'length == 1 and .[0].name == "eDP-1"' <<<"$monitor_json" >/dev/null; then
+          pass "saved internal-only display mode is active"
+        else
+          fail "internal-only display mode does not have exactly one internal output"
+        fi
+        ;;
+      external)
+        if jq -e 'length == 1 and .[0].name != "eDP-1"' <<<"$monitor_json" >/dev/null; then
+          pass "saved external-only display mode is active"
+        else
+          fail "external-only display mode does not have exactly one external output"
+        fi
+        ;;
+      mirror)
+        if jq -e 'length >= 2 and any(.[]; (.mirrorOf // "none") != "none")' <<<"$monitor_json" >/dev/null; then
+          pass "saved duplicate display mode is active"
+        else
+          fail "duplicate display mode has no mirrored output"
+        fi
+        ;;
+      extend)
+        if jq -e '.[] | select(.name == "eDP-1") | select(.width == 2880 and .height == 1800 and .refreshRate >= 119 and .scale == 1.5 and .x == 0 and .y == 240)' \
+          <<<"$monitor_json" >/dev/null; then
+          pass "extended internal display uses the managed 2880x1800 seed"
+        else
+          warn "extended internal layout differs from the seed because a confirmed topology preference may be active"
+        fi
+        workspace_json=$(hyprctl workspaces -j)
+        mapfile -t external_outputs < <(
+          jq -r '
           map(select(.name != "eDP-1" and (.mirrorOf // "none") == "none"))
           | sort_by(.x // 0, .y // 0, .name)
           | .[].name
         ' <<<"$monitor_json"
-      )
-      if ((${#external_outputs[@]} > 0)); then
-        pass "${#external_outputs[@]} external display(s) are active in extended mode"
-      else
-        fail "extended mode has no external output"
-      fi
-      workspace_layout_ok=true
-      external_workspace_ids=(1 2 4)
-      if ((${#external_outputs[@]} > 0)); then
-        for index in "${!external_workspace_ids[@]}"; do
-          workspace_id=${external_workspace_ids[$index]}
-          expected_output=${external_outputs[$((index % ${#external_outputs[@]}))]}
+        )
+        if ((${#external_outputs[@]} > 0)); then
+          pass "${#external_outputs[@]} external display(s) are active in extended mode"
+        else
+          fail "extended mode has no external output"
+        fi
+        workspace_layout_ok=true
+        external_workspace_ids=(1 2 4)
+        if ((${#external_outputs[@]} > 0)); then
+          for index in "${!external_workspace_ids[@]}"; do
+            workspace_id=${external_workspace_ids[$index]}
+            expected_output=${external_outputs[$((index % ${#external_outputs[@]}))]}
+            actual_output=$(jq -r --argjson id "$workspace_id" \
+              'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json")
+            [[ $actual_output == "$expected_output" ]] || workspace_layout_ok=false
+          done
+        else
+          workspace_layout_ok=false
+        fi
+        for workspace_id in 3 5; do
           actual_output=$(jq -r --argjson id "$workspace_id" \
             'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json")
-          [[ $actual_output == "$expected_output" ]] || workspace_layout_ok=false
+          [[ $actual_output == eDP-1 ]] || workspace_layout_ok=false
         done
-      else
-        workspace_layout_ok=false
-      fi
-      for workspace_id in 3 5; do
-        actual_output=$(jq -r --argjson id "$workspace_id" \
-          'map(select(.id == $id))[0].monitor // empty' <<<"$workspace_json")
-        [[ $actual_output == eDP-1 ]] || workspace_layout_ok=false
-      done
-      if [[ $workspace_layout_ok == true ]]; then
-        pass "five workspaces match the extended output map"
-      else
-        fail "workspaces do not match the extended output map"
-      fi
-      ;;
-    *) warn "desktop-display-mode status is unavailable; live projection validation was deferred" ;;
-  esac
+        if [[ $workspace_layout_ok == true ]]; then
+          pass "five workspaces match the extended output map"
+        else
+          fail "workspaces do not match the extended output map"
+        fi
+        ;;
+      *) warn "desktop-display-mode status is unavailable; live projection validation was deferred" ;;
+    esac
+  fi
 
   if [[ -z $(hyprctl configerrors) ]]; then
     pass "Hyprland reports no configuration errors"

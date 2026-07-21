@@ -1,8 +1,9 @@
 #%PAM-1.0
 
-# Enter a password normally, or submit an empty password to start fprintd.
 auth        required    pam_shells.so
 auth        requisite   pam_nologin.so
+{% if enoshima_capabilities.fingerprint | bool %}
+# Enter a password normally, or submit an empty password to start fprintd.
 auth        required    pam_faillock.so preauth
 -auth       [success=3 default=ignore] pam_systemd_home.so
 auth        [success=2 new_authtok_reqd=2 default=ignore] pam_unix.so try_first_pass likeauth nullok
@@ -11,6 +12,10 @@ auth        [default=die] pam_faillock.so authfail
 auth        optional    pam_permit.so
 auth        required    pam_env.so
 auth        required    pam_faillock.so authsucc
+{% else %}
+# Preserve the distribution password stack when this machine has no reader.
+auth        include     system-local-login
+{% endif %}
 -auth       optional    pam_gnome_keyring.so
 -auth       optional    pam_kwallet5.so
 

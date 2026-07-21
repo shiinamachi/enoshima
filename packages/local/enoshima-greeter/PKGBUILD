@@ -11,7 +11,7 @@ makedepends=('pkgconf')
 options=('!debug')
 source=('enoshima-greeter.c' 'LICENSE')
 sha256sums=(
-  '3afcac05806132b715d3e5a9ef44290a8716f0130e5cb00165eafb3d996c8087'
+  '8338a0dfc5209127a82b7aa80341de87bbcac9cc6c76f7d6c73f64a3c26d4830'
   '77ee8b4e2b59cde22db339c6518e2d647f1c3863d06294156f12c6be8c27d833'
 )
 

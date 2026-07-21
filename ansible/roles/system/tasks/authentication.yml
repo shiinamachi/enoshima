@@ -25,3 +25,4 @@
     group: root
     mode: "0644"
     backup: true
+  when: enoshima_capabilities.fingerprint | bool

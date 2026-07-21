@@ -9,6 +9,14 @@ env = GDK_BACKEND,wayland
 env = XCURSOR_THEME,capitaine-cursors
 env = XCURSOR_SIZE,24
 
+# Enoshima Auth is a native Wayland client. Keeping XWayland out of the
+# privileged greeter compositor reduces its attack surface and avoids an
+# XWayland abort/coredump when greetd tears the isolated compositor down after
+# a successful login.
+xwayland {
+    enabled = false
+}
+
 input {
     kb_layout = us
     kb_options = korean:ralt_hangul
