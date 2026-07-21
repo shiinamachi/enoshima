@@ -88,7 +88,7 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "en_US.UTF-8 UTF-8" in reproducible
     assert "ko_KR.UTF-8 UTF-8" in reproducible
     assert "LANG=en_US.UTF-8" in reproducible
-    assert "command -v \"$command\"" in reproducible
+    assert 'command -v "$command"' in reproducible
     assert "touch /var/lib/enoshima-cloud-ready" in reproducible
 
 
@@ -118,8 +118,7 @@ def test_desktop_suite_uses_a_real_greetd_seat() -> None:
         if isinstance(step, dict) and "configure_virtual_displays" in step
     )
     assert all(
-        isinstance(monitor["position"], str)
-        for monitor in display_step["monitors"]
+        isinstance(monitor["position"], str) for monitor in display_step["monitors"]
     )
 
 
@@ -176,18 +175,19 @@ def test_electron_fixture_preserves_the_process_across_client_close() -> None:
     assert 'case "arm-external-close"' in main
     assert 'action === "shutdown"' in main
     assert "windowGeneration += 1" in main
-    assert 'generation: windowGeneration' in main
+    assert "generation: windowGeneration" in main
     assert 'app.on("window-all-closed"' in main
     assert "process.kill" not in main
     assert 'for backend in ("wayland", "x11")' in driver
-    assert 'for decoration in ("custom", "system")' in driver
+    assert 'decoration = "system"' in driver
+    assert "probe_native_minimize_fallback" in driver
     assert '"--disable-features=WaylandWindowDecorations"' in driver
     assert '"ENOSHIMA_ELECTRON_SOFTWARE_RENDERING"' in driver
     assert "app.disableHardwareAcceleration()" in main
     assert '"EnoshimaDecoration" in completed.stdout' in driver
     assert 'for mode in ("tiled", "floating", "maximized")' in driver
-    assert 'str(user_bin)' in driver
-    assert 'production window action helper is unavailable' in driver
-    assert 'generation=closed_generation + 1' in driver
+    assert "str(user_bin)" in driver
+    assert "production window action helper is unavailable" in driver
+    assert "generation=closed_generation + 1" in driver
     assert '"Electron graceful shutdown ACK"' in driver
     assert "excluded=old_address" not in driver

@@ -394,7 +394,7 @@ class VMService:
             "while IFS= read -r entry; do case $entry in "
             "PATH=*|WAYLAND_DISPLAY=*|DISPLAY=*|HYPRLAND_INSTANCE_SIGNATURE=*|"
             "XDG_CURRENT_DESKTOP=*|XDG_SESSION_DESKTOP=*|XDG_SESSION_TYPE=*) "
-            "export \"$entry\" ;; esac; done < <(systemctl --user show-environment); "
+            'export "$entry" ;; esac; done < <(systemctl --user show-environment); '
         )
         return self._remote_shell(environment + command)
 
@@ -591,9 +591,7 @@ class VMService:
         self._audit("vm_reboot", run_id=run_id)
         return {"before_boot_id": before, "after_boot_id": after}
 
-    def _reboot_via_desktop_power(
-        self, record: dict[str, Any], config: Any
-    ) -> None:
+    def _reboot_via_desktop_power(self, record: dict[str, Any], config: Any) -> None:
         values = config if isinstance(config, dict) else {}
         iterations = values.get("iterations", 1)
         if not isinstance(iterations, int) or not 1 <= iterations <= 10:
@@ -642,15 +640,13 @@ class VMService:
                 + shlex.quote(before)
                 + " --arg after "
                 + shlex.quote(after)
-                + " '.status == \"succeeded\" and .action == \"reboot\" "
+                + ' \'.status == "succeeded" and .action == "reboot" '
                 "and .boot_id_before == $before and .boot_id_after == $after' "
                 "~/.local/state/enoshima/power/last-result.json"
             )
             verify_deadline = time.monotonic() + 30
             while True:
-                verification = guest.exec(
-                    verify_command, timeout=15, check=False
-                )
+                verification = guest.exec(verify_command, timeout=15, check=False)
                 if verification.returncode == 0 or time.monotonic() >= verify_deadline:
                     break
                 time.sleep(1)
@@ -680,8 +676,7 @@ class VMService:
             "-printf '%f\\n' 2>/dev/null | head -n1); "
             'test -n "$sig"; export HYPRLAND_INSTANCE_SIGNATURE=$sig; '
             'export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:'
-            '/usr/local/bin:/usr/bin"; '
-            + command
+            '/usr/local/bin:/usr/bin"; ' + command
         )
         return ["bash", "-lc", shell]
 
@@ -1034,7 +1029,7 @@ class VMService:
             "export DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus; "
             "timeout 12s bash -c 'printf vm-probe | secret-tool store "
             "--label=Enoshima-VM-Probe enoshima-vm probe >/dev/null; "
-            'value=$(secret-tool lookup enoshima-vm probe); '
+            "value=$(secret-tool lookup enoshima-vm probe); "
             'test "$value" = vm-probe; '
             "secret-tool clear enoshima-vm probe >/dev/null'"
         )
@@ -1043,9 +1038,7 @@ class VMService:
             self._hypr_command("hyprctl -j clients"), timeout=10, check=False
         )
         clients = (
-            json.loads(clients_result.stdout)
-            if clients_result.returncode == 0
-            else []
+            json.loads(clients_result.stdout) if clients_result.returncode == 0 else []
         )
         keyring_journal = guest.exec(
             self._remote_shell(
@@ -1073,9 +1066,7 @@ class VMService:
                 },
             )
 
-    def _graphical_health_failures(
-        self, record: dict[str, Any]
-    ) -> dict[str, str]:
+    def _graphical_health_failures(self, record: dict[str, Any]) -> dict[str, str]:
         """Reject latent session failures that screenshots alone can hide."""
         guest = self._guest(record)
         checks = {
@@ -1094,7 +1085,7 @@ class VMService:
             "coredumps": self._remote_shell(
                 "command -v coredumpctl >/dev/null || exit 0; "
                 "boot_started=$(uptime -s); "
-                "coredumpctl --since \"$boot_started\" --no-pager --no-legend "
+                'coredumpctl --since "$boot_started" --no-pager --no-legend '
                 "list 2>/dev/null || true"
             ),
             "fatal_graphical_logs": self._remote_shell(
@@ -1115,9 +1106,7 @@ class VMService:
                 failures[name] = output[-8000:] or f"exit code {result.returncode}"
         return failures
 
-    def _assert_graphical_health(
-        self, record: dict[str, Any], config: Any
-    ) -> None:
+    def _assert_graphical_health(self, record: dict[str, Any], config: Any) -> None:
         values = config if isinstance(config, dict) else {}
         settle_seconds = values.get("settle_seconds", 0)
         required_user_units = values.get("required_user_units", [])
@@ -1283,8 +1272,7 @@ class VMService:
         if extra:
             document.update(extra)
         temporary.write_text(
-            json.dumps(document, separators=(",", ":"))
-            + "\n",
+            json.dumps(document, separators=(",", ":")) + "\n",
             encoding="utf-8",
         )
         temporary.chmod(0o600)
@@ -1313,9 +1301,10 @@ class VMService:
             if result.returncode == 0:
                 try:
                     document = json.loads(result.stdout)
-                    if document.get("schema") == 1 and int(
-                        document.get("sequence", 0)
-                    ) == sequence:
+                    if (
+                        document.get("schema") == 1
+                        and int(document.get("sequence", 0)) == sequence
+                    ):
                         overflow = document.get("text_overflow_count")
                         if not isinstance(overflow, int) or overflow < 0:
                             last_error = (
@@ -1469,7 +1458,7 @@ class VMService:
             f"pid=$(cat {pid_path}); "
             "case $pid in (*[!0-9]*|'') exit 2;; esac; "
             "if test -e /proc/$pid/exe && "
-            "test \"$(readlink -f /proc/$pid/exe)\" = /usr/bin/enoshima-greeter; "
+            'test "$(readlink -f /proc/$pid/exe)" = /usr/bin/enoshima-greeter; '
             "then kill -TERM $pid; fi; "
             f"rm -f {pid_path}; fi"
         )
@@ -1541,7 +1530,7 @@ class VMService:
             f"pid=$(cat {pid_path}); "
             "case $pid in (*[!0-9]*|'') exit 2;; esac; "
             "if test -e /proc/$pid/exe && "
-            "test \"$(readlink -f /proc/$pid/exe)\" = /usr/bin/swaync; "
+            'test "$(readlink -f /proc/$pid/exe)" = /usr/bin/swaync; '
             "then kill -TERM $pid; fi; "
             f"rm -f {pid_path}; fi"
         )
@@ -1605,8 +1594,7 @@ class VMService:
 
         guest.exec(
             self._hypr_command(
-                "swaync-client -cp -sw; swaync-client -C -sw; "
-                "swaync-client -df -sw"
+                "swaync-client -cp -sw; swaync-client -C -sw; swaync-client -df -sw"
             ),
             timeout=15,
         )
@@ -1699,14 +1687,12 @@ class VMService:
                 f"pid=$(cat {pid_path}); "
                 "case $pid in (*[!0-9]*|'') exit 2;; esac; "
                 "if test -e /proc/$pid/exe && "
-                "test \"$(readlink -f /proc/$pid/exe)\" = "
+                'test "$(readlink -f /proc/$pid/exe)" = '
                 f"{REMOTE_ROOT}/ui-fixture/titlebar-window; "
                 "then kill -TERM $pid; fi; "
                 f"rm -f {pid_path}; fi"
             )
-            self._guest(record).exec(
-                self._remote_shell(shell), timeout=15, check=False
-            )
+            self._guest(record).exec(self._remote_shell(shell), timeout=15, check=False)
         self.backend.pointer_button(record["domain"], "left", False)
 
     def _compile_titlebar_fixture(self, record: dict[str, Any]) -> None:
@@ -1759,8 +1745,7 @@ class VMService:
             client
             for client in json.loads(result.stdout)
             if str(client.get("class", "")) == "org.enoshima.TitlebarFixture"
-            or str(client.get("initialClass", ""))
-            == "org.enoshima.TitlebarFixture"
+            or str(client.get("initialClass", "")) == "org.enoshima.TitlebarFixture"
         ]
 
     def _wait_for_titlebar_clients(
@@ -1805,9 +1790,7 @@ class VMService:
             )
         self._stop_titlebar_review(record)
         self._compile_titlebar_fixture(record)
-        allowlist = (
-            "mpv,imv,org.pwmt.zathura,org.enoshima.TitlebarFixture"
-        )
+        allowlist = "mpv,imv,org.pwmt.zathura,org.enoshima.TitlebarFixture"
         self._run_checked(
             record,
             "allow-titlebar-fixture",
@@ -1818,9 +1801,7 @@ class VMService:
             FailureCategory.VISUAL_ASSERTION_FAILED,
             timeout_seconds=20,
         )
-        self._launch_titlebar_fixture(
-            record, locale, "titlebar-primary.pid"
-        )
+        self._launch_titlebar_fixture(record, locale, "titlebar-primary.pid")
         clients = self._wait_for_titlebar_clients(record, 1)
         primary = clients[-1]
         address = str(primary.get("address", ""))
@@ -1832,23 +1813,18 @@ class VMService:
             )
         guest = self._guest(record)
         guest.exec(
-            self._hypr_command(
-                f"hyprctl dispatch focuswindow address:{address}"
-            ),
+            self._hypr_command(f"hyprctl dispatch focuswindow address:{address}"),
             timeout=10,
         )
         if state == "inactive":
-            self._launch_titlebar_fixture(
-                record, locale, "titlebar-secondary.pid"
-            )
+            self._launch_titlebar_fixture(record, locale, "titlebar-secondary.pid")
             clients = self._wait_for_titlebar_clients(record, 2)
             secondary = next(
                 client for client in clients if client.get("address") != address
             )
             guest.exec(
                 self._hypr_command(
-                    "hyprctl dispatch focuswindow address:"
-                    + str(secondary["address"])
+                    "hyprctl dispatch focuswindow address:" + str(secondary["address"])
                 ),
                 timeout=10,
             )
@@ -1892,13 +1868,11 @@ class VMService:
                 f"pid=$(cat {pid_path}); "
                 "case $pid in (*[!0-9]*|'') exit 2;; esac; "
                 "if test -e /proc/$pid/exe && "
-                f"test \"$(readlink -f /proc/$pid/exe)\" = {executable}; "
+                f'test "$(readlink -f /proc/$pid/exe)" = {executable}; '
                 "then kill -TERM $pid; fi; "
                 f"rm -f {pid_path}; fi"
             )
-            self._guest(record).exec(
-                self._remote_shell(shell), timeout=15, check=False
-            )
+            self._guest(record).exec(self._remote_shell(shell), timeout=15, check=False)
 
     @staticmethod
     def _ui_review_cleanup_targets(clients: list[object]) -> list[dict[str, Any]]:
@@ -1908,9 +1882,7 @@ class VMService:
                 continue
             workspace = value.get("workspace")
             workspace_name = (
-                str(workspace.get("name", ""))
-                if isinstance(workspace, dict)
-                else ""
+                str(workspace.get("name", "")) if isinstance(workspace, dict) else ""
             )
             # xembed-sni-proxy owns a tiny XWayland client on this reserved
             # workspace so legacy tray icons can be surfaced by the shell.
@@ -1953,9 +1925,7 @@ class VMService:
                 self._hypr_command("hyprctl -j clients"), timeout=10, check=False
             )
             if result.returncode == 0:
-                remaining = self._ui_review_cleanup_targets(
-                    json.loads(result.stdout)
-                )
+                remaining = self._ui_review_cleanup_targets(json.loads(result.stdout))
                 if not remaining:
                     return
             time.sleep(0.1)
@@ -2005,7 +1975,7 @@ class VMService:
             "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
             f"nohup env LANG={locale} LC_ALL={locale} XDG_RUNTIME_DIR=$runtime "
             "WAYLAND_DISPLAY=$wayland ghostty --title='Enoshima Workspace' "
-            "-e sh -lc 'printf \"ENOSHIMA // WORKSPACE\\n\\nVM visual review\\n\"; "
+            '-e sh -lc \'printf "ENOSHIMA // WORKSPACE\\n\\nVM visual review\\n"; '
             f"exec sleep infinity' >{log_root}/desktop-ghostty.log 2>&1 "
             f"</dev/null & echo $! >{REMOTE_ROOT}/ui-fixture/desktop-ghostty.pid; "
             f"nohup env LANG={locale} LC_ALL={locale} XDG_RUNTIME_DIR=$runtime "
@@ -2146,9 +2116,7 @@ class VMService:
             elif case.surface == "notification-center":
                 self._start_notification_review(record, case.locale, case.state)
             elif case.surface == "system-titlebar":
-                client = self._start_titlebar_review(
-                    record, case.locale, case.state
-                )
+                client = self._start_titlebar_review(record, case.locale, case.state)
                 sequence = self._write_ui_fixture_state(
                     record,
                     case.surface,
@@ -2158,9 +2126,7 @@ class VMService:
                 )
                 fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
             elif case.surface == "desktop-shell":
-                self._start_desktop_shell_review(
-                    record, case.locale, case.state
-                )
+                self._start_desktop_shell_review(record, case.locale, case.state)
                 sequence = self._write_ui_fixture_state(
                     record, case.surface, case.state, output
                 )
@@ -2240,10 +2206,7 @@ class VMService:
                 json.dumps(sidecar, indent=2) + "\n", encoding="utf-8"
             )
             captures.append(sidecar)
-            if (
-                fixture_ack is not None
-                and int(fixture_ack["text_overflow_count"]) > 0
-            ):
+            if fixture_ack is not None and int(fixture_ack["text_overflow_count"]) > 0:
                 overflow_failures.append(
                     {
                         "case": case.key,
@@ -2284,9 +2247,7 @@ class VMService:
                 },
             )
 
-    def _run_electron_qualification(
-        self, record: dict[str, Any], config: Any
-    ) -> None:
+    def _run_electron_qualification(self, record: dict[str, Any], config: Any) -> None:
         values = config if isinstance(config, dict) else {}
         iterations = int(values.get("iterations", 20))
         if not 1 <= iterations <= 100:
@@ -2297,11 +2258,7 @@ class VMService:
         output = REMOTE_ARTIFACTS / "electron-qualification"
         fixture = REMOTE_SOURCE / "tests" / "vm" / "fixtures" / "electron-window"
         driver = (
-            REMOTE_SOURCE
-            / "tests"
-            / "vm"
-            / "fixtures"
-            / "electron-qualification.py"
+            REMOTE_SOURCE / "tests" / "vm" / "fixtures" / "electron-qualification.py"
         )
         command = (
             f"install -d -m 0700 {output}; "
@@ -2320,9 +2277,7 @@ class VMService:
             "enoshima-electron-qualification-system",
             "EnoshimaElectronFixtureSystem",
         )
-        allowlist_parts = [
-            value for value in current_allowlist.split(",") if value
-        ]
+        allowlist_parts = [value for value in current_allowlist.split(",") if value]
         for class_name in qualification_classes:
             if class_name not in allowlist_parts:
                 allowlist_parts.append(class_name)
@@ -2363,14 +2318,31 @@ class VMService:
             timeout=15,
         )
         document = json.loads(summary.stdout)
-        expected_actions = 2 * 2 * 3 * iterations * 10
+        expected_actions = 2 * 3 * iterations * 10
+        fallback_probes = document.get("nativeFallbackProbes")
         if (
             document.get("failures") != 0
-            or document.get("combinations") != 12
+            or document.get("combinations") != 6
             or document.get("actions") != expected_actions
-            or document.get("decorationOwners")
-            != ["client", "enoshima-system"]
-            or document.get("clientNativeMinimizeExposed") is not True
+            or document.get("decorationOwner") != "enoshima-system"
+            or document.get("clientNativeMinimizeExposed") is not False
+            or not isinstance(fallback_probes, list)
+            or len(fallback_probes) != 2
+            or {
+                probe.get("backend")
+                for probe in fallback_probes
+                if isinstance(probe, dict)
+            }
+            != {"wayland", "x11"}
+            or any(
+                probe.get("backend") not in {"wayland", "x11"}
+                or probe.get("processAlive") is not True
+                or probe.get("workspaceUnchanged") is not True
+                or probe.get("enoshimaDecorationAbsent") is not True
+                for probe in fallback_probes
+                if isinstance(probe, dict)
+            )
+            or any(not isinstance(probe, dict) for probe in fallback_probes)
             or document.get("coredumps")
         ):
             raise VMError(

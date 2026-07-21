@@ -351,10 +351,9 @@ def exercise_iteration(
     address: str,
     mode: str,
 ) -> tuple[str, int]:
-    if fixture.decoration == "custom":
-        fixture.command("native-minimize")
-    else:
-        dispatch_action("minimize", address, "titlebar")
+    if fixture.decoration != "system":
+        raise RuntimeError("managed action qualification requires system chrome")
+    dispatch_action("minimize", address, "titlebar")
     wait_for(
         lambda: is_minimized(find_address(address)),
         f"{fixture.decoration} titlebar minimized window",
@@ -378,28 +377,16 @@ def exercise_iteration(
     )
 
     normalize_mode(address, "tiled")
-    if fixture.decoration == "custom":
-        fixture.command("native-maximize")
-        wait_for(
-            lambda: is_maximized(find_address(address)),
-            "Electron native maximized window",
-        )
-        fixture.command("native-unmaximize")
-        wait_for(
-            lambda: (value := find_address(address)) and not is_maximized(value),
-            "Electron native restored window",
-        )
-    else:
-        dispatch_action("maximize", address, "titlebar")
-        wait_for(
-            lambda: is_maximized(find_address(address)),
-            "Enoshima maximized window",
-        )
-        dispatch_action("maximize", address, "titlebar")
-        wait_for(
-            lambda: (value := find_address(address)) and not is_maximized(value),
-            "Enoshima restored window",
-        )
+    dispatch_action("maximize", address, "titlebar")
+    wait_for(
+        lambda: is_maximized(find_address(address)),
+        "Enoshima maximized window",
+    )
+    dispatch_action("maximize", address, "titlebar")
+    wait_for(
+        lambda: (value := find_address(address)) and not is_maximized(value),
+        "Enoshima restored window",
+    )
 
     dispatch_action("maximize", address, "keyboard")
     wait_for(
@@ -413,11 +400,8 @@ def exercise_iteration(
     )
 
     closed_generation = fixture_generation(fixture.client)
-    if fixture.decoration == "custom":
-        fixture.command("native-close-reopen")
-    else:
-        fixture.command("arm-external-close")
-        dispatch_action("close", address, "titlebar")
+    fixture.command("arm-external-close")
+    dispatch_action("close", address, "titlebar")
     address = wait_for_reopened_fixture(
         fixture, closed_generation, f"{fixture.decoration} titlebar"
     )
@@ -429,6 +413,43 @@ def exercise_iteration(
     if fixture.process.poll() is not None:
         raise RuntimeError("Electron process died during client close")
     return address, 10
+
+
+def probe_native_minimize_fallback(
+    fixture: Fixture,
+) -> dict[str, Any]:
+    """Prove why managed Electron launchers must not expose client minimize.
+
+    Electron acknowledges BrowserWindow.minimize() on both Ozone backends but
+    Hyprland receives no usable minimized state. This is a negative policy
+    probe, not a supported user path: managed applications disable that frame
+    and use the exact-address system chrome exercised below.
+    """
+    if fixture.decoration != "custom":
+        raise RuntimeError("native fallback probe requires client-owned chrome")
+    address = str(fixture.client["address"])
+    before = normalize_mode(address, "tiled")
+    acknowledgement = fixture.command("native-minimize")
+    time.sleep(0.4)
+    after = find_address(address)
+    process_alive = fixture.process.poll() is None
+    workspace_unchanged = bool(
+        after
+        and after.get("workspace") == before.get("workspace")
+        and not is_minimized(after)
+    )
+    if not process_alive or not workspace_unchanged:
+        raise RuntimeError(
+            "Electron native minimize fallback behavior changed; reevaluate the "
+            "managed decoration policy"
+        )
+    return {
+        "backend": fixture.backend,
+        "processAlive": process_alive,
+        "workspaceUnchanged": workspace_unchanged,
+        "electronReportedMinimized": bool(acknowledgement.get("minimized")),
+        "enoshimaDecorationAbsent": not has_enoshima_decoration(address),
+    }
 
 
 def main() -> int:
@@ -449,67 +470,76 @@ def main() -> int:
         "combinations": 0,
         "actions": 0,
         "failures": 0,
-        "decorationOwners": ["client", "enoshima-system"],
-        "clientNativeMinimizeExposed": True,
+        "decorationOwner": "enoshima-system",
+        "clientNativeMinimizeExposed": False,
+        "nativeFallbackProbes": [],
     }
     with results_path.open("w", encoding="utf-8") as results:
         for backend in ("wayland", "x11"):
-            for decoration in ("custom", "system"):
-                fixture = Fixture(args.fixture_root, args.output, backend, decoration)
-                try:
-                    summary["combinations"] += 3
-                    for mode in ("tiled", "floating", "maximized"):
-                        address = str(fixture.client["address"])
-                        for iteration in range(1, args.iterations + 1):
-                            initial = normalize_mode(address, mode)
-                            old_address = address
-                            record = {
-                                "backend": backend,
-                                "decoration": decoration,
-                                "decorationOwner": (
-                                    "client"
-                                    if decoration == "custom"
-                                    else "enoshima-system"
-                                ),
-                                "mode": mode,
-                                "iteration": iteration,
-                                "pidBefore": fixture.process.pid,
-                                "addressBefore": address,
-                                "workspaceBefore": initial.get("workspace"),
-                                "xwayland": bool(initial.get("xwayland")),
-                                "rendering": (
-                                    "electron-software"
-                                    if backend == "x11"
-                                    else "virtio-gpu"
-                                ),
-                            }
-                            try:
-                                address, actions = exercise_iteration(
-                                    fixture, address, mode
-                                )
-                                summary["actions"] += actions
-                                record.update(
-                                    {
-                                        "result": "pass",
-                                        "addressAfter": address,
-                                        "pidAfter": fixture.process.pid,
-                                        "processAlive": True,
-                                        "generationAfter": fixture_generation(
-                                            fixture.client
-                                        ),
-                                        "addressReused": address == old_address,
-                                    }
-                                )
-                            except Exception as error:
-                                summary["failures"] += 1
-                                record.update({"result": "fail", "error": str(error)})
-                                results.write(json.dumps(record, sort_keys=True) + "\n")
-                                results.flush()
-                                raise
+            native_fixture = Fixture(args.fixture_root, args.output, backend, "custom")
+            try:
+                summary["nativeFallbackProbes"].append(
+                    probe_native_minimize_fallback(native_fixture)
+                )
+            finally:
+                native_fixture.close()
+
+            decoration = "system"
+            fixture = Fixture(args.fixture_root, args.output, backend, decoration)
+            try:
+                summary["combinations"] += 3
+                for mode in ("tiled", "floating", "maximized"):
+                    address = str(fixture.client["address"])
+                    for iteration in range(1, args.iterations + 1):
+                        initial = normalize_mode(address, mode)
+                        old_address = address
+                        record = {
+                            "backend": backend,
+                            "decoration": decoration,
+                            "decorationOwner": (
+                                "client"
+                                if decoration == "custom"
+                                else "enoshima-system"
+                            ),
+                            "mode": mode,
+                            "iteration": iteration,
+                            "pidBefore": fixture.process.pid,
+                            "addressBefore": address,
+                            "workspaceBefore": initial.get("workspace"),
+                            "xwayland": bool(initial.get("xwayland")),
+                            "rendering": (
+                                "electron-software"
+                                if backend == "x11"
+                                else "virtio-gpu"
+                            ),
+                        }
+                        try:
+                            address, actions = exercise_iteration(
+                                fixture, address, mode
+                            )
+                            summary["actions"] += actions
+                            record.update(
+                                {
+                                    "result": "pass",
+                                    "addressAfter": address,
+                                    "pidAfter": fixture.process.pid,
+                                    "processAlive": True,
+                                    "generationAfter": fixture_generation(
+                                        fixture.client
+                                    ),
+                                    "addressReused": address == old_address,
+                                }
+                            )
+                        except Exception as error:
+                            summary["failures"] += 1
+                            record.update({"result": "fail", "error": str(error)})
                             results.write(json.dumps(record, sort_keys=True) + "\n")
                             results.flush()
-                finally:
-                    fixture.close()
+                            raise
+                        results.write(json.dumps(record, sort_keys=True) + "\n")
+                        results.flush()
+            finally:
+                fixture.close()
 
     coredumps = run(
         "coredumpctl",

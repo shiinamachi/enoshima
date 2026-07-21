@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
+
+import pytest
 
 
 def load_driver() -> ModuleType:
@@ -56,7 +58,7 @@ def test_electron_generation_filter_rejects_another_process(monkeypatch) -> None
     assert driver.find_fixture(4242, generation=3) is None
 
 
-def test_electron_qualification_covers_native_and_system_chrome() -> None:
+def test_electron_qualification_proves_fallback_and_system_chrome() -> None:
     fixture = (
         Path(__file__).resolve().parents[1] / "fixtures" / "electron-window" / "main.js"
     ).read_text(encoding="utf-8")
@@ -66,9 +68,48 @@ def test_electron_qualification_covers_native_and_system_chrome() -> None:
 
     assert "EnoshimaElectronFixtureCustom" in fixture
     assert "EnoshimaElectronFixtureSystem" in fixture
-    assert 'for decoration in ("custom", "system")' in driver
+    assert "probe_native_minimize_fallback(native_fixture)" in driver
     assert 'fixture.command("native-minimize")' in driver
-    assert 'fixture.command("native-maximize")' in driver
-    assert 'fixture.command("native-unmaximize")' in driver
-    assert 'fixture.command("native-close-reopen")' in driver
     assert "duplicate system decoration" in driver
+    assert 'decoration = "system"' in driver
+    assert '"clientNativeMinimizeExposed": False' in driver
+
+
+def test_native_minimize_probe_records_the_managed_fallback(monkeypatch) -> None:
+    driver = load_driver()
+    workspace = {"id": 2, "name": "2"}
+    fixture = SimpleNamespace(
+        decoration="custom",
+        backend="wayland",
+        client={"address": "0x1234"},
+        process=SimpleNamespace(poll=lambda: None),
+        command=lambda action: {"action": action, "minimized": False},
+    )
+    monkeypatch.setattr(
+        driver, "normalize_mode", lambda _address, _mode: {"workspace": workspace}
+    )
+    monkeypatch.setattr(
+        driver,
+        "find_address",
+        lambda _address: {"workspace": workspace},
+    )
+    monkeypatch.setattr(driver, "has_enoshima_decoration", lambda _address: False)
+    monkeypatch.setattr(driver.time, "sleep", lambda _seconds: None)
+
+    result = driver.probe_native_minimize_fallback(fixture)
+
+    assert result == {
+        "backend": "wayland",
+        "processAlive": True,
+        "workspaceUnchanged": True,
+        "electronReportedMinimized": False,
+        "enoshimaDecorationAbsent": True,
+    }
+
+    monkeypatch.setattr(
+        driver,
+        "find_address",
+        lambda _address: {"workspace": {"id": -99, "name": "special:minimized"}},
+    )
+    with pytest.raises(RuntimeError, match="reevaluate"):
+        driver.probe_native_minimize_fallback(fixture)

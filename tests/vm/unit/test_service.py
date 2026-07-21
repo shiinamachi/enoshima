@@ -155,10 +155,7 @@ def test_greetd_capture_uses_the_guest_wayland_output(tmp_path, monkeypatch) -> 
 
 def test_greetd_login_uses_the_two_phase_authentication_flow() -> None:
     source = (
-        RuntimePaths.discover().project
-        / "src"
-        / "enoshima_vm"
-        / "service.py"
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
     ).read_text(encoding="utf-8")
     capture = source.index("self._capture_greetd_screenshot(record)")
     create_session = source.index(
@@ -186,10 +183,7 @@ def test_reboot_suite_uses_the_desktop_power_path_ten_times() -> None:
 
 def test_disposable_login_password_is_newline_free_for_gnome_keyring() -> None:
     source = (
-        RuntimePaths.discover().project
-        / "src"
-        / "enoshima_vm"
-        / "service.py"
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
     ).read_text(encoding="utf-8")
     prepare = source[
         source.index("def _prepare_login") : source.index("def _login_greetd")
@@ -205,10 +199,7 @@ def test_disposable_login_password_is_newline_free_for_gnome_keyring() -> None:
 
 def test_postflight_imports_the_live_graphical_environment_after_login() -> None:
     source = (
-        RuntimePaths.discover().project
-        / "src"
-        / "enoshima_vm"
-        / "service.py"
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
     ).read_text(encoding="utf-8")
     helper = source[source.index("def _graphical_shell") :]
     assert "systemctl --user show-environment" in helper
@@ -234,7 +225,8 @@ def test_graphical_suites_reject_latent_session_failures() -> None:
     )
     method = source[source.index("def _graphical_health_failures") :]
     assert "systemctl --user --failed" in method
-    assert 'coredumpctl --since \\"$boot_started\\"' in method
+    assert "coredumpctl --since" in method
+    assert '"$boot_started"' in method or '\\"$boot_started\\"' in method
     assert "TypeError|ReferenceError|Gtk-CRITICAL" in method
     assert "qs\\\\[" in method
     for suite in ("desktop", "login", "ui-review"):
@@ -254,17 +246,15 @@ def test_desktop_suite_runs_the_full_electron_action_matrix() -> None:
 
     assert "run_electron_qualification" in desktop
     assert "iterations: 20" in desktop
-    assert "expected_actions = 2 * 2 * 3 * iterations * 10" in source
-    assert '!= ["client", "enoshima-system"]' in source
+    assert "expected_actions = 2 * 3 * iterations * 10" in source
+    assert 'document.get("decorationOwner") != "enoshima-system"' in source
     assert "clientNativeMinimizeExposed" in source
+    assert "len(fallback_probes) != 2" in source
 
 
 def test_ui_review_closes_existing_clients_with_exact_addresses() -> None:
     source = (
-        RuntimePaths.discover().project
-        / "src"
-        / "enoshima_vm"
-        / "service.py"
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
     ).read_text(encoding="utf-8")
     cleanup = source.index("def _close_ui_review_clients")
     review = source.index("def _run_ui_review", cleanup)
@@ -300,10 +290,7 @@ def test_ui_review_cleanup_preserves_reserved_tray_clients() -> None:
 
 def test_ui_review_resets_clients_at_every_surface_boundary() -> None:
     source = (
-        RuntimePaths.discover().project
-        / "src"
-        / "enoshima_vm"
-        / "service.py"
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
     ).read_text(encoding="utf-8")
     reset = source[source.index("def _reset_ui_review_surface") :]
     review = source[source.index("def _run_ui_review") :]
@@ -337,9 +324,7 @@ def test_screenshot_can_target_one_compositor_output(tmp_path, monkeypatch) -> N
     )
     monkeypatch.setattr(service, "_audit", lambda *_args, **_kwargs: None)
 
-    result = service.screenshot(
-        "run-012345abcdef", "launcher-en", "HEADLESS-INTERNAL"
-    )
+    result = service.screenshot("run-012345abcdef", "launcher-en", "HEADLESS-INTERNAL")
 
     command = " ".join(guest.commands[-1])
     assert "grim -o HEADLESS-INTERNAL" in command
@@ -366,7 +351,7 @@ def test_titlebar_allowlist_uses_the_hyprland_lua_evaluator() -> None:
     )
 
     assert expression == (
-        'hl.config({ plugin = { enoshima_decoration = { allowlist = '
+        "hl.config({ plugin = { enoshima_decoration = { allowlist = "
         '"mpv,imv,org.pwmt.zathura,org.enoshima.TitlebarFixture" } } })'
     )
 
@@ -385,18 +370,14 @@ def test_ui_fixture_waits_for_the_exact_qml_ack(tmp_path, monkeypatch) -> None:
     guest = ReadyGuest(42)
     monkeypatch.setattr(service, "_guest", lambda _record: guest)
 
-    ack = service._wait_for_ui_fixture_ready(
-        {"run_id": "run-012345abcdef"}, 42
-    )
+    ack = service._wait_for_ui_fixture_ready({"run_id": "run-012345abcdef"}, 42)
 
     assert guest.commands[-1][-1].endswith("/ui-fixture/ready.json")
     assert ack["text_overflow_count"] == 0
     assert ack["missing_translation_count"] == 0
 
 
-def test_ui_fixture_rejects_untranslated_catalog_keys(
-    tmp_path, monkeypatch
-) -> None:
+def test_ui_fixture_rejects_untranslated_catalog_keys(tmp_path, monkeypatch) -> None:
     paths = RuntimePaths(
         tmp_path,
         tmp_path,
@@ -408,17 +389,12 @@ def test_ui_fixture_rejects_untranslated_catalog_keys(
     monkeypatch.setattr(service, "_guest", lambda _record: guest)
 
     with pytest.raises(VMError, match="untranslated catalog keys"):
-        service._wait_for_ui_fixture_ready(
-            {"run_id": "run-012345abcdef"}, 42
-        )
+        service._wait_for_ui_fixture_ready({"run_id": "run-012345abcdef"}, 42)
 
 
 def test_ui_review_rejects_measured_text_overflow() -> None:
     source = (
-        RuntimePaths.discover().project
-        / "src"
-        / "enoshima_vm"
-        / "service.py"
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
     ).read_text(encoding="utf-8")
     review = source[source.index("def _run_ui_review") :]
 
