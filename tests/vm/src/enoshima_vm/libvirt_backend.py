@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import shutil
 import socket
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,7 +62,16 @@ class LibvirtBackend:
         return [name for name in output.splitlines() if name.startswith(DOMAIN_PREFIX)]
 
     def preflight(self, suite: Suite) -> dict[str, object]:
-        required = ["virsh", "qemu-img", "ssh", "scp", "ssh-keygen", "tar", "gpgv"]
+        required = [
+            "virsh",
+            "qemu-img",
+            "ssh",
+            "scp",
+            "ssh-keygen",
+            "tar",
+            "gpg",
+            "gpgv",
+        ]
         if suite.domain_template == "domain-secure-boot.xml.j2":
             required.append("swtpm")
         missing = [command for command in required if not shutil.which(command)]
@@ -187,10 +198,20 @@ class LibvirtBackend:
             self.virsh(["define", spec.xml])
             self.virsh(["start", spec.domain], timeout=60)
         except Exception as error:
+            details: dict[str, object] = {"error": str(error)}
+            if isinstance(error, subprocess.CalledProcessError):
+                details.update(
+                    {
+                        "argv": list(error.cmd),
+                        "returncode": error.returncode,
+                        "stdout": error.stdout or "",
+                        "stderr": error.stderr or "",
+                    }
+                )
             raise VMError(
                 FailureCategory.VM_BOOT_ERROR,
                 f"cannot start domain {spec.domain}",
-                {"error": str(error)},
+                details,
             ) from error
 
     def state(self, domain: str) -> str:
@@ -225,9 +246,66 @@ class LibvirtBackend:
         require_domain(domain)
         self.virsh(["shutdown", domain, "--mode", "agent"], timeout=30, check=False)
 
-    def send_keys(self, domain: str, keys: list[str]) -> None:
+    def send_keys(
+        self, domain: str, keys: list[str], *, hold_milliseconds: int = 100
+    ) -> None:
         require_domain(domain)
-        self.virsh(["send-key", domain, *keys], timeout=30)
+        self.virsh(
+            [
+                "send-key",
+                domain,
+                "--holdtime",
+                str(hold_milliseconds),
+                *keys,
+            ],
+            timeout=30,
+        )
+
+    def pointer_move_absolute(self, domain: str, x: int, y: int) -> None:
+        require_domain(domain)
+        if not 0 <= x <= 32767 or not 0 <= y <= 32767:
+            raise ValueError("absolute pointer coordinates must be between 0 and 32767")
+        command = {
+            "execute": "input-send-event",
+            "arguments": {
+                "events": [
+                    {"type": "abs", "data": {"axis": "x", "value": x}},
+                    {"type": "abs", "data": {"axis": "y", "value": y}},
+                ]
+            },
+        }
+        self.virsh(
+            [
+                "qemu-monitor-command",
+                domain,
+                json.dumps(command, separators=(",", ":")),
+            ],
+            timeout=30,
+        )
+
+    def pointer_button(self, domain: str, button: str, down: bool) -> None:
+        require_domain(domain)
+        if button not in {"left", "middle", "right", "wheel-up", "wheel-down"}:
+            raise ValueError("unsupported pointer button")
+        command = {
+            "execute": "input-send-event",
+            "arguments": {
+                "events": [
+                    {
+                        "type": "btn",
+                        "data": {"down": down, "button": button},
+                    }
+                ]
+            },
+        }
+        self.virsh(
+            [
+                "qemu-monitor-command",
+                domain,
+                json.dumps(command, separators=(",", ":")),
+            ],
+            timeout=30,
+        )
 
     def screenshot(self, domain: str, destination: Path) -> None:
         require_domain(domain)
@@ -279,7 +357,7 @@ class LibvirtBackend:
             timeout=60,
         )
 
-    def type_text(self, domain: str, value: str) -> None:
+    def type_text(self, domain: str, value: str, *, submit: bool = True) -> None:
         require_domain(domain)
         for character in value:
             if "a" <= character <= "z":
@@ -288,8 +366,12 @@ class LibvirtBackend:
                 key = f"KEY_{character}"
             else:
                 raise ValueError("recovery input contains an unsupported character")
-            self.send_keys(domain, [key])
-        self.send_keys(domain, ["KEY_ENTER"])
+            self.send_keys(domain, [key], hold_milliseconds=80)
+            # virsh returns before QEMU releases the key. Leave enough time for
+            # the accelerated guest to observe release before the next press.
+            time.sleep(0.12)
+        if submit:
+            self.send_keys(domain, ["KEY_ENTER"])
 
 
 def os_access(path: Path) -> bool:

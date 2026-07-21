@@ -39,6 +39,12 @@ secure_boot_sign_uki: false
 boot_artifact_state_file: /var/lib/enoshima/boot-artifacts-applied
 snapper_configure_root: false
 
+# zram is part of the common workstation baseline, including disposable VM
+# guests. Hardware profiles may override these values after qualification.
+zram_size_expression: min(ram / 4, 8192)
+zram_compression_algorithm: zstd
+zram_swap_priority: 100
+
 subordinate_id_start: 100000
 subordinate_id_count: 65536
 

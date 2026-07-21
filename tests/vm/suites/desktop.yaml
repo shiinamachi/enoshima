@@ -20,17 +20,19 @@ steps:
   - run_validate
   - run_bootstrap:
       report: first
+  - prepare_login
   - reboot
-  - start_desktop
+  - login_greetd
   - configure_virtual_displays:
+      disable_unlisted: true
       monitors:
         - name: HEADLESS-INTERNAL
           mode: 2880x1800@60
-          position: 0x0
+          position: "0x0"
           scale: 1.5
         - name: HEADLESS-EXTERNAL
           mode: 2560x1440@60
-          position: 1920x0
+          position: "1920x0"
           scale: 1.0
   - send_key:
       keys: [KEY_LEFTMETA, KEY_ENTER]
@@ -43,6 +45,7 @@ steps:
   - assert_desktop_state:
       active_workspace: "2"
       require_keyboard: true
+      monitor_count: 2
       monitors:
         - name: HEADLESS-INTERNAL
           width: 2880
@@ -66,8 +69,17 @@ steps:
       timeout_seconds: 60
   - screenshot:
       name: launcher
+  - send_key:
+      keys: [KEY_ESC]
+  - run_electron_qualification:
+      iterations: 20
   - run_postflight:
       report: desktop
+  - assert_graphical_health:
+      settle_seconds: 310
+      required_user_units:
+        - app-discord@autostart.service
+        - app-slack@autostart.service
   - assert_expected_skips
   - collect_artifacts
 allowed_skips:

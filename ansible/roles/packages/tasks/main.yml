@@ -101,10 +101,18 @@
         | list
       }}
     state: present
+  register: desired_packages_install
+  retries: 4
+  delay: 10
+  until: desired_packages_install is succeeded
 
 - name: Install desired optional dependencies as dependencies
   community.general.pacman:
     name: "{{ optional_dependency_packages }}"
     state: present
     extra_args: --asdeps
+  register: optional_packages_install
+  retries: 4
+  delay: 10
+  until: optional_packages_install is succeeded
   when: optional_dependency_packages | length > 0

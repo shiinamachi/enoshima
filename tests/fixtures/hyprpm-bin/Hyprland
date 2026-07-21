@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ ${1:-} == --version-json && $# -eq 1 ]] || exit 2
+printf '%s\n' '{"branch":"main","commit":"0123456789abcdef","commit_date":"today","commits":"1","flags":[],"abiHash":"test-abi"}'

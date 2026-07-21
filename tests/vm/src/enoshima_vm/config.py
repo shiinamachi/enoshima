@@ -185,6 +185,11 @@ def load_images(paths: RuntimePaths | None = None) -> dict[str, ImageDefinition]
                 FailureCategory.HARNESS_ERROR,
                 f"invalid repository snapshot for image: {name}",
             )
+        keyring = Path(
+            raw.get("keyring", "/usr/share/pacman/keyrings/archlinux.gpg")
+        )
+        if not keyring.is_absolute():
+            keyring = paths.project / keyring
         images[name] = ImageDefinition(
             name=name,
             url=raw["url"],
@@ -192,7 +197,7 @@ def load_images(paths: RuntimePaths | None = None) -> dict[str, ImageDefinition]
             checksum_url=raw.get("checksum_url"),
             signature_url=raw.get("signature_url"),
             signature_required=raw.get("signature", "required") == "required",
-            keyring=raw.get("keyring", "/usr/share/pacman/keyrings/archlinux.gpg"),
+            keyring=str(keyring),
             repository_snapshot=snapshot,
         )
     return images

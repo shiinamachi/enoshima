@@ -10,7 +10,7 @@ images:
     signature_url: >-
       https://geo.mirror.pkgbuild.com/images/v20260715.556894/Arch-Linux-x86_64-cloudimg-20260715.556894.qcow2.sig
     signature: required
-    keyring: /usr/share/pacman/keyrings/archlinux.gpg
+    keyring: keys/arch-boxes.asc
     repository_snapshot: "2026/07/15"
   arch-cloud-latest:
     release: rolling
@@ -22,4 +22,4 @@ images:
     signature_url: >-
       https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2.sig
     signature: required
-    keyring: /usr/share/pacman/keyrings/archlinux.gpg
+    keyring: keys/arch-boxes.asc

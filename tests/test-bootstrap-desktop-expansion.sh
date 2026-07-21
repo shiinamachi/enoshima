@@ -45,6 +45,7 @@ if [[ $(grep -Fc 'refresh_sudo_credentials' "$bootstrap") -ne 5 ]]; then
   exit 1
 fi
 grep -Fq "hyprpm add \"\$official_repo\"" "$bootstrap"
+grep -Fq 'scripts/lib/hyprpm-version-socket' "$bootstrap"
 grep -Fq 'hyprpm disable hyprbars' "$bootstrap"
 grep -Fq 'hyprpm enable hyprfocus' "$bootstrap"
 grep -Fq 'native/enoshima-decoration' "$bootstrap"
@@ -78,6 +79,37 @@ grep -Fq 'Checking desktop expansion security invariants' "$validate"
 grep -Fq 'Cloudflare One daemon did not converge after the AUR phase' "$postflight"
 grep -Fq 'Cyberpunk Library session theme applied' "$bootstrap"
 grep -Fq 'managed 16:10 cyberpunk wallpaper is deployed intact' "$postflight"
+
+socket_reply=$(PATH="$repo_root/tests/fixtures/hyprpm-bin:$PATH" \
+  "$repo_root/scripts/lib/hyprpm-version-socket" python -c '
+import os
+import socket
+
+path = os.path.join(
+    os.environ["XDG_RUNTIME_DIR"],
+    "hypr",
+    os.environ["HYPRLAND_INSTANCE_SIGNATURE"],
+    ".socket.sock",
+)
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+client.connect(path)
+client.sendall(b"j/version")
+client.shutdown(socket.SHUT_WR)
+data = b""
+while True:
+    chunk = client.recv(4096)
+    if not chunk:
+        break
+    data += chunk
+print(data.decode())
+')
+jq -e '
+  .commit == "0123456789abcdef" and
+  .abiHash == "test-abi"
+' <<<"$socket_reply" >/dev/null || {
+  printf 'Offline hyprpm version socket returned invalid data.\n' >&2
+  exit 1
+}
 
 if rg -q 'validate-desktop-expansion|postflight-desktop-expansion|converge-desktop-expansion' \
   "$bootstrap" "$validate" "$postflight"; then

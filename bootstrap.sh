@@ -132,7 +132,16 @@ converge_hyprland_plugins() {
     run_hyprpm_state_command hyprpm update
     [[ -f $cache_root/headersRoot/share/pkgconfig/hyprland.pc ]] ||
       die 'hyprpm did not install matching Hyprland headers'
-    printf '\n' | hyprpm add "$official_repo"
+    if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+      printf '\n' | hyprpm add "$official_repo"
+    else
+      # hyprpm 0.55 resolves commit pins through the live j/version IPC even
+      # though the repository build itself is safe before login. Supply that
+      # single response from the installed binary so first bootstrap remains
+      # one-shot without starting a second compositor or weakening libseat.
+      printf '\n' | "$repo_root/scripts/lib/hyprpm-version-socket" \
+        hyprpm add "$official_repo"
+    fi
   fi
 
   installed_abi=$(Hyprland --version | sed -n 's/^Version ABI string: //p')

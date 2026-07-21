@@ -4,6 +4,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import shutil
 import struct
 import subprocess
@@ -48,11 +49,17 @@ from .security import (
     require_domain,
     require_run_id,
 )
+from .ui_review import (
+    load_ui_review_identities,
+    load_ui_review_matrix,
+    physical_mode,
+)
 
 REMOTE_ROOT = PurePosixPath("/home/kentakang/enoshima-test")
 REMOTE_SOURCE = REMOTE_ROOT / "source"
 REMOTE_ARTIFACTS = REMOTE_ROOT / "artifacts"
 REMOTE_LOGIN_PASSWORD = REMOTE_ROOT / "secrets" / "login-password"
+REMOTE_LOGIN_CREDENTIAL = REMOTE_ROOT / "secrets" / "chpasswd-input"
 
 
 def utc_now() -> str:
@@ -351,9 +358,7 @@ class VMService:
                 failure.text = str(record.get("error") or "suite step failed")
         destination = Path(record["artifact_dir"]) / "junit.xml"
         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        ET.ElementTree(suite).write(
-            destination, encoding="utf-8", xml_declaration=True
-        )
+        ET.ElementTree(suite).write(destination, encoding="utf-8", xml_declaration=True)
         return destination
 
     def _run_checked(
@@ -381,6 +386,17 @@ class VMService:
 
     def _remote_shell(self, command: str) -> list[str]:
         return ["bash", "-lc", command]
+
+    def _graphical_shell(self, command: str) -> list[str]:
+        environment = (
+            "uid=$(id -u); export XDG_RUNTIME_DIR=/run/user/$uid; "
+            "export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus; "
+            "while IFS= read -r entry; do case $entry in "
+            "PATH=*|WAYLAND_DISPLAY=*|DISPLAY=*|HYPRLAND_INSTANCE_SIGNATURE=*|"
+            "XDG_CURRENT_DESKTOP=*|XDG_SESSION_DESKTOP=*|XDG_SESSION_TYPE=*) "
+            "export \"$entry\" ;; esac; done < <(systemctl --user show-environment); "
+        )
+        return self._remote_shell(environment + command)
 
     def _run_validate(self, record: dict[str, Any]) -> None:
         self._run_checked(
@@ -455,10 +471,13 @@ class VMService:
             f"--inventory {inventory} "
             f"--format json --output {destination}"
         )
+        argv = self._remote_shell(command)
+        if record.get("observations", {}).get("greetd_login_at"):
+            argv = self._graphical_shell(command)
         self._run_checked(
             record,
             f"postflight-{report}",
-            self._remote_shell(command),
+            argv,
             FailureCategory.POSTFLIGHT_FAILED,
         )
         record.setdefault("observations", {})["last_postflight"] = str(destination)
@@ -572,43 +591,86 @@ class VMService:
         self._audit("vm_reboot", run_id=run_id)
         return {"before_boot_id": before, "after_boot_id": after}
 
-    def _start_desktop(self, record: dict[str, Any]) -> None:
-        guest = self._guest(record)
-        guest.exec(["sudo", "systemctl", "stop", "greetd.service"], check=False)
-        time.sleep(2)
-        command = [
-            "systemd-run",
-            "--user",
-            "--unit=enoshima-vm-desktop",
-            "--collect",
-            "--setenv=WLR_RENDERER_ALLOW_SOFTWARE=1",
-            "dbus-run-session",
-            "start-hyprland",
-        ]
-        result = guest.exec(command, timeout=60, check=False)
-        if result.returncode:
+    def _reboot_via_desktop_power(
+        self, record: dict[str, Any], config: Any
+    ) -> None:
+        values = config if isinstance(config, dict) else {}
+        iterations = values.get("iterations", 1)
+        if not isinstance(iterations, int) or not 1 <= iterations <= 10:
             raise VMError(
-                FailureCategory.DESKTOP_SESSION_FAILED,
-                "cannot launch the VM Hyprland session",
-                {"stderr": result.stderr[-4000:]},
+                FailureCategory.HARNESS_ERROR,
+                "desktop power reboot iterations must be between 1 and 10",
             )
-        deadline = time.monotonic() + 180
-        while time.monotonic() < deadline:
-            result = guest.exec(
-                self._hypr_command("hyprctl -j monitors"), timeout=15, check=False
+        guest = self._guest(record)
+        results: list[dict[str, str]] = []
+        for iteration in range(1, iterations + 1):
+            before = guest.exec(
+                ["cat", "/proc/sys/kernel/random/boot_id"]
+            ).stdout.strip()
+            log_path = REMOTE_ARTIFACTS / f"desktop-power-reboot-{iteration}.jsonl"
+            launch = (
+                f"install -d -m 0700 {REMOTE_ARTIFACTS}; "
+                f"nohup desktop-power reboot >{log_path} 2>&1 </dev/null &"
             )
-            if result.returncode == 0:
-                return
-            time.sleep(2)
-        journal = guest.exec(
-            ["journalctl", "--user", "-u", "enoshima-vm-desktop", "--no-pager"],
-            check=False,
-        )
-        raise VMError(
-            FailureCategory.DESKTOP_SESSION_FAILED,
-            "Hyprland IPC did not become ready",
-            {"journal": journal.stdout[-8000:]},
-        )
+            launched = guest.exec(
+                self._graphical_shell(launch), timeout=30, check=False
+            )
+            if launched.returncode != 0:
+                raise VMError(
+                    FailureCategory.REBOOT_FAILED,
+                    "could not dispatch reboot through desktop-power",
+                    {
+                        "iteration": iteration,
+                        "stderr": launched.stderr[-2000:],
+                    },
+                )
+            guest.wait_ssh_cycle(600)
+            self.backend.wait_guest_agent(record["domain"], 300)
+            after = guest.exec(
+                ["cat", "/proc/sys/kernel/random/boot_id"]
+            ).stdout.strip()
+            if not before or before == after:
+                raise VMError(
+                    FailureCategory.REBOOT_FAILED,
+                    "desktop-power did not change the guest boot ID",
+                    {"iteration": iteration, "boot_id": before},
+                )
+            self._login_greetd(record)
+            verify_command = self._remote_shell(
+                "test ! -e ~/.local/state/enoshima/power/pending.json; "
+                "jq -e --arg before "
+                + shlex.quote(before)
+                + " --arg after "
+                + shlex.quote(after)
+                + " '.status == \"succeeded\" and .action == \"reboot\" "
+                "and .boot_id_before == $before and .boot_id_after == $after' "
+                "~/.local/state/enoshima/power/last-result.json"
+            )
+            verify_deadline = time.monotonic() + 30
+            while True:
+                verification = guest.exec(
+                    verify_command, timeout=15, check=False
+                )
+                if verification.returncode == 0 or time.monotonic() >= verify_deadline:
+                    break
+                time.sleep(1)
+            if verification.returncode != 0:
+                raise VMError(
+                    FailureCategory.REBOOT_FAILED,
+                    "desktop-power checkpoint was not verified after login",
+                    {
+                        "iteration": iteration,
+                        "stderr": verification.stderr[-2000:],
+                    },
+                )
+            results.append(
+                {
+                    "before_boot_id": before,
+                    "after_boot_id": after,
+                }
+            )
+        record.setdefault("observations", {})["desktop_power_reboots"] = results
+        self._write_record(record)
 
     @staticmethod
     def _hypr_command(command: str) -> list[str]:
@@ -644,17 +706,14 @@ class VMService:
         self._audit("vm_query_desktop", run_id=run_id)
         return result
 
-    def _configure_virtual_displays(
-        self, record: dict[str, Any], config: Any
-    ) -> None:
-        if not isinstance(config, dict) or not isinstance(
-            config.get("monitors"), list
-        ):
+    def _configure_virtual_displays(self, record: dict[str, Any], config: Any) -> None:
+        if not isinstance(config, dict) or not isinstance(config.get("monitors"), list):
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
                 "configure_virtual_displays requires a monitor list",
             )
         guest = self._guest(record)
+        configured_names: set[str] = set()
         for monitor in config["monitors"]:
             if not isinstance(monitor, dict):
                 raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor")
@@ -664,12 +723,11 @@ class VMService:
             scale = str(monitor.get("scale", ""))
             if not re.fullmatch(r"HEADLESS-[A-Z]+", name):
                 raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor name")
+            configured_names.add(name)
             if not re.fullmatch(r"[0-9]{3,5}x[0-9]{3,5}@[0-9]{2,3}", mode):
                 raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor mode")
-            if not re.fullmatch(r"[0-9]{1,5}x[0-9]{1,5}", position):
-                raise VMError(
-                    FailureCategory.HARNESS_ERROR, "invalid monitor position"
-                )
+            if not re.fullmatch(r"-?[0-9]{1,5}x-?[0-9]{1,5}", position):
+                raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor position")
             if not re.fullmatch(r"[0-9](?:\.[0-9]+)?", scale):
                 raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor scale")
             create = guest.exec(
@@ -677,23 +735,79 @@ class VMService:
                 timeout=30,
                 check=False,
             )
-            if create.returncode and "already" not in (
-                create.stdout + create.stderr
-            ).lower():
+            if (
+                create.returncode
+                and "already" not in (create.stdout + create.stderr).lower()
+            ):
                 raise VMError(
                     FailureCategory.DESKTOP_SESSION_FAILED,
                     f"cannot create virtual output: {name}",
                     {"stderr": create.stderr[-2000:]},
                 )
+            monitor_expression = self._monitor_eval_expression(
+                name, mode, position, scale
+            )
             self._run_checked(
                 record,
                 f"configure-{name.lower()}",
-                self._hypr_command(
-                    f"hyprctl keyword monitor {name},{mode},{position},{scale}"
-                ),
+                self._hypr_command(f"hyprctl eval '{monitor_expression}'"),
                 FailureCategory.DESKTOP_SESSION_FAILED,
                 timeout_seconds=30,
             )
+        if config.get("disable_unlisted"):
+            monitors = guest.exec(self._hypr_command("hyprctl -j monitors"), timeout=30)
+            for monitor in json.loads(monitors.stdout):
+                output = str(monitor.get("name", ""))
+                if output in configured_names:
+                    continue
+                if not re.fullmatch(r"[A-Za-z0-9._-]+", output):
+                    raise VMError(
+                        FailureCategory.DESKTOP_SESSION_FAILED,
+                        "Hyprland reported an unsafe output name",
+                        {"output": output},
+                    )
+                self._run_checked(
+                    record,
+                    f"disable-{output.lower()}",
+                    self._hypr_command(
+                        f"hyprctl eval '{self._monitor_disable_expression(output)}'"
+                    ),
+                    FailureCategory.DESKTOP_SESSION_FAILED,
+                    timeout_seconds=30,
+                )
+
+    @staticmethod
+    def _monitor_eval_expression(
+        name: str, mode: str, position: str, scale: str
+    ) -> str:
+        return (
+            'hl.monitor({ output = "'
+            + name
+            + '", mode = "'
+            + mode
+            + '", position = "'
+            + position
+            + '", scale = '
+            + scale
+            + " })"
+        )
+
+    @staticmethod
+    def _monitor_disable_expression(name: str) -> str:
+        return f'hl.monitor({{ output = "{name}", disabled = true }})'
+
+    @staticmethod
+    def _decoration_allowlist_expression(allowlist: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9._,*?-]+(?:,[A-Za-z0-9._,*?-]+)*", allowlist):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "invalid decoration allowlist",
+            )
+        return (
+            'hl.config({ plugin = { enoshima_decoration = { allowlist = "'
+            + allowlist
+            + '" } } })'
+        )
 
     def _wait_for_client(self, record: dict[str, Any], config: Any) -> None:
         values = config if isinstance(config, dict) else {}
@@ -742,6 +856,10 @@ class VMService:
         desktop = self.query_desktop(record["run_id"])
         actual = {monitor["name"]: monitor for monitor in desktop["monitors"]}
         failures: list[str] = []
+        if "monitor_count" in values and len(actual) != int(values["monitor_count"]):
+            failures.append(
+                f"monitor count={len(actual)}, expected {values['monitor_count']}"
+            )
         for expected in expected_monitors:
             name = str(expected["name"])
             monitor = actual.get(name)
@@ -753,16 +871,16 @@ class VMService:
                     failures.append(
                         f"{name}.{key}={monitor.get(key)!r}, expected {expected[key]!r}"
                     )
-            if "scale" in expected and abs(
-                float(monitor.get("scale", 0)) - float(expected["scale"])
-            ) > 0.01:
+            if (
+                "scale" in expected
+                and abs(float(monitor.get("scale", 0)) - float(expected["scale"]))
+                > 0.01
+            ):
                 failures.append(
                     f"{name}.scale={monitor.get('scale')!r}, "
                     f"expected {expected['scale']!r}"
                 )
-        active_workspace = str(
-            desktop.get("activeworkspace", {}).get("name", "")
-        )
+        active_workspace = str(desktop.get("activeworkspace", {}).get("name", ""))
         if values.get("active_workspace") and active_workspace != str(
             values["active_workspace"]
         ):
@@ -818,7 +936,10 @@ class VMService:
         secret_dir = self._run_dir(record["run_id"]) / "secrets"
         secret_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         password_path = secret_dir / "login-password"
-        password_path.write_text(secrets.token_hex(16) + "\n", encoding="utf-8")
+        # gnome-keyring-daemon consumes every byte from stdin as the keyring
+        # password.  Keep this file newline-free; chpasswd gets its own
+        # line-oriented credential below.
+        password_path.write_text(secrets.token_hex(16), encoding="utf-8")
         password_path.chmod(0o600)
         credential = secret_dir / "chpasswd-input"
         credential.write_text(
@@ -827,17 +948,30 @@ class VMService:
         )
         credential.chmod(0o600)
         guest = self._guest(record)
-        guest.upload_file(credential, REMOTE_LOGIN_PASSWORD)
+        guest.upload_file(password_path, REMOTE_LOGIN_PASSWORD)
+        guest.upload_file(credential, REMOTE_LOGIN_CREDENTIAL)
         try:
             self._run_checked(
                 record,
                 "prepare-greetd-login",
-                self._remote_shell(f"sudo chpasswd < {REMOTE_LOGIN_PASSWORD}"),
+                self._remote_shell(f"sudo chpasswd < {REMOTE_LOGIN_CREDENTIAL}"),
+                FailureCategory.LOGIN_SESSION_FAILED,
+            )
+            self._run_checked(
+                record,
+                "prepare-login-keyring",
+                self._remote_shell(
+                    "export HOME=/home/kentakang; "
+                    "export XDG_RUNTIME_DIR=/run/user/$(id -u); "
+                    "export GNOME_KEYRING_CONTROL=$XDG_RUNTIME_DIR/keyring; "
+                    f"gnome-keyring-daemon --unlock < {REMOTE_LOGIN_PASSWORD}"
+                ),
                 FailureCategory.LOGIN_SESSION_FAILED,
             )
         finally:
             credential.unlink(missing_ok=True)
-            guest.exec(["rm", "-f", str(REMOTE_LOGIN_PASSWORD)], check=False)
+            guest.exec(["unlink", str(REMOTE_LOGIN_PASSWORD)], check=False)
+            guest.exec(["unlink", str(REMOTE_LOGIN_CREDENTIAL)], check=False)
         record["login_password"] = str(password_path)
         self._write_record(record)
 
@@ -858,8 +992,13 @@ class VMService:
             FailureCategory.LOGIN_SESSION_FAILED,
         )
         time.sleep(10)
-        evidence = Path(record["artifact_dir"]) / "screenshots" / "greetd.ppm"
-        self.backend.screenshot(record["domain"], evidence)
+        self._capture_greetd_screenshot(record)
+        # Enoshima Auth is intentionally password-first but still follows the
+        # greetd protocol's two phases: create the managed-user session, then
+        # answer the PAM password prompt. Typing before the first Enter only
+        # reaches the focused Continue button and leaves the password empty.
+        self.backend.send_keys(record["domain"], ["KEY_ENTER"])
+        time.sleep(1)
         self.backend.type_text(
             record["domain"], password_path.read_text(encoding="utf-8").strip()
         )
@@ -869,6 +1008,9 @@ class VMService:
                 self._hypr_command("hyprctl -j monitors"), timeout=15, check=False
             )
             if result.returncode == 0:
+                self._assert_login_keyring(record)
+                record.setdefault("observations", {})["greetd_login_at"] = utc_now()
+                self._write_record(record)
                 return
             time.sleep(2)
         journal = guest.exec(
@@ -881,27 +1023,187 @@ class VMService:
             {"journal": journal.stdout[-8000:]},
         )
 
-    def screenshot(self, run_id: str, name: str = "desktop") -> dict[str, object]:
-        if not re.fullmatch(r"[a-z0-9-]+", name):
-            raise VMError(FailureCategory.HARNESS_ERROR, "invalid screenshot name")
-        record = self.load_record(run_id)
-        remote = REMOTE_ARTIFACTS / "screenshots" / f"{name}.png"
-        command = self._hypr_command(
-            "wayland=$(find /run/user/$(id -u) -maxdepth 1 -type s "
-            "-name 'wayland-*' -printf '%f\\n' | head -n1); "
-            'test -n "$wayland"; export WAYLAND_DISPLAY=$wayland; '
-            f"install -d -m 0700 {remote.parent}; grim {remote}"
+    def _assert_login_keyring(self, record: dict[str, Any]) -> None:
+        guest = self._guest(record)
+        shell = (
+            "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
+            "export XDG_RUNTIME_DIR=$runtime; "
+            "export DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus; "
+            "timeout 12s bash -c 'printf vm-probe | secret-tool store "
+            "--label=Enoshima-VM-Probe enoshima-vm probe >/dev/null; "
+            'value=$(secret-tool lookup enoshima-vm probe); '
+            'test "$value" = vm-probe; '
+            "secret-tool clear enoshima-vm probe >/dev/null'"
         )
-        result = self._guest(record).exec(command, timeout=60, check=False)
+        result = guest.exec(self._remote_shell(shell), timeout=20, check=False)
+        clients_result = guest.exec(
+            self._hypr_command("hyprctl -j clients"), timeout=10, check=False
+        )
+        clients = (
+            json.loads(clients_result.stdout)
+            if clients_result.returncode == 0
+            else []
+        )
+        keyring_journal = guest.exec(
+            self._remote_shell(
+                "sudo journalctl -u greetd.service -b -o cat --no-pager | "
+                "grep -F 'the password for the login keyring was invalid' || true"
+            ),
+            timeout=15,
+            check=False,
+        )
+        prompts = [
+            client
+            for client in clients
+            if "gcr-prompter" in str(client.get("class", "")).lower()
+            or "unlock login keyring" in str(client.get("title", "")).lower()
+        ]
+        if result.returncode != 0 or prompts or keyring_journal.stdout.strip():
+            raise VMError(
+                FailureCategory.LOGIN_SESSION_FAILED,
+                "greetd login did not unlock the GNOME login keyring",
+                {
+                    "secret_tool_exit_code": result.returncode,
+                    "stderr": result.stderr[-2000:],
+                    "prompts": prompts,
+                    "journal": keyring_journal.stdout[-2000:],
+                },
+            )
+
+    def _graphical_health_failures(
+        self, record: dict[str, Any]
+    ) -> dict[str, str]:
+        """Reject latent session failures that screenshots alone can hide."""
+        guest = self._guest(record)
+        checks = {
+            "failed_system_units": [
+                "systemctl",
+                "--failed",
+                "--no-legend",
+                "--plain",
+                "--state=failed",
+            ],
+            "failed_user_units": self._remote_shell(
+                "uid=$(id -u); export XDG_RUNTIME_DIR=/run/user/$uid; "
+                "export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus; "
+                "systemctl --user --failed --no-legend --plain --state=failed"
+            ),
+            "coredumps": self._remote_shell(
+                "command -v coredumpctl >/dev/null || exit 0; "
+                "boot_started=$(uptime -s); "
+                "coredumpctl --since \"$boot_started\" --no-pager --no-legend "
+                "list 2>/dev/null || true"
+            ),
+            "fatal_graphical_logs": self._remote_shell(
+                "journalctl -b --no-pager -o cat 2>/dev/null | "
+                "grep -Eai "
+                "'(Hyprland|quickshell|qs\\[|swaync|enoshima-greeter|greetd).*'"
+                "'(segmentation fault|segfault|core dumped|coredump|fatal|'"
+                "'TypeError|ReferenceError|Gtk-CRITICAL)' || true"
+            ),
+        }
+        failures: dict[str, str] = {}
+        for name, argv in checks.items():
+            result = guest.exec(argv, timeout=30, check=False)
+            output = "\n".join(
+                part.strip() for part in (result.stdout, result.stderr) if part.strip()
+            )
+            if result.returncode != 0 or output:
+                failures[name] = output[-8000:] or f"exit code {result.returncode}"
+        return failures
+
+    def _assert_graphical_health(
+        self, record: dict[str, Any], config: Any
+    ) -> None:
+        values = config if isinstance(config, dict) else {}
+        settle_seconds = values.get("settle_seconds", 0)
+        required_user_units = values.get("required_user_units", [])
+        if (
+            not isinstance(settle_seconds, int)
+            or not 0 <= settle_seconds <= 600
+            or not isinstance(required_user_units, list)
+            or not all(
+                isinstance(unit, str)
+                and re.fullmatch(r"[A-Za-z0-9@_.:-]+\.service", unit)
+                for unit in required_user_units
+            )
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "assert_graphical_health has invalid configuration",
+            )
+        deadline = time.monotonic() + settle_seconds
+        while True:
+            failures = self._graphical_health_failures(record)
+            if failures:
+                raise VMError(
+                    FailureCategory.DESKTOP_SESSION_FAILED,
+                    "graphical session health assertions failed",
+                    failures,
+                )
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(min(10.0, max(0.0, deadline - time.monotonic())))
+
+        inactive: list[str] = []
+        for unit in required_user_units:
+            result = self._guest(record).exec(
+                self._graphical_shell(
+                    f"systemctl --user is-active --quiet {shlex.quote(unit)}"
+                ),
+                timeout=15,
+                check=False,
+            )
+            if result.returncode != 0:
+                inactive.append(unit)
+        if inactive:
+            raise VMError(
+                FailureCategory.DESKTOP_SESSION_FAILED,
+                "required graphical autostart units are inactive",
+                {"units": inactive},
+            )
+
+    def _capture_greetd_screenshot(self, record: dict[str, Any]) -> Path:
+        """Capture the accelerated production greeter through Wayland."""
+        remote = REMOTE_ARTIFACTS / "screenshots" / "greetd.png"
+        guest = self._guest(record)
+        guest.exec(["install", "-d", "-m", "0700", str(remote.parent)])
+        shell = (
+            "set -eu; "
+            "uid=$(id -u greeter); runtime=/run/user/$uid; "
+            'wayland=$(sudo find "$runtime" -maxdepth 1 -type s '
+            "-name 'wayland-*' -printf '%f\\n' | LC_ALL=C sort | head -n1); "
+            'test -n "$wayland"; '
+            "capture_dir=$(mktemp -d /tmp/enoshima-greetd.XXXXXX); "
+            'trap \'sudo unlink "$capture_dir/capture.png" 2>/dev/null || true; '
+            'sudo rmdir "$capture_dir" 2>/dev/null || true\' EXIT; '
+            'sudo chown greeter:greeter "$capture_dir"; '
+            'sudo -u greeter env XDG_RUNTIME_DIR="$runtime" '
+            'WAYLAND_DISPLAY="$wayland" '
+            'grim "$capture_dir/capture.png"; '
+            f"sudo install -o kentakang -g kentakang -m 0600 "
+            f'"$capture_dir/capture.png" {remote}'
+        )
+        result = guest.exec(self._remote_shell(shell), timeout=60, check=False)
         if result.returncode:
             raise VMError(
                 FailureCategory.VISUAL_ASSERTION_FAILED,
-                "guest screenshot failed",
-                {"stderr": result.stderr[-3000:]},
+                "greetd compositor screenshot failed",
+                {
+                    "stdout": result.stdout[-3000:],
+                    "stderr": result.stderr[-3000:],
+                },
             )
-        local = Path(record["artifact_dir"]) / "screenshots" / f"{name}.png"
-        self._guest(record).download(remote, local)
-        header = local.read_bytes()[:24]
+        local = Path(record["artifact_dir"]) / "screenshots" / "greetd.png"
+        guest.download(remote, local)
+        self._validate_png(local)
+        record.setdefault("observations", {})["greetd_screenshot"] = str(local)
+        self._write_record(record)
+        return local
+
+    @staticmethod
+    def _validate_png(path: Path) -> tuple[int, int]:
+        header = path.read_bytes()[:24]
         if len(header) != 24 or header[:8] != b"\x89PNG\r\n\x1a\n":
             raise VMError(
                 FailureCategory.VISUAL_ASSERTION_FAILED,
@@ -914,8 +1216,1116 @@ class VMService:
                 "captured compositor evidence is unexpectedly small",
                 {"width": width, "height": height},
             )
+        return width, height
+
+    def screenshot(
+        self,
+        run_id: str,
+        name: str = "desktop",
+        output: str | None = None,
+    ) -> dict[str, object]:
+        if not re.fullmatch(r"[a-z0-9-]+", name):
+            raise VMError(FailureCategory.HARNESS_ERROR, "invalid screenshot name")
+        if output is not None and not re.fullmatch(r"[A-Za-z0-9._-]+", output):
+            raise VMError(FailureCategory.HARNESS_ERROR, "invalid screenshot output")
+        record = self.load_record(run_id)
+        remote = REMOTE_ARTIFACTS / "screenshots" / f"{name}.png"
+        output_argument = f" -o {output}" if output else ""
+        command = self._hypr_command(
+            "wayland=$(find /run/user/$(id -u) -maxdepth 1 -type s "
+            "-name 'wayland-*' -printf '%f\\n' | head -n1); "
+            'test -n "$wayland"; export WAYLAND_DISPLAY=$wayland; '
+            f"install -d -m 0700 {remote.parent}; grim{output_argument} {remote}"
+        )
+        result = self._guest(record).exec(command, timeout=60, check=False)
+        if result.returncode:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "guest screenshot failed",
+                {"stderr": result.stderr[-3000:]},
+            )
+        local = Path(record["artifact_dir"]) / "screenshots" / f"{name}.png"
+        self._guest(record).download(remote, local)
+        width, height = self._validate_png(local)
         self._audit("vm_screenshot", run_id=run_id)
-        return {"path": str(local), "width": width, "height": height}
+        return {
+            "path": str(local),
+            "width": width,
+            "height": height,
+            "output": output,
+        }
+
+    def _write_ui_fixture_state(
+        self,
+        record: dict[str, Any],
+        surface: str,
+        state: str,
+        output: str,
+        extra: dict[str, object] | None = None,
+    ) -> int:
+        observations = record.setdefault("observations", {})
+        sequence = int(observations.get("ui_fixture_sequence", 0)) + 1
+        observations["ui_fixture_sequence"] = sequence
+        fixture_dir = self._run_dir(record["run_id"]) / "ui-fixture"
+        fixture_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        local = fixture_dir / "state.json"
+        temporary = fixture_dir / "state.json.new"
+        document: dict[str, object] = {
+            "schema": 1,
+            "surface": surface,
+            "state": state,
+            "output": output,
+            "sequence": sequence,
+        }
+        if extra:
+            document.update(extra)
+        temporary.write_text(
+            json.dumps(document, separators=(",", ":"))
+            + "\n",
+            encoding="utf-8",
+        )
+        temporary.chmod(0o600)
+        os.replace(temporary, local)
+        guest = self._guest(record)
+        remote_dir = REMOTE_ROOT / "ui-fixture"
+        remote_new = remote_dir / "state.json.new"
+        guest.exec(["install", "-d", "-m", "0700", str(remote_dir)])
+        guest.upload_file(local, remote_new)
+        guest.exec(["mv", "-f", str(remote_new), str(remote_dir / "state.json")])
+        return sequence
+
+    def _wait_for_ui_fixture_ready(
+        self,
+        record: dict[str, Any],
+        sequence: int,
+        *,
+        timeout_seconds: float = 15,
+    ) -> dict[str, object]:
+        guest = self._guest(record)
+        ready = REMOTE_ROOT / "ui-fixture" / "ready.json"
+        deadline = time.monotonic() + timeout_seconds
+        last_error = "ready file was not created"
+        while time.monotonic() < deadline:
+            result = guest.exec(["cat", str(ready)], timeout=5, check=False)
+            if result.returncode == 0:
+                try:
+                    document = json.loads(result.stdout)
+                    if document.get("schema") == 1 and int(
+                        document.get("sequence", 0)
+                    ) == sequence:
+                        overflow = document.get("text_overflow_count")
+                        if not isinstance(overflow, int) or overflow < 0:
+                            last_error = (
+                                "fixture ACK lacks a valid text overflow count: "
+                                f"{document!r}"
+                            )
+                        else:
+                            return document
+                    else:
+                        last_error = f"stale fixture ACK: {document!r}"
+                except (json.JSONDecodeError, TypeError, ValueError) as error:
+                    last_error = f"invalid fixture ACK: {error}"
+            time.sleep(0.1)
+        raise VMError(
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            "production UI did not acknowledge the requested review state",
+            {"sequence": sequence, "reason": last_error},
+        )
+
+    def _capture_stable_ui(
+        self,
+        record: dict[str, Any],
+        name: str,
+        output: str,
+        *,
+        timeout_seconds: float = 8,
+    ) -> dict[str, object]:
+        deadline = time.monotonic() + timeout_seconds
+        previous_hash = ""
+        previous_path: Path | None = None
+        last_capture: dict[str, object] | None = None
+        while time.monotonic() < deadline:
+            last_capture = self.screenshot(record["run_id"], name, output)
+            image_path = Path(str(last_capture["path"]))
+            current_hash = sha256(image_path.read_bytes()).hexdigest()
+            if current_hash == previous_hash:
+                last_capture["stability_changed_pixel_ratio"] = 0.0
+                if previous_path is not None:
+                    previous_path.unlink(missing_ok=True)
+                return last_capture
+            if previous_path is not None:
+                comparison = subprocess.run(
+                    [
+                        "magick",
+                        "compare",
+                        "-metric",
+                        "AE",
+                        str(previous_path),
+                        str(image_path),
+                        "null:",
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if comparison.returncode in {0, 1}:
+                    try:
+                        changed_pixels = float(comparison.stderr.strip())
+                    except ValueError:
+                        changed_pixels = -1
+                    total_pixels = int(last_capture["width"]) * int(
+                        last_capture["height"]
+                    )
+                    changed_ratio = changed_pixels / total_pixels
+                    if 0 <= changed_ratio <= 0.0025:
+                        last_capture["stability_changed_pixel_ratio"] = round(
+                            changed_ratio, 8
+                        )
+                        previous_path.unlink(missing_ok=True)
+                        return last_capture
+            previous_hash = current_hash
+            stable_probe = image_path.with_name(f".{image_path.name}.previous")
+            shutil.copyfile(image_path, stable_probe)
+            previous_path = stable_probe
+            time.sleep(0.1)
+        if previous_path is not None:
+            previous_path.unlink(missing_ok=True)
+        raise VMError(
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            "compositor output did not settle to two identical frames",
+            {"name": name, "output": output, "last_capture": last_capture},
+        )
+
+    def _restart_ui_review_shell(
+        self,
+        record: dict[str, Any],
+        locale: str,
+    ) -> None:
+        if locale not in {"en_US.UTF-8", "ko_KR.UTF-8"}:
+            raise VMError(FailureCategory.HARNESS_ERROR, "unsupported UI review locale")
+        log_name = locale.replace(".", "-") + ".log"
+        shell = (
+            "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
+            "export XDG_RUNTIME_DIR=$runtime; "
+            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
+            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            "pkill -TERM -x qs 2>/dev/null || true; "
+            "for attempt in $(seq 1 50); do pgrep -x qs >/dev/null || break; "
+            "sleep 0.1; done; ! pgrep -x qs >/dev/null; "
+            f"install -d -m 0700 {REMOTE_ARTIFACTS}/ui-review; "
+            f"nohup env LANG={locale} LC_ALL={locale} "
+            "ENOSHIMA_VM_UI_TEST=1 "
+            f"ENOSHIMA_UI_FIXTURE_DIR={REMOTE_ROOT}/ui-fixture "
+            "XDG_RUNTIME_DIR=$runtime WAYLAND_DISPLAY=$wayland "
+            "HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE "
+            "/usr/bin/qs -p /home/kentakang/.config/quickshell/cyberdock "
+            f">{REMOTE_ARTIFACTS}/ui-review/{log_name} 2>&1 </dev/null &"
+        )
+        self._run_checked(
+            record,
+            "restart-ui-review-shell",
+            self._hypr_command(shell),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+        self._wait_for_layer(
+            record,
+            {"namespace": "cyberdock", "timeout_seconds": 60},
+        )
+
+    def _stop_auth_review(self, record: dict[str, Any]) -> None:
+        pid_path = REMOTE_ROOT / "ui-fixture" / "auth.pid"
+        shell = (
+            f"if test -s {pid_path}; then "
+            f"pid=$(cat {pid_path}); "
+            "case $pid in (*[!0-9]*|'') exit 2;; esac; "
+            "if test -e /proc/$pid/exe && "
+            "test \"$(readlink -f /proc/$pid/exe)\" = /usr/bin/enoshima-greeter; "
+            "then kill -TERM $pid; fi; "
+            f"rm -f {pid_path}; fi"
+        )
+        self._guest(record).exec(self._remote_shell(shell), timeout=15, check=False)
+
+    def _start_auth_review(
+        self,
+        record: dict[str, Any],
+        locale: str,
+        state: str,
+    ) -> None:
+        allowed_states = {
+            "password",
+            "fingerprint-ready",
+            "fingerprint-progress",
+            "success",
+            "failure",
+            "caps-lock",
+            "busy",
+            "power-confirmation",
+        }
+        if locale not in {"en_US.UTF-8", "ko_KR.UTF-8"} or state not in allowed_states:
+            raise VMError(FailureCategory.HARNESS_ERROR, "invalid Auth review state")
+        self._stop_auth_review(record)
+        pid_path = REMOTE_ROOT / "ui-fixture" / "auth.pid"
+        log_path = REMOTE_ARTIFACTS / "ui-review" / "auth-review.log"
+        shell = (
+            "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
+            "export XDG_RUNTIME_DIR=$runtime; "
+            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
+            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            f"nohup env LANG={locale} LC_ALL={locale} GDK_BACKEND=wayland "
+            "ENOSHIMA_VM_UI_TEST=1 XDG_RUNTIME_DIR=$runtime "
+            "WAYLAND_DISPLAY=$wayland /usr/bin/enoshima-greeter "
+            f"--user kentakang --review-state {state} "
+            f">{log_path} 2>&1 </dev/null & echo $! >{pid_path}"
+        )
+        self._run_checked(
+            record,
+            f"start-auth-review-{state}",
+            self._hypr_command(shell),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+        deadline = time.monotonic() + 20
+        last_clients: list[object] = []
+        while time.monotonic() < deadline:
+            result = self._guest(record).exec(
+                self._hypr_command("hyprctl -j clients"), timeout=10, check=False
+            )
+            if result.returncode == 0:
+                last_clients = json.loads(result.stdout)
+                if any(
+                    str(client.get("title", "")) == "Enoshima Auth"
+                    for client in last_clients
+                ):
+                    return
+            time.sleep(0.1)
+        raise VMError(
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            "production Enoshima Greeter did not render its review state",
+            {"state": state, "clients": last_clients},
+        )
+
+    def _stop_notification_review(self, record: dict[str, Any]) -> None:
+        pid_path = REMOTE_ROOT / "ui-fixture" / "swaync.pid"
+        shell = (
+            f"if test -s {pid_path}; then "
+            f"pid=$(cat {pid_path}); "
+            "case $pid in (*[!0-9]*|'') exit 2;; esac; "
+            "if test -e /proc/$pid/exe && "
+            "test \"$(readlink -f /proc/$pid/exe)\" = /usr/bin/swaync; "
+            "then kill -TERM $pid; fi; "
+            f"rm -f {pid_path}; fi"
+        )
+        self._guest(record).exec(self._remote_shell(shell), timeout=15, check=False)
+
+    def _start_notification_review(
+        self,
+        record: dict[str, Any],
+        locale: str,
+        state: str,
+    ) -> None:
+        allowed_states = {
+            "default",
+            "empty",
+            "do-not-disturb",
+            "notification",
+            "critical",
+            "action-error",
+        }
+        if locale not in {"en_US.UTF-8", "ko_KR.UTF-8"} or state not in allowed_states:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR, "invalid notification review state"
+            )
+        self._stop_notification_review(record)
+        pid_path = REMOTE_ROOT / "ui-fixture" / "swaync.pid"
+        log_path = REMOTE_ARTIFACTS / "ui-review" / "swaync-review.log"
+        shell = (
+            "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
+            "export XDG_RUNTIME_DIR=$runtime; "
+            "export DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus; "
+            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
+            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            "systemctl --user stop swaync.service; "
+            f"nohup env LANG={locale} LC_ALL={locale} XDG_RUNTIME_DIR=$runtime "
+            "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus WAYLAND_DISPLAY=$wayland "
+            "/home/kentakang/.local/bin/enoshima-swaync "
+            f">{log_path} 2>&1 </dev/null & echo $! >{pid_path}"
+        )
+        self._run_checked(
+            record,
+            f"start-notification-review-{state}",
+            self._hypr_command(shell),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+        guest = self._guest(record)
+        ready_deadline = time.monotonic() + 20
+        while time.monotonic() < ready_deadline:
+            ready = guest.exec(
+                self._hypr_command("swaync-client -D"), timeout=5, check=False
+            )
+            if ready.returncode == 0:
+                break
+            time.sleep(0.1)
+        else:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "production SwayNC did not acquire its session bus",
+                {"state": state},
+            )
+
+        guest.exec(
+            self._hypr_command(
+                "swaync-client -cp -sw; swaync-client -C -sw; "
+                "swaync-client -df -sw"
+            ),
+            timeout=15,
+        )
+        korean = locale.startswith("ko")
+        messages = {
+            "default": (
+                "Enoshima Desktop" if not korean else "Enoshima 데스크탑",
+                (
+                    "Your workspace is ready."
+                    if not korean
+                    else "작업 공간을 사용할 수 있습니다."
+                ),
+                "normal",
+            ),
+            "notification": (
+                "Build finished" if not korean else "빌드 완료",
+                (
+                    "All checks passed successfully."
+                    if not korean
+                    else "모든 검증을 통과했습니다."
+                ),
+                "normal",
+            ),
+            "critical": (
+                "Battery needs attention" if not korean else "배터리 확인 필요",
+                (
+                    "Connect power to continue safely."
+                    if not korean
+                    else "안전하게 계속하려면 전원을 연결하세요."
+                ),
+                "critical",
+            ),
+            "action-error": (
+                (
+                    "Action could not be completed"
+                    if not korean
+                    else "작업을 완료할 수 없음"
+                ),
+                (
+                    "The requested action failed. Try again."
+                    if not korean
+                    else "요청한 작업이 실패했습니다. 다시 시도하세요."
+                ),
+                "critical",
+            ),
+        }
+        if state == "do-not-disturb":
+            guest.exec(self._hypr_command("swaync-client -dn -sw"), timeout=10)
+        elif state not in {"empty"}:
+            summary, body, urgency = messages[state]
+            action_label = "다시 시도" if korean else "Retry"
+            action = (
+                f" --action=retry={shlex.quote(action_label)}"
+                if state == "action-error"
+                else ""
+            )
+            command = (
+                "nohup notify-send --app-name=Enoshima "
+                f"--urgency={urgency}{action} "
+                f"{shlex.quote(summary)} {shlex.quote(body)} "
+                ">/dev/null 2>&1 </dev/null &"
+            )
+            guest.exec(self._hypr_command(command), timeout=10)
+            expected = 1
+            count_deadline = time.monotonic() + 10
+            while time.monotonic() < count_deadline:
+                count = guest.exec(
+                    self._hypr_command("swaync-client -c"), timeout=5, check=False
+                )
+                if count.returncode == 0 and int(count.stdout.strip() or 0) >= expected:
+                    break
+                time.sleep(0.1)
+            else:
+                raise VMError(
+                    FailureCategory.VISUAL_ASSERTION_FAILED,
+                    "SwayNC did not render the requested notification",
+                    {"state": state},
+                )
+        guest.exec(self._hypr_command("swaync-client -op -sw"), timeout=10)
+        self._wait_for_layer(
+            record,
+            {"namespace": "swaync-control-center", "timeout_seconds": 20},
+        )
+
+    def _stop_titlebar_review(self, record: dict[str, Any]) -> None:
+        for name in ("titlebar-primary.pid", "titlebar-secondary.pid"):
+            pid_path = REMOTE_ROOT / "ui-fixture" / name
+            shell = (
+                f"if test -s {pid_path}; then "
+                f"pid=$(cat {pid_path}); "
+                "case $pid in (*[!0-9]*|'') exit 2;; esac; "
+                "if test -e /proc/$pid/exe && "
+                "test \"$(readlink -f /proc/$pid/exe)\" = "
+                f"{REMOTE_ROOT}/ui-fixture/titlebar-window; "
+                "then kill -TERM $pid; fi; "
+                f"rm -f {pid_path}; fi"
+            )
+            self._guest(record).exec(
+                self._remote_shell(shell), timeout=15, check=False
+            )
+        self.backend.pointer_button(record["domain"], "left", False)
+
+    def _compile_titlebar_fixture(self, record: dict[str, Any]) -> None:
+        binary = REMOTE_ROOT / "ui-fixture" / "titlebar-window"
+        source = REMOTE_SOURCE / "tests" / "vm" / "fixtures" / "titlebar-window.c"
+        command = (
+            f"test -x {binary} || cc -std=c17 -O2 -Wall -Wextra -Werror "
+            f"$(pkg-config --cflags gtk4) {source} -o {binary} "
+            "$(pkg-config --libs gtk4)"
+        )
+        self._run_checked(
+            record,
+            "compile-titlebar-fixture",
+            self._remote_shell(command),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=120,
+        )
+
+    def _launch_titlebar_fixture(
+        self,
+        record: dict[str, Any],
+        locale: str,
+        pid_name: str,
+    ) -> None:
+        pid_path = REMOTE_ROOT / "ui-fixture" / pid_name
+        log_path = REMOTE_ARTIFACTS / "ui-review" / f"{pid_name}.log"
+        binary = REMOTE_ROOT / "ui-fixture" / "titlebar-window"
+        shell = (
+            "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
+            "export XDG_RUNTIME_DIR=$runtime; "
+            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
+            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            f"nohup env LANG={locale} LC_ALL={locale} GDK_BACKEND=wayland "
+            f"XDG_RUNTIME_DIR=$runtime WAYLAND_DISPLAY=$wayland {binary} "
+            f">{log_path} 2>&1 </dev/null & echo $! >{pid_path}"
+        )
+        self._run_checked(
+            record,
+            f"launch-{pid_name}",
+            self._hypr_command(shell),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+
+    def _titlebar_clients(self, record: dict[str, Any]) -> list[dict[str, Any]]:
+        result = self._guest(record).exec(
+            self._hypr_command("hyprctl -j clients"), timeout=10
+        )
+        return [
+            client
+            for client in json.loads(result.stdout)
+            if str(client.get("class", "")) == "org.enoshima.TitlebarFixture"
+            or str(client.get("initialClass", ""))
+            == "org.enoshima.TitlebarFixture"
+        ]
+
+    def _wait_for_titlebar_clients(
+        self,
+        record: dict[str, Any],
+        count: int,
+    ) -> list[dict[str, Any]]:
+        deadline = time.monotonic() + 20
+        clients: list[dict[str, Any]] = []
+        while time.monotonic() < deadline:
+            clients = self._titlebar_clients(record)
+            if len(clients) >= count:
+                return clients
+            time.sleep(0.1)
+        raise VMError(
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            "undecorated titlebar fixture did not become a Hyprland client",
+            {"expected": count, "clients": clients},
+        )
+
+    def _start_titlebar_review(
+        self,
+        record: dict[str, Any],
+        locale: str,
+        state: str,
+    ) -> dict[str, Any]:
+        allowed_states = {
+            "active",
+            "inactive",
+            "keyboard-focus",
+            "hover",
+            "pressed",
+            "maximized",
+            "close-hover",
+            "system-menu",
+            "action-running",
+            "action-error",
+        }
+        if locale not in {"en_US.UTF-8", "ko_KR.UTF-8"} or state not in allowed_states:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR, "invalid system titlebar review state"
+            )
+        self._stop_titlebar_review(record)
+        self._compile_titlebar_fixture(record)
+        allowlist = (
+            "mpv,imv,org.pwmt.zathura,org.enoshima.TitlebarFixture"
+        )
+        self._run_checked(
+            record,
+            "allow-titlebar-fixture",
+            self._hypr_command(
+                "hyprctl eval "
+                + shlex.quote(self._decoration_allowlist_expression(allowlist))
+            ),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=20,
+        )
+        self._launch_titlebar_fixture(
+            record, locale, "titlebar-primary.pid"
+        )
+        clients = self._wait_for_titlebar_clients(record, 1)
+        primary = clients[-1]
+        address = str(primary.get("address", ""))
+        if not re.fullmatch(r"0x[0-9a-fA-F]+", address):
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "titlebar fixture returned an invalid Hyprland address",
+                {"client": primary},
+            )
+        guest = self._guest(record)
+        guest.exec(
+            self._hypr_command(
+                f"hyprctl dispatch focuswindow address:{address}"
+            ),
+            timeout=10,
+        )
+        if state == "inactive":
+            self._launch_titlebar_fixture(
+                record, locale, "titlebar-secondary.pid"
+            )
+            clients = self._wait_for_titlebar_clients(record, 2)
+            secondary = next(
+                client for client in clients if client.get("address") != address
+            )
+            guest.exec(
+                self._hypr_command(
+                    "hyprctl dispatch focuswindow address:"
+                    + str(secondary["address"])
+                ),
+                timeout=10,
+            )
+        elif state == "maximized":
+            guest.exec(
+                self._hypr_command(
+                    "desktop-window-action maximize --address "
+                    f"{address} --origin vm-review --json"
+                ),
+                timeout=15,
+            )
+        if state in {"hover", "pressed", "close-hover"}:
+            current = next(
+                client
+                for client in self._titlebar_clients(record)
+                if client.get("address") == address
+            )
+            at = current.get("at", [0, 0])
+            size = current.get("size", [900, 560])
+            button_offset = 22 if state == "close-hover" else 72
+            cursor_x = int(at[0]) + int(size[0]) - button_offset
+            cursor_y = max(4, int(at[1]) - 18)
+            guest.exec(
+                self._hypr_command(
+                    f"hyprctl dispatch movecursor {cursor_x} {cursor_y}"
+                ),
+                timeout=10,
+            )
+            if state == "pressed":
+                self.backend.pointer_button(record["domain"], "left", True)
+        return primary
+
+    def _stop_desktop_shell_review(self, record: dict[str, Any]) -> None:
+        for name, executable in (
+            ("desktop-ghostty.pid", "/usr/bin/ghostty"),
+            ("desktop-thunar.pid", "/usr/bin/thunar"),
+        ):
+            pid_path = REMOTE_ROOT / "ui-fixture" / name
+            shell = (
+                f"if test -s {pid_path}; then "
+                f"pid=$(cat {pid_path}); "
+                "case $pid in (*[!0-9]*|'') exit 2;; esac; "
+                "if test -e /proc/$pid/exe && "
+                f"test \"$(readlink -f /proc/$pid/exe)\" = {executable}; "
+                "then kill -TERM $pid; fi; "
+                f"rm -f {pid_path}; fi"
+            )
+            self._guest(record).exec(
+                self._remote_shell(shell), timeout=15, check=False
+            )
+
+    def _close_ui_review_clients(self, record: dict[str, Any]) -> None:
+        guest = self._guest(record)
+        result = guest.exec(
+            self._hypr_command("hyprctl -j clients"), timeout=15, check=False
+        )
+        if result.returncode != 0:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "cannot enumerate desktop clients before UI review",
+            )
+        clients = json.loads(result.stdout)
+        for client in clients:
+            address = str(client.get("address", ""))
+            if not re.fullmatch(r"0x[0-9a-fA-F]+", address):
+                continue
+            guest.exec(
+                self._hypr_command(
+                    "desktop-window-action close --address "
+                    f"{address} --origin vm-review --json"
+                ),
+                timeout=15,
+                check=False,
+            )
+        deadline = time.monotonic() + 15
+        remaining: list[object] = clients
+        while time.monotonic() < deadline:
+            result = guest.exec(
+                self._hypr_command("hyprctl -j clients"), timeout=10, check=False
+            )
+            if result.returncode == 0:
+                remaining = json.loads(result.stdout)
+                if not remaining:
+                    return
+            time.sleep(0.1)
+        raise VMError(
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            "desktop clients remained after graceful UI-review cleanup",
+            {"clients": remaining},
+        )
+
+    def _start_desktop_shell_review(
+        self,
+        record: dict[str, Any],
+        locale: str,
+        state: str,
+    ) -> None:
+        if state not in {
+            "default",
+            "active-window",
+            "inactive-window",
+            "internal-display",
+            "external-display",
+        }:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR, "invalid desktop shell review state"
+            )
+        self._stop_desktop_shell_review(record)
+        guest = self._guest(record)
+        log_root = REMOTE_ARTIFACTS / "ui-review"
+        launch = (
+            "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
+            "export XDG_RUNTIME_DIR=$runtime; "
+            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
+            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            f"nohup env LANG={locale} LC_ALL={locale} XDG_RUNTIME_DIR=$runtime "
+            "WAYLAND_DISPLAY=$wayland ghostty --title='Enoshima Workspace' "
+            "-e sh -lc 'printf \"ENOSHIMA // WORKSPACE\\n\\nVM visual review\\n\"; "
+            f"exec sleep infinity' >{log_root}/desktop-ghostty.log 2>&1 "
+            f"</dev/null & echo $! >{REMOTE_ROOT}/ui-fixture/desktop-ghostty.pid; "
+            f"nohup env LANG={locale} LC_ALL={locale} XDG_RUNTIME_DIR=$runtime "
+            "WAYLAND_DISPLAY=$wayland thunar --window /home/kentakang "
+            f">{log_root}/desktop-thunar.log 2>&1 </dev/null & "
+            f"echo $! >{REMOTE_ROOT}/ui-fixture/desktop-thunar.pid"
+        )
+        self._run_checked(
+            record,
+            f"start-desktop-shell-review-{state}",
+            self._hypr_command(launch),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+        expected = {
+            "ghostty": re.compile(r"ghostty", re.IGNORECASE),
+            "thunar": re.compile(r"thunar", re.IGNORECASE),
+        }
+        found: dict[str, dict[str, Any]] = {}
+        deadline = time.monotonic() + 30
+        last_clients: list[dict[str, Any]] = []
+        while time.monotonic() < deadline:
+            result = guest.exec(
+                self._hypr_command("hyprctl -j clients"), timeout=10, check=False
+            )
+            if result.returncode == 0:
+                last_clients = json.loads(result.stdout)
+                for key, matcher in expected.items():
+                    for client in last_clients:
+                        identity = " ".join(
+                            str(client.get(field, ""))
+                            for field in ("class", "initialClass", "title")
+                        )
+                        if matcher.search(identity):
+                            found[key] = client
+                            break
+                if len(found) == len(expected):
+                    break
+            time.sleep(0.1)
+        else:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "desktop shell review applications did not open",
+                {"found": sorted(found), "clients": last_clients},
+            )
+        for client in found.values():
+            address = str(client["address"])
+            guest.exec(
+                self._hypr_command(
+                    f"hyprctl dispatch movetoworkspacesilent 1,address:{address}"
+                ),
+                timeout=10,
+            )
+        guest.exec(self._hypr_command("hyprctl dispatch workspace 1"), timeout=10)
+        focus_key = "thunar" if state == "inactive-window" else "ghostty"
+        guest.exec(
+            self._hypr_command(
+                "hyprctl dispatch focuswindow address:"
+                + str(found[focus_key]["address"])
+            ),
+            timeout=10,
+        )
+
+    def _run_ui_review(self, record: dict[str, Any], config: Any) -> None:
+        values = config if isinstance(config, dict) else {}
+        requested = values.get("surfaces")
+        if not isinstance(requested, list) or not requested:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "run_ui_review requires a non-empty surface list",
+            )
+        supported = {
+            "auth",
+            "desktop-shell",
+            "launcher",
+            "notification-center",
+            "power-menu",
+            "osd",
+            "display-mode",
+            "cyberdock-window-state",
+            "snap-assist",
+            "system-titlebar",
+        }
+        surfaces = {str(value) for value in requested}
+        unsupported = surfaces - supported
+        if unsupported:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "UI review surface lacks a real compositor adapter",
+                {"surfaces": sorted(unsupported)},
+            )
+        matrix = [
+            case
+            for case in load_ui_review_matrix(self.paths.repository)
+            if case.surface in surfaces
+        ]
+        matrix.sort(
+            key=lambda case: (case.locale, case.scale, case.surface, case.state)
+        )
+        if not matrix:
+            raise VMError(FailureCategory.HARNESS_ERROR, "UI review matrix is empty")
+        identities = load_ui_review_identities(self.paths.repository, surfaces)
+        artifact_root = Path(record["artifact_dir"]) / "ui-review"
+        artifact_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self._close_ui_review_clients(record)
+        output = "HEADLESS-UI"
+        captures: list[dict[str, object]] = []
+        overflow_failures: list[dict[str, object]] = []
+        current_environment: tuple[str, float] | None = None
+        for case in matrix:
+            fixture_ack: dict[str, object] | None = None
+            environment = (case.locale, case.scale)
+            if environment != current_environment:
+                mode = physical_mode(case.scale)
+                self._configure_virtual_displays(
+                    record,
+                    {
+                        "disable_unlisted": True,
+                        "monitors": [
+                            {
+                                "name": output,
+                                "mode": mode,
+                                "position": "0x0",
+                                "scale": f"{case.scale:g}",
+                            }
+                        ],
+                    },
+                )
+                sequence = self._write_ui_fixture_state(
+                    record, "desktop-shell", "default", output
+                )
+                self._restart_ui_review_shell(record, case.locale)
+                self._wait_for_ui_fixture_ready(record, sequence)
+                current_environment = environment
+            if case.surface == "auth":
+                self._stop_notification_review(record)
+                self._stop_titlebar_review(record)
+                self._stop_desktop_shell_review(record)
+                self._start_auth_review(record, case.locale, case.state)
+            elif case.surface == "notification-center":
+                self._stop_auth_review(record)
+                self._stop_titlebar_review(record)
+                self._stop_desktop_shell_review(record)
+                self._start_notification_review(record, case.locale, case.state)
+            elif case.surface == "system-titlebar":
+                self._stop_auth_review(record)
+                self._stop_notification_review(record)
+                self._stop_desktop_shell_review(record)
+                client = self._start_titlebar_review(
+                    record, case.locale, case.state
+                )
+                sequence = self._write_ui_fixture_state(
+                    record,
+                    case.surface,
+                    case.state,
+                    output,
+                    {"address": str(client["address"])},
+                )
+                fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
+            elif case.surface == "desktop-shell":
+                self._stop_auth_review(record)
+                self._stop_notification_review(record)
+                self._stop_titlebar_review(record)
+                self._start_desktop_shell_review(
+                    record, case.locale, case.state
+                )
+                sequence = self._write_ui_fixture_state(
+                    record, case.surface, case.state, output
+                )
+                fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
+            else:
+                self._stop_auth_review(record)
+                self._stop_notification_review(record)
+                self._stop_titlebar_review(record)
+                self._stop_desktop_shell_review(record)
+                sequence = self._write_ui_fixture_state(
+                    record, case.surface, case.state, output
+                )
+                fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
+            capture = self._capture_stable_ui(record, case.artifact_name, output)
+            if case.surface == "system-titlebar":
+                self.backend.pointer_button(record["domain"], "left", False)
+            expected_width, expected_height = (
+                int(value)
+                for value in physical_mode(case.scale).split("@", 1)[0].split("x")
+            )
+            if (capture["width"], capture["height"]) != (
+                expected_width,
+                expected_height,
+            ):
+                raise VMError(
+                    FailureCategory.VISUAL_ASSERTION_FAILED,
+                    "UI review capture has the wrong output dimensions",
+                    {"case": case.key, "capture": capture},
+                )
+            image_path = Path(str(capture["path"]))
+            fixture_metadata = {
+                "auth": {
+                    "used": True,
+                    "reason": "production greeter with deterministic visual auth state",
+                },
+                "notification-center": {
+                    "used": False,
+                    "reason": "production SwayNC and notification D-Bus state",
+                },
+                "system-titlebar": {
+                    "used": True,
+                    "reason": (
+                        "production native decoration on a real undecorated client; "
+                        "deterministic menu result state where required"
+                    ),
+                },
+            }.get(
+                case.surface,
+                {
+                    "used": True,
+                    "reason": "deterministic production-model state injection",
+                },
+            )
+            sidecar = {
+                "schema": 1,
+                "surface_id": case.surface,
+                "state": case.state,
+                "locale": case.locale,
+                "scale": case.scale,
+                "output": output,
+                "logical_size": [1280, 800],
+                "pixel_size": [capture["width"], capture["height"]],
+                "stability_changed_pixel_ratio": capture.get(
+                    "stability_changed_pixel_ratio", 0.0
+                ),
+                "image": str(image_path),
+                "image_sha256": sha256(image_path.read_bytes()).hexdigest(),
+                "run_id": record["run_id"],
+                "source_commit": record.get("source", {}).get("source_commit"),
+                "worktree_hash": record.get("source", {}).get("worktree_hash"),
+                **identities[case.surface],
+                "text_overflow_count": (
+                    fixture_ack.get("text_overflow_count")
+                    if fixture_ack is not None
+                    else None
+                ),
+                "fixture": fixture_metadata,
+            }
+            sidecar_path = artifact_root / f"{case.artifact_name}.json"
+            sidecar_path.write_text(
+                json.dumps(sidecar, indent=2) + "\n", encoding="utf-8"
+            )
+            captures.append(sidecar)
+            if (
+                fixture_ack is not None
+                and int(fixture_ack["text_overflow_count"]) > 0
+            ):
+                overflow_failures.append(
+                    {
+                        "case": case.key,
+                        "count": int(fixture_ack["text_overflow_count"]),
+                        "image": str(image_path),
+                    }
+                )
+        summary = {
+            "schema": 1,
+            "expected": len(matrix),
+            "actual": len(captures),
+            "surfaces": sorted(surfaces),
+            "locales": sorted({case.locale for case in matrix}),
+            "scales": sorted({case.scale for case in matrix}),
+            "text_overflow_failures": overflow_failures,
+        }
+        (artifact_root / "summary.json").write_text(
+            json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+        )
+        record.setdefault("observations", {})["ui_review"] = summary
+        self._stop_auth_review(record)
+        self._stop_notification_review(record)
+        self._stop_titlebar_review(record)
+        self._stop_desktop_shell_review(record)
+        self._guest(record).exec(
+            self._hypr_command("systemctl --user start swaync.service"),
+            timeout=30,
+            check=False,
+        )
+        self._write_record(record)
+        if overflow_failures:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "UI review found visible text outside its allocated bounds",
+                {
+                    "count": len(overflow_failures),
+                    "failures": overflow_failures[:20],
+                },
+            )
+
+    def _run_electron_qualification(
+        self, record: dict[str, Any], config: Any
+    ) -> None:
+        values = config if isinstance(config, dict) else {}
+        iterations = int(values.get("iterations", 20))
+        if not 1 <= iterations <= 100:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "Electron qualification iterations must be between 1 and 100",
+            )
+        output = REMOTE_ARTIFACTS / "electron-qualification"
+        fixture = REMOTE_SOURCE / "tests" / "vm" / "fixtures" / "electron-window"
+        driver = (
+            REMOTE_SOURCE
+            / "tests"
+            / "vm"
+            / "fixtures"
+            / "electron-qualification.py"
+        )
+        command = (
+            f"install -d -m 0700 {output}; "
+            f"python3 {driver} --fixture-root {fixture} --output {output} "
+            f"--iterations {iterations}"
+        )
+        guest = self._guest(record)
+        current = guest.exec(
+            self._hypr_command(
+                "hyprctl -j getoption plugin:enoshima_decoration:allowlist"
+            ),
+            timeout=20,
+        )
+        current_allowlist = str(json.loads(current.stdout).get("str", ""))
+        qualification_classes = (
+            "enoshima-electron-qualification",
+            "EnoshimaElectronFixture",
+        )
+        allowlist_parts = [
+            value for value in current_allowlist.split(",") if value
+        ]
+        for class_name in qualification_classes:
+            if class_name not in allowlist_parts:
+                allowlist_parts.append(class_name)
+        qualification_allowlist = ",".join(allowlist_parts)
+        self._run_checked(
+            record,
+            "allow-electron-qualification-fixture",
+            self._hypr_command(
+                "hyprctl eval "
+                + shlex.quote(
+                    self._decoration_allowlist_expression(qualification_allowlist)
+                )
+            ),
+            FailureCategory.DESKTOP_SESSION_FAILED,
+            timeout_seconds=20,
+        )
+        try:
+            self._run_checked(
+                record,
+                "electron-qualification",
+                self._hypr_command(command),
+                FailureCategory.DESKTOP_SESSION_FAILED,
+                timeout_seconds=3600,
+            )
+        finally:
+            guest.exec(
+                self._hypr_command(
+                    "hyprctl eval "
+                    + shlex.quote(
+                        self._decoration_allowlist_expression(current_allowlist)
+                    )
+                ),
+                timeout=20,
+                check=False,
+            )
+        summary = self._guest(record).exec(
+            ["cat", str(output / "electron-summary.json")],
+            timeout=15,
+        )
+        document = json.loads(summary.stdout)
+        expected_actions = 2 * 3 * iterations * 10
+        if (
+            document.get("failures") != 0
+            or document.get("combinations") != 6
+            or document.get("actions") != expected_actions
+            or document.get("decorationOwner") != "enoshima-system"
+            or document.get("clientNativeMinimizeExposed") is not False
+            or document.get("coredumps")
+        ):
+            raise VMError(
+                FailureCategory.DESKTOP_SESSION_FAILED,
+                "Electron qualification summary is incomplete",
+                {"summary": document, "expected_actions": expected_actions},
+            )
+        record.setdefault("observations", {})["electron_qualification"] = document
+        self._write_record(record)
 
     def collect(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
@@ -1026,8 +2436,8 @@ class VMService:
             self._assert_expected_skips(record)
         elif action == "reboot":
             self.reboot(record["run_id"])
-        elif action == "start_desktop":
-            self._start_desktop(record)
+        elif action == "reboot_via_desktop_power":
+            self._reboot_via_desktop_power(record, config)
         elif action == "configure_virtual_displays":
             self._configure_virtual_displays(record, config)
         elif action == "wait_for_client":
@@ -1040,11 +2450,36 @@ class VMService:
             self._prepare_login(record)
         elif action == "login_greetd":
             self._login_greetd(record)
+        elif action == "assert_graphical_health":
+            self._assert_graphical_health(record, config)
         elif action == "send_key":
             if not isinstance(config, dict) or not isinstance(config.get("keys"), list):
                 raise VMError(FailureCategory.HARNESS_ERROR, "send_key requires keys")
             keys = [str(key) for key in config["keys"]]
             self.backend.send_keys(record["domain"], keys)
+        elif action == "send_pointer":
+            if not isinstance(config, dict):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "send_pointer requires a mapping",
+                )
+            if "x" in config or "y" in config:
+                if not isinstance(config.get("x"), int) or not isinstance(
+                    config.get("y"), int
+                ):
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        "send_pointer requires integer x and y coordinates",
+                    )
+                self.backend.pointer_move_absolute(
+                    record["domain"], int(config["x"]), int(config["y"])
+                )
+            if "button" in config:
+                self.backend.pointer_button(
+                    record["domain"],
+                    str(config["button"]),
+                    bool(config.get("down", False)),
+                )
         elif action == "query_desktop":
             desktop = self.query_desktop(record["run_id"])
             path = Path(record["artifact_dir"]) / "hyprctl" / "desktop.json"
@@ -1052,7 +2487,16 @@ class VMService:
             path.write_text(json.dumps(desktop, indent=2) + "\n", encoding="utf-8")
         elif action == "screenshot":
             values = config if isinstance(config, dict) else {}
-            self.screenshot(record["run_id"], str(values.get("name", "desktop")))
+            output = values.get("output")
+            self.screenshot(
+                record["run_id"],
+                str(values.get("name", "desktop")),
+                str(output) if output is not None else None,
+            )
+        elif action == "run_ui_review":
+            self._run_ui_review(record, config)
+        elif action == "run_electron_qualification":
+            self._run_electron_qualification(record, config)
         elif action == "collect_artifacts":
             self.collect(record["run_id"])
         elif action == "prepare_boot_disk":

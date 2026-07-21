@@ -12,7 +12,7 @@ maintain a second installation path.
 | T0 | Current worktree | Shell, YAML, Ansible, QML/config, package, and runner unit checks |
 | T1 | Latest Arch cloud VM | Clean bootstrap and structured postflight report |
 | T2 | Pinned Arch cloud VM | Second convergence, package/chezmoi idempotency, reboot |
-| T3 | Pinned Arch desktop VM | Hyprland IPC, virtual displays, key input, greetd login, screenshots |
+| T3 | Pinned Arch desktop VM | Hyprland IPC, virtual displays, key/pointer input, greetd login, registry-driven screenshots |
 | T4 | OVMF/vTPM boot VM | GPT, LUKS2, Btrfs, UKIs, Secure Boot rejection, TPM and recovery |
 | T5 | Physical `tpx1c13` | OLED/EDID/120 Hz, i915/VPU, camera, fingerprint, WWAN, battery, suspend, dock, Lenovo firmware |
 
@@ -61,6 +61,7 @@ make vm-converge
 make vm-reboot
 make vm-desktop
 make vm-login
+make vm-ui-review
 make vm-boot-security
 make vm-full
 ```
@@ -68,17 +69,43 @@ make vm-full
 The lanes have distinct purposes:
 
 - `smoke` follows the latest signed Arch cloud image and current repositories.
-- `converge`, `reboot`, `desktop`, and `login` use a versioned signed image and the
+- `converge`, `reboot`, `desktop`, `login`, and `ui-review` use a versioned signed image and the
   complete Arch Linux Archive repository snapshot declared in
   `tests/vm/images/manifest.yaml`.
-- `desktop` enables virtio-gpu 3D/SPICE, starts Hyprland directly, creates
-  2880×1800 at 1.5× and 2560×1440 at 1× headless outputs, proves the Ghostty
-  and workspace key bindings, validates monitor/input/client IPC state, waits
-  for the launcher layer, and validates desktop and launcher PNG evidence.
+- `desktop` enables virtio-gpu 3D/SPICE, logs in through the production greetd
+  and Enoshima Greeter path to obtain a real seat0 session, creates 2880×1800
+  at 1.5× and 2560×1440 at 1× headless outputs, proves the Ghostty and
+  workspace key bindings, validates monitor/input/client IPC state, waits for
+  the launcher layer, and validates desktop and launcher PNG evidence. It also
+  drives a pinned, network-independent Electron fixture through Wayland and
+  XWayland with the managed-app Enoshima system-decoration policy,
+  tiled/floating/maximized modes, and twenty repetitions of Enoshima caption
+  actions. The matrix fails
+  on a wrong address, lost client, unexpected process exit, coredump, or failed
+  minimize/restore/maximize/close-reopen transition. The
+  greeter evidence is captured through its real Wayland socket because the
+  accelerated `virtio-vga-gl` scanout does not expose a QEMU `screendump`
+  surface.
 - `login` leaves production greetd enabled, assigns a per-run hex password,
+  initializes an empty disposable login keyring with that same password,
   captures the greeter console, types the password through QEMU input, and
-  proves the real user Hyprland session becomes reachable. It never adds
-  autologin to production configuration.
+  proves the real user Hyprland session becomes reachable. This prevents a
+  first-use keyring prompt from obscuring desktop evidence without weakening
+  production authentication. It never adds autologin to production
+  configuration.
+- `ui-review` logs in through that same production path, reads the required
+  state, locale, and scale matrix from `docs/ui-surfaces.yaml`, keeps a
+  1280×800 logical canvas across 1×, 1.25×, and 2× headless outputs, and
+  renders the production Quickshell components with VM-only deterministic
+  model inputs. It also launches the production Enoshima Greeter binary for
+  its approved visual states while the `login` lane continues to prove real
+  greetd/PAM authentication, drives the production SwayNC process through its
+  notification D-Bus protocol, and launches an undecorated GTK Wayland client
+  through the real native title-bar plugin. It covers all ten registered
+  surfaces and all 432 required state/locale/scale matrix entries. Quickshell
+  review acknowledgements include a traversal of the live visible text tree;
+  truncation or painted bounds outside the allocated item is recorded as a
+  text-overflow failure in the capture sidecar.
 - `boot-security` creates a separate 96 GiB sparse disk, partitions only guest
   `/dev/vdb`, builds LUKS2 and Btrfs subvolumes, creates and signs UKIs with
   disposable keys, enrolls the VM firmware, tests PCR 7 TPM unlock, proves the
@@ -152,11 +179,14 @@ approval in the project MCP policy.
 
 ## Image and update policy
 
-Both image lanes require SHA-256 validation and an Arch signing-key verification
-before a base image enters the cache. `arch-cloud-latest` obtains the current
-checksum at run time. `arch-cloud-reproducible` pins a versioned image, checksum,
-signature, and one full archive date. Never pin or downgrade individual Arch
-packages and never replace `pacman -Syu` with a partial upgrade.
+Both image lanes require SHA-256 validation and verification with the dedicated
+Arch `arch-boxes` release key before a base image enters the cache. The
+repository-pinned public key is copied verbatim from the official `arch-boxes`
+project README and has primary fingerprint
+`1B9A16984A4E8CB448712D2AE0B78BF4326C6F8F`. `arch-cloud-latest` obtains the
+current checksum at run time. `arch-cloud-reproducible` pins a versioned image,
+checksum, signature, and one full archive date. Never pin or downgrade
+individual Arch packages and never replace `pacman -Syu` with a partial upgrade.
 
 When advancing the reproducible lane:
 
@@ -165,7 +195,8 @@ When advancing the reproducible lane:
    `tests/vm/images/manifest.yaml`.
 3. Confirm that date's `core`, `extra`, and `multilib` repository databases
    exist in the Arch Linux Archive.
-4. Run T0, `vm-converge`, `vm-desktop`, and `vm-boot-security` before merging.
+4. Run T0, `vm-converge`, `vm-desktop`, `vm-ui-review`, and
+   `vm-boot-security` before merging.
 
 References: [official Arch cloud image index](https://geo.mirror.pkgbuild.com/images/latest/),
 [Arch cloud-init guidance](https://wiki.archlinux.org/title/Cloud-init), and

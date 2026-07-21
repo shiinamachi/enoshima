@@ -56,8 +56,8 @@
   </devices>
   <qemu:commandline>
     <qemu:arg value="-netdev"/>
-    <qemu:arg value="user,id=enoshima-net,hostfwd=tcp:127.0.0.1:{{ ssh_host_port }}-:22"/>
+    <qemu:arg value="user,id=enoshima-net,ipv6=off,hostfwd=tcp:127.0.0.1:{{ ssh_host_port }}-:22"/>
     <qemu:arg value="-device"/>
-    <qemu:arg value="virtio-net-pci,netdev=enoshima-net"/>
+    <qemu:arg value="virtio-net-pci,netdev=enoshima-net,addr=0x8"/>
   </qemu:commandline>
 </domain>

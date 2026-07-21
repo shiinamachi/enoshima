@@ -53,6 +53,14 @@
       {{ desktop_expansion_sddm_fallback_theme }} is not installed.
   when: desktop_expansion_sddm_theme_enabled | bool
 
+- name: Ensure the SDDM configuration drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/sddm.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Select the validated cyberpunk SDDM theme
   ansible.builtin.copy:
     dest: /etc/sddm.conf.d/20-cyberpunk-theme.conf

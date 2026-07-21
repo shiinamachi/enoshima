@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Enoshima Electron Fixture</title>
+  <style>
+    :root { color-scheme: dark; font-family: sans-serif; }
+    body { margin: 0; background: #050623; color: #f2ecff; }
+    header { height: 44px; display: flex; align-items: center; gap: 8px;
+      padding-left: 16px; background: #0a0c3e; -webkit-app-region: drag; }
+    header strong { flex: 1; }
+    body.system header { display: none; }
+    button { width: 44px; height: 44px; border: 0; color: inherit;
+      background: transparent; -webkit-app-region: no-drag; }
+    button:focus-visible { outline: 2px solid #62d8ff; outline-offset: -3px; }
+    button:hover { background: #6541b8; }
+    button.close:hover { background: #ff5d8f; }
+    main { display: grid; min-height: 500px; place-content: center; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Enoshima Electron qualification fixture</strong>
+    <button id="minimize" aria-label="Minimize">−</button>
+    <button id="maximize" aria-label="Maximize">□</button>
+    <button id="close" class="close" aria-label="Close">×</button>
+  </header>
+  <main><div><h1>Electron window interaction</h1><p>Wayland and XWayland state qualification</p></div></main>
+  <script>
+    if (new URLSearchParams(window.location.search).get("decoration") === "system")
+      document.body.classList.add("system");
+    document.querySelector("#minimize").onclick = () =>
+      window.enoshimaFixture.invoke("native-minimize");
+    document.querySelector("#maximize").onclick = () =>
+      window.enoshimaFixture.invoke("native-maximize");
+    document.querySelector("#close").onclick = () =>
+      window.enoshimaFixture.invoke("native-close-reopen");
+  </script>
+</body>
+</html>

@@ -24,6 +24,17 @@ write_files:
     content: |
       Server = https://archive.archlinux.org/repos/{{ repository_snapshot }}/$repo/os/$arch
 {% endif %}
+  - path: /etc/locale.gen
+    owner: root:root
+    permissions: '0644'
+    content: |
+      en_US.UTF-8 UTF-8
+      ko_KR.UTF-8 UTF-8
+  - path: /etc/locale.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      LANG=en_US.UTF-8
   - path: /etc/nftables.conf
     owner: root:root
     permissions: '0600'
@@ -36,12 +47,42 @@ write_files:
           ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } reject
         }
       }
+  - path: /usr/local/libexec/enoshima-cloud-bootstrap
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      packages=(
+        ansible base-devel chezmoi git gtk4 hyprland imagemagick jq
+        json-glib libdrm libinput librsvg lua nftables openssh python
+        python-gobject qemu-guest-agent ripgrep rsync wayland yq
+      )
+      sed -i -E 's/^#?ParallelDownloads.*/ParallelDownloads = 1/' \
+        /etc/pacman.conf
+      installed=false
+      for attempt in 1 2 3 4 5 6 7 8; do
+        if pacman -Syu --needed --noconfirm "${packages[@]}"; then
+          installed=true
+          break
+        fi
+        if (( attempt < 8 )); then
+          sleep $((attempt * 8))
+        fi
+      done
+      "$installed"
+      for command in ansible-playbook chezmoi git hyprctl jq make python3 rg yq; do
+        command -v "$command" >/dev/null
+      done
+      locale-gen
+      systemctl enable --now nftables.service
+      systemctl enable --now qemu-guest-agent.service
+      systemctl enable --now sshd.service
+      loginctl enable-linger {{ user }}
+      install -d -m 0700 -o {{ user }} -g {{ user }} \
+        /home/{{ user }}/enoshima-test
+      touch /var/lib/enoshima-cloud-ready
 runcmd:
-  - [pacman, -Syu, --needed, --noconfirm, ansible-core, jq, nftables, openssh, qemu-guest-agent, rsync]
-  - [systemctl, enable, --now, nftables.service]
-  - [systemctl, enable, --now, qemu-guest-agent.service]
-  - [systemctl, enable, --now, sshd.service]
-  - [loginctl, enable-linger, {{ user }}]
-  - [install, -d, -m, '0700', -o, {{ user }}, -g, {{ user }}, /home/{{ user }}/enoshima-test]
-  - [touch, /var/lib/enoshima-cloud-ready]
+  - [/usr/local/libexec/enoshima-cloud-bootstrap]
 final_message: ENOSHIMA_CLOUD_INIT_READY

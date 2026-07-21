@@ -52,6 +52,7 @@ def parser() -> argparse.ArgumentParser:
     screenshot = commands.add_parser("screenshot")
     screenshot.add_argument("run_id")
     screenshot.add_argument("--name", default="desktop")
+    screenshot.add_argument("--output")
 
     query = commands.add_parser("query-desktop")
     query.add_argument("run_id")
@@ -82,7 +83,7 @@ def dispatch(service: VMService, args: argparse.Namespace) -> Any:
         ),
         "reboot": lambda: service.reboot(args.run_id, args.timeout),
         "poweroff": lambda: service.poweroff(args.run_id),
-        "screenshot": lambda: service.screenshot(args.run_id, args.name),
+        "screenshot": lambda: service.screenshot(args.run_id, args.name, args.output),
         "query-desktop": lambda: service.query_desktop(args.run_id),
         "collect": lambda: service.collect(args.run_id),
         "destroy": lambda: service.destroy(args.run_id),

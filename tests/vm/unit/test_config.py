@@ -24,6 +24,7 @@ def test_repository_suites_obey_resource_and_network_boundaries() -> None:
         "reboot",
         "desktop",
         "login",
+        "ui-review",
         "boot-security",
     ):
         suite = load_suite(name, paths)
@@ -60,6 +61,10 @@ def test_manifest_has_signed_reproducible_and_latest_images() -> None:
     assert images["arch-cloud-reproducible"].repository_snapshot == "2026/07/15"
     assert images["arch-cloud-latest"].checksum_url
     assert images["arch-cloud-latest"].repository_snapshot is None
+    assert all(Path(image.keyring).is_file() for image in images.values())
+    assert all(
+        Path(image.keyring).name == "arch-boxes.asc" for image in images.values()
+    )
 
 
 def test_suite_name_cannot_escape_suite_root(tmp_path: Path) -> None:

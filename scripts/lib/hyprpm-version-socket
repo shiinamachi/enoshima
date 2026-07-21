@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Run hyprpm with an installed-version IPC endpoint when Hyprland is offline."""
+
+from __future__ import annotations
+
+import json
+import os
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+from pathlib import Path
+
+
+def installed_version() -> str:
+    result = subprocess.run(
+        ["Hyprland", "--version-json"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    value = result.stdout
+
+    parsed = json.loads(value)
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("commit"), str):
+        raise ValueError("Hyprland --version-json returned an invalid object")
+    return json.dumps(parsed, separators=(",", ":"))
+
+
+def serve_version(listener: socket.socket, response: bytes, stop: threading.Event) -> None:
+    listener.settimeout(0.2)
+    while not stop.is_set():
+        try:
+            connection, _ = listener.accept()
+        except TimeoutError:
+            continue
+        except OSError:
+            if stop.is_set():
+                return
+            raise
+        with connection:
+            request = connection.recv(4096)
+            if request == b"j/version":
+                connection.sendall(response)
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("Usage: hyprpm-version-socket COMMAND [ARG ...]", file=sys.stderr)
+        return 2
+
+    version = installed_version().encode()
+    existing_runtime = os.environ.get("XDG_RUNTIME_DIR")
+    temporary_runtime: str | None = None
+    if existing_runtime and Path(existing_runtime).is_dir():
+        runtime = Path(existing_runtime)
+    else:
+        temporary_runtime = tempfile.mkdtemp(prefix="enoshima-hyprpm-")
+        runtime = Path(temporary_runtime)
+
+    signature = f"enoshima-hyprpm-{secrets.token_hex(8)}"
+    instance_dir = runtime / "hypr" / signature
+    instance_dir.mkdir(mode=0o700, parents=True)
+    socket_path = instance_dir / ".socket.sock"
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(socket_path))
+    listener.listen(4)
+
+    stop = threading.Event()
+    server = threading.Thread(
+        target=serve_version,
+        args=(listener, version, stop),
+        name="hyprpm-version-socket",
+        daemon=True,
+    )
+    server.start()
+
+    environment = os.environ.copy()
+    environment["XDG_RUNTIME_DIR"] = str(runtime)
+    environment["HYPRLAND_INSTANCE_SIGNATURE"] = signature
+    try:
+        return subprocess.run(sys.argv[1:], env=environment, check=False).returncode
+    finally:
+        stop.set()
+        listener.close()
+        server.join(timeout=1)
+        shutil.rmtree(instance_dir, ignore_errors=True)
+        try:
+            (runtime / "hypr").rmdir()
+        except OSError:
+            pass
+        if temporary_runtime is not None:
+            shutil.rmtree(temporary_runtime, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (json.JSONDecodeError, OSError, subprocess.SubprocessError, ValueError) as error:
+        print(f"hyprpm-version-socket: {error}", file=sys.stderr)
+        raise SystemExit(1) from error

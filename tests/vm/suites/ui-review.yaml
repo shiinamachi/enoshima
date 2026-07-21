@@ -1,13 +1,13 @@
 ---
-name: login
+name: ui-review
 base_image: arch-cloud-reproducible
 domain_template: domain-desktop.xml.j2
 profile: enoshima-vm
-timeout_minutes: 240
+timeout_minutes: 360
 resources:
-  vcpus: 4
-  memory_mib: 8192
-  disk_gib: 64
+  vcpus: 6
+  memory_mib: 12288
+  disk_gib: 96
 network:
   mode: isolated-user
   allow_inbound_from_host: true
@@ -23,11 +23,20 @@ steps:
   - prepare_login
   - reboot
   - login_greetd
-  - query_desktop
-  - screenshot:
-      name: logged-in
+  - run_ui_review:
+      surfaces:
+        - auth
+        - desktop-shell
+        - launcher
+        - notification-center
+        - power-menu
+        - osd
+        - display-mode
+        - cyberdock-window-state
+        - snap-assist
+        - system-titlebar
   - run_postflight:
-      report: login
+      report: ui-review
   - assert_graphical_health
   - assert_expected_skips
   - collect_artifacts

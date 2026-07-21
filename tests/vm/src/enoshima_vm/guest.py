@@ -80,7 +80,13 @@ class Guest:
             except OSError:
                 time.sleep(2)
                 continue
-            result = self.exec(["true"], timeout=10, check=False)
+            try:
+                result = self.exec(["true"], timeout=10, check=False)
+            except VMError as error:
+                if error.category != FailureCategory.SSH_TIMEOUT:
+                    raise
+                time.sleep(2)
+                continue
             if result.returncode == 0:
                 return
             time.sleep(2)
@@ -93,7 +99,14 @@ class Guest:
         deadline = time.monotonic() + timeout_seconds
         observed_down = False
         while time.monotonic() < deadline:
-            result = self.exec(["true"], timeout=8, check=False)
+            try:
+                result = self.exec(["true"], timeout=8, check=False)
+            except VMError as error:
+                if error.category != FailureCategory.SSH_TIMEOUT:
+                    raise
+                observed_down = True
+                time.sleep(2)
+                continue
             if result.returncode != 0:
                 observed_down = True
             elif observed_down:
@@ -105,17 +118,64 @@ class Guest:
         )
 
     def wait_cloud_init(self, timeout_seconds: int = 1200) -> None:
-        result = self.exec(
-            ["sudo", "cloud-init", "status", "--wait", "--long"],
-            timeout=timeout_seconds,
-            check=False,
+        deadline = time.monotonic() + timeout_seconds
+        last_result = CommandResult(("cloud-init", "status"), 1, "", "")
+        while time.monotonic() < deadline:
+            try:
+                last_result = self.exec(
+                    ["sudo", "cloud-init", "status", "--long"],
+                    timeout=15,
+                    check=False,
+                )
+            except VMError as error:
+                if error.category != FailureCategory.SSH_TIMEOUT:
+                    raise
+                time.sleep(2)
+                continue
+            if last_result.returncode == 0 and "status: done" in last_result.stdout:
+                readiness = self.exec(
+                    [
+                        "bash",
+                        "-lc",
+                        "test -f /var/lib/enoshima-cloud-ready && "
+                        "command -v ansible-playbook chezmoi git hyprctl jq make "
+                        "python3 rg yq >/dev/null",
+                    ],
+                    timeout=15,
+                    check=False,
+                )
+                if readiness.returncode == 0:
+                    return
+                output = self.exec(
+                    [
+                        "sudo",
+                        "tail",
+                        "-n",
+                        "160",
+                        "/var/log/cloud-init-output.log",
+                    ],
+                    timeout=15,
+                    check=False,
+                )
+                raise VMError(
+                    FailureCategory.VM_BOOT_ERROR,
+                    "cloud-init completed without the required guest tools",
+                    {
+                        "status": last_result.stdout[-4000:],
+                        "cloud_init_output": output.stdout[-12000:],
+                    },
+                )
+            if "status: error" in last_result.stdout:
+                break
+            time.sleep(2)
+        raise VMError(
+            FailureCategory.VM_BOOT_ERROR,
+            "cloud-init did not complete successfully",
+            {
+                "stdout": last_result.stdout[-4000:],
+                "stderr": last_result.stderr[-4000:],
+            },
         )
-        if result.returncode or "status: done" not in result.stdout:
-            raise VMError(
-                FailureCategory.VM_BOOT_ERROR,
-                "cloud-init did not complete successfully",
-                {"stdout": result.stdout[-4000:], "stderr": result.stderr[-4000:]},
-            )
 
     @staticmethod
     def source_identity(repository: Path) -> SourceIdentity:

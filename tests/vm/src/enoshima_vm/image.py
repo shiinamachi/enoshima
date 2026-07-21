@@ -78,6 +78,7 @@ class ImageCache:
         os.close(temporary_fd)
         temporary = Path(temporary_name)
         signature = temporary.with_suffix(".sig")
+        generated_keyring = temporary.with_suffix(".keyring.gpg")
         try:
             self._download(image.url, temporary)
             actual = file_sha256(temporary)
@@ -101,8 +102,29 @@ class ImageCache:
                     )
                 self._download(image.signature_url, signature)
                 try:
+                    verification_keyring = keyring
+                    if keyring.suffix.lower() in {".asc", ".armor"}:
+                        run(
+                            [
+                                "gpg",
+                                "--batch",
+                                "--yes",
+                                "--dearmor",
+                                "--output",
+                                generated_keyring,
+                                keyring,
+                            ],
+                            timeout=60,
+                        )
+                        verification_keyring = generated_keyring
                     run(
-                        ["gpgv", "--keyring", keyring, signature, temporary],
+                        [
+                            "gpgv",
+                            "--keyring",
+                            verification_keyring,
+                            signature,
+                            temporary,
+                        ],
                         timeout=60,
                     )
                 except Exception as error:
@@ -124,4 +146,5 @@ class ImageCache:
         finally:
             temporary.unlink(missing_ok=True)
             signature.unlink(missing_ok=True)
+            generated_keyring.unlink(missing_ok=True)
         return destination
