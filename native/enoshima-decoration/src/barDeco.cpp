@@ -12,7 +12,19 @@
 #include <hyprland/src/config/shared/parserUtils/ParserUtils.hpp>
 #include <hyprland/src/config/supplementary/executor/Executor.hpp>
 #include <hyprland/src/config/shared/actions/ConfigActions.hpp>
+#if __has_include(<hyprland/src/animation/AnimationManager.hpp>)
+#define ENOSHIMA_HYPRLAND_056 1
+#include <hyprland/src/animation/AnimationManager.hpp>
+#include <hyprland/src/desktop/state/LayerState.hpp>
+#include <hyprland/src/desktop/state/ViewHitTester.hpp>
+#include <hyprland/src/desktop/state/WindowState.hpp>
+#include <hyprland/src/desktop/view/LayerSurface.hpp>
+#include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
+#include <hyprland/src/state/MonitorState.hpp>
+#else
+#define ENOSHIMA_HYPRLAND_056 0
 #include <hyprland/src/managers/animation/AnimationManager.hpp>
+#endif
 #include <hyprland/src/protocols/LayerShell.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
@@ -237,8 +249,13 @@ CHyprBar::CHyprBar(PHLWINDOW pWindow) : IHyprWindowDecoration(pWindow) {
     m_pKeyboardKeyCallback = Event::bus()->m_events.input.keyboard.key.listen(
         [&](IKeyboard::SKeyEvent e, Event::SCallbackInfo& info) { onKeyboardKey(info, e); });
 
-    g_pAnimationManager->createAnimation(configColor(g_pGlobalState->config.barColor->value()), m_cRealBarColor, Config::animationTree()->getAnimationPropertyConfig("border"),
-                                         pWindow, AVARDAMAGE_NONE);
+#if ENOSHIMA_HYPRLAND_056
+    Animation::mgr()->createAnimation(configColor(g_pGlobalState->config.barColor->value()), m_cRealBarColor,
+                                      Config::animationTree()->getAnimationPropertyConfig("border"), pWindow, AVARDAMAGE_NONE);
+#else
+    g_pAnimationManager->createAnimation(configColor(g_pGlobalState->config.barColor->value()), m_cRealBarColor,
+                                         Config::animationTree()->getAnimationPropertyConfig("border"), pWindow, AVARDAMAGE_NONE);
+#endif
     m_cRealBarColor->setUpdateCallback([&](auto) { damageEntire(); });
 }
 
@@ -279,8 +296,15 @@ bool CHyprBar::inputIsValid() {
         (g_pSeatManager->m_seatGrab && !g_pSeatManager->m_seatGrab->accepts(m_pWindow->wlSurface()->resource())))
         return false;
 
-    const auto WINDOWATCURSOR = g_pCompositor->vectorToWindowUnified(g_pInputManager->getMouseCoordsInternal(),
-                                                                     Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+    const auto MOUSE = g_pInputManager->getMouseCoordsInternal();
+#if ENOSHIMA_HYPRLAND_056
+    Desktop::CViewHitTester hitTester{*Desktop::viewState()};
+    const auto WINDOWATCURSOR =
+        hitTester.windowAt(MOUSE, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+#else
+    const auto WINDOWATCURSOR = g_pCompositor->vectorToWindowUnified(
+        MOUSE, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+#endif
 
     auto       focusState = Desktop::focusState();
     auto       window     = focusState->window();
@@ -295,13 +319,20 @@ bool CHyprBar::inputIsValid() {
     Vector2D surfaceCoords;
 
     // check top layer
-    g_pCompositor->vectorToLayerSurface(g_pInputManager->getMouseCoordsInternal(), &PMONITOR->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP], &surfaceCoords, &foundSurface);
+#if ENOSHIMA_HYPRLAND_056
+    hitTester.layerSurfaceAt(MOUSE, &PMONITOR->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP], &surfaceCoords, &foundSurface);
+#else
+    g_pCompositor->vectorToLayerSurface(MOUSE, &PMONITOR->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_TOP], &surfaceCoords, &foundSurface);
+#endif
 
     if (foundSurface)
         return false;
     // check overlay layer
-    g_pCompositor->vectorToLayerSurface(g_pInputManager->getMouseCoordsInternal(), &PMONITOR->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY], &surfaceCoords,
-                                        &foundSurface);
+#if ENOSHIMA_HYPRLAND_056
+    hitTester.layerSurfaceAt(MOUSE, &PMONITOR->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY], &surfaceCoords, &foundSurface);
+#else
+    g_pCompositor->vectorToLayerSurface(MOUSE, &PMONITOR->m_layerSurfaceLayers[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY], &surfaceCoords, &foundSurface);
+#endif
 
     if (foundSurface)
         return false;
@@ -418,7 +449,18 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
     auto       COORDS = cursorRelativeToBar();
     if (m_bTouchEv) {
         ITouch::SDownEvent e        = touchEvent.value();
-        auto               PMONITOR = g_pCompositor->getMonitorFromName(!e.device->m_boundOutput.empty() ? e.device->m_boundOutput : "");
+        PHLMONITOR         PMONITOR = nullptr;
+#if ENOSHIMA_HYPRLAND_056
+        const auto         outputName = !e.device->m_boundOutput.empty() ? e.device->m_boundOutput : "";
+        for (const auto& monitor : State::monitorState()->monitors()) {
+            if (monitor->m_name == outputName) {
+                PMONITOR = monitor;
+                break;
+            }
+        }
+#else
+        PMONITOR = g_pCompositor->getMonitorFromName(!e.device->m_boundOutput.empty() ? e.device->m_boundOutput : "");
+#endif
         PMONITOR                    = PMONITOR ? PMONITOR : Desktop::focusState()->monitor();
         COORDS = Vector2D(PMONITOR->m_position.x + e.pos.x * PMONITOR->m_size.x, PMONITOR->m_position.y + e.pos.y * PMONITOR->m_size.y) - assignedBoxGlobal().pos();
     }
@@ -449,8 +491,13 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
     if (Desktop::focusState()->window() != PWINDOW)
         Desktop::focusState()->fullWindowFocus(PWINDOW, Desktop::FOCUS_REASON_CLICK);
 
-    if (PWINDOW->m_isFloating)
+    if (PWINDOW->m_isFloating) {
+#if ENOSHIMA_HYPRLAND_056
+        Desktop::windowState()->raise(PWINDOW);
+#else
         g_pCompositor->changeWindowZOrder(PWINDOW, true);
+#endif
+    }
 
     info.cancelled   = true;
     m_bCancelledDown = true;
@@ -707,7 +754,13 @@ void CHyprBar::renderBarButtonsText(CBox* barBox, const float scale, const float
         auto icon = button.icon;
         if (button.semantic == "maximize" && !button.alternateIcon.empty()) {
             const auto window = m_pWindow.lock();
-            if (window && window->m_fullscreenState.internal == FSMODE_MAXIMIZED)
+            if (window &&
+#if ENOSHIMA_HYPRLAND_056
+                Fullscreen::controller()->getFullscreenModes(window).internal == Fullscreen::FSMODE_MAXIMIZED
+#else
+                window->m_fullscreenState.internal == FSMODE_MAXIMIZED
+#endif
+            )
                 icon = button.alternateIcon;
         }
         const auto cacheKey = std::format("{}@{}", icon, std::lround(scale * 100));
@@ -867,9 +920,15 @@ void CHyprBar::renderPass(PHLMONITOR pMonitor, const float& a) {
 
     if (ROUNDING) {
         // the +1 is a shit garbage temp fix until renderRect supports an alpha matte
-        CBox windowBox = {PWINDOW->m_realPosition->value().x + PWINDOW->m_floatingOffset.x - pMonitor->m_position.x + 1,
-                          PWINDOW->m_realPosition->value().y + PWINDOW->m_floatingOffset.y - pMonitor->m_position.y + 1, PWINDOW->m_realSize->value().x - 2,
-                          PWINDOW->m_realSize->value().y - 2};
+#if ENOSHIMA_HYPRLAND_056
+        const auto currentPosition = PWINDOW->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+        const auto currentSize     = PWINDOW->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+#else
+        const auto currentPosition = PWINDOW->m_realPosition->value();
+        const auto currentSize     = PWINDOW->m_realSize->value();
+#endif
+        CBox windowBox = {currentPosition.x + PWINDOW->m_floatingOffset.x - pMonitor->m_position.x + 1,
+                          currentPosition.y + PWINDOW->m_floatingOffset.y - pMonitor->m_position.y + 1, currentSize.x - 2, currentSize.y - 2};
 
         if (windowBox.w < 1 || windowBox.h < 1)
             return;

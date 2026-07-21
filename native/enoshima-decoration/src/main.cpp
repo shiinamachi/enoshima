@@ -13,6 +13,13 @@
 #include <hyprland/src/desktop/rule/windowRule/WindowRuleEffectContainer.hpp>
 #include <hyprland/src/config/lua/bindings/LuaBindingsInternal.hpp>
 #include <hyprland/src/config/lua/types/LuaConfigColor.hpp>
+#if __has_include(<hyprland/src/animation/AnimationManager.hpp>)
+#include <hyprland/src/desktop/state/WindowState.hpp>
+#include <hyprland/src/state/MonitorState.hpp>
+#define ENOSHIMA_HYPRLAND_STATE_REGISTRIES 1
+#else
+#define ENOSHIMA_HYPRLAND_STATE_REGISTRIES 0
+#endif
 
 #include <hyprutils/string/VarList.hpp>
 
@@ -32,6 +39,22 @@ extern "C" {
 // Do NOT change this function.
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
     return HYPRLAND_API_VERSION;
+}
+
+static const auto& compositorWindows() {
+#if ENOSHIMA_HYPRLAND_STATE_REGISTRIES
+    return Desktop::windowState()->windows();
+#else
+    return g_pCompositor->m_windows;
+#endif
+}
+
+static const auto& compositorMonitors() {
+#if ENOSHIMA_HYPRLAND_STATE_REGISTRIES
+    return State::monitorState()->monitors();
+#else
+    return g_pCompositor->m_monitors;
+#endif
 }
 
 static std::string trim(std::string value) {
@@ -116,7 +139,7 @@ static void onConfigReloaded() {
     // Reconcile in both directions. A class change, an allowlist removal, a
     // border opt-out, or disabling the plugin must remove stale compositor
     // chrome just as reliably as an allowlist addition attaches it.
-    for (auto& window : g_pCompositor->m_windows) {
+    for (auto& window : compositorWindows()) {
         if (!window->m_isMapped)
             continue;
         syncDecoration(window);
@@ -390,7 +413,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     static auto P5 = Event::bus()->m_events.config.reloaded.listen([&] { onConfigReloaded(); });
 
     // add deco to existing windows
-    for (auto& w : g_pCompositor->m_windows) {
+    for (auto& w : compositorWindows()) {
         if (w->isHidden() || !w->m_isMapped)
             continue;
 
@@ -404,7 +427,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 
 APICALL EXPORT void PLUGIN_EXIT() {
     g_pGlobalState->snapTransport.reset();
-    for (auto& m : g_pCompositor->m_monitors)
+    for (auto& m : compositorMonitors())
         m->m_scheduledRecalc = true;
 
     g_pHyprRenderer->m_renderPass.removeAllOfType("CBarPassElement");
