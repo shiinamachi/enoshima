@@ -23,6 +23,7 @@ class CSnapTransport {
     struct SRequest {
         std::string key;
         std::string payload;
+        bool        terminal = false;
     };
 
     void workerLoop();

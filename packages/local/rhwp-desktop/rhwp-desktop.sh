@@ -45,7 +45,8 @@ done
 
 exec /opt/rhwp-desktop/rhwp-desktop \
   --ozone-platform=wayland \
-  --enable-features=UseOzonePlatform,WaylandWindowDecorations \
+  --enable-features=UseOzonePlatform \
+  --disable-features=WaylandWindowDecorations \
   --enable-wayland-ime \
   --wayland-text-input-version=3 \
   "${launch_args[@]}"

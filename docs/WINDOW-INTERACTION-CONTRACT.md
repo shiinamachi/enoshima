@@ -6,7 +6,10 @@ source of truth는 `home/dot_config/enoshima/window-interaction.yaml`이다.
 
 ## 장식 소유권
 
-우선순위는 `client-native`, `client-system`, `enoshima-system` 순서다.
+우선순위는 `client-native`, `client-system`, `enoshima-system` 순서다. 단,
+Electron client 최소화가 Hyprland 상태로 수렴하지 않는 것이 qualification에서
+재현된 앱은 managed launcher에서 client decoration을 끄고 `enoshima-system`을
+명시적으로 선택한다.
 `enoshima-decoration`은 positive allowlist의 class glob에만 붙으며, 그 외 모든
 창은 client 소유로 간주한다. 공식 `hyprbars`는 계속 비활성화한다. 동일 창에 CSD와
 Enoshima bar가 함께 보이면 정책 실패다.
@@ -28,10 +31,12 @@ visible → minimizing → minimized → restoring → visible
 monitor, floating/fullscreen 상태를 가진다. 허용 origin은 `client`, `titlebar`,
 `dock`, `keyboard`, `compositor`, `recovery`, `migration`이다.
 
-Hyprland `minimized` 이벤트는 명령이 아니라 관측 결과다. event bridge는 이벤트를
-`observe-minimized`에 전달할 뿐 controller를 재호출하지 않는다. 이로써 앱의
-native 버튼과 Dock 버튼이 서로 최소화/복원을 반복하는 순환을 차단한다. 닫기는
-항상 client close request이며 PID kill을 사용하지 않는다.
+Hyprland `minimized` 이벤트는 관측 결과다. event bridge는 이를
+`observe-minimized`에 전달하고, state machine은 현재 workspace와 desired state가
+다른 client-origin 관측에만 정확히 한 번 수렴 명령을 실행한다. 동일 상태나 자신이
+시작한 transition의 확인 event는 no-op으로 소비한다. 이로써 앱의 native 버튼과
+Dock 버튼이 서로 최소화/복원을 반복하는 순환을 차단한다. 닫기는 항상 client close
+request이며 PID kill을 사용하지 않는다.
 
 ## 포인터와 키보드
 
@@ -72,6 +77,7 @@ bind, border grab area, 플러그인 로드 상태를 검사한다. Electron/Chr
 - allowlist 앱에만 Enoshima titlebar가 있으며 중복 titlebar가 없다.
 - 36px visual bar의 caption control은 44px input extent를 가진다.
 - 모든 close가 저장 확인 dialog를 보존한다.
-- native button과 Dock의 20회 최소화/복원에서 상태 순환이나 창 유실이 없다.
+- client-owned 앱의 native button과 Dock, managed Electron 앱의 Enoshima titlebar와
+  Dock을 각각 20회 시험했을 때 상태 순환이나 창 유실이 없다.
 - 내부/외부 출력에서 half, corner, maximize Snap이 clipping 없이 동작한다.
 - `scripts/validate.sh`와 실기기 acceptance를 모두 통과한다.

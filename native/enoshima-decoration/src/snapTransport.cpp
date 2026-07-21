@@ -16,6 +16,8 @@ CSnapTransport::~CSnapTransport() {
     {
         std::lock_guard lock(m_mutex);
         m_stopping = true;
+        m_previews.clear();
+        m_terminal.clear();
     }
     m_wakeup.notify_all();
     if (m_worker.joinable())
@@ -27,7 +29,7 @@ void CSnapTransport::enqueuePreview(std::string key, std::string payload) {
         std::lock_guard lock(m_mutex);
         if (m_stopping)
             return;
-        auto request = SRequest{.key = key, .payload = std::move(payload)};
+        auto request = SRequest{.key = key, .payload = std::move(payload), .terminal = false};
         m_previews.insert_or_assign(key, std::move(request));
     }
     m_wakeup.notify_one();
@@ -41,14 +43,16 @@ void CSnapTransport::enqueueTerminal(std::string key, std::string payload, bool 
 
         const auto preview = m_previews.find(key);
         if (preview != m_previews.end()) {
-            if (preserveLatestPreview)
+            if (preserveLatestPreview) {
+                preview->second.terminal = true;
                 m_terminal.push_back(std::move(preview->second));
+            }
             m_previews.erase(preview);
         }
 
         if (m_terminal.size() >= 64)
             m_terminal.pop_front();
-        m_terminal.push_back(SRequest{.key = std::move(key), .payload = std::move(payload)});
+        m_terminal.push_back(SRequest{.key = std::move(key), .payload = std::move(payload), .terminal = true});
     }
     m_wakeup.notify_one();
 }
@@ -80,7 +84,11 @@ void CSnapTransport::workerLoop() {
         }
 
         std::unique_lock lock(m_mutex);
-        m_wakeup.wait_for(lock, failureBackoff, [this] { return m_stopping || !m_terminal.empty(); });
+        m_wakeup.wait_for(lock, failureBackoff, [this] { return m_stopping; });
+        if (m_stopping)
+            return;
+        if (request.terminal)
+            m_terminal.push_front(std::move(request));
         failureBackoff = std::min(failureBackoff * 2, 1000ms);
     }
 }

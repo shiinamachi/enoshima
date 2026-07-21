@@ -33,8 +33,18 @@ grep -Fq 'windowIsAllowlisted(window)' "$plugin/src/main.cpp"
 grep -Fq 'addWindowDecoration' "$plugin/src/main.cpp"
 grep -Fq 'removeWindowDecoration' "$plugin/src/main.cpp"
 grep -Fq 'syncDecoration(window)' "$plugin/src/main.cpp"
+grep -Fq 'm_events.window.class_.listen' "$plugin/src/main.cpp"
+grep -Fq 'm_events.window.title.listen' "$plugin/src/main.cpp"
+grep -Fq 'm_events.window.active.listen' "$plugin/src/main.cpp"
+grep -Fq 'window->m_isMapped && window->m_monitor && window->m_workspace' "$plugin/src/main.cpp"
+if grep -Fq '!window->m_X11DoesntWantBorders' "$plugin/src/main.cpp"; then
+  printf 'Positive allowlist is still overridden by an X11 no-border hint.\n' >&2
+  exit 1
+fi
 grep -Fq 'ABI mismatch' "$plugin/src/main.cpp"
 grep -Fq 'windowd.sock' "$plugin/src/snapTransport.cpp"
+grep -Fq 'if (request.terminal)' "$plugin/src/snapTransport.cpp"
+grep -Fq 'm_terminal.push_front(std::move(request))' "$plugin/src/snapTransport.cpp"
 grep -Fq 'enqueuePreview' "$plugin/src/barDeco.cpp"
 grep -Fq 'enqueueTerminal' "$plugin/src/barDeco.cpp"
 grep -Fq 'sendSnapRequest("preview", coords)' "$plugin/src/barDeco.cpp"
@@ -83,6 +93,8 @@ grep -Fq 'function moveSelection(delta)' "$window_menu"
 grep -Fq 'interval: 1500' "$window_menu"
 grep -Fq 'dialog-error-symbolic' "$window_menu"
 grep -Fq 'required property var strings' "$window_menu"
+grep -Fq 'required property string reviewState' "$window_menu"
+grep -Fq 'reviewState === "action-running"' "$window_menu"
 grep -Fq 'window-minimize-symbolic' "$window_menu"
 
 grep -Fq 'recorded_abi == "$abi"' "$loader"

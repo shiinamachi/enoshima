@@ -65,7 +65,14 @@ static auto findBar(PHLWINDOW window) {
 }
 
 static bool wantsDecoration(PHLWINDOW window) {
-    return window && g_pGlobalState->config.enabled->value() && windowIsAllowlisted(window) && !window->m_X11DoesntWantBorders &&
+    // `window.class_` can be emitted while an xdg-toplevel is still acquiring
+    // its monitor/workspace. CHyprBar needs both, so defer attachment until the
+    // normal mapped/open or rules reconciliation event instead of dereferencing
+    // a transiently null monitor in the constructor.
+    // The positive allowlist is the explicit decoration-owner decision. It
+    // intentionally overrides an X11/Motif "no borders" hint so a managed
+    // Electron XWayland fallback can still receive usable system chrome.
+    return window && window->m_isMapped && window->m_monitor && window->m_workspace && g_pGlobalState->config.enabled->value() && windowIsAllowlisted(window) &&
         window->m_ruleApplicator->decorate().valueOrDefault();
 }
 
@@ -312,8 +319,12 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     g_pGlobalState->barColorRuleIdx   = Desktop::Rule::windowEffects()->registerEffect("enoshima-decoration:bar_color");
     g_pGlobalState->titleColorRuleIdx = Desktop::Rule::windowEffects()->registerEffect("enoshima-decoration:title_color");
 
-    static auto P  = Event::bus()->m_events.window.open.listen([&](PHLWINDOW w) { onNewWindow(w); });
-    static auto P3 = Event::bus()->m_events.window.updateRules.listen([&](PHLWINDOW w) { onUpdateWindowRules(w); });
+    static auto PWindowOpen  = Event::bus()->m_events.window.open.listen([&](PHLWINDOW w) { onNewWindow(w); });
+    static auto PWindowClass = Event::bus()->m_events.window.class_.listen([&](PHLWINDOW w) { onUpdateWindowRules(w); });
+    static auto PWindowTitle = Event::bus()->m_events.window.title.listen([&](PHLWINDOW w) { onUpdateWindowRules(w); });
+    static auto PWindowActive = Event::bus()->m_events.window.active.listen(
+        [&](PHLWINDOW w, [[maybe_unused]] Desktop::eFocusReason reason) { onUpdateWindowRules(w); });
+    static auto PWindowRules = Event::bus()->m_events.window.updateRules.listen([&](PHLWINDOW w) { onUpdateWindowRules(w); });
 
     g_pGlobalState->config.barColor            = makeShared<Config::Values::CColorValue>("plugin:enoshima_decoration:bar_color", "Change the bar color", 0x88333333);
     g_pGlobalState->config.textColor           = makeShared<Config::Values::CColorValue>("plugin:enoshima_decoration:col.text", "Change the text color", 0xffffffff);

@@ -221,7 +221,7 @@ local function configureEnoshimaDecoration()
         plugin = {
             enoshima_decoration = {
                 enabled = true,
-                allowlist = "mpv,imv,org.pwmt.zathura",
+                allowlist = "mpv,imv,org.pwmt.zathura,discord,slack,com.slack.Slack,obsidian,md.obsidian,*notion*,rhwp*",
                 bar_color = "rgba(0a0c3eff)",
                 ["col.text"] = "rgba(f2ecffff)",
                 inactive_button_color = "rgba(16115188)",

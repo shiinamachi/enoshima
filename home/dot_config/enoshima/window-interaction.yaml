@@ -15,12 +15,36 @@ decoration:
       backend: wayland
       mode: enoshima-system
       reason: The document viewer can run without client-owned window controls.
+    - class: discord
+      backend: wayland
+      mode: enoshima-system
+      reason: Electron native minimize does not converge to Hyprland; the managed launcher disables Wayland client decorations.
+    - class: slack
+      backend: wayland
+      mode: enoshima-system
+      reason: Electron native minimize does not converge to Hyprland; the managed launcher disables Wayland client decorations.
+    - class: com.slack.Slack
+      backend: wayland
+      mode: enoshima-system
+      reason: Alternate Slack app-id for the same managed system-frame policy.
+    - class: obsidian
+      backend: wayland
+      mode: enoshima-system
+      reason: Electron native minimize does not converge to Hyprland; the managed flags disable Wayland client decorations.
+    - class: md.obsidian
+      backend: wayland
+      mode: enoshima-system
+      reason: Alternate Obsidian app-id for the same managed system-frame policy.
+    - class: "*notion*"
+      backend: wayland
+      mode: enoshima-system
+      reason: Notion class variants use the managed Electron system-frame policy.
+    - class: "rhwp*"
+      backend: wayland
+      mode: enoshima-system
+      reason: RHWP uses the managed Electron system-frame launcher.
   client_owned:
     - {class: google-chrome, mode: client-system}
-    - {class: discord, mode: client-system}
-    - {class: slack, mode: client-system}
-    - {class: obsidian, mode: client-system}
-    - {class: notion, mode: client-system}
     - {class: dev.zed.Zed, mode: client-native}
     - {class: com.mitchellh.ghostty, mode: client-native}
     - {class: thunar, mode: client-native}

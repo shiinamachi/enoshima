@@ -57,13 +57,26 @@ for service_contract in \
 done
 
 printf '%s\n' '==> native application decorations remain the default'
+grep -Fq -- '--ozone-platform=wayland' home/dot_config/chrome-flags.conf ||
+  fail 'Chrome does not select native Wayland'
+grep -Fq -- '--enable-features=UseOzonePlatform,WaylandWindowDecorations' \
+  home/dot_config/chrome-flags.conf ||
+  fail 'Chrome does not retain its client-owned Wayland decoration'
+
+printf '%s\n' '==> managed Electron apps use Enoshima system chrome'
 for flag_file in \
-  home/dot_config/chrome-flags.conf \
-  home/dot_config/notion-flags.conf; do
+  home/dot_config/notion-flags.conf \
+  home/dot_config/obsidian/user-flags.conf \
+  home/dot_local/bin/executable_discord-wayland \
+  home/dot_local/bin/executable_slack-wayland \
+  packages/local/rhwp-desktop/rhwp-desktop.sh; do
   grep -Fq -- '--ozone-platform=wayland' "$flag_file" ||
     fail "$flag_file does not select native Wayland"
-  grep -Fq -- 'WaylandWindowDecorations' "$flag_file" ||
-    fail "$flag_file does not enable Wayland window decorations"
+  grep -Fq -- '--disable-features=WaylandWindowDecorations' "$flag_file" ||
+    fail "$flag_file does not disable the non-convergent Electron client frame"
+  if grep -Fq -- '--enable-features=UseOzonePlatform,WaylandWindowDecorations' "$flag_file"; then
+    fail "$flag_file still enables the non-convergent Electron client frame"
+  fi
 done
 grep -Fq 'window-decoration = auto' home/dot_config/ghostty/config.ghostty ||
   fail 'Ghostty does not retain automatic native decoration'
@@ -116,7 +129,19 @@ client_owned = {
 }
 if allowlist & client_owned:
     raise SystemExit("a class has both client and Enoshima decoration ownership")
-if allowlist != {"mpv", "imv", "org.pwmt.zathura"}:
+expected_allowlist = {
+    "mpv",
+    "imv",
+    "org.pwmt.zathura",
+    "discord",
+    "slack",
+    "com.slack.Slack",
+    "obsidian",
+    "md.obsidian",
+    "*notion*",
+    "rhwp*",
+}
+if allowlist != expected_allowlist:
     raise SystemExit("unexpected positive decoration allowlist")
 for class_name in allowlist:
     if f"`{class_name}`" not in text:
