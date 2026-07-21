@@ -231,10 +231,12 @@ PanelWindow {
     Rectangle {
         id: chooserPanel
         visible: assist.showingChooser
-        width: 356
-        height: 314
+        readonly property int layoutCount: Math.max(1, assist.layouts.length)
+        width: Math.min(assist.width - 32,
+            28 + layoutCount * 76 + (layoutCount - 1) * 8)
+        height: 110
         x: Math.round((assist.width - width) / 2)
-        y: 58
+        y: 16
         radius: assist.theme.radiusPanel
         color: assist.theme.colorSurfaceOverlay
         border.width: 1
@@ -251,36 +253,38 @@ PanelWindow {
 
             Column {
                 anchors.fill: parent
-                anchors.margins: 18
-                spacing: 12
+                anchors.margins: 14
+                spacing: 8
 
                 Row {
                     width: parent.width
-                    height: 28
+                    height: 22
 
                     Text {
-                        width: parent.width - 34
+                        width: 134
                         text: assist.koreanLocale ? "스냅 레이아웃" : "Snap layouts"
                         color: assist.theme.colorText
                         font.family: "Pretendard"
-                        font.pixelSize: 15
+                        font.pixelSize: 14
                         font.bold: true
                     }
 
                     Text {
-                        width: 34
+                        width: parent.width - 134
                         horizontalAlignment: Text.AlignRight
-                        text: "Esc"
+                        text: assist.koreanLocale
+                            ? "방향키 · Enter · Esc"
+                            : "Arrows · Enter · Esc"
                         color: assist.theme.colorTextMuted
                         font.family: "Pretendard"
-                        font.pixelSize: 11
+                        font.pixelSize: 10
                     }
                 }
 
                 Grid {
-                    columns: 2
-                    columnSpacing: 10
-                    rowSpacing: 10
+                    columns: chooserPanel.layoutCount
+                    columnSpacing: 8
+                    rowSpacing: 0
 
                     Repeater {
                         model: assist.layouts
@@ -288,8 +292,8 @@ PanelWindow {
                         delegate: Rectangle {
                             id: layoutCard
                             required property var modelData
-                            width: 155
-                            height: 68
+                            width: 76
+                            height: 52
                             radius: assist.theme.radiusSmall
                             color: assist.theme.colorSurfaceSubtle
                             border.width: 1
@@ -304,11 +308,11 @@ PanelWindow {
                                     readonly property int flatIndex: assist.cells.findIndex(
                                         item => String(item.cellId || "")
                                             === String(modelData.cellId || ""))
-                                    x: 6 + Number(modelData.x || 0) * 143
-                                    y: 6 + Number(modelData.y || 0) * 56
-                                    width: Math.max(40, Number(modelData.width || 1) * 143 - 3)
-                                    height: Math.max(25, Number(modelData.height || 1) * 56 - 3)
-                                    radius: 5
+                                    x: 4 + Number(modelData.x || 0) * 68
+                                    y: 4 + Number(modelData.y || 0) * 44
+                                    width: Math.max(8, Number(modelData.width || 1) * 68 - 2)
+                                    height: Math.max(8, Number(modelData.height || 1) * 44 - 2)
+                                    radius: 4
                                     color: cell.flatIndex === assist.selectedIndex
                                         ? assist.theme.colorFocusSelected
                                         : (cellMouse.containsMouse
@@ -339,17 +343,6 @@ PanelWindow {
                             }
                         }
                     }
-                }
-
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    text: assist.koreanLocale
-                        ? "방향키로 이동 · Enter로 적용"
-                        : "Arrow keys to move · Enter to apply"
-                    color: assist.theme.colorTextMuted
-                    font.family: "Pretendard"
-                    font.pixelSize: 11
                 }
             }
         }

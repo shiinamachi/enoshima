@@ -356,6 +356,20 @@ ShellRoot {
                 {"cellId": "third-two-thirds:1", "target": "right-two-thirds",
                     "x": 0.333, "y": 0, "width": 0.667, "height": 1}
             ]},
+            {"layoutId": "two-thirds-third", "label": "2/3 + 1/3", "cells": [
+                {"cellId": "two-thirds-third:0", "target": "left-two-thirds",
+                    "x": 0, "y": 0, "width": 0.667, "height": 1},
+                {"cellId": "two-thirds-third:1", "target": "right-third",
+                    "x": 0.667, "y": 0, "width": 0.333, "height": 1}
+            ]},
+            {"layoutId": "thirds", "label": "1/3 + 1/3 + 1/3", "cells": [
+                {"cellId": "thirds:0", "target": "left-third",
+                    "x": 0, "y": 0, "width": 0.333, "height": 1},
+                {"cellId": "thirds:1", "target": "center-third",
+                    "x": 0.333, "y": 0, "width": 0.334, "height": 1},
+                {"cellId": "thirds:2", "target": "right-third",
+                    "x": 0.667, "y": 0, "width": 0.333, "height": 1}
+            ]},
             {"layoutId": "quarters", "label": "2 × 2", "cells": [
                 {"cellId": "quarters:0", "target": "upper-left", "x": 0,
                     "y": 0, "width": 0.5, "height": 0.5},

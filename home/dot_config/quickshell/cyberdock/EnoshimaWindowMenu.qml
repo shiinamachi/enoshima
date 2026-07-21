@@ -1,10 +1,10 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls.impl as ControlsImpl
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import Quickshell.Widgets
 
 // qmllint disable uncreatable-type
 PanelWindow {
@@ -425,7 +425,7 @@ PanelWindow {
                 parent.height - height - 14))
             width: 300
             height: menu.adjustmentMode === ""
-                ? 354 + (menu.actionErrorKey !== "" ? 12 : 0)
+                ? 354 + (menu.actionErrorKey !== "" ? 20 : 0)
                 : 164
             radius: menu.theme.radiusPanel
             color: menu.theme.colorSurfaceOverlay
@@ -481,7 +481,7 @@ PanelWindow {
                         readonly property bool available:
                             menu.entryEnabled(modelData)
                         width: parent.width
-                        height: errorRow ? 56 : 44
+                        height: errorRow ? 64 : 44
                         radius: menu.theme.radiusSmall
                         color: errorRow
                             ? menu.theme.colorSurfaceSubtle
@@ -509,16 +509,20 @@ PanelWindow {
                         Accessible.onPressAction: menuEntry.errorRow
                             ? menu.closeRequested() : menu.trigger(menuEntry.modelData)
 
-                        IconImage {
+                        ControlsImpl.ColorImage {
                             anchors.left: parent.left
                             anchors.leftMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
-                            implicitWidth: 18
-                            implicitHeight: 18
+                            width: 18
+                            height: 18
                             source: Quickshell.iconPath(menuEntry.errorRow
                                 ? "dialog-error-symbolic" : menuEntry.modelData.icon,
                                 "application-x-executable")
-                            opacity: menuEntry.available ? 1 : 0.56
+                            color: menuEntry.errorRow
+                                ? menu.theme.colorCritical : menu.theme.colorText
+                            sourceSize.width: width
+                            sourceSize.height: height
+                            opacity: menuEntry.errorRow || menuEntry.available ? 1 : 0.56
                             Accessible.ignored: true
                         }
 
@@ -536,7 +540,11 @@ PanelWindow {
                                     ? menu.textFor(menu.actionErrorKey,
                                         "The window action could not be completed")
                                     : menu.labelFor(menuEntry.modelData)
-                                elide: Text.ElideRight
+                                elide: menuEntry.errorRow
+                                    ? Text.ElideNone : Text.ElideRight
+                                wrapMode: menuEntry.errorRow
+                                    ? Text.WordWrap : Text.NoWrap
+                                maximumLineCount: menuEntry.errorRow ? 2 : 1
                                 color: menuEntry.errorRow
                                         || (menuEntry.modelData.id === "close"
                                             && (menuEntry.index === menu.selectedIndex

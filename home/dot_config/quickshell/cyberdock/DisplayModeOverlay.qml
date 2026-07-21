@@ -1,10 +1,10 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls.impl as ControlsImpl
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import Quickshell.Widgets
 
 // Quickshell's generated qmltypes marks this runtime-provided interface as
 // uncreatable even though the layer-shell plugin creates it at runtime.
@@ -250,7 +250,7 @@ PanelWindow {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.leftMargin: 28
-            anchors.rightMargin: confirmation.visible ? 28 : 190
+            anchors.rightMargin: confirmation.visible ? 28 : 218
             anchors.topMargin: 24
             text: confirmation.visible ? overlay.tr("display.keepHeading") : overlay.tr("display.heading")
             color: overlay.theme.colorText
@@ -266,7 +266,7 @@ PanelWindow {
             anchors.top: parent.top
             anchors.rightMargin: 24
             anchors.topMargin: 18
-            width: 150
+            width: 184
             height: 54
             radius: overlay.theme.radiusSmall
             color: overlay.theme.colorSurfaceSubtle
@@ -305,16 +305,19 @@ PanelWindow {
 
             Text {
                 anchors.left: parent.left
-                anchors.leftMargin: 74
+                anchors.leftMargin: 72
                 anchors.right: parent.right
                 anchors.rightMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
                 text: overlay.choices[overlay.selectedIndex].label
                 color: overlay.theme.colorTextMuted
                 font.family: "Pretendard"
                 font.pixelSize: 10
                 font.bold: true
-                elide: Text.ElideRight
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                verticalAlignment: Text.AlignVCenter
             }
         }
 
@@ -470,7 +473,7 @@ PanelWindow {
                         }
                     }
 
-                    IconImage {
+                    ControlsImpl.ColorImage {
                         anchors.right: parent.right
                         anchors.top: parent.top
                         anchors.rightMargin: 10
@@ -483,6 +486,12 @@ PanelWindow {
                             !choiceButton.available ? "action-unavailable-symbolic"
                                 : (overlay.applying ? "process-working-symbolic" : "emblem-default-symbolic"),
                             "dialog-information-symbolic")
+                        color: !choiceButton.available
+                            ? overlay.theme.colorCritical
+                            : (overlay.applying
+                                ? overlay.theme.colorInfo : overlay.theme.colorSuccess)
+                        sourceSize.width: width
+                        sourceSize.height: height
                         RotationAnimator on rotation {
                             running: choiceButton.visible && choiceButton.available
                                 && overlay.applying && choiceButton.index === overlay.selectedIndex

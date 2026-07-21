@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from enoshima_vm.config import RuntimePaths
 from enoshima_vm.ui_review import (
     load_ui_review_identities,
@@ -53,3 +55,20 @@ def test_display_confirmation_fixture_has_a_stable_countdown_frame() -> None:
 
     assert '"deadline": 0,' in shell
     assert '"seconds_remaining": state === "confirmation" ? 12 : 0' in shell
+
+
+def test_snap_fixture_covers_every_production_layout() -> None:
+    repository = RuntimePaths.discover().repository
+    shell = (
+        repository
+        / "home/dot_config/quickshell/cyberdock/shell.qml"
+    ).read_text(encoding="utf-8")
+    broker = (
+        repository
+        / "home/dot_local/libexec/executable_enoshima-windowd"
+    ).read_text(encoding="utf-8")
+
+    fixture_layouts = set(re.findall(r'"layoutId": "([^"]+)"', shell))
+    production_layouts = set(re.findall(r'"id": "([^"]+)",', broker))
+
+    assert fixture_layouts == production_layouts

@@ -1,10 +1,10 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls.impl as ControlsImpl
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import Quickshell.Widgets
 
 // qmllint disable uncreatable-type
 PanelWindow {
@@ -446,13 +446,17 @@ PanelWindow {
                             Accessible.selected: actionDelegate.index === menu.selectedIndex
                             Accessible.onPressAction: menu.requestAction(actionDelegate.index)
 
-                            IconImage {
+                            ControlsImpl.ColorImage {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 20
                                 height: 20
                                 source: Quickshell.iconPath(actionDelegate.modelData.icon, "system-run-symbolic")
+                                color: actionDelegate.available
+                                    ? menu.theme.colorText : menu.theme.colorTextMuted
+                                sourceSize.width: width
+                                sourceSize.height: height
                             }
 
                             Text {
@@ -506,7 +510,7 @@ PanelWindow {
                     border.color: menu.actionPhase === "error"
                         ? menu.theme.colorCritical : menu.theme.colorQuietBorder
 
-                    IconImage {
+                    ControlsImpl.ColorImage {
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.top: parent.top
                         anchors.topMargin: 14
@@ -516,6 +520,10 @@ PanelWindow {
                             menu.actionPhase === "error" ? "dialog-error-symbolic"
                                 : ((menu.actions.find(entry => entry.id === menu.selectedAction) || menu.actions[0]).icon),
                             "system-run-symbolic")
+                        color: menu.actionPhase === "error"
+                            ? menu.theme.colorCritical : menu.theme.colorText
+                        sourceSize.width: width
+                        sourceSize.height: height
                     }
 
                     Text {
