@@ -180,7 +180,7 @@ def test_electron_fixture_preserves_the_process_across_client_close() -> None:
     assert 'app.on("window-all-closed"' in main
     assert "process.kill" not in main
     assert 'for backend in ("wayland", "x11")' in driver
-    assert 'decoration = "system"' in driver
+    assert 'for decoration in ("custom", "system")' in driver
     assert '"--disable-features=WaylandWindowDecorations"' in driver
     assert '"ENOSHIMA_ELECTRON_SOFTWARE_RENDERING"' in driver
     assert "app.disableHardwareAcceleration()" in main

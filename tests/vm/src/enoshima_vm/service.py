@@ -2317,8 +2317,8 @@ class VMService:
         )
         current_allowlist = str(json.loads(current.stdout).get("str", ""))
         qualification_classes = (
-            "enoshima-electron-qualification",
-            "EnoshimaElectronFixture",
+            "enoshima-electron-qualification-system",
+            "EnoshimaElectronFixtureSystem",
         )
         allowlist_parts = [
             value for value in current_allowlist.split(",") if value
@@ -2363,13 +2363,14 @@ class VMService:
             timeout=15,
         )
         document = json.loads(summary.stdout)
-        expected_actions = 2 * 3 * iterations * 10
+        expected_actions = 2 * 2 * 3 * iterations * 10
         if (
             document.get("failures") != 0
-            or document.get("combinations") != 6
+            or document.get("combinations") != 12
             or document.get("actions") != expected_actions
-            or document.get("decorationOwner") != "enoshima-system"
-            or document.get("clientNativeMinimizeExposed") is not False
+            or document.get("decorationOwners")
+            != ["client", "enoshima-system"]
+            or document.get("clientNativeMinimizeExposed") is not True
             or document.get("coredumps")
         ):
             raise VMError(

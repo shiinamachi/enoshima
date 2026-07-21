@@ -75,9 +75,7 @@ def is_maximized(client: dict[str, Any] | None) -> bool:
 
 
 def has_enoshima_decoration(address: str) -> bool:
-    completed = run(
-        "hyprctl", "decorations", f"address:{address}", check=False
-    )
+    completed = run("hyprctl", "decorations", f"address:{address}", check=False)
     return completed.returncode == 0 and "EnoshimaDecoration" in completed.stdout
 
 
@@ -103,17 +101,17 @@ def normalize_mode(address: str, mode: str) -> dict[str, Any]:
     if is_minimized(client):
         dispatch_action("restore", address)
         client = wait_for(
-            lambda: (value := find_address(address))
-            and not is_minimized(value)
-            and value,
+            lambda: (
+                (value := find_address(address)) and not is_minimized(value) and value
+            ),
             "restored fixture",
         )
     if is_maximized(client):
         dispatch_action("maximize", address, "keyboard")
         client = wait_for(
-            lambda: (value := find_address(address))
-            and not is_maximized(value)
-            and value,
+            lambda: (
+                (value := find_address(address)) and not is_maximized(value) and value
+            ),
             "unmaximized fixture",
         )
     should_float = mode == "floating"
@@ -129,17 +127,17 @@ def normalize_mode(address: str, mode: str) -> dict[str, Any]:
             + '" })',
         )
         client = wait_for(
-            lambda: (value := find_address(address))
-            and bool(value.get("floating")) == should_float
-            and value,
+            lambda: (
+                (value := find_address(address))
+                and bool(value.get("floating")) == should_float
+                and value
+            ),
             f"{mode} fixture",
         )
     if mode == "maximized":
         dispatch_action("maximize", address, "keyboard")
         client = wait_for(
-            lambda: (value := find_address(address))
-            and is_maximized(value)
-            and value,
+            lambda: (value := find_address(address)) and is_maximized(value) and value,
             "maximized fixture",
         )
     return client
@@ -200,10 +198,8 @@ class Fixture:
             self.client = wait_for(
                 lambda: find_fixture(self.process.pid), "Electron fixture window", 30
             )
-            wait_for(
-                lambda: has_enoshima_decoration(str(self.client["address"])),
-                "Enoshima system titlebar",
-            )
+            address = str(self.client["address"])
+            verify_decoration(self, address)
             if self.process.poll() is not None:
                 raise RuntimeError("Electron fixture exited during startup")
         except Exception:
@@ -313,6 +309,128 @@ def configure_environment() -> None:
         )
 
 
+def fixture_generation(client: dict[str, Any]) -> int:
+    marker = str(client.get("title", "")).rsplit("generation-", 1)
+    if len(marker) != 2 or not marker[1].isdigit():
+        raise RuntimeError(f"Electron fixture lacks a generation marker: {client!r}")
+    return int(marker[1])
+
+
+def verify_decoration(fixture: Fixture, address: str) -> None:
+    if fixture.decoration == "system":
+        wait_for(
+            lambda: has_enoshima_decoration(address),
+            "Enoshima system titlebar",
+        )
+    elif has_enoshima_decoration(address):
+        raise RuntimeError(
+            "client-owned Electron chrome received duplicate system decoration"
+        )
+
+
+def wait_for_reopened_fixture(
+    fixture: Fixture,
+    closed_generation: int,
+    description: str,
+) -> str:
+    wait_for(
+        lambda: find_fixture(fixture.process.pid, generation=closed_generation) is None,
+        f"{description} closed Electron generation",
+    )
+    fixture.client = wait_for(
+        lambda: find_fixture(fixture.process.pid, generation=closed_generation + 1),
+        f"{description} reopened Electron client",
+    )
+    address = str(fixture.client["address"])
+    verify_decoration(fixture, address)
+    return address
+
+
+def exercise_iteration(
+    fixture: Fixture,
+    address: str,
+    mode: str,
+) -> tuple[str, int]:
+    if fixture.decoration == "custom":
+        fixture.command("native-minimize")
+    else:
+        dispatch_action("minimize", address, "titlebar")
+    wait_for(
+        lambda: is_minimized(find_address(address)),
+        f"{fixture.decoration} titlebar minimized window",
+    )
+    dispatch_action("restore", address, "titlebar")
+    wait_for(
+        lambda: (value := find_address(address)) and not is_minimized(value),
+        f"{fixture.decoration} titlebar-minimize restore",
+    )
+
+    normalize_mode(address, mode)
+    dispatch_action("minimize", address)
+    wait_for(
+        lambda: is_minimized(find_address(address)),
+        "dock minimized window",
+    )
+    dispatch_action("restore", address)
+    wait_for(
+        lambda: (value := find_address(address)) and not is_minimized(value),
+        "dock-minimize restore",
+    )
+
+    normalize_mode(address, "tiled")
+    if fixture.decoration == "custom":
+        fixture.command("native-maximize")
+        wait_for(
+            lambda: is_maximized(find_address(address)),
+            "Electron native maximized window",
+        )
+        fixture.command("native-unmaximize")
+        wait_for(
+            lambda: (value := find_address(address)) and not is_maximized(value),
+            "Electron native restored window",
+        )
+    else:
+        dispatch_action("maximize", address, "titlebar")
+        wait_for(
+            lambda: is_maximized(find_address(address)),
+            "Enoshima maximized window",
+        )
+        dispatch_action("maximize", address, "titlebar")
+        wait_for(
+            lambda: (value := find_address(address)) and not is_maximized(value),
+            "Enoshima restored window",
+        )
+
+    dispatch_action("maximize", address, "keyboard")
+    wait_for(
+        lambda: is_maximized(find_address(address)),
+        "keyboard maximized window",
+    )
+    dispatch_action("maximize", address, "keyboard")
+    wait_for(
+        lambda: (value := find_address(address)) and not is_maximized(value),
+        "keyboard restored window",
+    )
+
+    closed_generation = fixture_generation(fixture.client)
+    if fixture.decoration == "custom":
+        fixture.command("native-close-reopen")
+    else:
+        fixture.command("arm-external-close")
+        dispatch_action("close", address, "titlebar")
+    address = wait_for_reopened_fixture(
+        fixture, closed_generation, f"{fixture.decoration} titlebar"
+    )
+
+    closed_generation = fixture_generation(fixture.client)
+    fixture.command("arm-external-close")
+    dispatch_action("close", address, "dock")
+    address = wait_for_reopened_fixture(fixture, closed_generation, "dock")
+    if fixture.process.poll() is not None:
+        raise RuntimeError("Electron process died during client close")
+    return address, 10
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fixture-root", required=True, type=Path)
@@ -331,165 +449,67 @@ def main() -> int:
         "combinations": 0,
         "actions": 0,
         "failures": 0,
-        "decorationOwner": "enoshima-system",
-        "clientNativeMinimizeExposed": False,
+        "decorationOwners": ["client", "enoshima-system"],
+        "clientNativeMinimizeExposed": True,
     }
     with results_path.open("w", encoding="utf-8") as results:
         for backend in ("wayland", "x11"):
-            decoration = "system"
-            fixture = Fixture(args.fixture_root, args.output, backend, decoration)
-            try:
-                summary["combinations"] += 3
-                for mode in ("tiled", "floating", "maximized"):
-                    address = str(fixture.client["address"])
-                    for iteration in range(1, args.iterations + 1):
-                        initial = normalize_mode(address, mode)
-                        record = {
-                            "backend": backend,
-                            "decoration": decoration,
-                            "decorationOwner": "enoshima-system",
-                            "mode": mode,
-                            "iteration": iteration,
-                            "pidBefore": fixture.process.pid,
-                            "addressBefore": address,
-                            "workspaceBefore": initial.get("workspace"),
-                            "xwayland": bool(initial.get("xwayland")),
-                            "rendering": (
-                                "electron-software"
-                                if backend == "x11"
-                                else "virtio-gpu"
-                            ),
-                        }
-                        try:
-                            dispatch_action("minimize", address, "titlebar")
-                            wait_for(
-                                lambda: is_minimized(find_address(address)),
-                                "titlebar minimized window",
-                            )
-                            dispatch_action("restore", address, "titlebar")
-                            wait_for(
-                                lambda: (value := find_address(address))
-                                and not is_minimized(value),
-                                "titlebar-minimize restore",
-                            )
-                            summary["actions"] += 2
-
-                            normalize_mode(address, mode)
-                            dispatch_action("minimize", address)
-                            wait_for(
-                                lambda: is_minimized(find_address(address)),
-                                "dock minimized window",
-                            )
-                            dispatch_action("restore", address)
-                            wait_for(
-                                lambda: (value := find_address(address))
-                                and not is_minimized(value),
-                                "dock-minimize restore",
-                            )
-                            summary["actions"] += 2
-
-                            normalize_mode(address, "tiled")
-                            dispatch_action("maximize", address, "titlebar")
-                            wait_for(
-                                lambda: is_maximized(find_address(address)),
-                                "Enoshima maximized window",
-                            )
-                            dispatch_action("maximize", address, "titlebar")
-                            wait_for(
-                                lambda: (value := find_address(address))
-                                and not is_maximized(value),
-                                "Enoshima restored window",
-                            )
-                            summary["actions"] += 2
-
-                            dispatch_action("maximize", address, "keyboard")
-                            wait_for(
-                                lambda: is_maximized(find_address(address)),
-                                "keyboard maximized window",
-                            )
-                            dispatch_action("maximize", address, "keyboard")
-                            wait_for(
-                                lambda: (value := find_address(address))
-                                and not is_maximized(value),
-                                "keyboard restored window",
-                            )
-                            summary["actions"] += 2
-
+            for decoration in ("custom", "system"):
+                fixture = Fixture(args.fixture_root, args.output, backend, decoration)
+                try:
+                    summary["combinations"] += 3
+                    for mode in ("tiled", "floating", "maximized"):
+                        address = str(fixture.client["address"])
+                        for iteration in range(1, args.iterations + 1):
+                            initial = normalize_mode(address, mode)
                             old_address = address
-                            close_ack = fixture.command("arm-external-close")
-                            closed_generation = int(close_ack["generation"])
-                            dispatch_action("close", old_address, "titlebar")
-                            wait_for(
-                                lambda: find_fixture(
-                                    fixture.process.pid,
-                                    generation=closed_generation,
-                                )
-                                is None,
-                                "titlebar closed Electron generation",
-                            )
-                            fixture.client = wait_for(
-                                lambda: find_fixture(
-                                    fixture.process.pid,
-                                    generation=closed_generation + 1,
+                            record = {
+                                "backend": backend,
+                                "decoration": decoration,
+                                "decorationOwner": (
+                                    "client"
+                                    if decoration == "custom"
+                                    else "enoshima-system"
                                 ),
-                                "titlebar reopened Electron client",
-                            )
-                            address = str(fixture.client["address"])
-                            wait_for(
-                                lambda: has_enoshima_decoration(address),
-                                "titlebar reopened Enoshima system chrome",
-                            )
-                            summary["actions"] += 1
-
-                            old_address = address
-                            close_ack = fixture.command("arm-external-close")
-                            closed_generation = int(close_ack["generation"])
-                            dispatch_action("close", old_address, "dock")
-                            wait_for(
-                                lambda: find_fixture(
-                                    fixture.process.pid,
-                                    generation=closed_generation,
-                                )
-                                is None,
-                                "dock closed Electron generation",
-                            )
-                            fixture.client = wait_for(
-                                lambda: find_fixture(
-                                    fixture.process.pid,
-                                    generation=closed_generation + 1,
+                                "mode": mode,
+                                "iteration": iteration,
+                                "pidBefore": fixture.process.pid,
+                                "addressBefore": address,
+                                "workspaceBefore": initial.get("workspace"),
+                                "xwayland": bool(initial.get("xwayland")),
+                                "rendering": (
+                                    "electron-software"
+                                    if backend == "x11"
+                                    else "virtio-gpu"
                                 ),
-                                "dock reopened Electron client",
-                            )
-                            address = str(fixture.client["address"])
-                            wait_for(
-                                lambda: has_enoshima_decoration(address),
-                                "dock reopened Enoshima system titlebar",
-                            )
-                            if fixture.process.poll() is not None:
-                                raise RuntimeError(
-                                    "Electron process died during client close"
+                            }
+                            try:
+                                address, actions = exercise_iteration(
+                                    fixture, address, mode
                                 )
-                            summary["actions"] += 1
-                            record.update(
-                                {
-                                    "result": "pass",
-                                    "addressAfter": address,
-                                    "pidAfter": fixture.process.pid,
-                                    "processAlive": True,
-                                    "generationAfter": closed_generation + 1,
-                                    "addressReused": address == old_address,
-                                }
-                            )
-                        except Exception as error:
-                            summary["failures"] += 1
-                            record.update({"result": "fail", "error": str(error)})
+                                summary["actions"] += actions
+                                record.update(
+                                    {
+                                        "result": "pass",
+                                        "addressAfter": address,
+                                        "pidAfter": fixture.process.pid,
+                                        "processAlive": True,
+                                        "generationAfter": fixture_generation(
+                                            fixture.client
+                                        ),
+                                        "addressReused": address == old_address,
+                                    }
+                                )
+                            except Exception as error:
+                                summary["failures"] += 1
+                                record.update({"result": "fail", "error": str(error)})
+                                results.write(json.dumps(record, sort_keys=True) + "\n")
+                                results.flush()
+                                raise
                             results.write(json.dumps(record, sort_keys=True) + "\n")
                             results.flush()
-                            raise
-                        results.write(json.dumps(record, sort_keys=True) + "\n")
-                        results.flush()
-            finally:
-                fixture.close()
+                finally:
+                    fixture.close()
 
     coredumps = run(
         "coredumpctl",

@@ -254,8 +254,8 @@ def test_desktop_suite_runs_the_full_electron_action_matrix() -> None:
 
     assert "run_electron_qualification" in desktop
     assert "iterations: 20" in desktop
-    assert "expected_actions = 2 * 3 * iterations * 10" in source
-    assert 'document.get("decorationOwner") != "enoshima-system"' in source
+    assert "expected_actions = 2 * 2 * 3 * iterations * 10" in source
+    assert '!= ["client", "enoshima-system"]' in source
     assert "clientNativeMinimizeExposed" in source
 
 

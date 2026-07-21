@@ -8,11 +8,14 @@ const controlPath = process.env.ENOSHIMA_ELECTRON_CONTROL;
 const ackPath = process.env.ENOSHIMA_ELECTRON_ACK;
 const token = process.env.ENOSHIMA_ELECTRON_TOKEN || "fixture";
 const decoration = process.env.ENOSHIMA_ELECTRON_DECORATION || "custom";
+const className = decoration === "custom"
+    ? "EnoshimaElectronFixtureCustom"
+    : "EnoshimaElectronFixtureSystem";
 if (!controlPath || !ackPath)
     throw new Error("Electron qualification control paths are required");
 
-app.setName("EnoshimaElectronFixture");
-app.commandLine.appendSwitch("class", "EnoshimaElectronFixture");
+app.setName(className);
+app.commandLine.appendSwitch("class", className);
 if (process.env.ENOSHIMA_ELECTRON_SOFTWARE_RENDERING === "1")
     // The QEMU XWayland qualification lane validates real X11 window
     // semantics, not physical-GPU behavior.  Electron's documented API must

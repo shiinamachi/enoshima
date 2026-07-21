@@ -7,9 +7,7 @@ from types import ModuleType
 
 def load_driver() -> ModuleType:
     path = (
-        Path(__file__).resolve().parents[1]
-        / "fixtures"
-        / "electron-qualification.py"
+        Path(__file__).resolve().parents[1] / "fixtures" / "electron-qualification.py"
     )
     spec = importlib.util.spec_from_file_location("electron_qualification", path)
     assert spec is not None and spec.loader is not None
@@ -56,3 +54,21 @@ def test_electron_generation_filter_rejects_another_process(monkeypatch) -> None
     )
 
     assert driver.find_fixture(4242, generation=3) is None
+
+
+def test_electron_qualification_covers_native_and_system_chrome() -> None:
+    fixture = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "electron-window" / "main.js"
+    ).read_text(encoding="utf-8")
+    driver = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "electron-qualification.py"
+    ).read_text(encoding="utf-8")
+
+    assert "EnoshimaElectronFixtureCustom" in fixture
+    assert "EnoshimaElectronFixtureSystem" in fixture
+    assert 'for decoration in ("custom", "system")' in driver
+    assert 'fixture.command("native-minimize")' in driver
+    assert 'fixture.command("native-maximize")' in driver
+    assert 'fixture.command("native-unmaximize")' in driver
+    assert 'fixture.command("native-close-reopen")' in driver
+    assert "duplicate system decoration" in driver
