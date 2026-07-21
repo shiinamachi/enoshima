@@ -42,16 +42,16 @@ ShellRoot {
 
     readonly property alias theme: themeTokens
     readonly property string appearanceStateHome: {
-        const configured = Quickshell.env("XDG_STATE_HOME");
+        const configured = String(Quickshell.env("XDG_STATE_HOME") || "");
         return configured !== ""
             ? configured
-            : Quickshell.env("HOME") + "/.local/state";
+            : String(Quickshell.env("HOME") || "") + "/.local/state";
     }
     readonly property string configHome: {
-        const configured = Quickshell.env("XDG_CONFIG_HOME");
+        const configured = String(Quickshell.env("XDG_CONFIG_HOME") || "");
         return configured !== ""
             ? configured
-            : Quickshell.env("HOME") + "/.config";
+            : String(Quickshell.env("HOME") || "") + "/.config";
     }
     readonly property string runtimeHome: Quickshell.env("XDG_RUNTIME_DIR")
     readonly property bool uiFixtureEnabled:
@@ -169,12 +169,26 @@ ShellRoot {
         id: i18nFile
         path: root.configHome + "/enoshima/i18n/"
             + (root.koreanLocale ? "ko-KR.json" : "en-US.json")
-        preload: true
+        preload: false
         printErrors: false
         watchChanges: true
-        onFileChanged: reload()
-        onLoaded: root.loadTranslations()
-        onInternalTextChanged: root.loadTranslations()
+        onFileChanged: i18nLoadTimer.restart()
+    }
+
+    Process {
+        id: i18nLoadProcess
+        command: ["/usr/bin/cat", i18nFile.path]
+        stdout: StdioCollector {
+            onStreamFinished: root.loadTranslations(text)
+        }
+    }
+
+    Timer {
+        id: i18nLoadTimer
+        interval: 100
+        repeat: false
+        running: true
+        onTriggered: i18nLoadProcess.running = true
     }
 
     Process {
@@ -213,7 +227,7 @@ ShellRoot {
             // a frame that still contains catalog keys; wait until the
             // production catalog has populated the same model the user sees.
             if (root.countMissingTranslations() > 0) {
-                i18nFile.reload();
+                i18nLoadTimer.restart();
                 restart();
                 return;
             }
@@ -509,12 +523,8 @@ ShellRoot {
     }
 
     onUiFixtureStateChanged: Qt.callLater(() => applyUiFixtureState())
-    Component.onCompleted: {
-        loadTranslations();
-    }
-
-    function loadTranslations() {
-        translations = parseTranslations(i18nFile.text());
+    function loadTranslations(serialized) {
+        translations = parseTranslations(serialized);
     }
 
     function tr(key) {

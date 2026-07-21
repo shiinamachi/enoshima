@@ -388,8 +388,13 @@ PY
   fail 'launcher contains a hard-coded Korean user-facing string'
 fi
 assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'strings: root.translations'
-assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'onLoaded: root.loadTranslations()'
-assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'onInternalTextChanged: root.loadTranslations()'
+assert_contains home/dot_config/quickshell/cyberdock/shell.qml \
+  'String(Quickshell.env("XDG_CONFIG_HOME") || "")'
+assert_contains home/dot_config/quickshell/cyberdock/shell.qml \
+  'String(Quickshell.env("XDG_STATE_HOME") || "")'
+assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'id: i18nLoadProcess'
+assert_contains home/dot_config/quickshell/cyberdock/shell.qml \
+  'onStreamFinished: root.loadTranslations(text)'
 assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'const candidate = parseUiFixtureState(String(serialized || ""))'
 assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'sequence === uiFixtureAppliedSequence'
 assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'if (root.countMissingTranslations() > 0) {'
