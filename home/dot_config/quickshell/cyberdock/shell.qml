@@ -324,7 +324,11 @@ ShellRoot {
             "mode": state === "selected" || state === "applying"
                 ? "extend" : "internal",
             "pending": state === "confirmation",
-            "deadline": state === "confirmation" ? Date.now() / 1000 + 12 : 0,
+            // Keep visual evidence deterministic. The production backend still
+            // supplies a live deadline; the VM fixture supplies only the
+            // equivalent fixed remaining value so two settled compositor
+            // frames can be compared without racing the countdown tick.
+            "deadline": 0,
             "seconds_remaining": state === "confirmation" ? 12 : 0,
             "external_count": state === "unavailable" ? 0 : 1
         };

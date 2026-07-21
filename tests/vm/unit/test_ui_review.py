@@ -42,3 +42,14 @@ def test_surface_identity_matches_the_current_registry() -> None:
     assert len(identity["implementation_digest"]) == 64
     assert len(identity["concept_sha256"]) == 64
     assert len(identity["concept_spec_sha256"]) == 64
+
+
+def test_display_confirmation_fixture_has_a_stable_countdown_frame() -> None:
+    repository = RuntimePaths.discover().repository
+    shell = (
+        repository
+        / "home/dot_config/quickshell/cyberdock/shell.qml"
+    ).read_text(encoding="utf-8")
+
+    assert '"deadline": 0,' in shell
+    assert '"seconds_remaining": state === "confirmation" ? 12 : 0' in shell
