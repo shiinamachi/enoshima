@@ -44,7 +44,8 @@ for value in sys.argv[1:]:
 PY
 
 concept_sha=$(sha256sum "$work/repo/docs/assets/concept.png" | awk '{print $1}')
-implementation_digest=$(python3 - "$work/repo" <<'PY'
+implementation_digest=$(
+  python3 - "$work/repo" <<'PY'
 import hashlib
 import sys
 from pathlib import Path
