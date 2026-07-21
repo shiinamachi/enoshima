@@ -96,6 +96,7 @@
       {{
         (native_packages
         + management_packages
+        + (additional_native_packages | default([]))
         + (vm_host_packages | default([])))
         | unique
         | list

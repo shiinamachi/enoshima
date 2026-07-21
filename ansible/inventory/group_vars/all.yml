@@ -45,6 +45,10 @@ zram_size_expression: min(ram / 4, 8192)
 zram_compression_algorithm: zstd
 zram_swap_priority: 100
 
+# Profiles may add qualification-only packages without widening the desired
+# workstation package manifest. The default remains empty on physical hosts.
+additional_native_packages: []
+
 subordinate_id_start: 100000
 subordinate_id_count: 65536
 

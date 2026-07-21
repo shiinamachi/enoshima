@@ -69,6 +69,14 @@ for retry_result in desired_packages_install optional_packages_install; do
     "$repo_root/ansible/roles/packages/tasks/main.yml" ||
     fail "package convergence does not retry transient downloads: $retry_result"
 done
+grep -Fxq '  - electron39' "$repo_root/ansible/inventory/host_vars/enoshima-vm.yml" ||
+  fail 'VM profile omits the pinned Electron qualification runtime'
+if grep -Fxq electron39 "$repo_root/packages/native.txt"; then
+  fail 'Electron qualification runtime leaked into the physical workstation manifest'
+fi
+grep -Fq '+ (additional_native_packages | default([]))' \
+  "$repo_root/ansible/roles/packages/tasks/main.yml" ||
+  fail 'package convergence ignores profile-scoped native packages'
 
 for option in --inventory --report-dir --report-format; do
   "$repo_root/bootstrap.sh" --help | grep -Fq -- "$option" ||
