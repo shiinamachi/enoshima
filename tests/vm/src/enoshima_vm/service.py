@@ -1855,12 +1855,15 @@ class VMService:
                 timeout=10,
             )
         elif state == "maximized":
-            guest.exec(
+            self._run_checked(
+                record,
+                "maximize-titlebar-fixture",
                 self._hypr_command(
                     "desktop-window-action maximize --address "
-                    f"{address} --origin vm-review --json"
+                    f"{address} --origin vm-review"
                 ),
-                timeout=15,
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                timeout_seconds=15,
             )
         if state in {"hover", "pressed", "close-hover"}:
             current = next(
@@ -1939,7 +1942,7 @@ class VMService:
             guest.exec(
                 self._hypr_command(
                     "desktop-window-action close --address "
-                    f"{address} --origin vm-review --json"
+                    f"{address} --origin vm-review"
                 ),
                 timeout=15,
                 check=False,
