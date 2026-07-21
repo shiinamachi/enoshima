@@ -181,18 +181,26 @@ ShellRoot {
         id: uiFixtureStateFile
         path: root.uiFixtureEnabled && root.uiFixtureDir !== ""
             ? root.uiFixtureDir + "/state.json" : "/dev/null"
-        preload: true
+        // The VM state is a tiny local file written atomically before the
+        // shell starts. Read it synchronously when requested so an async
+        // preload signal cannot be lost during component construction.
+        preload: false
+        blockLoading: root.uiFixtureEnabled
+        blockAllReads: root.uiFixtureEnabled
         printErrors: false
         watchChanges: root.uiFixtureEnabled
-        onFileChanged: reload()
-        // The VM writes the first requested state before starting the shell.
-        // FileView preloads that file asynchronously, so there may be no
-        // file-change notification to drive the readonly uiFixtureState
-        // binding. Apply both the initial load and subsequent internal text
-        // updates explicitly; the sequence check makes repeated delivery safe.
+        onFileChanged: root.loadUiFixtureState()
         onLoaded: root.loadUiFixtureState()
         onInternalTextChanged:
             root.loadUiFixtureState()
+    }
+
+    Timer {
+        id: uiFixtureStateTimer
+        interval: 50
+        repeat: true
+        running: root.uiFixtureEnabled
+        onTriggered: root.loadUiFixtureState()
     }
 
     FileView {
@@ -502,7 +510,11 @@ ShellRoot {
     function loadUiFixtureState() {
         if (!uiFixtureEnabled)
             return;
-        uiFixtureState = parseUiFixtureState(uiFixtureStateFile.text());
+        const candidate = parseUiFixtureState(uiFixtureStateFile.text());
+        const sequence = Number(candidate.sequence || 0);
+        if (sequence <= 0 || sequence === uiFixtureAppliedSequence)
+            return;
+        uiFixtureState = candidate;
         Qt.callLater(() => applyUiFixtureState());
     }
 
