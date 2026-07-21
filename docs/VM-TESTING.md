@@ -105,7 +105,12 @@ The lanes have distinct purposes:
   surfaces and all 432 required state/locale/scale matrix entries. Quickshell
   review acknowledgements include a traversal of the live visible text tree;
   truncation or painted bounds outside the allocated item is recorded as a
-  text-overflow failure in the capture sidecar.
+  text-overflow failure in the capture sidecar. A capture is accepted only
+  after two consecutive compositor frames are stable: either at most 0.25% of
+  pixels changed, normalized RMSE remains at most 0.004, or ImageMagick's SSIM
+  error remains at most 0.005. A failure retains the preceding frame, a
+  difference image, and the best measured values so a real animation cannot be
+  confused with harmless GPU quantization noise.
 - `boot-security` creates a separate 96 GiB sparse disk, partitions only guest
   `/dev/vdb`, builds LUKS2 and Btrfs subvolumes, creates and signs UKIs with
   disposable keys, enrolls the VM firmware, tests PCR 7 TPM unlock, proves the

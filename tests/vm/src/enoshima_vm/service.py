@@ -61,9 +61,30 @@ REMOTE_ARTIFACTS = REMOTE_ROOT / "artifacts"
 REMOTE_LOGIN_PASSWORD = REMOTE_ROOT / "secrets" / "login-password"
 REMOTE_LOGIN_CREDENTIAL = REMOTE_ROOT / "secrets" / "chpasswd-input"
 
+UI_STABILITY_MAX_CHANGED_PIXEL_RATIO = 0.0025
+UI_STABILITY_MAX_NORMALIZED_RMSE = 0.004
+UI_STABILITY_MAX_SSIM_ERROR = 0.005
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def normalized_image_metric(output: str) -> float:
+    """Return ImageMagick's normalized metric value.
+
+    Metrics such as RMSE can include both an absolute quantum value and a
+    normalized value in parentheses.  SSIM normally emits only the normalized
+    value, so prefer the parenthesized form and otherwise use the final number.
+    """
+
+    parenthesized = re.findall(r"\(([-+0-9.eE]+)\)", output)
+    if parenthesized:
+        return float(parenthesized[-1])
+    values = re.findall(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?", output)
+    if not values:
+        raise ValueError(f"image metric did not contain a number: {output!r}")
+    return float(values[-1])
 
 
 class VMService:
@@ -1386,14 +1407,22 @@ class VMService:
         previous_hash = ""
         previous_path: Path | None = None
         last_capture: dict[str, object] | None = None
+        best_stability: dict[str, float] | None = None
+        best_previous_path: Path | None = None
+        best_current_path: Path | None = None
         while time.monotonic() < deadline:
             last_capture = self.screenshot(record["run_id"], name, output)
             image_path = Path(str(last_capture["path"]))
             current_hash = sha256(image_path.read_bytes()).hexdigest()
             if current_hash == previous_hash:
                 last_capture["stability_changed_pixel_ratio"] = 0.0
+                last_capture["stability_metric"] = "pixel-hash"
                 if previous_path is not None:
                     previous_path.unlink(missing_ok=True)
+                if best_previous_path is not None:
+                    best_previous_path.unlink(missing_ok=True)
+                if best_current_path is not None:
+                    best_current_path.unlink(missing_ok=True)
                 return last_capture
             if previous_path is not None:
                 comparison = subprocess.run(
@@ -1419,23 +1448,157 @@ class VMService:
                         last_capture["height"]
                     )
                     changed_ratio = changed_pixels / total_pixels
-                    if 0 <= changed_ratio <= 0.0025:
+                    if 0 <= changed_ratio <= UI_STABILITY_MAX_CHANGED_PIXEL_RATIO:
                         last_capture["stability_changed_pixel_ratio"] = round(
                             changed_ratio, 8
                         )
+                        last_capture["stability_metric"] = "changed-pixel-ratio"
                         previous_path.unlink(missing_ok=True)
+                        if best_previous_path is not None:
+                            best_previous_path.unlink(missing_ok=True)
+                        if best_current_path is not None:
+                            best_current_path.unlink(missing_ok=True)
                         return last_capture
+
+                    rmse_result = subprocess.run(
+                        [
+                            "magick",
+                            "compare",
+                            "-metric",
+                            "RMSE",
+                            str(previous_path),
+                            str(image_path),
+                            "null:",
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    ssim_result = subprocess.run(
+                        [
+                            "magick",
+                            "compare",
+                            "-metric",
+                            "SSIM",
+                            str(previous_path),
+                            str(image_path),
+                            "null:",
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if rmse_result.returncode in {0, 1} and ssim_result.returncode in {
+                        0,
+                        1,
+                    }:
+                        try:
+                            normalized_rmse = normalized_image_metric(
+                                rmse_result.stderr.strip()
+                            )
+                            ssim_error = normalized_image_metric(
+                                ssim_result.stderr.strip()
+                            )
+                        except ValueError:
+                            pass
+                        else:
+                            stability = {
+                                "changed_pixel_ratio": round(changed_ratio, 8),
+                                "normalized_rmse": round(normalized_rmse, 8),
+                                "ssim_error": round(ssim_error, 8),
+                            }
+                            if (
+                                best_stability is None
+                                or normalized_rmse
+                                < best_stability["normalized_rmse"]
+                            ):
+                                best_stability = stability
+                                best_previous_path = image_path.with_name(
+                                    f".{image_path.name}.best-previous"
+                                )
+                                best_current_path = image_path.with_name(
+                                    f".{image_path.name}.best-current"
+                                )
+                                shutil.copyfile(previous_path, best_previous_path)
+                                shutil.copyfile(image_path, best_current_path)
+                            if (
+                                normalized_rmse <= UI_STABILITY_MAX_NORMALIZED_RMSE
+                                or ssim_error <= UI_STABILITY_MAX_SSIM_ERROR
+                            ):
+                                last_capture["stability_changed_pixel_ratio"] = round(
+                                    changed_ratio, 8
+                                )
+                                last_capture["stability_normalized_rmse"] = round(
+                                    normalized_rmse, 8
+                                )
+                                last_capture["stability_ssim_error"] = round(
+                                    ssim_error, 8
+                                )
+                                last_capture["stability_metric"] = (
+                                    "normalized-rmse"
+                                    if normalized_rmse
+                                    <= UI_STABILITY_MAX_NORMALIZED_RMSE
+                                    else "ssim-error"
+                                )
+                                previous_path.unlink(missing_ok=True)
+                                if best_previous_path is not None:
+                                    best_previous_path.unlink(missing_ok=True)
+                                if best_current_path is not None:
+                                    best_current_path.unlink(missing_ok=True)
+                                return last_capture
             previous_hash = current_hash
             stable_probe = image_path.with_name(f".{image_path.name}.previous")
             shutil.copyfile(image_path, stable_probe)
             previous_path = stable_probe
             time.sleep(0.1)
+        diagnostic_previous: str | None = None
+        diagnostic_current: str | None = None
+        diagnostic_difference: str | None = None
+        if last_capture is not None and best_previous_path is not None:
+            image_path = Path(str(last_capture["path"]))
+            diagnostic_path = image_path.with_name(
+                f"{image_path.stem}.stability-previous{image_path.suffix}"
+            )
+            current_diagnostic_path = image_path.with_name(
+                f"{image_path.stem}.stability-current{image_path.suffix}"
+            )
+            shutil.move(best_previous_path, diagnostic_path)
+            if best_current_path is None:
+                raise AssertionError("best stability frame pair is incomplete")
+            shutil.move(best_current_path, current_diagnostic_path)
+            diagnostic_previous = str(diagnostic_path)
+            diagnostic_current = str(current_diagnostic_path)
+            difference_path = image_path.with_name(
+                f"{image_path.stem}.stability-difference{image_path.suffix}"
+            )
+            difference = subprocess.run(
+                [
+                    "magick",
+                    "compare",
+                    str(diagnostic_path),
+                    str(current_diagnostic_path),
+                    str(difference_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if difference.returncode in {0, 1} and difference_path.is_file():
+                diagnostic_difference = str(difference_path)
         if previous_path is not None:
             previous_path.unlink(missing_ok=True)
         raise VMError(
             FailureCategory.VISUAL_ASSERTION_FAILED,
-            "compositor output did not settle to two identical frames",
-            {"name": name, "output": output, "last_capture": last_capture},
+            "compositor output did not settle to two perceptually stable frames",
+            {
+                "name": name,
+                "output": output,
+                "last_capture": last_capture,
+                "best_stability": best_stability,
+                "diagnostic_previous": diagnostic_previous,
+                "diagnostic_current": diagnostic_current,
+                "diagnostic_difference": diagnostic_difference,
+            },
         )
 
     def _restart_ui_review_shell(
@@ -2251,6 +2414,14 @@ class VMService:
                 "stability_changed_pixel_ratio": capture.get(
                     "stability_changed_pixel_ratio", 0.0
                 ),
+                "stability": {
+                    "accepted_by": capture.get("stability_metric"),
+                    "changed_pixel_ratio": capture.get(
+                        "stability_changed_pixel_ratio", 0.0
+                    ),
+                    "normalized_rmse": capture.get("stability_normalized_rmse"),
+                    "ssim_error": capture.get("stability_ssim_error"),
+                },
                 "image": str(image_path),
                 "image_sha256": sha256(image_path.read_bytes()).hexdigest(),
                 "run_id": record["run_id"],

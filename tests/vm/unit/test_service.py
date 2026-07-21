@@ -9,7 +9,7 @@ import pytest
 from enoshima_vm.config import RuntimePaths
 from enoshima_vm.errors import VMError
 from enoshima_vm.process import CommandResult
-from enoshima_vm.service import VMService
+from enoshima_vm.service import VMService, normalized_image_metric
 
 
 class ScreenshotGuest:
@@ -121,8 +121,110 @@ def test_stable_ui_accepts_only_a_bounded_animated_region(
 
     assert captures == 2
     assert capture["stability_changed_pixel_ratio"] == 0.0002
+    assert capture["stability_metric"] == "changed-pixel-ratio"
     assert comparisons[0][1:4] == ("compare", "-metric", "AE")
     assert not image.with_name(".busy.png.previous").exists()
+
+
+def test_normalized_image_metric_prefers_parenthesized_value() -> None:
+    assert normalized_image_metric("64 (0.000976577)") == 0.000976577
+    assert normalized_image_metric("0.9995") == 0.9995
+
+
+def test_stable_ui_accepts_perceptually_identical_renderer_noise(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    image = tmp_path / "artifacts" / "screenshots" / "noisy.png"
+    captures = 0
+
+    def screenshot(_run_id, _name, _output):
+        nonlocal captures
+        captures += 1
+        image.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        image.write_bytes(f"frame-{captures}".encode())
+        return {"path": str(image), "width": 1000, "height": 1000}
+
+    def compare(argv, **_kwargs):
+        metric = argv[argv.index("-metric") + 1]
+        outputs = {
+            "AE": "1000000",
+            "RMSE": "64 (0.000976577)",
+            "SSIM": "0.0666445",
+        }
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr=outputs[metric])
+
+    monkeypatch.setattr(service, "screenshot", screenshot)
+    monkeypatch.setattr("enoshima_vm.service.subprocess.run", compare)
+
+    capture = service._capture_stable_ui(
+        {"run_id": "run-012345abcdef"}, "noisy", "HEADLESS-UI"
+    )
+
+    assert captures == 2
+    assert capture["stability_changed_pixel_ratio"] == 1.0
+    assert capture["stability_normalized_rmse"] == 0.00097658
+    assert capture["stability_ssim_error"] == 0.0666445
+    assert capture["stability_metric"] == "normalized-rmse"
+    assert not image.with_name(".noisy.png.previous").exists()
+
+
+def test_unstable_ui_retains_the_best_frame_pair_and_difference(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    image = tmp_path / "artifacts" / "screenshots" / "unstable.png"
+    captures = 0
+    monotonic_values = iter([0.0, 0.0, 0.1, 1.0])
+
+    def screenshot(_run_id, _name, _output):
+        nonlocal captures
+        captures += 1
+        image.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        image.write_bytes(f"frame-{captures}".encode())
+        return {"path": str(image), "width": 1000, "height": 1000}
+
+    def compare(argv, **_kwargs):
+        if "-metric" in argv:
+            metric = argv[argv.index("-metric") + 1]
+            outputs = {"AE": "1000000", "RMSE": "0.2 (0.2)", "SSIM": "0.2"}
+            return subprocess.CompletedProcess(
+                argv, 1, stdout="", stderr=outputs[metric]
+            )
+        Path(argv[-1]).write_bytes(b"difference")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="")
+
+    monkeypatch.setattr(service, "screenshot", screenshot)
+    monkeypatch.setattr("enoshima_vm.service.subprocess.run", compare)
+    monkeypatch.setattr(
+        "enoshima_vm.service.time.monotonic", lambda: next(monotonic_values)
+    )
+    monkeypatch.setattr("enoshima_vm.service.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(VMError, match="perceptually stable") as failure:
+        service._capture_stable_ui(
+            {"run_id": "run-012345abcdef"},
+            "unstable",
+            "HEADLESS-UI",
+            timeout_seconds=0.5,
+        )
+
+    assert captures == 2
+    assert failure.value.details is not None
+    assert failure.value.details["best_stability"] == {
+        "changed_pixel_ratio": 1.0,
+        "normalized_rmse": 0.2,
+        "ssim_error": 0.2,
+    }
+    for key in (
+        "diagnostic_previous",
+        "diagnostic_current",
+        "diagnostic_difference",
+    ):
+        assert Path(str(failure.value.details[key])).is_file()
+    assert not image.with_name(".unstable.png.previous").exists()
 
 
 def test_greetd_capture_uses_the_guest_wayland_output(tmp_path, monkeypatch) -> None:
@@ -510,3 +612,4 @@ def test_ui_capture_requires_two_identical_frames(tmp_path, monkeypatch) -> None
 
     assert calls == 2
     assert result["output"] == "HEADLESS-UI"
+    assert result["stability_metric"] == "pixel-hash"
