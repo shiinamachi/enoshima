@@ -170,6 +170,7 @@ ShellRoot {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: root.loadTranslations()
+        onInternalTextChanged: root.loadTranslations()
     }
 
     FileView {
@@ -198,6 +199,14 @@ ShellRoot {
         onTriggered: {
             if (!root.uiFixtureEnabled || root.uiFixtureAppliedSequence <= 0)
                 return;
+            // FileView preloads asynchronously. Never publish a ready ACK for
+            // a frame that still contains catalog keys; wait until the
+            // production catalog has populated the same model the user sees.
+            if (root.countMissingTranslations() > 0) {
+                i18nFile.reload();
+                restart();
+                return;
+            }
             uiFixtureReadyFile.setText(JSON.stringify({
                 "schema": 1,
                 "sequence": root.uiFixtureAppliedSequence,

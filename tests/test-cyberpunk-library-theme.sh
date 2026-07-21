@@ -385,6 +385,8 @@ PY
 fi
 assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'strings: root.translations'
 assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'onLoaded: root.loadTranslations()'
+assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'onInternalTextChanged: root.loadTranslations()'
+assert_contains home/dot_config/quickshell/cyberdock/shell.qml 'if (root.countMissingTranslations() > 0) {'
 assert_contains home/dot_config/quickshell/cyberdock/shell.qml '"missing_translation_count": root.countMissingTranslations()'
 assert_contains home/dot_config/enoshima/i18n/en-US.json '"launcher.search": "Search apps and actions"'
 assert_contains home/dot_config/enoshima/i18n/ko-KR.json '"launcher.search": "앱과 작업 검색"'
