@@ -58,8 +58,12 @@ ShellRoot {
         Quickshell.env("ENOSHIMA_VM_UI_TEST") === "1"
     readonly property string uiFixtureDir:
         Quickshell.env("ENOSHIMA_UI_FIXTURE_DIR")
-    readonly property var uiFixtureState:
-        parseUiFixtureState(uiFixtureStateFile.text())
+    property var uiFixtureState: ({
+        "schema": 1,
+        "surface": "",
+        "state": "",
+        "output": ""
+    })
     property int uiFixtureAppliedSequence: 0
     readonly property bool koreanLocale:
         String(Quickshell.env("LANG") || "").toLowerCase().startsWith("ko")
@@ -186,9 +190,9 @@ ShellRoot {
         // file-change notification to drive the readonly uiFixtureState
         // binding. Apply both the initial load and subsequent internal text
         // updates explicitly; the sequence check makes repeated delivery safe.
-        onLoaded: Qt.callLater(() => root.applyUiFixtureState())
+        onLoaded: root.loadUiFixtureState()
         onInternalTextChanged:
-            Qt.callLater(() => root.applyUiFixtureState())
+            root.loadUiFixtureState()
     }
 
     FileView {
@@ -495,11 +499,18 @@ ShellRoot {
         uiFixtureReadyTimer.restart();
     }
 
+    function loadUiFixtureState() {
+        if (!uiFixtureEnabled)
+            return;
+        uiFixtureState = parseUiFixtureState(uiFixtureStateFile.text());
+        Qt.callLater(() => applyUiFixtureState());
+    }
+
     onUiFixtureStateChanged: Qt.callLater(() => applyUiFixtureState())
     Component.onCompleted: {
         loadTranslations();
         if (uiFixtureEnabled)
-            Qt.callLater(() => applyUiFixtureState());
+            loadUiFixtureState();
     }
 
     function loadTranslations() {
