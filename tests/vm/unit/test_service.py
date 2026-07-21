@@ -274,8 +274,8 @@ def test_ui_review_closes_existing_clients_with_exact_addresses() -> None:
     review = source.index("def _run_ui_review", cleanup)
     body = source[cleanup:review]
     assert "desktop-window-action close --address" in body
-    assert "--origin vm-review" in body
-    assert "--origin vm-review --json" not in body
+    assert "--origin compositor" in body
+    assert "--origin vm-review" not in body
     assert "--active" not in body
 
 
@@ -290,7 +290,8 @@ def test_titlebar_review_uses_the_supported_maximize_action_contract() -> None:
     ]
 
     assert "desktop-window-action maximize --address" in titlebar
-    assert "--origin vm-review --json" not in titlebar
+    assert "--origin compositor" in titlebar
+    assert "--origin vm-review" not in titlebar
     assert "maximize-titlebar-fixture" in titlebar
 
 

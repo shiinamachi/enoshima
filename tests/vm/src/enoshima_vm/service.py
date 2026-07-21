@@ -1860,7 +1860,7 @@ class VMService:
                 "maximize-titlebar-fixture",
                 self._hypr_command(
                     "desktop-window-action maximize --address "
-                    f"{address} --origin vm-review"
+                    f"{address} --origin compositor"
                 ),
                 FailureCategory.VISUAL_ASSERTION_FAILED,
                 timeout_seconds=15,
@@ -1942,7 +1942,7 @@ class VMService:
             guest.exec(
                 self._hypr_command(
                     "desktop-window-action close --address "
-                    f"{address} --origin vm-review"
+                    f"{address} --origin compositor"
                 ),
                 timeout=15,
                 check=False,
