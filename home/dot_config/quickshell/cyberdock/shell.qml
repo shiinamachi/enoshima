@@ -188,6 +188,7 @@ ShellRoot {
             "--sleep-interval=0.05", "--max-unchanged-stats=1",
             root.uiFixtureDir + "/state.json"]
         stdout: SplitParser {
+            splitMarker: "\n"
             onRead: data => root.loadUiFixtureState(data)
         }
     }
