@@ -63,7 +63,7 @@ ShellRoot {
     property int uiFixtureAppliedSequence: 0
     readonly property bool koreanLocale:
         String(Quickshell.env("LANG") || "").toLowerCase().startsWith("ko")
-    readonly property var translations: parseTranslations(i18nFile.text())
+    property var translations: ({})
     property int snapClock: 0
     readonly property var productionSnapState:
         parseSnapState(snapStateFile.text(), snapClock)
@@ -169,6 +169,7 @@ ShellRoot {
         printErrors: false
         watchChanges: true
         onFileChanged: reload()
+        onLoaded: root.loadTranslations()
     }
 
     FileView {
@@ -203,9 +204,22 @@ ShellRoot {
                 "surface": String(root.uiFixtureState.surface || ""),
                 "state": String(root.uiFixtureState.state || ""),
                 "output": String(root.uiFixtureState.output || ""),
-                "text_overflow_count": root.countVisibleTextOverflow(root)
+                "text_overflow_count": root.countVisibleTextOverflow(root),
+                "missing_translation_count": root.countMissingTranslations()
             }) + "\n");
         }
+    }
+
+    function countMissingTranslations() {
+        const required = ["dock.running", "display.heading",
+            "launcher.search", "windowMenu.systemMenu"];
+        let count = 0;
+        for (const key of required) {
+            const value = translations?.[key];
+            if (value === undefined || String(value) === "")
+                count += 1;
+        }
+        return count;
     }
 
     function countVisibleTextOverflow(object, depth) {
@@ -463,8 +477,13 @@ ShellRoot {
 
     onUiFixtureStateChanged: Qt.callLater(() => applyUiFixtureState())
     Component.onCompleted: {
+        loadTranslations();
         if (uiFixtureEnabled)
             Qt.callLater(() => applyUiFixtureState());
+    }
+
+    function loadTranslations() {
+        translations = parseTranslations(i18nFile.text());
     }
 
     function tr(key) {
