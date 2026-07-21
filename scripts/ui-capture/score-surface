@@ -43,6 +43,10 @@ def implementation_digest(root: Path, paths: list[str]) -> str:
     return digest.hexdigest()
 
 
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--surface", required=True)
@@ -67,11 +71,13 @@ def main() -> None:
         raise SystemExit("automated report must stay inside the repository") from error
     automated = json.loads(automated_path.read_text(encoding="utf-8"))
     current_digest = implementation_digest(root, entry["implementation"])
+    concept_spec_hash = sha256(root / entry["concept"]["spec"])
     if (
         automated.get("schema") != 1
         or automated.get("surface_id") != args.surface
         or automated.get("implementation_digest") != current_digest
         or automated.get("concept_sha256") != entry["concept"]["sha256"]
+        or automated.get("concept_spec_sha256") != concept_spec_hash
     ):
         raise SystemExit("automated report is stale or belongs to another surface")
     if automated.get("text_overflow_failures"):
@@ -94,6 +100,7 @@ def main() -> None:
         "reviewed_at": date.today().isoformat(),
         "implementation_digest": current_digest,
         "concept_sha256": entry["concept"]["sha256"],
+        "concept_spec_sha256": concept_spec_hash,
         "automated_report": automated_relative,
         "automated_report_sha256": hashlib.sha256(automated_path.read_bytes()).hexdigest(),
         "scores": scores,

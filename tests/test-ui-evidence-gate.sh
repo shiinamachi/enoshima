@@ -131,6 +131,23 @@ EOF
 } >"$work/docs/ui-surfaces.yaml"
 
 python3 "$validator" --require-evidence "$work/docs/ui-surfaces.yaml" >/dev/null
+first_image=$(jq -r '.image' "$work/${sidecars[0]}")
+cp "$work/$first_image" "$work/image.saved"
+printf 'tampered' >>"$work/$first_image"
+if python3 "$validator" --require-evidence "$work/docs/ui-surfaces.yaml" >/dev/null 2>&1; then
+  printf 'Tampered screenshot unexpectedly passed the release gate.\n' >&2
+  exit 1
+fi
+mv "$work/image.saved" "$work/$first_image"
+
+cp "$work/docs/concepts/test-surface.yaml" "$work/spec.saved"
+printf 'notes: [Changed after review.]\n' >>"$work/docs/concepts/test-surface.yaml"
+if python3 "$validator" --require-evidence "$work/docs/ui-surfaces.yaml" >/dev/null 2>&1; then
+  printf 'Changed concept specification unexpectedly reused stale evidence.\n' >&2
+  exit 1
+fi
+mv "$work/spec.saved" "$work/docs/concepts/test-surface.yaml"
+
 printf '// implementation drift\n' >>"$work/home/dot_config/quickshell/cyberdock/Test.qml"
 if python3 "$validator" --require-evidence "$work/docs/ui-surfaces.yaml" >/dev/null 2>&1; then
   printf 'Stale evidence unexpectedly passed after implementation drift.\n' >&2

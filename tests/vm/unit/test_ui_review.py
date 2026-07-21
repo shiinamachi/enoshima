@@ -41,3 +41,4 @@ def test_surface_identity_matches_the_current_registry() -> None:
     identity = load_ui_review_identities(repository, {"power-menu"})["power-menu"]
     assert len(identity["implementation_digest"]) == 64
     assert len(identity["concept_sha256"]) == 64
+    assert len(identity["concept_spec_sha256"]) == 64

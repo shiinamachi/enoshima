@@ -75,7 +75,17 @@ def relative_path(root: Path, value: object, errors: list[str], label: str) -> P
     if path.is_absolute() or ".." in path.parts:
         fail(errors, f"{label}: path must stay inside the repository: {value}")
         return None
-    return root / path
+    candidate = root / path
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        fail(errors, f"{label}: resolved path escapes the repository: {value}")
+        return None
+    if candidate.is_symlink():
+        fail(errors, f"{label}: symbolic links are not accepted: {value}")
+        return None
+    return resolved
 
 
 def validate_review(
@@ -84,6 +94,7 @@ def validate_review(
     evidence: dict[str, Any],
     current_digest: str,
     concept_hash: str,
+    concept_spec_hash: str,
     errors: list[str],
 ) -> None:
     label = f"surfaces.{surface_id}.evidence"
@@ -98,7 +109,11 @@ def validate_review(
         return
     if review.get("schema") != 2 or review.get("surface_id") != surface_id:
         fail(errors, f"{label}.review: schema/surface_id mismatch")
-    if review.get("implementation_digest") != current_digest or review.get("concept_sha256") != concept_hash:
+    if (
+        review.get("implementation_digest") != current_digest
+        or review.get("concept_sha256") != concept_hash
+        or review.get("concept_spec_sha256") != concept_spec_hash
+    ):
         fail(errors, f"{label}.review: stale implementation or concept digest")
     scores = review.get("scores", {})
     if not isinstance(scores, dict):
@@ -121,6 +136,7 @@ def validate_review(
             or automated.get("surface_id") != surface_id
             or automated.get("implementation_digest") != current_digest
             or automated.get("concept_sha256") != concept_hash
+            or automated.get("concept_spec_sha256") != concept_spec_hash
         ):
             fail(errors, f"{label}.review.automated_report: stale schema or digest")
         if automated.get("text_overflow_failures"):
@@ -152,6 +168,7 @@ def validate_evidence(
     entry: dict[str, Any],
     spec_states: list[str],
     concept_hash: str,
+    concept_spec_hash: str,
     require_evidence: bool,
     errors: list[str],
     pending: list[str],
@@ -210,11 +227,17 @@ def validate_evidence(
             continue
         if sidecar.get("schema") != 1 or sidecar.get("surface_id") != surface_id:
             fail(errors, f"{label}.captures: schema/surface mismatch in {value}")
-        if sidecar.get("implementation_digest") != current_digest or sidecar.get("concept_sha256") != concept_hash:
+        if (
+            sidecar.get("implementation_digest") != current_digest
+            or sidecar.get("concept_sha256") != concept_hash
+            or sidecar.get("concept_spec_sha256") != concept_spec_hash
+        ):
             fail(errors, f"{label}.captures: stale digest in {value}")
         image_path = relative_path(root, sidecar.get("image"), errors, f"{label}.captures.image")
         if image_path is None or not image_path.is_file():
             fail(errors, f"{label}.captures: screenshot does not exist for {value}")
+        elif sidecar.get("image_sha256") != sha256(image_path):
+            fail(errors, f"{label}.captures: screenshot hash mismatch in {value}")
         logical_size = sidecar.get("logical_size")
         if not isinstance(logical_size, list) or len(logical_size) != 2 or not all(isinstance(item, int) and item > 0 for item in logical_size):
             fail(errors, f"{label}.captures: invalid logical_size in {value}")
@@ -228,7 +251,15 @@ def validate_evidence(
     if missing:
         preview = ", ".join(f"{state}/{locale}/{scale:g}" for state, locale, scale in sorted(missing)[:5])
         fail(errors, f"{label}.captures: missing {len(missing)} matrix entries (for example {preview})")
-    validate_review(root, surface_id, evidence, current_digest, concept_hash, errors)
+    validate_review(
+        root,
+        surface_id,
+        evidence,
+        current_digest,
+        concept_hash,
+        concept_spec_hash,
+        errors,
+    )
 
 
 def main() -> int:
@@ -295,9 +326,11 @@ def main() -> int:
             fail(errors, f"{label}.concept.asset: file does not exist")
 
         spec_states: list[str] = []
+        concept_spec_hash = ""
         if spec_path is None or not spec_path.is_file():
             fail(errors, f"{label}.concept.spec: file does not exist")
         else:
+            concept_spec_hash = sha256(spec_path)
             try:
                 spec = load_yaml(spec_path)
             except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
@@ -310,7 +343,17 @@ def main() -> int:
             else:
                 spec_states = [str(value) for value in spec["states"]]
 
-        validate_evidence(root, str(surface_id), entry, spec_states, concept_hash, args.require_evidence, errors, pending)
+        validate_evidence(
+            root,
+            str(surface_id),
+            entry,
+            spec_states,
+            concept_hash,
+            concept_spec_hash,
+            args.require_evidence,
+            errors,
+            pending,
+        )
 
         if entry.get("token_mode") == "consumer":
             for value in implementations:

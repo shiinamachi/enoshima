@@ -113,6 +113,7 @@ def load_ui_review_identities(
             digest.update(b"\0")
         concept = entry.get("concept", {})
         concept_path = repository / str(concept.get("asset", ""))
+        concept_spec_path = repository / str(concept.get("spec", ""))
         if not concept_path.is_file() or concept_path.is_symlink():
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
@@ -124,9 +125,17 @@ def load_ui_review_identities(
                 FailureCategory.HARNESS_ERROR,
                 f"UI concept hash is stale: {surface}",
             )
+        if not concept_spec_path.is_file() or concept_spec_path.is_symlink():
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"UI concept spec is unavailable: {surface}",
+            )
         identities[surface] = {
             "implementation_digest": digest.hexdigest(),
             "concept_sha256": concept_hash,
+            "concept_spec_sha256": hashlib.sha256(
+                concept_spec_path.read_bytes()
+            ).hexdigest(),
         }
     return identities
 

@@ -140,7 +140,9 @@ def main() -> None:
     if not isinstance(entry, dict):
         raise SystemExit(f"unknown surface: {args.surface}")
     concept_path = safe_relative(root, entry["concept"]["asset"], "concept asset")
+    concept_spec_path = safe_relative(root, entry["concept"]["spec"], "concept spec")
     concept_hash = sha256(concept_path)
+    concept_spec_hash = sha256(concept_spec_path)
     current_digest = implementation_digest(root, entry["implementation"])
     geometry_scores: list[float] = []
     color_scores: list[float] = []
@@ -157,7 +159,11 @@ def main() -> None:
             sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
             if sidecar.get("surface_id") != args.surface:
                 raise SystemExit(f"comparison {index} sidecar belongs to another surface")
-            if sidecar.get("implementation_digest") != current_digest or sidecar.get("concept_sha256") != concept_hash:
+            if (
+                sidecar.get("implementation_digest") != current_digest
+                or sidecar.get("concept_sha256") != concept_hash
+                or sidecar.get("concept_spec_sha256") != concept_spec_hash
+            ):
                 raise SystemExit(f"comparison {index} sidecar is stale")
             implementation_path = safe_relative(root, sidecar["image"], f"comparison {index} image")
             if sidecar.get("image_sha256") != sha256(implementation_path):
@@ -202,6 +208,7 @@ def main() -> None:
         "surface_id": args.surface,
         "implementation_digest": current_digest,
         "concept_sha256": concept_hash,
+        "concept_spec_sha256": concept_spec_hash,
         "mapping_sha256": sha256(mapping_path),
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "scores": scores,

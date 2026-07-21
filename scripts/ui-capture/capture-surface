@@ -87,7 +87,9 @@ def main() -> None:
 
     concept = entry["concept"]
     concept_path = root / concept["asset"]
+    concept_spec_path = root / concept["spec"]
     concept_hash = sha256(concept_path)
+    concept_spec_hash = sha256(concept_spec_path)
     if concept_hash != concept.get("sha256"):
         raise SystemExit("concept hash does not match the registry")
     current_digest = implementation_digest(root, entry["implementation"])
@@ -120,6 +122,7 @@ def main() -> None:
         "image_sha256": sha256(image_path),
         "implementation_digest": current_digest,
         "concept_sha256": concept_hash,
+        "concept_spec_sha256": concept_spec_hash,
         "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "text_overflow_count": args.text_overflow_count,
     }

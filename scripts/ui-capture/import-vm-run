@@ -73,14 +73,16 @@ def png_size(path: Path) -> tuple[int, int]:
     return struct.unpack(">II", header[16:24])
 
 
-def git(root: Path, *arguments: str) -> str:
-    return subprocess.run(
-        ["git", *arguments],
+def git_file_sha256(root: Path, commit: str, relative: str) -> str:
+    if Path(relative).is_absolute() or ".." in Path(relative).parts:
+        fail(f"repository path escapes the source tree: {relative}")
+    result = subprocess.run(
+        ["git", "show", f"{commit}:{relative}"],
         cwd=root,
         check=True,
         capture_output=True,
-        text=True,
-    ).stdout.strip()
+    )
+    return hashlib.sha256(result.stdout).hexdigest()
 
 
 def safe_artifact(root: Path, value: object, label: str) -> Path:
@@ -207,8 +209,14 @@ def main() -> None:
             expected_total += len(expected)
             digest = implementation_digest(root, entry.get("implementation", []))
             concept_hash = sha256(root / str(concept.get("asset", "")))
+            concept_spec_path = root / str(concept.get("spec", ""))
+            concept_spec_hash = sha256(concept_spec_path)
             if concept_hash != concept.get("sha256"):
                 fail(f"concept hash is stale for {surface_id}")
+            if concept_spec_hash != git_file_sha256(
+                root, source_commit, str(concept.get("spec", ""))
+            ):
+                fail(f"concept spec changed after the VM run for {surface_id}")
 
             sidecars = sorted(review_root.glob(f"{surface_id}--*.json"))
             cases: dict[tuple[str, str, float], tuple[Path, dict]] = {}
@@ -306,6 +314,7 @@ def main() -> None:
                     },
                     "text_overflow_count": overflow,
                     "text_overflow_measurement": overflow_measurement,
+                    "concept_spec_sha256": concept_spec_hash,
                     "imported_at": datetime.now(timezone.utc).isoformat(
                         timespec="seconds"
                     ),
@@ -332,6 +341,7 @@ def main() -> None:
             imported[surface_id] = {
                 "implementation_digest": digest,
                 "concept_sha256": concept_hash,
+                "concept_spec_sha256": concept_spec_hash,
                 "captures": canonical_sidecars,
             }
             staged[surface_id] = destination
