@@ -1,0 +1,390 @@
+#!/usr/bin/env python3
+"""Import a clean, passing VM UI-review run as repository-bound evidence."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import itertools
+import json
+import os
+import shutil
+import struct
+import subprocess
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def fail(message: str) -> None:
+    raise SystemExit(message)
+
+
+def load_json(path: Path, label: str) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        fail(f"cannot read {label} {path}: {error}")
+    if not isinstance(value, dict):
+        fail(f"{label} must contain a JSON object: {path}")
+    return value
+
+
+def load_yaml(path: Path) -> dict:
+    result = subprocess.run(
+        ["yq", ".", str(path)], check=True, capture_output=True, text=True
+    )
+    value = json.loads(result.stdout)
+    if not isinstance(value, dict):
+        fail(f"YAML root must be a mapping: {path}")
+    return value
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def implementation_digest(root: Path, paths: list[str]) -> str:
+    digest = hashlib.sha256()
+    for value in sorted(paths):
+        path = root / value
+        if not path.is_file() or path.is_symlink():
+            fail(f"implementation is not a regular file: {value}")
+        digest.update(value.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def png_size(path: Path) -> tuple[int, int]:
+    with path.open("rb") as stream:
+        header = stream.read(24)
+    if (
+        len(header) != 24
+        or header[:8] != b"\x89PNG\r\n\x1a\n"
+        or header[12:16] != b"IHDR"
+    ):
+        fail(f"VM capture is not a PNG: {path}")
+    return struct.unpack(">II", header[16:24])
+
+
+def git(root: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def safe_artifact(root: Path, value: object, label: str) -> Path:
+    if not isinstance(value, str) or not value:
+        fail(f"{label} must be a non-empty path")
+    path = Path(value).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        fail(f"{label} escapes the VM artifact directory: {path}")
+    if not path.is_file() or path.is_symlink():
+        fail(f"{label} must be a regular file: {path}")
+    return path
+
+
+def matrix_key(sidecar: dict) -> tuple[str, str, float]:
+    try:
+        return (
+            str(sidecar["state"]),
+            str(sidecar["locale"]),
+            float(sidecar["scale"]),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        fail(f"invalid state/locale/scale in VM sidecar: {error}")
+
+
+def load_manual_overflow(path: Path | None, run_id: str) -> dict[str, dict]:
+    if path is None:
+        return {}
+    report = load_json(path.resolve(), "manual overflow report")
+    if report.get("schema") != 1 or report.get("run_id") != run_id:
+        fail("manual overflow report schema/run_id mismatch")
+    surfaces = report.get("surfaces")
+    if not isinstance(surfaces, dict):
+        fail("manual overflow report requires a surfaces mapping")
+    for surface, value in surfaces.items():
+        if (
+            not isinstance(value, dict)
+            or value.get("verified") is not True
+            or not isinstance(value.get("reviewer"), str)
+            or not value["reviewer"].strip()
+            or not isinstance(value.get("text_overflow_count"), int)
+            or value["text_overflow_count"] < 0
+            or not isinstance(value.get("review_artifact"), str)
+            or not value["review_artifact"].strip()
+        ):
+            fail(f"manual overflow verification is incomplete for {surface}")
+    return surfaces
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run-dir", required=True, type=Path)
+    parser.add_argument("--repo-root", type=Path)
+    parser.add_argument("--manual-overflow-report", type=Path)
+    parser.add_argument("--webp-quality", type=int, default=92)
+    args = parser.parse_args()
+
+    root = (args.repo_root or Path(__file__).resolve().parents[2]).resolve()
+    run_dir = args.run_dir.resolve()
+    record = load_json(run_dir / "run.json", "VM run record")
+    run_id = str(record.get("run_id", ""))
+    if run_dir.name != run_id or record.get("suite") != "ui-review":
+        fail("run directory does not contain a ui-review run")
+    if record.get("status") != "completed":
+        fail(f"VM run is not complete and passing: {record.get('status')}")
+    steps = record.get("steps")
+    if not isinstance(steps, list) or not steps:
+        fail("VM run has no recorded steps")
+    failed_steps = [
+        str(step.get("action"))
+        for step in steps
+        if not isinstance(step, dict) or step.get("status") != "passed"
+    ]
+    if failed_steps or not any(step.get("action") == "run_ui_review" for step in steps):
+        fail(f"VM run contains missing or unsuccessful steps: {failed_steps}")
+
+    source = record.get("source")
+    if not isinstance(source, dict) or source.get("dirty") is not False:
+        fail("only a clean VM source snapshot may become canonical evidence")
+    if source.get("untracked_files"):
+        fail("VM source snapshot contains untracked files")
+    source_commit = str(source.get("source_commit", ""))
+    if len(source_commit) != 40:
+        fail("VM run lacks a full source commit")
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"], cwd=root
+    )
+    if ancestor.returncode != 0:
+        fail("VM source commit is not an ancestor of the current HEAD")
+
+    if not 1 <= args.webp_quality <= 100:
+        fail("WebP quality must be between 1 and 100")
+    manifest = load_yaml(root / "docs/ui-surfaces.yaml")
+    surfaces = manifest.get("surfaces")
+    if not isinstance(surfaces, dict) or not surfaces:
+        fail("UI surface registry is empty")
+
+    artifact_root = Path(str(record.get("artifact_dir", ""))).resolve()
+    if artifact_root != (run_dir / "artifacts").resolve():
+        fail("VM artifact path does not belong to the selected run")
+    review_root = artifact_root / "ui-review"
+    summary = load_json(review_root / "summary.json", "UI review summary")
+    manual = load_manual_overflow(args.manual_overflow_report, run_id)
+
+    expected_total = 0
+    staged: dict[str, Path] = {}
+    imported: dict[str, dict] = {}
+    evidence_root = root / "docs/evidence"
+    evidence_root.mkdir(parents=True, exist_ok=True, mode=0o755)
+    staging_root = Path(tempfile.mkdtemp(prefix=".vm-import-", dir=evidence_root))
+    try:
+        for surface_id, entry in surfaces.items():
+            if not isinstance(entry, dict):
+                fail(f"invalid registry entry: {surface_id}")
+            evidence = entry.get("evidence")
+            concept = entry.get("concept")
+            if not isinstance(evidence, dict) or not isinstance(concept, dict):
+                fail(f"surface lacks concept/evidence contract: {surface_id}")
+            states = [str(value) for value in evidence.get("required_states", [])]
+            locales = [str(value) for value in evidence.get("required_locales", [])]
+            scales = [float(value) for value in evidence.get("required_scales", [])]
+            expected = set(itertools.product(states, locales, scales))
+            expected_total += len(expected)
+            digest = implementation_digest(root, entry.get("implementation", []))
+            concept_hash = sha256(root / str(concept.get("asset", "")))
+            if concept_hash != concept.get("sha256"):
+                fail(f"concept hash is stale for {surface_id}")
+
+            sidecars = sorted(review_root.glob(f"{surface_id}--*.json"))
+            cases: dict[tuple[str, str, float], tuple[Path, dict]] = {}
+            for sidecar_path in sidecars:
+                sidecar = load_json(sidecar_path, "VM capture sidecar")
+                if sidecar.get("schema") != 1 or sidecar.get("surface_id") != surface_id:
+                    fail(f"VM sidecar schema/surface mismatch: {sidecar_path}")
+                key = matrix_key(sidecar)
+                if key in cases:
+                    fail(f"duplicate VM capture matrix key: {surface_id}/{key}")
+                cases[key] = (sidecar_path, sidecar)
+            missing = expected - cases.keys()
+            extra = cases.keys() - expected
+            if missing or extra:
+                fail(
+                    f"VM matrix mismatch for {surface_id}: "
+                    f"missing={len(missing)} extra={len(extra)}"
+                )
+
+            destination = staging_root / surface_id
+            destination.mkdir(mode=0o755)
+            canonical_sidecars: list[str] = []
+            environment_hashes: dict[tuple[str, float], set[str]] = {}
+            for key in sorted(expected):
+                source_sidecar_path, sidecar = cases[key]
+                if (
+                    sidecar.get("run_id") != run_id
+                    or sidecar.get("source_commit") != source_commit
+                    or sidecar.get("worktree_hash") != source.get("worktree_hash")
+                    or sidecar.get("implementation_digest") != digest
+                    or sidecar.get("concept_sha256") != concept_hash
+                ):
+                    fail(f"stale or foreign VM sidecar: {source_sidecar_path}")
+                source_image = safe_artifact(
+                    artifact_root, sidecar.get("image"), "VM capture image"
+                )
+                source_hash = sha256(source_image)
+                if source_hash != sidecar.get("image_sha256"):
+                    fail(f"VM image hash mismatch: {source_image}")
+                pixel_size = png_size(source_image)
+                if list(pixel_size) != sidecar.get("pixel_size"):
+                    fail(f"VM image dimensions mismatch: {source_image}")
+                environment_hashes.setdefault((key[1], key[2]), set()).add(
+                    source_hash
+                )
+
+                overflow = sidecar.get("text_overflow_count")
+                overflow_measurement: dict[str, object]
+                if isinstance(overflow, int) and overflow >= 0:
+                    overflow_measurement = {
+                        "method": "production-component-layout-probe",
+                        "source": source_sidecar_path.name,
+                    }
+                else:
+                    verification = manual.get(surface_id)
+                    if verification is None:
+                        fail(
+                            f"{surface_id} lacks an instrumented overflow count; "
+                            "provide --manual-overflow-report"
+                        )
+                    overflow = verification["text_overflow_count"]
+                    overflow_measurement = {
+                        "method": "manual-contact-sheet-review",
+                        "reviewer": verification["reviewer"],
+                        "review_artifact": verification["review_artifact"],
+                        "report_sha256": sha256(args.manual_overflow_report.resolve()),
+                    }
+
+                stem = source_sidecar_path.stem
+                destination_image = destination / f"{stem}.webp"
+                subprocess.run(
+                    [
+                        "magick",
+                        str(source_image),
+                        "-quality",
+                        str(args.webp_quality),
+                        str(destination_image),
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+                relative_image = (
+                    Path("docs/evidence") / surface_id / destination_image.name
+                ).as_posix()
+                canonical = {
+                    **sidecar,
+                    "image": relative_image,
+                    "image_sha256": sha256(destination_image),
+                    "source_image_sha256": source_hash,
+                    "source_sidecar_sha256": sha256(source_sidecar_path),
+                    "encoding": {
+                        "format": "webp",
+                        "quality": args.webp_quality,
+                        "source_format": "png",
+                    },
+                    "text_overflow_count": overflow,
+                    "text_overflow_measurement": overflow_measurement,
+                    "imported_at": datetime.now(timezone.utc).isoformat(
+                        timespec="seconds"
+                    ),
+                }
+                destination_sidecar = destination / source_sidecar_path.name
+                destination_sidecar.write_text(
+                    json.dumps(canonical, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                canonical_sidecars.append(
+                    (Path("docs/evidence") / surface_id / destination_sidecar.name).as_posix()
+                )
+            if len(states) > 1:
+                identical = [
+                    f"{locale}/{scale:g}"
+                    for (locale, scale), hashes in environment_hashes.items()
+                    if len(hashes) == 1
+                ]
+                if identical:
+                    fail(
+                        f"all required states rendered identically for {surface_id}: "
+                        + ", ".join(sorted(identical))
+                    )
+            imported[surface_id] = {
+                "implementation_digest": digest,
+                "concept_sha256": concept_hash,
+                "captures": canonical_sidecars,
+            }
+            staged[surface_id] = destination
+
+        if summary.get("expected") != expected_total or summary.get("actual") != expected_total:
+            fail(
+                "VM summary count does not match the current registry: "
+                f"expected={expected_total} summary={summary.get('expected')}/"
+                f"{summary.get('actual')}"
+            )
+        if summary.get("text_overflow_failures"):
+            fail("VM summary contains measured text overflow failures")
+
+        import_manifest = {
+            "schema": 1,
+            "run_id": run_id,
+            "source_commit": source_commit,
+            "worktree_hash": source.get("worktree_hash"),
+            "expected_captures": expected_total,
+            "actual_captures": sum(
+                len(value["captures"]) for value in imported.values()
+            ),
+            "surfaces": imported,
+            "junit_sha256": sha256(artifact_root / "junit.xml"),
+            "imported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        (staging_root / "vm-run.json").write_text(
+            json.dumps(import_manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        for surface_id, source_dir in staged.items():
+            target = evidence_root / surface_id
+            if target.exists():
+                fail(f"canonical evidence already exists; refusing to replace: {target}")
+            os.replace(source_dir, target)
+        os.replace(staging_root / "vm-run.json", evidence_root / "vm-run.json")
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
+
+    print(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "source_commit": source_commit,
+                "captures": expected_total,
+                "surfaces": len(imported),
+                "manifest": "docs/evidence/vm-run.json",
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -450,6 +450,7 @@ for test_script in \
   tests/test-power-policy.sh \
   tests/test-transactional-uki.sh \
   tests/test-ui-evidence-gate.sh \
+  tests/test-ui-vm-import.sh \
   tests/test-vm-boot-security.sh \
   tests/test-vm-ci.sh \
   tests/test-vm-desktop.sh \
