@@ -264,6 +264,30 @@ def test_ui_review_closes_existing_clients_with_exact_addresses() -> None:
     assert "--active" not in body
 
 
+def test_ui_review_cleanup_preserves_reserved_tray_clients() -> None:
+    clients = [
+        {
+            "address": "0x1",
+            "class": "xembed-sni-proxy",
+            "workspace": {"id": -98, "name": "special:tray"},
+        },
+        {
+            "address": "0x2",
+            "class": "ghostty",
+            "workspace": {"id": 1, "name": "1"},
+        },
+        {
+            "address": "0x3",
+            "class": "electron",
+            "workspace": {"id": -99, "name": "special:minimized"},
+        },
+    ]
+
+    targets = VMService._ui_review_cleanup_targets(clients)
+
+    assert [client["address"] for client in targets] == ["0x2", "0x3"]
+
+
 def test_screenshot_can_target_one_compositor_output(tmp_path, monkeypatch) -> None:
     paths = RuntimePaths(
         tmp_path,

@@ -1871,6 +1871,28 @@ class VMService:
                 self._remote_shell(shell), timeout=15, check=False
             )
 
+    @staticmethod
+    def _ui_review_cleanup_targets(clients: list[object]) -> list[dict[str, Any]]:
+        targets: list[dict[str, Any]] = []
+        for value in clients:
+            if not isinstance(value, dict):
+                continue
+            workspace = value.get("workspace")
+            workspace_name = (
+                str(workspace.get("name", ""))
+                if isinstance(workspace, dict)
+                else ""
+            )
+            # xembed-sni-proxy owns a tiny XWayland client on this reserved
+            # workspace so legacy tray icons can be surfaced by the shell.
+            # It is desktop infrastructure, not an application left behind
+            # by a review scenario, and closing it would damage the session
+            # that the remaining real-compositor cases must inspect.
+            if workspace_name == "special:tray":
+                continue
+            targets.append(value)
+        return targets
+
     def _close_ui_review_clients(self, record: dict[str, Any]) -> None:
         guest = self._guest(record)
         result = guest.exec(
@@ -1882,7 +1904,8 @@ class VMService:
                 "cannot enumerate desktop clients before UI review",
             )
         clients = json.loads(result.stdout)
-        for client in clients:
+        targets = self._ui_review_cleanup_targets(clients)
+        for client in targets:
             address = str(client.get("address", ""))
             if not re.fullmatch(r"0x[0-9a-fA-F]+", address):
                 continue
@@ -1895,13 +1918,15 @@ class VMService:
                 check=False,
             )
         deadline = time.monotonic() + 15
-        remaining: list[object] = clients
+        remaining: list[object] = targets
         while time.monotonic() < deadline:
             result = guest.exec(
                 self._hypr_command("hyprctl -j clients"), timeout=10, check=False
             )
             if result.returncode == 0:
-                remaining = json.loads(result.stdout)
+                remaining = self._ui_review_cleanup_targets(
+                    json.loads(result.stdout)
+                )
                 if not remaining:
                     return
             time.sleep(0.1)
