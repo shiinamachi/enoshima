@@ -678,7 +678,10 @@ class VMService:
             "uid=$(id -u); "
             "sig=$(find /run/user/$uid/hypr -mindepth 1 -maxdepth 1 -type d "
             "-printf '%f\\n' 2>/dev/null | head -n1); "
-            'test -n "$sig"; export HYPRLAND_INSTANCE_SIGNATURE=$sig; ' + command
+            'test -n "$sig"; export HYPRLAND_INSTANCE_SIGNATURE=$sig; '
+            'export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:'
+            '/usr/local/bin:/usr/bin"; '
+            + command
         )
         return ["bash", "-lc", shell]
 
@@ -1320,7 +1323,31 @@ class VMService:
                                 f"{document!r}"
                             )
                         else:
-                            return document
+                            missing_translations = document.get(
+                                "missing_translation_count"
+                            )
+                            if (
+                                not isinstance(missing_translations, int)
+                                or missing_translations < 0
+                            ):
+                                last_error = (
+                                    "fixture ACK lacks a valid missing translation "
+                                    f"count: {document!r}"
+                                )
+                            elif missing_translations > 0:
+                                raise VMError(
+                                    FailureCategory.VISUAL_ASSERTION_FAILED,
+                                    "production UI exposed untranslated catalog keys",
+                                    {
+                                        "sequence": sequence,
+                                        "surface": document.get("surface"),
+                                        "missing_translation_count": (
+                                            missing_translations
+                                        ),
+                                    },
+                                )
+                            else:
+                                return document
                     else:
                         last_error = f"stale fixture ACK: {document!r}"
                 except (json.JSONDecodeError, TypeError, ValueError) as error:
@@ -1416,6 +1443,8 @@ class VMService:
             f"nohup env LANG={locale} LC_ALL={locale} "
             "ENOSHIMA_VM_UI_TEST=1 "
             f"ENOSHIMA_UI_FIXTURE_DIR={REMOTE_ROOT}/ui-fixture "
+            "PATH=/home/kentakang/.local/share/mise/shims:"
+            "/home/kentakang/.local/bin:/usr/local/bin:/usr/bin "
             "XDG_RUNTIME_DIR=$runtime WAYLAND_DISPLAY=$wayland "
             "HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE "
             "/usr/bin/qs -p /home/kentakang/.config/quickshell/cyberdock "

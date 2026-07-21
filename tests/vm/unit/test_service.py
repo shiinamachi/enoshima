@@ -32,9 +32,10 @@ class ScreenshotGuest:
 
 
 class ReadyGuest(ScreenshotGuest):
-    def __init__(self, sequence: int) -> None:
+    def __init__(self, sequence: int, missing_translations: int = 0) -> None:
         super().__init__()
         self.sequence = sequence
+        self.missing_translations = missing_translations
 
     def exec(self, argv, **_kwargs):
         self.commands.append(tuple(argv))
@@ -44,7 +45,8 @@ class ReadyGuest(ScreenshotGuest):
                 0,
                 (
                     f'{{"schema":1,"sequence":{self.sequence},'
-                    '"text_overflow_count":0}\n'
+                    '"text_overflow_count":0,'
+                    f'"missing_translation_count":{self.missing_translations}}}\n'
                 ),
                 "",
             )
@@ -217,6 +219,14 @@ def test_postflight_imports_the_live_graphical_environment_after_login() -> None
     assert "self._graphical_shell(command)" in postflight
 
 
+def test_hypr_commands_use_the_managed_user_path() -> None:
+    command = VMService._hypr_command("desktop-window-action close --active")
+
+    assert command[:2] == ["bash", "-lc"]
+    assert "$HOME/.local/share/mise/shims:$HOME/.local/bin" in command[2]
+    assert command[2].endswith("desktop-window-action close --active")
+
+
 def test_graphical_suites_reject_latent_session_failures() -> None:
     project = RuntimePaths.discover().project
     source = (project / "src" / "enoshima_vm" / "service.py").read_text(
@@ -362,6 +372,26 @@ def test_ui_fixture_waits_for_the_exact_qml_ack(tmp_path, monkeypatch) -> None:
 
     assert guest.commands[-1][-1].endswith("/ui-fixture/ready.json")
     assert ack["text_overflow_count"] == 0
+    assert ack["missing_translation_count"] == 0
+
+
+def test_ui_fixture_rejects_untranslated_catalog_keys(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(
+        tmp_path,
+        tmp_path,
+        tmp_path / "cache",
+        tmp_path / "state",
+    )
+    service = VMService(paths)
+    guest = ReadyGuest(42, missing_translations=3)
+    monkeypatch.setattr(service, "_guest", lambda _record: guest)
+
+    with pytest.raises(VMError, match="untranslated catalog keys"):
+        service._wait_for_ui_fixture_ready(
+            {"run_id": "run-012345abcdef"}, 42
+        )
 
 
 def test_ui_review_rejects_measured_text_overflow() -> None:
