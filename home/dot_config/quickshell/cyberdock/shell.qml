@@ -177,30 +177,19 @@ ShellRoot {
         onInternalTextChanged: root.loadTranslations()
     }
 
-    FileView {
-        id: uiFixtureStateFile
-        path: root.uiFixtureEnabled && root.uiFixtureDir !== ""
-            ? root.uiFixtureDir + "/state.json" : "/dev/null"
-        // The VM state is a tiny local file written atomically before the
-        // shell starts. Read it synchronously when requested so an async
-        // preload signal cannot be lost during component construction.
-        preload: false
-        blockLoading: root.uiFixtureEnabled
-        blockAllReads: root.uiFixtureEnabled
-        printErrors: false
-        watchChanges: root.uiFixtureEnabled
-        onFileChanged: root.loadUiFixtureState()
-        onLoaded: root.loadUiFixtureState()
-        onInternalTextChanged:
-            root.loadUiFixtureState()
-    }
-
-    Timer {
-        id: uiFixtureStateTimer
-        interval: 50
-        repeat: true
-        running: root.uiFixtureEnabled
-        onTriggered: root.loadUiFixtureState()
+    Process {
+        id: uiFixtureStateProcess
+        running: root.uiFixtureEnabled && root.uiFixtureDir !== ""
+        // The runner atomically replaces state.json. Follow the filename so
+        // the initial request and every later inode replacement share one
+        // deterministic stream instead of depending on FileView preload
+        // ordering during shell construction.
+        command: ["/usr/bin/tail", "--lines=1", "--follow=name", "--retry",
+            "--sleep-interval=0.05", "--max-unchanged-stats=1",
+            root.uiFixtureDir + "/state.json"]
+        stdout: SplitParser {
+            onRead: data => root.loadUiFixtureState(data)
+        }
     }
 
     FileView {
@@ -507,10 +496,10 @@ ShellRoot {
         uiFixtureReadyTimer.restart();
     }
 
-    function loadUiFixtureState() {
+    function loadUiFixtureState(serialized) {
         if (!uiFixtureEnabled)
             return;
-        const candidate = parseUiFixtureState(uiFixtureStateFile.text());
+        const candidate = parseUiFixtureState(String(serialized || ""));
         const sequence = Number(candidate.sequence || 0);
         if (sequence <= 0 || sequence === uiFixtureAppliedSequence)
             return;
@@ -521,8 +510,6 @@ ShellRoot {
     onUiFixtureStateChanged: Qt.callLater(() => applyUiFixtureState())
     Component.onCompleted: {
         loadTranslations();
-        if (uiFixtureEnabled)
-            loadUiFixtureState();
     }
 
     function loadTranslations() {
