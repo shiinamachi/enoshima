@@ -33,7 +33,7 @@ PanelWindow {
         && Boolean(chooserState.visible)
     readonly property var layouts: Array.isArray(chooserState.layouts)
         ? chooserState.layouts : []
-    readonly property var cells: flattenCells(layouts)
+    readonly property var cells: uniqueTargetCells(flattenCells(layouts))
 
     screen: targetScreen
     visible: true
@@ -62,6 +62,19 @@ PanelWindow {
         for (const layout of sourceLayouts) {
             for (const cell of (layout.cells || []))
                 result.push(cell);
+        }
+        return result;
+    }
+
+    function uniqueTargetCells(sourceCells) {
+        const result = [];
+        const seen = {};
+        for (const cell of sourceCells) {
+            const target = String(cell.target || "");
+            if (target === "" || seen[target])
+                continue;
+            seen[target] = true;
+            result.push(cell);
         }
         return result;
     }
@@ -145,9 +158,12 @@ PanelWindow {
         const session = String(snapState.session || "");
         if (session !== observedSession) {
             observedSession = session;
-            selectedCellId = String(chooserState.selectedCellId || "");
+            const selectedTarget = String(chooserState.selectedTarget
+                || snapState.target || "");
             selectedIndex = Math.max(0, cells.findIndex(
-                cell => String(cell.cellId || "") === selectedCellId));
+                cell => String(cell.target || "") === selectedTarget));
+            selectedCellId = cells.length > 0
+                ? String(cells[selectedIndex].cellId || "") : "";
         }
         Qt.callLater(() => keyboardInput.forceActiveFocus());
     }
@@ -231,9 +247,9 @@ PanelWindow {
     Rectangle {
         id: chooserPanel
         visible: assist.showingChooser
-        readonly property int layoutCount: Math.max(1, assist.layouts.length)
+        readonly property int targetCount: Math.max(1, assist.cells.length)
         width: Math.min(assist.width - 32,
-            28 + layoutCount * 76 + (layoutCount - 1) * 8)
+            28 + targetCount * 44 + (targetCount - 1) * 4)
         height: 110
         x: Math.round((assist.width - width) / 2)
         y: 16
@@ -282,64 +298,68 @@ PanelWindow {
                 }
 
                 Grid {
-                    columns: chooserPanel.layoutCount
-                    columnSpacing: 8
+                    columns: chooserPanel.targetCount
+                    columnSpacing: 4
                     rowSpacing: 0
 
                     Repeater {
-                        model: assist.layouts
+                        model: assist.cells
 
                         delegate: Rectangle {
-                            id: layoutCard
+                            id: targetCard
                             required property var modelData
-                            width: 76
+                            required property int index
+                            readonly property bool selected:
+                                index === assist.selectedIndex
+                            width: 44
                             height: 52
                             radius: assist.theme.radiusSmall
-                            color: assist.theme.colorSurfaceSubtle
-                            border.width: 1
-                            border.color: assist.theme.colorQuietBorder
+                            color: selected
+                                ? assist.theme.colorFocusSelected
+                                : (targetMouse.containsMouse
+                                    ? assist.theme.colorFocusHover
+                                    : assist.theme.colorSurfaceSubtle)
+                            border.width: selected ? 2 : 1
+                            border.color: selected
+                                ? assist.theme.colorFocus
+                                : assist.theme.colorQuietBorder
 
-                            Repeater {
-                                model: layoutCard.modelData.cells || []
+                            Rectangle {
+                                x: 5 + Number(targetCard.modelData.x || 0) * 34
+                                y: 5 + Number(targetCard.modelData.y || 0) * 42
+                                width: Math.max(7,
+                                    Number(targetCard.modelData.width || 1) * 34 - 1)
+                                height: Math.max(7,
+                                    Number(targetCard.modelData.height || 1) * 42 - 1)
+                                radius: 3
+                                color: targetCard.selected
+                                    ? assist.theme.colorSelectionStrong
+                                    : assist.theme.colorRaisedSoft
+                                border.width: 1
+                                border.color: targetCard.selected
+                                    ? assist.theme.colorFocus
+                                    : assist.theme.colorInfoBorder
+                            }
 
-                                delegate: Rectangle {
-                                    id: cell
-                                    required property var modelData
-                                    readonly property int flatIndex: assist.cells.findIndex(
-                                        item => String(item.cellId || "")
-                                            === String(modelData.cellId || ""))
-                                    x: 4 + Number(modelData.x || 0) * 68
-                                    y: 4 + Number(modelData.y || 0) * 44
-                                    width: Math.max(8, Number(modelData.width || 1) * 68 - 2)
-                                    height: Math.max(8, Number(modelData.height || 1) * 44 - 2)
-                                    radius: 4
-                                    color: cell.flatIndex === assist.selectedIndex
-                                        ? assist.theme.colorFocusSelected
-                                        : (cellMouse.containsMouse
-                                            ? assist.theme.colorFocusHover
-                                            : assist.theme.colorRaisedSoft)
-                                    border.width: cell.flatIndex === assist.selectedIndex ? 2 : 1
-                                    border.color: cell.flatIndex === assist.selectedIndex
-                                        ? assist.theme.colorFocus
-                                        : assist.theme.colorInfoBorder
+                            Accessible.role: Accessible.Button
+                            Accessible.name: assist.labelFor(modelData.target)
+                            Accessible.focused: selected
+                            Accessible.onPressAction: assist.choose(
+                                String(modelData.cellId || ""), true)
 
-                                    Accessible.role: Accessible.Button
-                                    Accessible.name: assist.labelFor(cell.modelData.target)
-                                    Accessible.focused: cell.flatIndex === assist.selectedIndex
-
-                                    MouseArea {
-                                        id: cellMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onEntered: {
-                                            assist.selectedIndex = cell.flatIndex;
-                                            assist.selectedCellId = String(cell.modelData.cellId || "");
-                                            assist.choose(assist.selectedCellId, false);
-                                        }
-                                        onClicked: assist.choose(String(cell.modelData.cellId || ""), true)
-                                    }
+                            MouseArea {
+                                id: targetMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onEntered: {
+                                    assist.selectedIndex = targetCard.index;
+                                    assist.selectedCellId = String(
+                                        targetCard.modelData.cellId || "");
+                                    assist.choose(assist.selectedCellId, false);
                                 }
+                                onClicked: assist.choose(String(
+                                    targetCard.modelData.cellId || ""), true)
                             }
                         }
                     }
