@@ -24,6 +24,16 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _guest_ssh_reachable(guest: Any) -> bool:
+    try:
+        result = guest.exec(["true"], timeout=8, check=False)
+    except VMError as error:
+        if error.category != FailureCategory.SSH_TIMEOUT:
+            raise
+        return False
+    return result.returncode == 0
+
+
 REMOTE_RUNTIME_INVENTORY = PurePosixPath(
     "/home/kentakang/enoshima-test/runtime-inventory"
 )
@@ -74,8 +84,7 @@ def boot_with_recovery(
     next_input = time.monotonic() + 15
     observed_down = False
     while time.monotonic() < deadline:
-        result = guest.exec(["true"], timeout=8, check=False)
-        if result.returncode:
+        if not _guest_ssh_reachable(guest):
             observed_down = True
             if time.monotonic() >= next_input:
                 service.backend.type_text(record["domain"], recovery_value)
@@ -327,8 +336,7 @@ def test_unsigned_rejection(service: VMService, record: dict[str, Any]) -> None:
     deadline = time.monotonic() + 60
     observed_down = False
     while time.monotonic() < deadline:
-        result = guest.exec(["true"], timeout=8, check=False)
-        if result.returncode:
+        if not _guest_ssh_reachable(guest):
             observed_down = True
         elif observed_down:
             after = guest.exec(
