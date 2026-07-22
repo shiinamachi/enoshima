@@ -27,6 +27,10 @@ grep -Eq '^  ripgrep \\$' "$builder" ||
   fail 'boot target lacks the search tool required by repository validation'
 grep -Eq '^  yq \\$' "$builder" ||
   fail 'boot target cannot validate UI concept manifests'
+grep -Eq '^  lua \\$' "$builder" ||
+  fail 'boot target cannot parse managed Hyprland Lua configuration'
+grep -Eq '^  chezmoi \\$' "$builder" ||
+  fail 'boot target cannot validate the managed chezmoi source state'
 grep -Fq 'recovery key must contain exactly 64 bytes without a newline' "$builder" ||
   fail 'interactive recovery key format is not enforced'
 grep -Fq 'cryptsetup luksFormat --type luks2' "$builder" ||

@@ -34,6 +34,7 @@ pacman -Syu --needed --noconfirm \
   arch-install-scripts \
   binutils \
   btrfs-progs \
+  chezmoi \
   cryptsetup \
   dosfstools \
   gptfdisk \
@@ -81,6 +82,7 @@ pacstrap -K "$target" \
   linux \
   linux-firmware \
   linux-lts \
+  lua \
   make \
   networkmanager \
   nftables \
