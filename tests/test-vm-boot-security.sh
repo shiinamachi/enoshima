@@ -27,6 +27,8 @@ grep -Fq 'mkfs.fat -F 32 -n ENOSHIMAESP' "$builder" ||
   fail 'EFI filesystem label exceeds the FAT 11-character limit'
 grep -Fq 'for subvolume in @ @home @var_log @swap' "$builder" ||
   fail 'boot target omits the managed Btrfs layout'
+grep -Fq 'gpgconf --homedir "$target/etc/pacman.d/gnupg" --kill all' "$builder" ||
+  fail 'boot target cleanup does not stop the pacstrap keyring agent'
 grep -Fq 'sbctl enroll-keys -m' "$builder" ||
   fail 'VM-only Secure Boot key enrollment is missing'
 # shellcheck disable=SC2016

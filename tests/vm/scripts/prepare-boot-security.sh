@@ -87,6 +87,11 @@ pacstrap -K "$target" \
   tpm2-tools \
   zsh
 
+# pacstrap can leave the target pacman keyring's gpg-agent alive with files
+# open below the chroot. Stop that scoped agent before the final recursive
+# unmount so the disposable boot disk is always cleanly detached.
+gpgconf --homedir "$target/etc/pacman.d/gnupg" --kill all || true
+
 # Preserve the suite's whole-repository Arch Linux Archive snapshot in the
 # installed target. This prevents its later bootstrap from becoming a partial
 # or moving-release package transaction.
