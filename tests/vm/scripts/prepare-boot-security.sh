@@ -91,6 +91,7 @@ pacstrap -K "$target" \
   sbsigntools \
   sudo \
   tpm2-tools \
+  yq \
   zsh
 
 # pacstrap can leave the target pacman keyring's gpg-agent alive with files

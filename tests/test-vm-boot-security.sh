@@ -25,6 +25,8 @@ grep -Eq '^  make \\$' "$builder" ||
   fail 'boot target cannot invoke the repository validation entrypoint'
 grep -Eq '^  ripgrep \\$' "$builder" ||
   fail 'boot target lacks the search tool required by repository validation'
+grep -Eq '^  yq \\$' "$builder" ||
+  fail 'boot target cannot validate UI concept manifests'
 grep -Fq 'recovery key must contain exactly 64 bytes without a newline' "$builder" ||
   fail 'interactive recovery key format is not enforced'
 grep -Fq 'cryptsetup luksFormat --type luks2' "$builder" ||
