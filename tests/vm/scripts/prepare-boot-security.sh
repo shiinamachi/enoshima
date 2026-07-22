@@ -50,7 +50,7 @@ udevadm settle
 
 cryptsetup luksFormat --type luks2 --batch-mode --key-file "$recovery_key" "${disk}2"
 cryptsetup open --key-file "$recovery_key" "${disk}2" "$mapper"
-mkfs.fat -F 32 -n ENOSHIMA_EFI "${disk}1"
+mkfs.fat -F 32 -n ENOSHIMAESP "${disk}1"
 mkfs.btrfs -f -L ENOSHIMA_VM "/dev/mapper/$mapper"
 
 install -d -m 0700 "$target"

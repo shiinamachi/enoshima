@@ -23,6 +23,8 @@ grep -Eq '^  parted \\$' "$builder" ||
   fail 'disk builder does not install the package that provides partprobe'
 grep -Fq 'cryptsetup luksFormat --type luks2' "$builder" ||
   fail 'boot target is not formatted as LUKS2'
+grep -Fq 'mkfs.fat -F 32 -n ENOSHIMAESP' "$builder" ||
+  fail 'EFI filesystem label exceeds the FAT 11-character limit'
 grep -Fq 'for subvolume in @ @home @var_log @swap' "$builder" ||
   fail 'boot target omits the managed Btrfs layout'
 grep -Fq 'sbctl enroll-keys -m' "$builder" ||
