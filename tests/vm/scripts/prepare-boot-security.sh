@@ -34,7 +34,6 @@ pacman -Syu --needed --noconfirm \
   arch-install-scripts \
   binutils \
   btrfs-progs \
-  chezmoi \
   cryptsetup \
   dosfstools \
   gptfdisk \
@@ -76,6 +75,7 @@ pacstrap -K "$target" \
   ansible-core \
   base \
   btrfs-progs \
+  chezmoi \
   cryptsetup \
   git \
   jq \

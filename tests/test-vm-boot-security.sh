@@ -11,6 +11,8 @@ fail() {
   exit 1
 }
 
+pacstrap_block=$(sed -n '/^pacstrap -K /,/^$/p' "$builder")
+
 bash -n "$builder"
 # Match literal safeguards in the builder source.
 # shellcheck disable=SC2016
@@ -21,15 +23,15 @@ grep -Fq 'wipefs --all --force "$disk"' "$builder" ||
   fail 'disk preparation is not explicit'
 grep -Eq '^  parted \\$' "$builder" ||
   fail 'disk builder does not install the package that provides partprobe'
-grep -Eq '^  make \\$' "$builder" ||
+grep -Eq '^  make \\$' <<<"$pacstrap_block" ||
   fail 'boot target cannot invoke the repository validation entrypoint'
-grep -Eq '^  ripgrep \\$' "$builder" ||
+grep -Eq '^  ripgrep \\$' <<<"$pacstrap_block" ||
   fail 'boot target lacks the search tool required by repository validation'
-grep -Eq '^  yq \\$' "$builder" ||
+grep -Eq '^  yq \\$' <<<"$pacstrap_block" ||
   fail 'boot target cannot validate UI concept manifests'
-grep -Eq '^  lua \\$' "$builder" ||
+grep -Eq '^  lua \\$' <<<"$pacstrap_block" ||
   fail 'boot target cannot parse managed Hyprland Lua configuration'
-grep -Eq '^  chezmoi \\$' "$builder" ||
+grep -Eq '^  chezmoi \\$' <<<"$pacstrap_block" ||
   fail 'boot target cannot validate the managed chezmoi source state'
 grep -Fq 'recovery key must contain exactly 64 bytes without a newline' "$builder" ||
   fail 'interactive recovery key format is not enforced'
