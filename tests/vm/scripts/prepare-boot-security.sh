@@ -78,6 +78,7 @@ pacstrap -K "$target" \
   chezmoi \
   cryptsetup \
   git \
+  imagemagick \
   jq \
   linux \
   linux-firmware \

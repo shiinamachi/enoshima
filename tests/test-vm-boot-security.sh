@@ -33,6 +33,8 @@ grep -Eq '^  lua \\$' <<<"$pacstrap_block" ||
   fail 'boot target cannot parse managed Hyprland Lua configuration'
 grep -Eq '^  chezmoi \\$' <<<"$pacstrap_block" ||
   fail 'boot target cannot validate the managed chezmoi source state'
+grep -Eq '^  imagemagick \\$' <<<"$pacstrap_block" ||
+  fail 'boot target cannot analyze UI evidence images'
 grep -Fq 'recovery key must contain exactly 64 bytes without a newline' "$builder" ||
   fail 'interactive recovery key format is not enforced'
 grep -Fq 'cryptsetup luksFormat --type luks2' "$builder" ||
