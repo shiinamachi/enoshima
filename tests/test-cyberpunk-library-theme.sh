@@ -36,10 +36,14 @@ assert_count() {
 
 asset_dimensions() {
   local path=$1
-  if command -v identify >/dev/null 2>&1; then
+  if [[ ${ENOSHIMA_TEST_IMAGE_DIMENSIONS_WITH_FILE:-false} != true ]] &&
+    command -v identify >/dev/null 2>&1; then
     identify -format '%wx%h' "$path"
   else
-    file --brief -- "$path" | grep -oE '[0-9]+x[0-9]+' | tail -n 1
+    file --brief -- "$path" |
+      grep -oE '[0-9]+[[:space:]]*x[[:space:]]*[0-9]+' |
+      tail -n 1 |
+      tr -d '[:space:]'
   fi
 }
 
