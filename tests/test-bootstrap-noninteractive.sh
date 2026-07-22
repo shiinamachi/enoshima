@@ -63,6 +63,13 @@ grep -Fq 'register: pacman_configuration' \
 grep -Fq 'or (pacman_configuration is changed)' \
   "$repo_root/ansible/roles/packages/tasks/main.yml" ||
   fail 'Ansible can enable repositories without a full upgrade'
+# shellcheck disable=SC2016 # Assertion intentionally matches literal bootstrap source.
+grep -Fq 'ENOSHIMA_SKIP_VM_HARNESS_CHECKS=true "$repo_root/scripts/validate.sh"' \
+  "$bootstrap" ||
+  fail 'the VM profile repeats host-only harness checks inside the guest'
+grep -Fq 'ENOSHIMA_SKIP_VM_HARNESS_CHECKS:-false' \
+  "$repo_root/scripts/validate.sh" ||
+  fail 'repository validation cannot skip host-only harness checks in a VM guest'
 
 # shellcheck disable=SC2016 # Assertion intentionally matches literal bootstrap source.
 grep -Fq 'PATH="/usr/bin:/bin:$PATH"' "$bootstrap" ||

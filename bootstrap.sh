@@ -187,6 +187,17 @@ converge_hyprland_plugins() {
   fi
 }
 
+validate_repository() {
+  if [[ $profile == enoshima-vm ]]; then
+    # The host already runs the VM harness unit suite before launching a guest.
+    # Recreating its Python environment inside the disposable guest adds an
+    # unrelated PyPI dependency to workstation convergence.
+    ENOSHIMA_SKIP_VM_HARNESS_CHECKS=true "$repo_root/scripts/validate.sh"
+  else
+    "$repo_root/scripts/validate.sh"
+  fi
+}
+
 install_bootstrap_dependencies() {
   # Bootstrap must use the machine's current, valid pacman configuration.
   # The Ansible template is rendered only after Ansible is available; passing
@@ -491,7 +502,7 @@ bootstrap_run_step \
 bootstrap_run_step "Installing the pinned Ansible collection" install_ansible_collection
 bootstrap_run_step \
   "Validating repository and rendering Ansible templates" \
-  "$repo_root/scripts/validate.sh"
+  validate_repository
 
 if [[ $dotfile_preflight_complete != true ]]; then
   bootstrap_run_step \
@@ -514,7 +525,7 @@ fi
 bootstrap_run_step "Applying Ansible desired state for $profile" apply_ansible_desired_state
 bootstrap_run_step \
   "Re-running full validation with the desired toolset installed" \
-  "$repo_root/scripts/validate.sh"
+  validate_repository
 
 if [[ $skip_aur != true ]]; then
   bootstrap_run_step \

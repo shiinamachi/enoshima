@@ -651,7 +651,9 @@ else
 fi
 
 mise_config=$repo_root/home/dot_config/mise/config.toml
-if command -v mise >/dev/null 2>&1 &&
+if [[ ${ENOSHIMA_SKIP_VM_HARNESS_CHECKS:-false} == true ]]; then
+  echo "==> Skipping VM harness checks inside the disposable guest"
+elif command -v mise >/dev/null 2>&1 &&
   MISE_CONFIG_FILE="$mise_config" mise which uv >/dev/null 2>&1; then
   echo "==> Running VM harness unit and lint checks"
   MISE_CONFIG_FILE="$mise_config" mise exec -- \
