@@ -238,6 +238,48 @@ def main() -> None:
 
             destination = staging_root / surface_id
             destination.mkdir(mode=0o755)
+            manual_verification = manual.get(surface_id)
+            needs_manual_overflow = any(
+                not isinstance(sidecar.get("text_overflow_count"), int)
+                or sidecar.get("text_overflow_count", -1) < 0
+                for _, sidecar in cases.values()
+            )
+            manual_review: dict[str, object] | None = None
+            if needs_manual_overflow:
+                if manual_verification is None:
+                    fail(
+                        f"{surface_id} lacks an instrumented overflow count; "
+                        "provide --manual-overflow-report"
+                    )
+                source_review_artifact = safe_artifact(
+                    artifact_root,
+                    manual_verification["review_artifact"],
+                    "manual overflow review artifact",
+                )
+                destination_review_artifact = destination / "manual-overflow-review.webp"
+                subprocess.run(
+                    [
+                        "magick",
+                        str(source_review_artifact),
+                        "-quality",
+                        str(args.webp_quality),
+                        str(destination_review_artifact),
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+                manual_review = {
+                    "method": "manual-contact-sheet-review",
+                    "reviewer": manual_verification["reviewer"],
+                    "review_artifact": (
+                        Path("docs/evidence")
+                        / surface_id
+                        / destination_review_artifact.name
+                    ).as_posix(),
+                    "review_artifact_sha256": sha256(destination_review_artifact),
+                    "source_review_artifact_sha256": sha256(source_review_artifact),
+                    "report_sha256": sha256(args.manual_overflow_report.resolve()),
+                }
             canonical_sidecars: list[str] = []
             environment_hashes: dict[tuple[str, float], set[str]] = {}
             for key in sorted(expected):
@@ -271,19 +313,10 @@ def main() -> None:
                         "source": source_sidecar_path.name,
                     }
                 else:
-                    verification = manual.get(surface_id)
-                    if verification is None:
-                        fail(
-                            f"{surface_id} lacks an instrumented overflow count; "
-                            "provide --manual-overflow-report"
-                        )
-                    overflow = verification["text_overflow_count"]
-                    overflow_measurement = {
-                        "method": "manual-contact-sheet-review",
-                        "reviewer": verification["reviewer"],
-                        "review_artifact": verification["review_artifact"],
-                        "report_sha256": sha256(args.manual_overflow_report.resolve()),
-                    }
+                    if manual_verification is None or manual_review is None:
+                        fail(f"manual overflow review was not prepared for {surface_id}")
+                    overflow = manual_verification["text_overflow_count"]
+                    overflow_measurement = manual_review
 
                 stem = source_sidecar_path.stem
                 destination_image = destination / f"{stem}.webp"

@@ -113,7 +113,7 @@ for locale in en_US.UTF-8 ko_KR.UTF-8; do
         stability_changed_pixel_ratio:0,image:$image,image_sha256:$image_sha,
         run_id:"run-fixture",source_commit:$commit,worktree_hash:"sha256:fixture",
         implementation_digest:$implementation,concept_sha256:$concept,
-        text_overflow_count:0,fixture:{used:true,reason:"test"}}' \
+        text_overflow_count:null,fixture:{used:true,reason:"test"}}' \
       >"$work/run-fixture/artifacts/ui-review/$stem.json"
     captures=$((captures + 1))
   done
@@ -136,11 +136,39 @@ jq -n \
       {action:"collect_artifacts",status:"passed"}]}' \
   >"$work/run-fixture/run.json"
 
-output=$(python3 "$importer" --repo-root "$work/repo" --run-dir "$work/run-fixture")
+if python3 "$importer" --repo-root "$work/repo" --run-dir "$work/run-fixture" \
+  >/dev/null 2>&1; then
+  printf 'Importer accepted missing manual overflow evidence.\n' >&2
+  exit 1
+fi
+
+cp "$image" "$work/run-fixture/artifacts/manual-overflow-review.png"
+jq -n \
+  --arg artifact "$work/run-fixture/artifacts/manual-overflow-review.png" \
+  '{schema:1,run_id:"run-fixture",surfaces:{"test-surface":{
+    verified:true,reviewer:"Test reviewer",text_overflow_count:0,
+    review_artifact:$artifact}}}' \
+  >"$work/manual-overflow.json"
+
+output=$(python3 "$importer" --repo-root "$work/repo" --run-dir "$work/run-fixture" \
+  --manual-overflow-report "$work/manual-overflow.json")
 jq -e '.captures == 6 and .surfaces == 1' <<<"$output" >/dev/null
 test "$(find "$work/repo/docs/evidence/test-surface" -name '*.json' | wc -l)" -eq 6
-test "$(find "$work/repo/docs/evidence/test-surface" -name '*.webp' | wc -l)" -eq 6
+test "$(find "$work/repo/docs/evidence/test-surface" -name '*.webp' | wc -l)" -eq 7
 jq -e '.actual_captures == 6' "$work/repo/docs/evidence/vm-run.json" >/dev/null
+jq -e '
+  .text_overflow_measurement.method == "manual-contact-sheet-review"
+  and .text_overflow_measurement.review_artifact
+    == "docs/evidence/test-surface/manual-overflow-review.webp"
+  and (.text_overflow_measurement.review_artifact_sha256 | length) == 64
+  and (.text_overflow_measurement.source_review_artifact_sha256 | length) == 64
+' "$work/repo/docs/evidence/test-surface/test-surface--default--en-us-utf-8--1x.json" \
+  >/dev/null
+test -f "$work/repo/docs/evidence/test-surface/manual-overflow-review.webp"
+if rg -q "$work" "$work/repo/docs/evidence"; then
+  printf 'Importer leaked an absolute fixture path into canonical evidence.\n' >&2
+  exit 1
+fi
 
 if python3 "$importer" --repo-root "$work/repo" --run-dir "$work/run-fixture" \
   >/dev/null 2>&1; then
