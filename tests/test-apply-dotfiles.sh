@@ -62,11 +62,17 @@ new_fixture backup
 run_subject --apply backup >/dev/null
 assert_contents "$destination/.conflict_one" "repository conflict one"
 assert_contents "$destination/.conflict_two" "repository conflict two"
+[[ $(stat -c '%a' "$destination/.conflict_one") == 644 ]] ||
+  fail "backup policy leaked its private umask into managed files"
+[[ $(stat -c '%a' "$destination/.safe") == 644 ]] ||
+  fail "backup policy applied a safe target with the backup umask"
 backup_dir=$(find "$backup_root" -mindepth 1 -maxdepth 1 -type d -print -quit)
 [[ -n $backup_dir ]] || fail "backup policy did not create a backup directory"
 assert_contents "$backup_dir/home/.conflict_one" "local conflict one"
 assert_contents "$backup_dir/home/.conflict_two" "local conflict two"
 [[ -s $backup_dir/conflicts.txt ]] || fail "backup policy did not write a conflict manifest"
+[[ $(stat -c '%a' "$backup_dir") == 700 ]] ||
+  fail "backup directory is not private"
 
 echo "==> overwrite applies repository targets without a backup"
 new_fixture overwrite

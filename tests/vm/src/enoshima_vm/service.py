@@ -610,6 +610,8 @@ class VMService:
                 "--persistent-state",
                 "/home/kentakang/.enoshima/chezmoi-state.boltdb",
                 "diff",
+                "--exclude",
+                "scripts",
             ],
             timeout=180,
             check=False,

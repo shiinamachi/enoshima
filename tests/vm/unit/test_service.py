@@ -362,6 +362,19 @@ def test_reboot_suite_uses_the_desktop_power_path_ten_times() -> None:
     assert "desktop-power checkpoint was not verified after login" in method
 
 
+def test_idempotency_diff_excludes_non_filesystem_script_entries() -> None:
+    source = (
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
+    ).read_text(encoding="utf-8")
+    method = source[
+        source.index("def _assert_idempotent") : source.index(
+            "def _assert_expected_skips"
+        )
+    ]
+
+    assert '"diff",\n                "--exclude",\n                "scripts"' in method
+
+
 def test_power_reboot_waits_for_a_real_application_client(
     tmp_path, monkeypatch
 ) -> None:

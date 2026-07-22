@@ -496,6 +496,7 @@ remove_blocking_paths() {
 case $policy in
   backup)
     if ((${#conflicts[@]} > 0)); then
+      previous_umask=$(umask)
       umask 077
       mkdir -p -- "$backup_base"
       backup_dir=$(mktemp -d "$backup_base/$(date +%Y%m%d-%H%M%S).XXXXXX")
@@ -510,6 +511,7 @@ case $policy in
         )
       done
       printf '%s\n' "${conflicts[@]}" >"$backup_dir/conflicts.txt"
+      umask "$previous_umask"
       echo "Backed up conflicting user files to: $backup_dir"
     fi
     remove_blocking_paths
