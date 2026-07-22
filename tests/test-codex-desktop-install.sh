@@ -35,7 +35,7 @@ chmod +x "$work/bin/mise" "$work/bin/pacman"
 cat >"$work/upstream/Makefile" <<'MAKEFILE'
 .PHONY: install-native
 install-native:
-	@printf '%s\n' '$(PACKAGE_VERSION)|$(PACKAGE_WITH_UPDATER)|$(MAX_BUILD_THREADS)' >>'$(TEST_BUILD_LOG)'
+	@printf '%s\n' '$(PACKAGE_VERSION)|$(PACKAGE_WITH_UPDATER)|$(MAX_BUILD_THREADS)|$(DMG)' >>'$(TEST_BUILD_LOG)'
 	@touch '$(TEST_INSTALLED)'
 MAKEFILE
 
@@ -57,7 +57,7 @@ export CODEX_DESKTOP_MAX_BUILD_THREADS=3
 
 "$installer"
 [[ $(wc -l <"$TEST_BUILD_LOG") -eq 1 ]] || fail 'first convergence did not build exactly once'
-grep -Eq '^2026\.07\.17\.000000\+[0-9a-f]{12}\|1\|3$' "$TEST_BUILD_LOG" ||
+grep -Eq '^2026\.07\.17\.000000\+[0-9a-f]{12}\|1\|3\|$' "$TEST_BUILD_LOG" ||
   fail 'build did not receive deterministic version, updater, and thread settings'
 
 source_checkout=$XDG_CACHE_HOME/enoshima/codex-desktop-linux/source
@@ -75,10 +75,14 @@ GIT_AUTHOR_DATE=2026-07-17T00:01:00Z \
   GIT_COMMITTER_DATE=2026-07-17T00:01:00Z \
   git -C "$work/upstream" commit --quiet -m 'update fixture'
 
+mkdir -p "$XDG_CACHE_HOME/codex-desktop"
+truncate -s 512 "$XDG_CACHE_HOME/codex-desktop/Codex.dmg"
+printf koly | dd of="$XDG_CACHE_HOME/codex-desktop/Codex.dmg" \
+  bs=1 seek=0 conv=notrunc status=none
 "$installer"
 [[ $(wc -l <"$TEST_BUILD_LOG") -eq 2 ]] || fail 'new upstream source revision did not rebuild'
 tail -n 1 "$TEST_BUILD_LOG" |
-  grep -Eq '^2026\.07\.17\.000100\+[0-9a-f]{12}\|1\|3$' ||
+  grep -Eq "^2026\\.07\\.17\\.000100\\+[0-9a-f]{12}\\|1\\|3\\|$XDG_CACHE_HOME/codex-desktop/Codex\\.dmg$" ||
   fail 'updated build did not receive its source-derived version'
 [[ $(<"$revision_marker") == $(git -C "$work/upstream" rev-parse HEAD) ]] ||
   fail 'updated source revision was not recorded'

@@ -8,6 +8,7 @@ cache_home=${XDG_CACHE_HOME:-$HOME/.cache}
 state_home=${XDG_STATE_HOME:-$HOME/.local/state}
 source_dir=${CODEX_DESKTOP_SOURCE_DIR:-$cache_home/enoshima/codex-desktop-linux/source}
 state_dir=${CODEX_DESKTOP_STATE_DIR:-$state_home/enoshima/codex-desktop-linux}
+dmg_cache=${CODEX_DESKTOP_DMG_CACHE:-$cache_home/codex-desktop/Codex.dmg}
 revision_marker=$state_dir/installed-source-revision
 max_build_threads=${CODEX_DESKTOP_MAX_BUILD_THREADS:-0}
 mise_config=$repo_root/home/dot_config/mise/config.toml
@@ -34,6 +35,14 @@ if [[ ! $ref =~ ^[A-Za-z0-9._/-]+$ || $ref == -* || $ref == */.. || $ref == ../*
 fi
 if [[ ! $max_build_threads =~ ^[0-9]+$ ]]; then
   die 'CODEX_DESKTOP_MAX_BUILD_THREADS must be 0 or a positive integer'
+fi
+if [[ -e $dmg_cache || -L $dmg_cache ]]; then
+  [[ -f $dmg_cache && ! -L $dmg_cache ]] ||
+    die "Codex DMG cache is not a regular file: $dmg_cache"
+  [[ $(stat -c %s -- "$dmg_cache") -ge 512 ]] ||
+    die "Codex DMG cache is too small: $dmg_cache"
+  [[ $(tail -c 512 -- "$dmg_cache" | head -c 4) == koly ]] ||
+    die "Codex DMG cache has no UDIF trailer: $dmg_cache"
 fi
 
 mkdir -p -- "$(dirname -- "$source_dir")" "$state_dir"
@@ -89,11 +98,17 @@ package_version=$(date -u --date="@$commit_epoch" +%Y.%m.%d.%H%M%S)+$commit_shor
 
 printf '==> Building Codex Desktop %s from ilysenko/codex-desktop-linux\n' \
   "$package_version"
+dmg_make_arg=()
+if [[ -f $dmg_cache ]]; then
+  printf '==> Using the verified Codex DMG cache: %s\n' "$dmg_cache"
+  dmg_make_arg+=("DMG=$dmg_cache")
+fi
 MISE_CONFIG_FILE="$mise_config" mise exec -- \
   make -C "$source_dir" install-native \
   "PACKAGE_VERSION=$package_version" \
   'PACKAGE_WITH_UPDATER=1' \
-  "MAX_BUILD_THREADS=$max_build_threads"
+  "MAX_BUILD_THREADS=$max_build_threads" \
+  "${dmg_make_arg[@]}"
 
 pacman -Q codex-desktop >/dev/null 2>&1 ||
   die 'the upstream build completed without installing codex-desktop'

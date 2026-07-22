@@ -172,8 +172,11 @@ def test_codex_electron_cache_seed_is_explicit_and_checksum_verified(
     archive = cache / "electron-v42.3.0-linux-x64.zip"
     with zipfile.ZipFile(archive, "w") as bundle:
         bundle.writestr("electron", "fixture")
+    dmg = tmp_path / "Codex.dmg"
+    dmg.write_bytes(b"koly" + (b"\0" * 508))
 
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_DMG", str(dmg))
     monkeypatch.setattr(service, "_guest", lambda _record: guest)
     monkeypatch.setattr(service, "_write_record", lambda _record: None)
     monkeypatch.setattr(service, "_audit", lambda *_args, **_kwargs: None)
@@ -187,11 +190,35 @@ def test_codex_electron_cache_seed_is_explicit_and_checksum_verified(
             "/home/kentakang/.cache/codex-desktop/electron/"
             "electron-v42.3.0-linux-x64.zip",
             0o600,
-        )
+        ),
+        (
+            dmg,
+            "/home/kentakang/.cache/codex-desktop/Codex.dmg",
+            0o600,
+        ),
     ]
     seeded = record["observations"]["codex_electron_cache"]
     assert seeded["status"] == "seeded"
     assert seeded["archives"][0]["sha256"] == sha256(archive.read_bytes()).hexdigest()
+    assert seeded["dmg"]["status"] == "seeded"
+    assert seeded["dmg"]["sha256"] == sha256(dmg.read_bytes()).hexdigest()
+
+
+def test_codex_dmg_cache_seed_rejects_an_invalid_udif_trailer(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    cache = tmp_path / "electron-cache"
+    cache.mkdir()
+    dmg = tmp_path / "Codex.dmg"
+    dmg.write_bytes(b"invalid" + (b"\0" * 505))
+
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_DMG", str(dmg))
+
+    with pytest.raises(VMError, match="no UDIF trailer"):
+        service._seed_codex_electron_cache({"run_id": "run-012345abcdef"})
 
 
 def test_every_bootstrap_suite_seeds_the_optional_electron_cache() -> None:

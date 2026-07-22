@@ -56,13 +56,16 @@ including non-ignored untracked files. It therefore tests uncommitted edits,
 not a fresh clone of the remote default branch.
 
 Before bootstrap, suites also seed valid
-`~/.cache/codex-desktop/electron/electron-v*-linux-*.zip` archives into the
-guest's matching build cache. The runner verifies every transfer with SHA-256
-and records the archive name, size, and digest in the run observations. This
-keeps repeated release suites independent of a transient GitHub release-asset
-stall; if no host cache exists, the production installer retains its normal
-network download path. Set `ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR` to select a
-different host cache directory.
+`~/.cache/codex-desktop/electron/electron-v*-linux-*.zip` archives and the
+installed source checkout's `Codex.dmg` into the guest's matching build cache.
+The runner validates the ZIP container and Apple UDIF trailer, verifies every
+transfer with SHA-256, and records each name, size, and digest in the run
+observations. The installer passes a seeded DMG to the upstream build
+explicitly, so repeated release suites do not depend on a 600 MiB upstream
+download completing during bootstrap. If a host cache is absent, the
+production installer retains its normal network download path. Set
+`ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR` or `ENOSHIMA_VM_CODEX_DMG` to select a
+different host cache location.
 
 ```bash
 make vm-smoke

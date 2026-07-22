@@ -62,6 +62,9 @@ REMOTE_ARTIFACTS = REMOTE_ROOT / "artifacts"
 REMOTE_CODEX_ELECTRON_CACHE = PurePosixPath(
     "/home/kentakang/.cache/codex-desktop/electron"
 )
+REMOTE_CODEX_DMG_CACHE = PurePosixPath(
+    "/home/kentakang/.cache/codex-desktop/Codex.dmg"
+)
 REMOTE_LOGIN_PASSWORD = REMOTE_ROOT / "secrets" / "login-password"
 REMOTE_LOGIN_CREDENTIAL = REMOTE_ROOT / "secrets" / "chpasswd-input"
 
@@ -439,7 +442,22 @@ class VMService:
             )
         ).expanduser()
         archives = sorted(cache_root.glob("electron-v*-linux-*.zip"))
-        observation: dict[str, object] = {"status": "absent", "archives": []}
+        dmg = Path(
+            os.environ.get(
+                "ENOSHIMA_VM_CODEX_DMG",
+                Path.home()
+                / ".cache"
+                / "enoshima"
+                / "codex-desktop-linux"
+                / "source"
+                / "Codex.dmg",
+            )
+        ).expanduser()
+        observation: dict[str, object] = {
+            "status": "absent",
+            "archives": [],
+            "dmg": {"status": "absent"},
+        }
 
         if archives:
             total_size = 0
@@ -481,7 +499,49 @@ class VMService:
                     {"name": archive.name, "size": size, "sha256": digest}
                 )
 
-            observation = {"status": "seeded", "archives": uploaded}
+            observation["status"] = "seeded"
+            observation["archives"] = uploaded
+
+        if dmg.exists() or dmg.is_symlink():
+            if dmg.is_symlink() or not dmg.is_file():
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    f"invalid Codex DMG cache entry: {dmg}",
+                )
+            size = dmg.stat().st_size
+            if size < 512 or size > 1024 * 1024 * 1024:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "Codex DMG cache has an invalid size",
+                    {"path": str(dmg), "size": size},
+                )
+            with dmg.open("rb") as handle:
+                handle.seek(-512, os.SEEK_END)
+                if handle.read(4) != b"koly":
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        f"Codex DMG cache has no UDIF trailer: {dmg}",
+                    )
+
+            digest = file_sha256(dmg)
+            guest = self._guest(record)
+            guest.upload_file(dmg, REMOTE_CODEX_DMG_CACHE, mode=0o600)
+            remote_result = guest.exec(
+                ["sha256sum", "--", str(REMOTE_CODEX_DMG_CACHE)], timeout=300
+            )
+            remote_digest = remote_result.stdout.split(maxsplit=1)[0]
+            if remote_digest != digest:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "Codex DMG cache transfer checksum mismatch",
+                )
+            observation["status"] = "seeded"
+            observation["dmg"] = {
+                "status": "seeded",
+                "name": dmg.name,
+                "size": size,
+                "sha256": digest,
+            }
 
         record.setdefault("observations", {})["codex_electron_cache"] = observation
         record["updated_at"] = utc_now()
