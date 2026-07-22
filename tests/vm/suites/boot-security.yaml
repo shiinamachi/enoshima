@@ -17,6 +17,8 @@ steps:
   - wait_for_cloud_init
   - wait_for_guest_agent
   - upload_worktree
+  - seed_codex_electron_cache
+  - run_validate
   - prepare_boot_disk
   - boot_with_recovery
   - upload_worktree
@@ -25,7 +27,6 @@ steps:
   - assert_secure_boot
   - enroll_tpm
   - reboot
-  - run_validate
   - run_bootstrap:
       report: first
       inventory: runtime

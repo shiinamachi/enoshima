@@ -11,9 +11,8 @@ fail() {
   exit 1
 }
 
-pacstrap_block=$(sed -n '/^pacstrap -K /,/^$/p' "$builder")
-
 bash -n "$builder"
+pacstrap_block=$(sed -n '/^pacstrap -K /,/^$/p' "$builder")
 # Match literal safeguards in the builder source.
 # shellcheck disable=SC2016
 grep -Fq '[[ $disk == /dev/vdb ]]' "$builder" ||
@@ -23,18 +22,8 @@ grep -Fq 'wipefs --all --force "$disk"' "$builder" ||
   fail 'disk preparation is not explicit'
 grep -Eq '^  parted \\$' "$builder" ||
   fail 'disk builder does not install the package that provides partprobe'
-grep -Eq '^  make \\$' <<<"$pacstrap_block" ||
-  fail 'boot target cannot invoke the repository validation entrypoint'
-grep -Eq '^  ripgrep \\$' <<<"$pacstrap_block" ||
-  fail 'boot target lacks the search tool required by repository validation'
-grep -Eq '^  yq \\$' <<<"$pacstrap_block" ||
-  fail 'boot target cannot validate UI concept manifests'
-grep -Eq '^  lua \\$' <<<"$pacstrap_block" ||
-  fail 'boot target cannot parse managed Hyprland Lua configuration'
 grep -Eq '^  chezmoi \\$' <<<"$pacstrap_block" ||
-  fail 'boot target cannot validate the managed chezmoi source state'
-grep -Eq '^  imagemagick \\$' <<<"$pacstrap_block" ||
-  fail 'boot target cannot analyze UI evidence images'
+  fail 'boot target lacks the dotfile client required by bootstrap'
 grep -Fq 'recovery key must contain exactly 64 bytes without a newline' "$builder" ||
   fail 'interactive recovery key format is not enforced'
 grep -Fq 'cryptsetup luksFormat --type luks2' "$builder" ||
@@ -66,6 +55,10 @@ grep -Fq 'test_recovery_path' "$repo_root/tests/vm/src/enoshima_vm/service.py" |
   fail 'suite service omits the LUKS recovery path'
 grep -Fq 'apply_boot_artifacts: true' "$suite" ||
   fail 'kernel-update UKI regeneration is not exercised'
+validate_line=$(grep -n -- '  - run_validate' "$suite" | cut -d: -f1)
+prepare_line=$(grep -n -- '  - prepare_boot_disk' "$suite" | cut -d: -f1)
+[[ -n $validate_line && -n $prepare_line && $validate_line -lt $prepare_line ]] ||
+  fail 'source validation must run on the prepared base guest before disk creation'
 grep -Fq 'ENOSHIMA_UKI_SECURE_BOOT_SIGNING' \
   "$repo_root/ansible/roles/system/handlers/main.yml" ||
   fail 'Ansible does not pass the explicit UKI signing policy'

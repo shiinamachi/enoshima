@@ -78,23 +78,18 @@ pacstrap -K "$target" \
   chezmoi \
   cryptsetup \
   git \
-  imagemagick \
   jq \
   linux \
   linux-firmware \
   linux-lts \
-  lua \
-  make \
   networkmanager \
   nftables \
   openssh \
   qemu-guest-agent \
-  ripgrep \
   sbctl \
   sbsigntools \
   sudo \
   tpm2-tools \
-  yq \
   zsh
 
 # pacstrap can leave the target pacman keyring's gpg-agent alive with files
