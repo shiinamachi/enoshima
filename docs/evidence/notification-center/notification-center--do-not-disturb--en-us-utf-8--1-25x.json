@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "surface_id": "notification-center",
+  "state": "do-not-disturb",
+  "locale": "en_US.UTF-8",
+  "scale": 1.25,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    1600,
+    1000
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/notification-center/notification-center--do-not-disturb--en-us-utf-8--1-25x.webp",
+  "image_sha256": "29e483c9b0522a1ba7bdbd8df8dbc6abae2c1b1355c6df4a19afcc57f30b8fb5",
+  "run_id": "run-840ff18b7383",
+  "source_commit": "0e8eb771bac50d778f91095f2a458a45989c4a14",
+  "worktree_hash": "sha256:87b93fa59bf3e2cd47c2606008b35c3df4954b4f6028b1376a69d4dd3d41cbd0",
+  "implementation_digest": "36cb1bbbb021e7077d1a46ea3790f77723b3d26ac1429d8335f45282a57e364d",
+  "concept_sha256": "de21ad8cb32b8c53583d0faaba0f6e37ad8bde8243c3b1f684376b703bc7b9c1",
+  "concept_spec_sha256": "f67793708976d0e7a6ab02ac4f9b1d4adf8b80dabd9f6656ca84548a28667de9",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": false,
+    "reason": "production SwayNC and notification D-Bus state"
+  },
+  "source_image_sha256": "cc9ba5bfe781e908e1e9be07beba14625e356328a4bf4ee5819dd44688f0d0e1",
+  "source_sidecar_sha256": "94c1292fc4ac51dab6e1caeb39ca9108969c484b90064b447c0480c7afe22cc5",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "manual-contact-sheet-review",
+    "reviewer": "Codex visual review",
+    "review_artifact": "docs/evidence/notification-center/manual-overflow-review.webp",
+    "review_artifact_sha256": "f94ca9d0f5915bd67d52d96baeddee9b880c6ade5000d2eb75ce5456ab364aa0",
+    "source_review_artifact_sha256": "c94fe3782e39ea8dee53140d3ef6c1608d35b3ae30a457f4b080450f74d42f79",
+    "report_sha256": "86ecaa800c98e46ed1919ef7f5b6d37122a83364e5c03540ad836ae2fe67b6a8"
+  },
+  "imported_at": "2026-07-21T23:14:09+00:00"
+}

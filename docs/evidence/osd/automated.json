@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "osd",
+  "implementation_digest": "c08c6f10afaa8499711b1d90184617e241f5f0ce5c4872d23d9ba42593de4d94",
+  "concept_sha256": "58249834f2c4c98387655fe9a29366c9aea2da0d91ff4f5e5bbbbf97eddfd931",
+  "concept_spec_sha256": "a25915249b237f742f872b652bf85ac468fa1f666e07b1a8e9995ae92c43bf9a",
+  "mapping_sha256": "458bd9ca7eb39637ddf2e62d03c824526ea212650d321ff1872b128fe22f0a3f",
+  "generated_at": "2026-07-22T00:17:47+00:00",
+  "scores": {
+    "geometry": 100.0,
+    "color_tokens": 93.09,
+    "text_overflow": 100.0,
+    "perceptual": 89.75
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/osd/osd--volume--en-us-utf-8--1x.json",
+      "sidecar_sha256": "1bf788876cf32e0cd39ece01f756f0d6e0c50329532887c7d7c4a9221e8129ff",
+      "reference_crop": [
+        525,
+        425,
+        20,
+        20
+      ],
+      "implementation_crop": [
+        670,
+        590,
+        20,
+        20
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema": 2,
+  "surface_id": "display-mode",
+  "reviewer": "Codex VM visual review",
+  "reviewed_at": "2026-07-22",
+  "implementation_digest": "5f0241d53250ada00f0f2d6f19d0a7b28d19868620acf7f580f6d0a40d1cdd2a",
+  "concept_sha256": "b31367a34c37cf59300d5cdf55df9d98c842e8ba21e99a72af8a29288ebfcb79",
+  "concept_spec_sha256": "dec9d44567103854f2da9b1b3493f1936032d6fe9b54fa8a5c10abec97cbda81",
+  "automated_report": "docs/evidence/display-mode/automated.json",
+  "automated_report_sha256": "c68ecf15b586a9b8ef7f48529435612b6c2421f52437c8b01f2b3501fd5cda8e",
+  "scores": {
+    "geometry": 90.13,
+    "color_tokens": 87.2,
+    "text_overflow": 100.0,
+    "perceptual": 88.12,
+    "hierarchy": 95.0,
+    "interaction": 94.0,
+    "state_meaning": 95.0,
+    "accessibility_localization": 94.0
+  },
+  "total": 92.81
+}

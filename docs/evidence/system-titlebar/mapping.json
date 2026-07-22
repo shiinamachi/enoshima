@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "system-titlebar",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/system-titlebar/system-titlebar--active--en-us-utf-8--1x.json",
+      "reference_crop": [1490, 125, 140, 30],
+      "implementation_crop": [1125, 90, 140, 30]
+    }
+  ]
+}

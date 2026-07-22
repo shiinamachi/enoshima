@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "display-mode",
+  "implementation_digest": "5f0241d53250ada00f0f2d6f19d0a7b28d19868620acf7f580f6d0a40d1cdd2a",
+  "concept_sha256": "b31367a34c37cf59300d5cdf55df9d98c842e8ba21e99a72af8a29288ebfcb79",
+  "concept_spec_sha256": "dec9d44567103854f2da9b1b3493f1936032d6fe9b54fa8a5c10abec97cbda81",
+  "mapping_sha256": "319775f2a6a5c55b48b4ecc7f4241688e3c63bb9232fff700dcf805fae082dd8",
+  "generated_at": "2026-07-22T00:17:46+00:00",
+  "scores": {
+    "geometry": 90.13,
+    "color_tokens": 87.2,
+    "text_overflow": 100.0,
+    "perceptual": 88.12
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/display-mode/display-mode--selected--en-us-utf-8--1x.json",
+      "sidecar_sha256": "d7349bfa0a1535281920d432245071ab2592ae17252e710a8837709ee4df44e3",
+      "reference_crop": [
+        1147,
+        337,
+        241,
+        95
+      ],
+      "implementation_crop": [
+        354,
+        282,
+        280,
+        100
+      ]
+    }
+  ]
+}

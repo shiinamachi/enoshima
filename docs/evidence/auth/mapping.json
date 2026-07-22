@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "auth",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/auth/auth--password--en-us-utf-8--1x.json",
+      "reference_crop": [340, 93, 294, 383],
+      "implementation_crop": [404, 84, 471, 632]
+    }
+  ]
+}

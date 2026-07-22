@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "notification-center",
+  "implementation_digest": "36cb1bbbb021e7077d1a46ea3790f77723b3d26ac1429d8335f45282a57e364d",
+  "concept_sha256": "de21ad8cb32b8c53583d0faaba0f6e37ad8bde8243c3b1f684376b703bc7b9c1",
+  "concept_spec_sha256": "f67793708976d0e7a6ab02ac4f9b1d4adf8b80dabd9f6656ca84548a28667de9",
+  "mapping_sha256": "4e7dcae296433c05fc89c54e18a517f228711b88c7f03ddddab850317258d3b7",
+  "generated_at": "2026-07-22T00:17:46+00:00",
+  "scores": {
+    "geometry": 92.99,
+    "color_tokens": 89.09,
+    "text_overflow": 100.0,
+    "perceptual": 96.23
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/notification-center/notification-center--default--en-us-utf-8--1x.json",
+      "sidecar_sha256": "9f9721926ae45e9cd3bbc8558803a5665c14764dfd9a2728ae46a8dd34979f8a",
+      "reference_crop": [
+        1144,
+        150,
+        124,
+        114
+      ],
+      "implementation_crop": [
+        825,
+        216,
+        119,
+        102
+      ]
+    }
+  ]
+}

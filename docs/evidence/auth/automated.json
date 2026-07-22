@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "auth",
+  "implementation_digest": "98943464f351f6a36a437ed0a10eed3477bbdb1507ec1a81c4bb2ca8437d8970",
+  "concept_sha256": "a496fa355981d0f97f7df593a23340e7bf998141d450c59899213d645d993051",
+  "concept_spec_sha256": "212e9c6e68318dcc2ce40cc78d3336c597313b1f84bce1220cbbb34b8ec7ea2d",
+  "mapping_sha256": "cc61e553f4f2e378d44148edf37a5522a43a6a8319b7a45f44a4d2bde93a4480",
+  "generated_at": "2026-07-22T00:17:46+00:00",
+  "scores": {
+    "geometry": 97.04,
+    "color_tokens": 89.49,
+    "text_overflow": 100.0,
+    "perceptual": 88.39
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/auth/auth--password--en-us-utf-8--1x.json",
+      "sidecar_sha256": "0e57ea4e42689184f393db3df0c80b45400f58a415f6b86ac648ba28e5db67a5",
+      "reference_crop": [
+        340,
+        93,
+        294,
+        383
+      ],
+      "implementation_crop": [
+        404,
+        84,
+        471,
+        632
+      ]
+    }
+  ]
+}

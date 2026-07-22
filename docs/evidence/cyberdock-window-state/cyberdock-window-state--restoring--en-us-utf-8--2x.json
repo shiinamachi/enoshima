@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "surface_id": "cyberdock-window-state",
+  "state": "restoring",
+  "locale": "en_US.UTF-8",
+  "scale": 2.0,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    2560,
+    1600
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--2x.webp",
+  "image_sha256": "383adfa6cebf9509adcedeb57a9da626508e3b1728991a4596a10a8100581096",
+  "run_id": "run-840ff18b7383",
+  "source_commit": "0e8eb771bac50d778f91095f2a458a45989c4a14",
+  "worktree_hash": "sha256:87b93fa59bf3e2cd47c2606008b35c3df4954b4f6028b1376a69d4dd3d41cbd0",
+  "implementation_digest": "e6289a0ca320146a1faaa2319aa2b8071e3d96f4593de8a3c1245a1dfc62f2f5",
+  "concept_sha256": "a35f5066f228bb79e5c3f0782400f2edfa1af9a90cf2e04a8b62ddd2b482cc4d",
+  "concept_spec_sha256": "d7cc99840416bbc6670557551b84c89b514a24417d32f4bc0c7f3985fc6a26d7",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": true,
+    "reason": "deterministic production-model state injection"
+  },
+  "source_image_sha256": "1feb2e5aad024884a891fdf79ddde5f56488e2c695acb3af7782cef51e29657d",
+  "source_sidecar_sha256": "d2fecd1b8adc7fad7c078ee41e4a66cd329f54782462ad1c7898f4c7b9900419",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "production-component-layout-probe",
+    "source": "cyberdock-window-state--restoring--en-us-utf-8--2x.json"
+  },
+  "imported_at": "2026-07-21T23:15:38+00:00"
+}

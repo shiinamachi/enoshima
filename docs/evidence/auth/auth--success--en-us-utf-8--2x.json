@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "surface_id": "auth",
+  "state": "success",
+  "locale": "en_US.UTF-8",
+  "scale": 2.0,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    2560,
+    1600
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/auth/auth--success--en-us-utf-8--2x.webp",
+  "image_sha256": "c00daf1c61d0b882167c4cef9bdf1a470ecd7b2cdfedb2391da1482cf4fe6694",
+  "run_id": "run-840ff18b7383",
+  "source_commit": "0e8eb771bac50d778f91095f2a458a45989c4a14",
+  "worktree_hash": "sha256:87b93fa59bf3e2cd47c2606008b35c3df4954b4f6028b1376a69d4dd3d41cbd0",
+  "implementation_digest": "98943464f351f6a36a437ed0a10eed3477bbdb1507ec1a81c4bb2ca8437d8970",
+  "concept_sha256": "a496fa355981d0f97f7df593a23340e7bf998141d450c59899213d645d993051",
+  "concept_spec_sha256": "212e9c6e68318dcc2ce40cc78d3336c597313b1f84bce1220cbbb34b8ec7ea2d",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": true,
+    "reason": "production greeter with deterministic visual auth state"
+  },
+  "source_image_sha256": "5944a197d61a460b6c05c95552c49b1aa47cfc393b7d8da266b4519c5c96aad9",
+  "source_sidecar_sha256": "b1533dc5c4f85470c08303d28ebd0ef7ab4b2fe5266905447863986442d16b15",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "manual-contact-sheet-review",
+    "reviewer": "Codex visual review",
+    "review_artifact": "docs/evidence/auth/manual-overflow-review.webp",
+    "review_artifact_sha256": "f94ca9d0f5915bd67d52d96baeddee9b880c6ade5000d2eb75ce5456ab364aa0",
+    "source_review_artifact_sha256": "c94fe3782e39ea8dee53140d3ef6c1608d35b3ae30a457f4b080450f74d42f79",
+    "report_sha256": "86ecaa800c98e46ed1919ef7f5b6d37122a83364e5c03540ad836ae2fe67b6a8"
+  },
+  "imported_at": "2026-07-21T23:16:57+00:00"
+}

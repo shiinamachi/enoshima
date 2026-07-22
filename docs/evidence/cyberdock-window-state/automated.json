@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "cyberdock-window-state",
+  "implementation_digest": "e6289a0ca320146a1faaa2319aa2b8071e3d96f4593de8a3c1245a1dfc62f2f5",
+  "concept_sha256": "a35f5066f228bb79e5c3f0782400f2edfa1af9a90cf2e04a8b62ddd2b482cc4d",
+  "concept_spec_sha256": "d7cc99840416bbc6670557551b84c89b514a24417d32f4bc0c7f3985fc6a26d7",
+  "mapping_sha256": "7c78e6bf5a03b00fa9872a9c747f83245b9ccb96582a5f3b00f77e2ac4693373",
+  "generated_at": "2026-07-22T00:17:47+00:00",
+  "scores": {
+    "geometry": 100.0,
+    "color_tokens": 89.06,
+    "text_overflow": 100.0,
+    "perceptual": 88.68
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1x.json",
+      "sidecar_sha256": "a2cfd9c89bfb50ede036bbdc162153840300504afd3bddddc5f58997fd3e6daf",
+      "reference_crop": [
+        398,
+        375,
+        4,
+        20
+      ],
+      "implementation_crop": [
+        570,
+        742,
+        4,
+        20
+      ]
+    }
+  ]
+}

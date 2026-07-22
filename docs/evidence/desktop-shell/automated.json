@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "desktop-shell",
+  "implementation_digest": "23e3d0b66c82ba39363bb42bfefd161c07ad83713d9363f247cbb58db523d601",
+  "concept_sha256": "c7821061e1f80f5ae525e25bffd43f2b2e25580efba854eb5710234d662615ee",
+  "concept_spec_sha256": "dcd3e1fea5a1252f9ee6b42ef0c6f4e04864574f851e261a6b89005f87191044",
+  "mapping_sha256": "c69ac77b04370c462fe2887b5f5ec1b4b498d6fe3c8109f30b025328689c796c",
+  "generated_at": "2026-07-22T00:17:46+00:00",
+  "scores": {
+    "geometry": 98.76,
+    "color_tokens": 92.79,
+    "text_overflow": 100.0,
+    "perceptual": 87.86
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1x.json",
+      "sidecar_sha256": "e24824f68158d824d1b762b0dbe2d53222c56a8958a127f23db09ec50e9c654d",
+      "reference_crop": [
+        500,
+        20,
+        100,
+        30
+      ],
+      "implementation_crop": [
+        404,
+        16,
+        81,
+        24
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "system-titlebar",
+  "implementation_digest": "3f614e0965b2c62c5c555f979f50265598d7a090e344a5146a9dbd96ed0ba592",
+  "concept_sha256": "009401e3c6bc2c2fd014e936e4f037d0e00486651cc8a293b5f402089b7a189c",
+  "concept_spec_sha256": "b044364e9ceba97a1d924e70d0b212bb740480f31a5c1e6446d6ef5add2d3f3b",
+  "mapping_sha256": "246e7ef0a8d1e897c561a95f7e1cc016140b2e881782f52a710f8f862be77f3c",
+  "generated_at": "2026-07-22T00:17:47+00:00",
+  "scores": {
+    "geometry": 100.0,
+    "color_tokens": 89.42,
+    "text_overflow": 100.0,
+    "perceptual": 93.06
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/system-titlebar/system-titlebar--active--en-us-utf-8--1x.json",
+      "sidecar_sha256": "3d51cbd0adef82692ff972d973edb272841fda7621f22f20b528d3dc3bc665b0",
+      "reference_crop": [
+        1490,
+        125,
+        140,
+        30
+      ],
+      "implementation_crop": [
+        1125,
+        90,
+        140,
+        30
+      ]
+    }
+  ]
+}

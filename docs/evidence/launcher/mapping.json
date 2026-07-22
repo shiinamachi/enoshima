@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "launcher",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/launcher/launcher--default--en-us-utf-8--1x.json",
+      "reference_crop": [278, 157, 978, 675],
+      "implementation_crop": [160, 70, 960, 660]
+    }
+  ]
+}

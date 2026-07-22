@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "snap-assist",
+  "implementation_digest": "a28920ebf0a61f0e9088a4f254ac81e8f762aca9e0c828b9c3ff5bdce1ac6e41",
+  "concept_sha256": "ded09e8ba7b7b3a2b80ec91cfaba7300849e7d5b38321f4d7e60106cd9119bff",
+  "concept_spec_sha256": "6c33bb384f3a01ea82b56dfc62b28639cbe2476b189e390df7793088a7882e43",
+  "mapping_sha256": "ce176716a091f9faf30c71620efeda8d66b85fcda008403d6aaf21716140b180",
+  "generated_at": "2026-07-22T00:17:46+00:00",
+  "scores": {
+    "geometry": 99.75,
+    "color_tokens": 87.6,
+    "text_overflow": 100.0,
+    "perceptual": 87.96
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/snap-assist/snap-assist--layout-chooser--en-us-utf-8--1x.json",
+      "sidecar_sha256": "1dfc00f4edc76af4e55a59295d5e4eeaf7dfcf45b8d89b810229ef697d9a67f7",
+      "reference_crop": [
+        1358,
+        350,
+        188,
+        49
+      ],
+      "implementation_crop": [
+        402,
+        122,
+        200,
+        52
+      ]
+    }
+  ]
+}

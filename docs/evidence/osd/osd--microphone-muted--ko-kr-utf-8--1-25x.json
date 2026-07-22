@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "surface_id": "osd",
+  "state": "microphone-muted",
+  "locale": "ko_KR.UTF-8",
+  "scale": 1.25,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    1600,
+    1000
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/osd/osd--microphone-muted--ko-kr-utf-8--1-25x.webp",
+  "image_sha256": "fd161ed600e0ea8fcd571fb7c998ffbb2f41aadfd003313426ac2cd81087d9f9",
+  "run_id": "run-840ff18b7383",
+  "source_commit": "0e8eb771bac50d778f91095f2a458a45989c4a14",
+  "worktree_hash": "sha256:87b93fa59bf3e2cd47c2606008b35c3df4954b4f6028b1376a69d4dd3d41cbd0",
+  "implementation_digest": "c08c6f10afaa8499711b1d90184617e241f5f0ce5c4872d23d9ba42593de4d94",
+  "concept_sha256": "58249834f2c4c98387655fe9a29366c9aea2da0d91ff4f5e5bbbbf97eddfd931",
+  "concept_spec_sha256": "a25915249b237f742f872b652bf85ac468fa1f666e07b1a8e9995ae92c43bf9a",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": true,
+    "reason": "deterministic production-model state injection"
+  },
+  "source_image_sha256": "218b01072d2ef28ac6a50bd4399df944c5be8d0bcd2e6294beee485d0fc05d0a",
+  "source_sidecar_sha256": "115bcad4a80062d6b984df30b76ac6c50c9d315dec15a6f984deb0177d65c924",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "production-component-layout-probe",
+    "source": "osd--microphone-muted--ko-kr-utf-8--1-25x.json"
+  },
+  "imported_at": "2026-07-21T23:14:23+00:00"
+}

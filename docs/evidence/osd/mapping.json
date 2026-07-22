@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "osd",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/osd/osd--volume--en-us-utf-8--1x.json",
+      "reference_crop": [525, 425, 20, 20],
+      "implementation_crop": [670, 590, 20, 20]
+    }
+  ]
+}

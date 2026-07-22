@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "desktop-shell",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1x.json",
+      "reference_crop": [500, 20, 100, 30],
+      "implementation_crop": [404, 16, 81, 24]
+    }
+  ]
+}

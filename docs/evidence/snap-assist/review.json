@@ -1,0 +1,22 @@
+{
+  "schema": 2,
+  "surface_id": "snap-assist",
+  "reviewer": "Codex VM visual review",
+  "reviewed_at": "2026-07-22",
+  "implementation_digest": "a28920ebf0a61f0e9088a4f254ac81e8f762aca9e0c828b9c3ff5bdce1ac6e41",
+  "concept_sha256": "ded09e8ba7b7b3a2b80ec91cfaba7300849e7d5b38321f4d7e60106cd9119bff",
+  "concept_spec_sha256": "6c33bb384f3a01ea82b56dfc62b28639cbe2476b189e390df7793088a7882e43",
+  "automated_report": "docs/evidence/snap-assist/automated.json",
+  "automated_report_sha256": "f3d5eba8cbfac26ec8190629f776fa37687a90fe82e95d64946abfa1069430bf",
+  "scores": {
+    "geometry": 99.75,
+    "color_tokens": 87.6,
+    "text_overflow": 100.0,
+    "perceptual": 87.96,
+    "hierarchy": 94.0,
+    "interaction": 96.0,
+    "state_meaning": 95.0,
+    "accessibility_localization": 94.0
+  },
+  "total": 94.91
+}

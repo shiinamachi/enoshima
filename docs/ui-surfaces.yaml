@@ -1,6 +1,5 @@
 schema: 2
-reviewed: 2026-07-20
-
+reviewed: '2026-07-22'
 surfaces:
   desktop-shell:
     implementation:
@@ -14,13 +13,53 @@ surfaces:
       spec: docs/concepts/desktop-shell.yaml
       sha256: c7821061e1f80f5ae525e25bffd43f2b2e25580efba854eb5710234d662615ee
     evidence:
-      status: pending
-      required_states: [default, active-window, inactive-window, internal-display, external-display]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
+      status: approved
+      required_states:
+        - default
+        - active-window
+        - inactive-window
+        - internal-display
+        - external-display
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: 23e3d0b66c82ba39363bb42bfefd161c07ad83713d9363f247cbb58db523d601
+      captures:
+        - docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--2x.json
+        - docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--2x.json
+        - docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--2x.json
+        - docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--2x.json
+        - docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--2x.json
+        - docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--2x.json
+        - docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--2x.json
+        - docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--2x.json
+        - docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--2x.json
+        - docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--1x.json
+        - docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--1-25x.json
+        - docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--2x.json
+      review: docs/evidence/desktop-shell/review.json
   launcher:
     implementation:
       - home/dot_config/quickshell/cyberdock/CyberLauncher.qml
@@ -33,13 +72,60 @@ surfaces:
       spec: docs/concepts/launcher.yaml
       sha256: 341350578089201d4d51300d948764c599f552ad4e36c0b444574d726ad9dc8f
     evidence:
-      status: pending
-      required_states: [default, search, selected, empty, unavailable, error]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
+      status: approved
+      required_states:
+        - default
+        - search
+        - selected
+        - empty
+        - unavailable
+        - error
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: f9064bc7b4d1a5d7d34d76e12aed7470d8c6bc8454e156963e31b40b619a645d
+      captures:
+        - docs/evidence/launcher/launcher--default--en-us-utf-8--1x.json
+        - docs/evidence/launcher/launcher--default--en-us-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--default--en-us-utf-8--2x.json
+        - docs/evidence/launcher/launcher--default--ko-kr-utf-8--1x.json
+        - docs/evidence/launcher/launcher--default--ko-kr-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--default--ko-kr-utf-8--2x.json
+        - docs/evidence/launcher/launcher--empty--en-us-utf-8--1x.json
+        - docs/evidence/launcher/launcher--empty--en-us-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--empty--en-us-utf-8--2x.json
+        - docs/evidence/launcher/launcher--empty--ko-kr-utf-8--1x.json
+        - docs/evidence/launcher/launcher--empty--ko-kr-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--empty--ko-kr-utf-8--2x.json
+        - docs/evidence/launcher/launcher--error--en-us-utf-8--1x.json
+        - docs/evidence/launcher/launcher--error--en-us-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--error--en-us-utf-8--2x.json
+        - docs/evidence/launcher/launcher--error--ko-kr-utf-8--1x.json
+        - docs/evidence/launcher/launcher--error--ko-kr-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--error--ko-kr-utf-8--2x.json
+        - docs/evidence/launcher/launcher--search--en-us-utf-8--1x.json
+        - docs/evidence/launcher/launcher--search--en-us-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--search--en-us-utf-8--2x.json
+        - docs/evidence/launcher/launcher--search--ko-kr-utf-8--1x.json
+        - docs/evidence/launcher/launcher--search--ko-kr-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--search--ko-kr-utf-8--2x.json
+        - docs/evidence/launcher/launcher--selected--en-us-utf-8--1x.json
+        - docs/evidence/launcher/launcher--selected--en-us-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--selected--en-us-utf-8--2x.json
+        - docs/evidence/launcher/launcher--selected--ko-kr-utf-8--1x.json
+        - docs/evidence/launcher/launcher--selected--ko-kr-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--selected--ko-kr-utf-8--2x.json
+        - docs/evidence/launcher/launcher--unavailable--en-us-utf-8--1x.json
+        - docs/evidence/launcher/launcher--unavailable--en-us-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--unavailable--en-us-utf-8--2x.json
+        - docs/evidence/launcher/launcher--unavailable--ko-kr-utf-8--1x.json
+        - docs/evidence/launcher/launcher--unavailable--ko-kr-utf-8--1-25x.json
+        - docs/evidence/launcher/launcher--unavailable--ko-kr-utf-8--2x.json
+      review: docs/evidence/launcher/review.json
   notification-center:
     implementation:
       - home/dot_config/swaync/config.json
@@ -53,13 +139,60 @@ surfaces:
       spec: docs/concepts/notification-center.yaml
       sha256: de21ad8cb32b8c53583d0faaba0f6e37ad8bde8243c3b1f684376b703bc7b9c1
     evidence:
-      status: pending
-      required_states: [default, empty, do-not-disturb, notification, critical, action-error]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
+      status: approved
+      required_states:
+        - default
+        - empty
+        - do-not-disturb
+        - notification
+        - critical
+        - action-error
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: 36cb1bbbb021e7077d1a46ea3790f77723b3d26ac1429d8335f45282a57e364d
+      captures:
+        - docs/evidence/notification-center/notification-center--action-error--en-us-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--action-error--en-us-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--action-error--en-us-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--action-error--ko-kr-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--action-error--ko-kr-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--action-error--ko-kr-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--critical--en-us-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--critical--en-us-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--critical--en-us-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--critical--ko-kr-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--critical--ko-kr-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--critical--ko-kr-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--default--en-us-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--default--en-us-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--default--en-us-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--default--ko-kr-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--default--ko-kr-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--default--ko-kr-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--do-not-disturb--en-us-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--do-not-disturb--en-us-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--do-not-disturb--en-us-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--do-not-disturb--ko-kr-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--do-not-disturb--ko-kr-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--do-not-disturb--ko-kr-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--empty--en-us-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--empty--en-us-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--empty--en-us-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--empty--ko-kr-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--empty--ko-kr-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--empty--ko-kr-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--notification--en-us-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--notification--en-us-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--notification--en-us-utf-8--2x.json
+        - docs/evidence/notification-center/notification-center--notification--ko-kr-utf-8--1x.json
+        - docs/evidence/notification-center/notification-center--notification--ko-kr-utf-8--1-25x.json
+        - docs/evidence/notification-center/notification-center--notification--ko-kr-utf-8--2x.json
+      review: docs/evidence/notification-center/review.json
   power-menu:
     implementation:
       - home/dot_config/quickshell/cyberdock/PowerMenu.qml
@@ -70,13 +203,60 @@ surfaces:
       spec: docs/concepts/power-menu.yaml
       sha256: 0dd7c9c779c3faf3b938c873ce8a7cf905650ffe275c1a2269dee6d48c7196f5
     evidence:
-      status: pending
-      required_states: [default, confirmation, closing-apps, dispatching, error, retry]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
+      status: approved
+      required_states:
+        - default
+        - confirmation
+        - closing-apps
+        - dispatching
+        - error
+        - retry
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: 87e34dccbbbda001e86fb321014dd7bd04ef15735ee713b485694563e82a7974
+      captures:
+        - docs/evidence/power-menu/power-menu--closing-apps--en-us-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--closing-apps--en-us-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--closing-apps--en-us-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--closing-apps--ko-kr-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--closing-apps--ko-kr-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--closing-apps--ko-kr-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--confirmation--en-us-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--confirmation--en-us-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--confirmation--en-us-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--confirmation--ko-kr-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--confirmation--ko-kr-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--confirmation--ko-kr-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--default--en-us-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--default--en-us-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--default--en-us-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--default--ko-kr-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--default--ko-kr-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--default--ko-kr-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--dispatching--en-us-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--dispatching--en-us-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--dispatching--en-us-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--dispatching--ko-kr-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--dispatching--ko-kr-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--dispatching--ko-kr-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--error--en-us-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--error--en-us-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--error--en-us-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--error--ko-kr-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--error--ko-kr-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--error--ko-kr-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--retry--en-us-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--retry--en-us-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--retry--en-us-utf-8--2x.json
+        - docs/evidence/power-menu/power-menu--retry--ko-kr-utf-8--1x.json
+        - docs/evidence/power-menu/power-menu--retry--ko-kr-utf-8--1-25x.json
+        - docs/evidence/power-menu/power-menu--retry--ko-kr-utf-8--2x.json
+      review: docs/evidence/power-menu/review.json
   osd:
     implementation:
       - home/dot_config/quickshell/cyberdock/CyberOsd.qml
@@ -87,13 +267,67 @@ surfaces:
       spec: docs/concepts/osd.yaml
       sha256: 58249834f2c4c98387655fe9a29366c9aea2da0d91ff4f5e5bbbbf97eddfd931
     evidence:
-      status: pending
-      required_states: [volume, muted, microphone-muted, brightness, keyboard-backlight, airplane-mode, airplane-mode-error]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
+      status: approved
+      required_states:
+        - volume
+        - muted
+        - microphone-muted
+        - brightness
+        - keyboard-backlight
+        - airplane-mode
+        - airplane-mode-error
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: c08c6f10afaa8499711b1d90184617e241f5f0ce5c4872d23d9ba42593de4d94
+      captures:
+        - docs/evidence/osd/osd--airplane-mode--en-us-utf-8--1x.json
+        - docs/evidence/osd/osd--airplane-mode--en-us-utf-8--1-25x.json
+        - docs/evidence/osd/osd--airplane-mode--en-us-utf-8--2x.json
+        - docs/evidence/osd/osd--airplane-mode--ko-kr-utf-8--1x.json
+        - docs/evidence/osd/osd--airplane-mode--ko-kr-utf-8--1-25x.json
+        - docs/evidence/osd/osd--airplane-mode--ko-kr-utf-8--2x.json
+        - docs/evidence/osd/osd--airplane-mode-error--en-us-utf-8--1x.json
+        - docs/evidence/osd/osd--airplane-mode-error--en-us-utf-8--1-25x.json
+        - docs/evidence/osd/osd--airplane-mode-error--en-us-utf-8--2x.json
+        - docs/evidence/osd/osd--airplane-mode-error--ko-kr-utf-8--1x.json
+        - docs/evidence/osd/osd--airplane-mode-error--ko-kr-utf-8--1-25x.json
+        - docs/evidence/osd/osd--airplane-mode-error--ko-kr-utf-8--2x.json
+        - docs/evidence/osd/osd--brightness--en-us-utf-8--1x.json
+        - docs/evidence/osd/osd--brightness--en-us-utf-8--1-25x.json
+        - docs/evidence/osd/osd--brightness--en-us-utf-8--2x.json
+        - docs/evidence/osd/osd--brightness--ko-kr-utf-8--1x.json
+        - docs/evidence/osd/osd--brightness--ko-kr-utf-8--1-25x.json
+        - docs/evidence/osd/osd--brightness--ko-kr-utf-8--2x.json
+        - docs/evidence/osd/osd--keyboard-backlight--en-us-utf-8--1x.json
+        - docs/evidence/osd/osd--keyboard-backlight--en-us-utf-8--1-25x.json
+        - docs/evidence/osd/osd--keyboard-backlight--en-us-utf-8--2x.json
+        - docs/evidence/osd/osd--keyboard-backlight--ko-kr-utf-8--1x.json
+        - docs/evidence/osd/osd--keyboard-backlight--ko-kr-utf-8--1-25x.json
+        - docs/evidence/osd/osd--keyboard-backlight--ko-kr-utf-8--2x.json
+        - docs/evidence/osd/osd--microphone-muted--en-us-utf-8--1x.json
+        - docs/evidence/osd/osd--microphone-muted--en-us-utf-8--1-25x.json
+        - docs/evidence/osd/osd--microphone-muted--en-us-utf-8--2x.json
+        - docs/evidence/osd/osd--microphone-muted--ko-kr-utf-8--1x.json
+        - docs/evidence/osd/osd--microphone-muted--ko-kr-utf-8--1-25x.json
+        - docs/evidence/osd/osd--microphone-muted--ko-kr-utf-8--2x.json
+        - docs/evidence/osd/osd--muted--en-us-utf-8--1x.json
+        - docs/evidence/osd/osd--muted--en-us-utf-8--1-25x.json
+        - docs/evidence/osd/osd--muted--en-us-utf-8--2x.json
+        - docs/evidence/osd/osd--muted--ko-kr-utf-8--1x.json
+        - docs/evidence/osd/osd--muted--ko-kr-utf-8--1-25x.json
+        - docs/evidence/osd/osd--muted--ko-kr-utf-8--2x.json
+        - docs/evidence/osd/osd--volume--en-us-utf-8--1x.json
+        - docs/evidence/osd/osd--volume--en-us-utf-8--1-25x.json
+        - docs/evidence/osd/osd--volume--en-us-utf-8--2x.json
+        - docs/evidence/osd/osd--volume--ko-kr-utf-8--1x.json
+        - docs/evidence/osd/osd--volume--ko-kr-utf-8--1-25x.json
+        - docs/evidence/osd/osd--volume--ko-kr-utf-8--2x.json
+      review: docs/evidence/osd/review.json
   display-mode:
     implementation:
       - home/dot_config/quickshell/cyberdock/DisplayModeOverlay.qml
@@ -106,13 +340,74 @@ surfaces:
       spec: docs/concepts/display-mode.yaml
       sha256: b31367a34c37cf59300d5cdf55df9d98c842e8ba21e99a72af8a29288ebfcb79
     evidence:
-      status: pending
-      required_states: [default, hover, focus, selected, unavailable, applying, confirmation, error]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
+      status: approved
+      required_states:
+        - default
+        - hover
+        - focus
+        - selected
+        - unavailable
+        - applying
+        - confirmation
+        - error
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: 5f0241d53250ada00f0f2d6f19d0a7b28d19868620acf7f580f6d0a40d1cdd2a
+      captures:
+        - docs/evidence/display-mode/display-mode--applying--en-us-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--applying--en-us-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--applying--en-us-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--applying--ko-kr-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--applying--ko-kr-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--applying--ko-kr-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--confirmation--en-us-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--confirmation--en-us-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--confirmation--en-us-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--confirmation--ko-kr-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--confirmation--ko-kr-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--confirmation--ko-kr-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--default--en-us-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--default--en-us-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--default--en-us-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--default--ko-kr-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--default--ko-kr-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--default--ko-kr-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--error--en-us-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--error--en-us-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--error--en-us-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--error--ko-kr-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--error--ko-kr-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--error--ko-kr-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--focus--en-us-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--focus--en-us-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--focus--en-us-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--focus--ko-kr-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--focus--ko-kr-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--focus--ko-kr-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--hover--en-us-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--hover--en-us-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--hover--en-us-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--hover--ko-kr-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--hover--ko-kr-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--hover--ko-kr-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--selected--en-us-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--selected--en-us-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--selected--en-us-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--selected--ko-kr-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--selected--ko-kr-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--selected--ko-kr-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--unavailable--en-us-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--unavailable--en-us-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--unavailable--en-us-utf-8--2x.json
+        - docs/evidence/display-mode/display-mode--unavailable--ko-kr-utf-8--1x.json
+        - docs/evidence/display-mode/display-mode--unavailable--ko-kr-utf-8--1-25x.json
+        - docs/evidence/display-mode/display-mode--unavailable--ko-kr-utf-8--2x.json
+      review: docs/evidence/display-mode/review.json
   cyberdock-window-state:
     implementation:
       - home/dot_config/quickshell/cyberdock/shell.qml
@@ -125,13 +420,81 @@ surfaces:
       spec: docs/concepts/cyberdock-window-state.yaml
       sha256: a35f5066f228bb79e5c3f0782400f2edfa1af9a90cf2e04a8b62ddd2b482cc4d
     evidence:
-      status: pending
-      required_states: [pinned, running, focused, minimizing, minimized, restoring, multi-window, urgent, unavailable]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
+      status: approved
+      required_states:
+        - pinned
+        - running
+        - focused
+        - minimizing
+        - minimized
+        - restoring
+        - multi-window
+        - urgent
+        - unavailable
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: e6289a0ca320146a1faaa2319aa2b8071e3d96f4593de8a3c1245a1dfc62f2f5
+      captures:
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--2x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--1x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--1-25x.json
+        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--2x.json
+      review: docs/evidence/cyberdock-window-state/review.json
   system-titlebar:
     implementation:
       - native/enoshima-decoration/src/main.cpp
@@ -146,13 +509,88 @@ surfaces:
       spec: docs/concepts/system-titlebar.yaml
       sha256: 009401e3c6bc2c2fd014e936e4f037d0e00486651cc8a293b5f402089b7a189c
     evidence:
-      status: pending
-      required_states: [active, inactive, keyboard-focus, hover, pressed, maximized, close-hover, system-menu, action-running, action-error]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
+      status: approved
+      required_states:
+        - active
+        - inactive
+        - keyboard-focus
+        - hover
+        - pressed
+        - maximized
+        - close-hover
+        - system-menu
+        - action-running
+        - action-error
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: 3f614e0965b2c62c5c555f979f50265598d7a090e344a5146a9dbd96ed0ba592
+      captures:
+        - docs/evidence/system-titlebar/system-titlebar--action-error--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-error--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-error--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-error--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-error--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-error--ko-kr-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-running--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-running--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-running--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-running--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-running--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--action-running--ko-kr-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--active--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--active--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--active--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--active--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--active--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--active--ko-kr-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--close-hover--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--close-hover--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--close-hover--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--close-hover--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--close-hover--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--close-hover--ko-kr-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--hover--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--hover--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--hover--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--hover--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--hover--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--hover--ko-kr-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--inactive--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--inactive--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--inactive--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--inactive--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--inactive--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--inactive--ko-kr-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--keyboard-focus--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--keyboard-focus--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--keyboard-focus--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--keyboard-focus--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--keyboard-focus--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--keyboard-focus--ko-kr-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--maximized--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--maximized--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--maximized--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--maximized--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--maximized--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--maximized--ko-kr-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--pressed--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--pressed--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--pressed--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--pressed--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--pressed--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--pressed--ko-kr-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--system-menu--en-us-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--system-menu--en-us-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--system-menu--en-us-utf-8--2x.json
+        - docs/evidence/system-titlebar/system-titlebar--system-menu--ko-kr-utf-8--1x.json
+        - docs/evidence/system-titlebar/system-titlebar--system-menu--ko-kr-utf-8--1-25x.json
+        - docs/evidence/system-titlebar/system-titlebar--system-menu--ko-kr-utf-8--2x.json
+      review: docs/evidence/system-titlebar/review.json
   snap-assist:
     implementation:
       - home/dot_config/quickshell/cyberdock/EnoshimaSnapAssist.qml
@@ -164,13 +602,67 @@ surfaces:
       spec: docs/concepts/snap-assist.yaml
       sha256: ded09e8ba7b7b3a2b80ec91cfaba7300849e7d5b38321f4d7e60106cd9119bff
     evidence:
-      status: pending
-      required_states: [left-half, right-half, maximize, corners, layout-chooser, cross-monitor, cancelled]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
+      status: approved
+      required_states:
+        - left-half
+        - right-half
+        - maximize
+        - corners
+        - layout-chooser
+        - cross-monitor
+        - cancelled
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: a28920ebf0a61f0e9088a4f254ac81e8f762aca9e0c828b9c3ff5bdce1ac6e41
+      captures:
+        - docs/evidence/snap-assist/snap-assist--cancelled--en-us-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--cancelled--en-us-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--cancelled--en-us-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--cancelled--ko-kr-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--cancelled--ko-kr-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--cancelled--ko-kr-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--corners--en-us-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--corners--en-us-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--corners--en-us-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--corners--ko-kr-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--corners--ko-kr-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--corners--ko-kr-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--cross-monitor--en-us-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--cross-monitor--en-us-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--cross-monitor--en-us-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--cross-monitor--ko-kr-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--cross-monitor--ko-kr-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--cross-monitor--ko-kr-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--layout-chooser--en-us-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--layout-chooser--en-us-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--layout-chooser--en-us-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--layout-chooser--ko-kr-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--layout-chooser--ko-kr-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--layout-chooser--ko-kr-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--left-half--en-us-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--left-half--en-us-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--left-half--en-us-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--left-half--ko-kr-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--left-half--ko-kr-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--left-half--ko-kr-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--maximize--en-us-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--maximize--en-us-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--maximize--en-us-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--maximize--ko-kr-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--maximize--ko-kr-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--maximize--ko-kr-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--right-half--en-us-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--right-half--en-us-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--right-half--en-us-utf-8--2x.json
+        - docs/evidence/snap-assist/snap-assist--right-half--ko-kr-utf-8--1x.json
+        - docs/evidence/snap-assist/snap-assist--right-half--ko-kr-utf-8--1-25x.json
+        - docs/evidence/snap-assist/snap-assist--right-half--ko-kr-utf-8--2x.json
+      review: docs/evidence/snap-assist/review.json
   auth:
     implementation:
       - home/dot_config/hypr/hyprlock.conf
@@ -188,14 +680,74 @@ surfaces:
       spec: docs/concepts/auth.yaml
       sha256: a496fa355981d0f97f7df593a23340e7bf998141d450c59899213d645d993051
     evidence:
-      status: pending
-      required_states: [password, fingerprint-ready, fingerprint-progress, success, failure, caps-lock, busy, power-confirmation]
-      required_locales: [en_US.UTF-8, ko_KR.UTF-8]
-      required_scales: [1.0, 1.25, 2.0]
-      implementation_digest: null
-      captures: []
-      review: null
-
+      status: approved
+      required_states:
+        - password
+        - fingerprint-ready
+        - fingerprint-progress
+        - success
+        - failure
+        - caps-lock
+        - busy
+        - power-confirmation
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      implementation_digest: 98943464f351f6a36a437ed0a10eed3477bbdb1507ec1a81c4bb2ca8437d8970
+      captures:
+        - docs/evidence/auth/auth--busy--en-us-utf-8--1x.json
+        - docs/evidence/auth/auth--busy--en-us-utf-8--1-25x.json
+        - docs/evidence/auth/auth--busy--en-us-utf-8--2x.json
+        - docs/evidence/auth/auth--busy--ko-kr-utf-8--1x.json
+        - docs/evidence/auth/auth--busy--ko-kr-utf-8--1-25x.json
+        - docs/evidence/auth/auth--busy--ko-kr-utf-8--2x.json
+        - docs/evidence/auth/auth--caps-lock--en-us-utf-8--1x.json
+        - docs/evidence/auth/auth--caps-lock--en-us-utf-8--1-25x.json
+        - docs/evidence/auth/auth--caps-lock--en-us-utf-8--2x.json
+        - docs/evidence/auth/auth--caps-lock--ko-kr-utf-8--1x.json
+        - docs/evidence/auth/auth--caps-lock--ko-kr-utf-8--1-25x.json
+        - docs/evidence/auth/auth--caps-lock--ko-kr-utf-8--2x.json
+        - docs/evidence/auth/auth--failure--en-us-utf-8--1x.json
+        - docs/evidence/auth/auth--failure--en-us-utf-8--1-25x.json
+        - docs/evidence/auth/auth--failure--en-us-utf-8--2x.json
+        - docs/evidence/auth/auth--failure--ko-kr-utf-8--1x.json
+        - docs/evidence/auth/auth--failure--ko-kr-utf-8--1-25x.json
+        - docs/evidence/auth/auth--failure--ko-kr-utf-8--2x.json
+        - docs/evidence/auth/auth--fingerprint-progress--en-us-utf-8--1x.json
+        - docs/evidence/auth/auth--fingerprint-progress--en-us-utf-8--1-25x.json
+        - docs/evidence/auth/auth--fingerprint-progress--en-us-utf-8--2x.json
+        - docs/evidence/auth/auth--fingerprint-progress--ko-kr-utf-8--1x.json
+        - docs/evidence/auth/auth--fingerprint-progress--ko-kr-utf-8--1-25x.json
+        - docs/evidence/auth/auth--fingerprint-progress--ko-kr-utf-8--2x.json
+        - docs/evidence/auth/auth--fingerprint-ready--en-us-utf-8--1x.json
+        - docs/evidence/auth/auth--fingerprint-ready--en-us-utf-8--1-25x.json
+        - docs/evidence/auth/auth--fingerprint-ready--en-us-utf-8--2x.json
+        - docs/evidence/auth/auth--fingerprint-ready--ko-kr-utf-8--1x.json
+        - docs/evidence/auth/auth--fingerprint-ready--ko-kr-utf-8--1-25x.json
+        - docs/evidence/auth/auth--fingerprint-ready--ko-kr-utf-8--2x.json
+        - docs/evidence/auth/auth--password--en-us-utf-8--1x.json
+        - docs/evidence/auth/auth--password--en-us-utf-8--1-25x.json
+        - docs/evidence/auth/auth--password--en-us-utf-8--2x.json
+        - docs/evidence/auth/auth--password--ko-kr-utf-8--1x.json
+        - docs/evidence/auth/auth--password--ko-kr-utf-8--1-25x.json
+        - docs/evidence/auth/auth--password--ko-kr-utf-8--2x.json
+        - docs/evidence/auth/auth--power-confirmation--en-us-utf-8--1x.json
+        - docs/evidence/auth/auth--power-confirmation--en-us-utf-8--1-25x.json
+        - docs/evidence/auth/auth--power-confirmation--en-us-utf-8--2x.json
+        - docs/evidence/auth/auth--power-confirmation--ko-kr-utf-8--1x.json
+        - docs/evidence/auth/auth--power-confirmation--ko-kr-utf-8--1-25x.json
+        - docs/evidence/auth/auth--power-confirmation--ko-kr-utf-8--2x.json
+        - docs/evidence/auth/auth--success--en-us-utf-8--1x.json
+        - docs/evidence/auth/auth--success--en-us-utf-8--1-25x.json
+        - docs/evidence/auth/auth--success--en-us-utf-8--2x.json
+        - docs/evidence/auth/auth--success--ko-kr-utf-8--1x.json
+        - docs/evidence/auth/auth--success--ko-kr-utf-8--1-25x.json
+        - docs/evidence/auth/auth--success--ko-kr-utf-8--2x.json
+      review: docs/evidence/auth/review.json
 exemptions:
-  home/dot_config/quickshell/cyberdock/FocusSentinel.qml: >-
-    Transparent 2x2 input-focus handoff mechanism with no rendered user interface.
+  home/dot_config/quickshell/cyberdock/FocusSentinel.qml: Transparent 2x2 input-focus
+    handoff mechanism with no rendered user interface.

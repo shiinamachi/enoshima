@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "power-menu",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/power-menu/power-menu--default--en-us-utf-8--1x.json",
+      "reference_crop": [598, 171, 408, 536],
+      "implementation_crop": [450, 176, 380, 448]
+    }
+  ]
+}

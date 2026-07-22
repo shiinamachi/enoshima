@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "surface_id": "system-titlebar",
+  "state": "system-menu",
+  "locale": "en_US.UTF-8",
+  "scale": 1.25,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    1600,
+    1000
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/system-titlebar/system-titlebar--system-menu--en-us-utf-8--1-25x.webp",
+  "image_sha256": "07a2a92a14be9adc88c4a5fa041acc378f9d8359e55ef464b2272612a65acc32",
+  "run_id": "run-840ff18b7383",
+  "source_commit": "0e8eb771bac50d778f91095f2a458a45989c4a14",
+  "worktree_hash": "sha256:87b93fa59bf3e2cd47c2606008b35c3df4954b4f6028b1376a69d4dd3d41cbd0",
+  "implementation_digest": "3f614e0965b2c62c5c555f979f50265598d7a090e344a5146a9dbd96ed0ba592",
+  "concept_sha256": "009401e3c6bc2c2fd014e936e4f037d0e00486651cc8a293b5f402089b7a189c",
+  "concept_spec_sha256": "b044364e9ceba97a1d924e70d0b212bb740480f31a5c1e6446d6ef5add2d3f3b",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": true,
+    "reason": "production native decoration on a real undecorated client; deterministic menu result state where required"
+  },
+  "source_image_sha256": "80eef022a28b959d5da18377926b97c2c668fcea603d6ec0f6d3f8af3fd8efec",
+  "source_sidecar_sha256": "19732eb8a97e48eee3f36ecbebd460f34fb2c9f9f63785b2774cd3092488c6b8",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "production-component-layout-probe",
+    "source": "system-titlebar--system-menu--en-us-utf-8--1-25x.json"
+  },
+  "imported_at": "2026-07-21T23:16:15+00:00"
+}

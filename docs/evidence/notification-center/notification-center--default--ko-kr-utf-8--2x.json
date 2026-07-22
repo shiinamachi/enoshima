@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "surface_id": "notification-center",
+  "state": "default",
+  "locale": "ko_KR.UTF-8",
+  "scale": 2.0,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    2560,
+    1600
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/notification-center/notification-center--default--ko-kr-utf-8--2x.webp",
+  "image_sha256": "c420c5c9024bb2be90cc75539b67d9ed949a83fc1a8f7c6785091d0ced433d52",
+  "run_id": "run-840ff18b7383",
+  "source_commit": "0e8eb771bac50d778f91095f2a458a45989c4a14",
+  "worktree_hash": "sha256:87b93fa59bf3e2cd47c2606008b35c3df4954b4f6028b1376a69d4dd3d41cbd0",
+  "implementation_digest": "36cb1bbbb021e7077d1a46ea3790f77723b3d26ac1429d8335f45282a57e364d",
+  "concept_sha256": "de21ad8cb32b8c53583d0faaba0f6e37ad8bde8243c3b1f684376b703bc7b9c1",
+  "concept_spec_sha256": "f67793708976d0e7a6ab02ac4f9b1d4adf8b80dabd9f6656ca84548a28667de9",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": false,
+    "reason": "production SwayNC and notification D-Bus state"
+  },
+  "source_image_sha256": "139e5a74887f6f75eed6a417c41e8f7d372fc3186d428dae80b8862ec336cfb8",
+  "source_sidecar_sha256": "e78ed08c8531b18f427acd561a6e561a410d5ef6b5565534d717187b9c03c2e0",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "manual-contact-sheet-review",
+    "reviewer": "Codex visual review",
+    "review_artifact": "docs/evidence/notification-center/manual-overflow-review.webp",
+    "review_artifact_sha256": "f94ca9d0f5915bd67d52d96baeddee9b880c6ade5000d2eb75ce5456ab364aa0",
+    "source_review_artifact_sha256": "c94fe3782e39ea8dee53140d3ef6c1608d35b3ae30a457f4b080450f74d42f79",
+    "report_sha256": "86ecaa800c98e46ed1919ef7f5b6d37122a83364e5c03540ad836ae2fe67b6a8"
+  },
+  "imported_at": "2026-07-21T23:14:09+00:00"
+}

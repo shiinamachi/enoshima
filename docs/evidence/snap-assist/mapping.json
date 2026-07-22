@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "snap-assist",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/snap-assist/snap-assist--layout-chooser--en-us-utf-8--1x.json",
+      "reference_crop": [1358, 350, 188, 49],
+      "implementation_crop": [402, 122, 200, 52]
+    }
+  ]
+}

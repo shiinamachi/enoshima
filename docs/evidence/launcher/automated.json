@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "launcher",
+  "implementation_digest": "f9064bc7b4d1a5d7d34d76e12aed7470d8c6bc8454e156963e31b40b619a645d",
+  "concept_sha256": "341350578089201d4d51300d948764c599f552ad4e36c0b444574d726ad9dc8f",
+  "concept_spec_sha256": "5e87bec12d0223666c7962af5860c1e287898e9fc51be853e2d43fe11ff28aaf",
+  "mapping_sha256": "55881720faf74240ab83b1195f157716b5474ffc840bf41eff9482eec09c303d",
+  "generated_at": "2026-07-22T00:17:47+00:00",
+  "scores": {
+    "geometry": 99.61,
+    "color_tokens": 90.09,
+    "text_overflow": 100.0,
+    "perceptual": 89.89
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/launcher/launcher--default--en-us-utf-8--1x.json",
+      "sidecar_sha256": "25d3bbd8f6070365dd2a29fe12e47823d35d74670d12daffa54b9ff89bd0b78f",
+      "reference_crop": [
+        278,
+        157,
+        978,
+        675
+      ],
+      "implementation_crop": [
+        160,
+        70,
+        960,
+        660
+      ]
+    }
+  ]
+}

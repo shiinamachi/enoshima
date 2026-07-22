@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "surface_id": "power-menu",
+  "implementation_digest": "87e34dccbbbda001e86fb321014dd7bd04ef15735ee713b485694563e82a7974",
+  "concept_sha256": "0dd7c9c779c3faf3b938c873ce8a7cf905650ffe275c1a2269dee6d48c7196f5",
+  "concept_spec_sha256": "db3645864f58db936c1fa9346db3c4f3eeb571a18e30dde8dc34fde920c0bac6",
+  "mapping_sha256": "d74ad7d4ce8efc4efe8693f9dd36fbf611ec9176d958781c4b843ce9cea0d600",
+  "generated_at": "2026-07-22T00:17:47+00:00",
+  "scores": {
+    "geometry": 89.18,
+    "color_tokens": 88.64,
+    "text_overflow": 100.0,
+    "perceptual": 89.44
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/power-menu/power-menu--default--en-us-utf-8--1x.json",
+      "sidecar_sha256": "9e760877a07c7960e41ffe7b46b495ddcfab0fc8b558373961d08426853601fb",
+      "reference_crop": [
+        598,
+        171,
+        408,
+        536
+      ],
+      "implementation_crop": [
+        450,
+        176,
+        380,
+        448
+      ]
+    }
+  ]
+}

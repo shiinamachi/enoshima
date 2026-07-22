@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "display-mode",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/display-mode/display-mode--selected--en-us-utf-8--1x.json",
+      "reference_crop": [1147, 337, 241, 95],
+      "implementation_crop": [354, 282, 280, 100]
+    }
+  ]
+}

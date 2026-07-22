@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "surface_id": "power-menu",
+  "state": "error",
+  "locale": "ko_KR.UTF-8",
+  "scale": 2.0,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    2560,
+    1600
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/power-menu/power-menu--error--ko-kr-utf-8--2x.webp",
+  "image_sha256": "bab9aa138f0f7e1e5aae9a3fe046c10ba4c218395ff95d677510f7c4b5e9bfff",
+  "run_id": "run-840ff18b7383",
+  "source_commit": "0e8eb771bac50d778f91095f2a458a45989c4a14",
+  "worktree_hash": "sha256:87b93fa59bf3e2cd47c2606008b35c3df4954b4f6028b1376a69d4dd3d41cbd0",
+  "implementation_digest": "87e34dccbbbda001e86fb321014dd7bd04ef15735ee713b485694563e82a7974",
+  "concept_sha256": "0dd7c9c779c3faf3b938c873ce8a7cf905650ffe275c1a2269dee6d48c7196f5",
+  "concept_spec_sha256": "db3645864f58db936c1fa9346db3c4f3eeb571a18e30dde8dc34fde920c0bac6",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": true,
+    "reason": "deterministic production-model state injection"
+  },
+  "source_image_sha256": "b4d8b76e61af536a6a30242f111f1b5879a5bb44477e49c0421240a9830c3dfd",
+  "source_sidecar_sha256": "7026fdca45f5ec4f87f2b37b17f24154bc80a6de5ad5af385d4becd7b7f9008e",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "production-component-layout-probe",
+    "source": "power-menu--error--ko-kr-utf-8--2x.json"
+  },
+  "imported_at": "2026-07-21T23:14:16+00:00"
+}

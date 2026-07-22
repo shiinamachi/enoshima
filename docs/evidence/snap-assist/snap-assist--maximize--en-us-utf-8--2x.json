@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "surface_id": "snap-assist",
+  "state": "maximize",
+  "locale": "en_US.UTF-8",
+  "scale": 2.0,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    2560,
+    1600
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/snap-assist/snap-assist--maximize--en-us-utf-8--2x.webp",
+  "image_sha256": "7b29bb6af815e6b17dd3071dd180ba957b8f6e11b2aee984eab84ee0e0d8b5e7",
+  "run_id": "run-840ff18b7383",
+  "source_commit": "0e8eb771bac50d778f91095f2a458a45989c4a14",
+  "worktree_hash": "sha256:87b93fa59bf3e2cd47c2606008b35c3df4954b4f6028b1376a69d4dd3d41cbd0",
+  "implementation_digest": "a28920ebf0a61f0e9088a4f254ac81e8f762aca9e0c828b9c3ff5bdce1ac6e41",
+  "concept_sha256": "ded09e8ba7b7b3a2b80ec91cfaba7300849e7d5b38321f4d7e60106cd9119bff",
+  "concept_spec_sha256": "6c33bb384f3a01ea82b56dfc62b28639cbe2476b189e390df7793088a7882e43",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": true,
+    "reason": "deterministic production-model state injection"
+  },
+  "source_image_sha256": "4b05d287480fe9cb31611a01fc007591112684b0892644e7da3cc92bec68da3a",
+  "source_sidecar_sha256": "117fb51efd4e2b3b6bfe801c73c38eecfd45bf2efd67fe026e48e1d5722473af",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "production-component-layout-probe",
+    "source": "snap-assist--maximize--en-us-utf-8--2x.json"
+  },
+  "imported_at": "2026-07-21T23:16:30+00:00"
+}

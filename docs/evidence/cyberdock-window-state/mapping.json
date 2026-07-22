@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "cyberdock-window-state",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1x.json",
+      "reference_crop": [398, 375, 4, 20],
+      "implementation_crop": [570, 742, 4, 20]
+    }
+  ]
+}

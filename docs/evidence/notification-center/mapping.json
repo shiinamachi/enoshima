@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "surface_id": "notification-center",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/notification-center/notification-center--default--en-us-utf-8--1x.json",
+      "reference_crop": [1144, 150, 124, 114],
+      "implementation_crop": [825, 216, 119, 102]
+    }
+  ]
+}
