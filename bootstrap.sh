@@ -208,11 +208,15 @@ install_bootstrap_dependencies() {
     base-devel \
     chezmoi \
     git \
+    hyprland \
+    imagemagick \
     jq \
+    librsvg \
     lua \
     mise \
     ripgrep \
-    rustup
+    rustup \
+    yq
 }
 
 install_ansible_collection() {

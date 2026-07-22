@@ -71,6 +71,22 @@ grep -Fq 'ENOSHIMA_SKIP_VM_HARNESS_CHECKS:-false' \
   "$repo_root/scripts/validate.sh" ||
   fail 'repository validation cannot skip host-only harness checks in a VM guest'
 
+bootstrap_dependencies=$(
+  sed -n '/^install_bootstrap_dependencies()/,/^}/p' "$bootstrap"
+)
+for package in \
+  base-devel \
+  chezmoi \
+  hyprland \
+  imagemagick \
+  librsvg \
+  lua \
+  ripgrep \
+  yq; do
+  grep -Eq "^[[:space:]]+$package( \\\\)?$" <<<"$bootstrap_dependencies" ||
+    fail "bootstrap validation prerequisite is missing: $package"
+done
+
 # shellcheck disable=SC2016 # Assertion intentionally matches literal bootstrap source.
 grep -Fq 'PATH="/usr/bin:/bin:$PATH"' "$bootstrap" ||
   fail 'local package builds do not put Arch build tools ahead of mise shims'
