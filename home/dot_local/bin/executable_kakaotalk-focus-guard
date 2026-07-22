@@ -74,8 +74,9 @@ classify_new_surface() {
   client=$(client_for_address "$address")
   is_tiny_tray_helper "$client" || return 0
   belongs_to_kakaotalk_bottle "$client" || return 0
-  "$hyprctl_bin" dispatch movetoworkspacesilent \
-    "special:tray,address:$address" >/dev/null 2>&1 || true
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.move({ workspace = \"special:tray\", follow = false, window = \"address:$address\" })" \
+    >/dev/null 2>&1 || true
 }
 
 handle_event() {

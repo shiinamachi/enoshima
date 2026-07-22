@@ -110,13 +110,17 @@ run_action move-by --address 0xbbb --x -20 --y 20 --origin titlebar
 run_action resize-by --address 0xbbb --x 20 --y -20 --origin titlebar
 run_action restore-geometry --address 0xbbb --x 120 --y 80 \
   --width 1280 --height 840 --floating true --fullscreen 1 --fullscreen-client 1
-grep -Fq 'movewindowpixel -20 20,address:0xbbb' "$WINDOW_TEST_LOG" ||
+grep -Fq 'hl.dsp.window.move({ x = -20, y = 20, relative = true, window = "address:0xbbb" })' \
+  "$WINDOW_TEST_LOG" ||
   fail 'move-by did not retain its exact address'
-grep -Fq 'resizewindowpixel 20 -20,address:0xbbb' "$WINDOW_TEST_LOG" ||
+grep -Fq 'hl.dsp.window.resize({ x = 20, y = -20, relative = true, window = "address:0xbbb" })' \
+  "$WINDOW_TEST_LOG" ||
   fail 'resize-by did not retain its exact address'
-grep -Fq 'resizewindowpixel exact 1280 840,address:0xbbb' "$WINDOW_TEST_LOG" ||
+grep -Fq 'hl.dsp.window.resize({ x = 1280, y = 840, relative = false, window = "address:0xbbb" })' \
+  "$WINDOW_TEST_LOG" ||
   fail 'geometry rollback did not restore the original size'
-grep -Fq 'movewindowpixel exact 120 80,address:0xbbb' "$WINDOW_TEST_LOG" ||
+grep -Fq 'hl.dsp.window.move({ x = 120, y = 80, relative = false, window = "address:0xbbb" })' \
+  "$WINDOW_TEST_LOG" ||
   fail 'geometry rollback did not restore the original position'
 grep -Fq 'internal = 1, client = 1' "$WINDOW_TEST_LOG" ||
   fail 'geometry rollback did not restore fullscreen state'
@@ -140,9 +144,11 @@ run_action cancel-adjust --transaction "$transaction" --json | jq -e '.ok' >/dev
   fail 'cancelled adjustment transaction was not removed'
 grep -Fq 'hl.dsp.window.move({ workspace = 3, follow = false, window = "address:0xbbb" })' \
   "$WINDOW_TEST_LOG" || fail 'adjustment rollback did not restore the workspace'
-grep -Fq 'resizewindowpixel exact 1280 840,address:0xbbb' "$WINDOW_TEST_LOG" ||
+grep -Fq 'hl.dsp.window.resize({ x = 1280, y = 840, relative = false, window = "address:0xbbb" })' \
+  "$WINDOW_TEST_LOG" ||
   fail 'transaction rollback did not restore size'
-grep -Fq 'movewindowpixel exact 120 80,address:0xbbb' "$WINDOW_TEST_LOG" ||
+grep -Fq 'hl.dsp.window.move({ x = 120, y = 80, relative = false, window = "address:0xbbb" })' \
+  "$WINDOW_TEST_LOG" ||
   fail 'transaction rollback did not restore position'
 
 printf '%s\n' '==> grouped windows and reused addresses fail closed'

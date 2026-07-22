@@ -377,10 +377,13 @@ class WindowBroker:
         )
         self.dispatch(f'hl.dsp.window.float({{ action = "set", window = "address:{address}" }})')
         self.dispatch(
-            "resizewindowpixel",
-            f'exact {geometry["width"]} {geometry["height"]},address:{address}',
+            f'hl.dsp.window.resize({{ x = {geometry["width"]}, y = {geometry["height"]}, '
+            f'relative = false, window = "address:{address}" }})'
         )
-        self.dispatch("movewindowpixel", f'exact {geometry["x"]} {geometry["y"]},address:{address}')
+        self.dispatch(
+            f'hl.dsp.window.move({{ x = {geometry["x"]}, y = {geometry["y"]}, '
+            f'relative = false, window = "address:{address}" }})'
+        )
         self.dispatch(f'hl.dsp.focus({{ window = "address:{address}" }})')
 
     def session(self, request: dict[str, Any]) -> tuple[str, int, dict[str, Any]]:

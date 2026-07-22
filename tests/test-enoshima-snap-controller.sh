@@ -78,8 +78,8 @@ jq -e '
 jq -e '.schema == 2 and .active == false and .session == "11111111111111111111111111111111"' \
   "$tmp/runtime/enoshima/snap.json" >/dev/null
 grep -Fq 'internal = 0, client = 0' "$tmp/dispatch.log"
-grep -Fq 'resizewindowpixel exact 945 938,address:0xabc' "$tmp/dispatch.log"
-grep -Fq 'movewindowpixel exact 10 58,address:0xabc' "$tmp/dispatch.log"
+grep -Fq 'hl.dsp.window.resize({ x = 945, y = 938, relative = false, window = "address:0xabc" })' "$tmp/dispatch.log"
+grep -Fq 'hl.dsp.window.move({ x = 10, y = 58, relative = false, window = "address:0xabc" })' "$tmp/dispatch.log"
 
 # Once committed, a delayed pointer packet in the same session is discarded.
 "$controller" preview --address 0xabc --x 1915 --y 540 --session "$session_a" --sequence 4
@@ -133,8 +133,8 @@ jq -e '
     | unique | length) == 2
 ' "$tmp/runtime/enoshima/snap.json" >/dev/null
 "$controller" choose thirds:1 --commit
-grep -Fq 'resizewindowpixel exact 626 938,address:0xabc' "$tmp/dispatch.log"
-grep -Fq 'movewindowpixel exact 646 58,address:0xabc' "$tmp/dispatch.log"
+grep -Fq 'hl.dsp.window.resize({ x = 626, y = 938, relative = false, window = "address:0xabc" })' "$tmp/dispatch.log"
+grep -Fq 'hl.dsp.window.move({ x = 646, y = 58, relative = false, window = "address:0xabc" })' "$tmp/dispatch.log"
 jq -e '.active == false' "$tmp/runtime/enoshima/snap.json" >/dev/null
 
 grep -Fq 'SOCK_SEQPACKET' "$daemon"

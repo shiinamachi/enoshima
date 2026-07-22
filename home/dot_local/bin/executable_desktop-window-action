@@ -136,12 +136,14 @@ dispatch_float() {
 }
 
 dispatch_geometry_delta() {
-  local action=$1 address=$2 delta_x=$3 delta_y=$4 dispatcher
-  dispatcher=movewindowpixel
-  [[ $action == move-by ]] || dispatcher=resizewindowpixel
+  local action=$1 address=$2 delta_x=$3 delta_y=$4 method
+  method=move
+  [[ $action == move-by ]] || method=resize
   dispatch_fullscreen_state "$address" 0 0
   dispatch_float "$address" set
-  "$hyprctl_bin" dispatch "$dispatcher" "$delta_x $delta_y,address:$address" >/dev/null
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.$method({ x = $delta_x, y = $delta_y, relative = true, window = \"address:$address\" })" \
+    >/dev/null
 }
 
 valid_integer() {
@@ -347,8 +349,12 @@ restore_adjustment() {
   dispatch_fullscreen_state "$address" 0 0
   dispatch_float "$address" set
   move_window_to_workspace "$address" "$workspace_id" "$workspace_name"
-  "$hyprctl_bin" dispatch resizewindowpixel "exact $width $height,address:$address" >/dev/null
-  "$hyprctl_bin" dispatch movewindowpixel "exact $x $y,address:$address" >/dev/null
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.resize({ x = $width, y = $height, relative = false, window = \"address:$address\" })" \
+    >/dev/null
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.move({ x = $x, y = $y, relative = false, window = \"address:$address\" })" \
+    >/dev/null
   if [[ $floating == false ]]; then
     dispatch_float "$address" unset
   fi
@@ -461,8 +467,12 @@ restore_geometry() {
 
   dispatch_fullscreen_state "$address" 0 0
   dispatch_float "$address" set
-  "$hyprctl_bin" dispatch resizewindowpixel "exact $width $height,address:$address" >/dev/null
-  "$hyprctl_bin" dispatch movewindowpixel "exact $x $y,address:$address" >/dev/null
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.resize({ x = $width, y = $height, relative = false, window = \"address:$address\" })" \
+    >/dev/null
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.window.move({ x = $x, y = $y, relative = false, window = \"address:$address\" })" \
+    >/dev/null
   if [[ $floating == false ]]; then
     dispatch_float "$address" unset
   fi

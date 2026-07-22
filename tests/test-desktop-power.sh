@@ -88,16 +88,22 @@ case $* in
   'clients -j')
     count=$(<"${POWER_CLIENT_STATE:?}")
     printf '['
+    separator=
+    if [[ ${POWER_INCLUDE_TRAY_CLIENT:-false} == true ]]; then
+      printf '%s' '{"address":"0xtray","mapped":true,"class":"xembed-sni-proxy","initialClass":"xembed-sni-proxy","workspace":{"name":"special:tray"}}'
+      separator=,
+    fi
     for ((index=0; index<count; ++index)); do
-      ((index == 0)) || printf ','
+      printf '%s' "$separator"
       printf '{"address":"0x%x","mapped":true}' "$((0xabc + index))"
+      separator=,
     done
     printf ']\n'
     if [[ ${POWER_CLIENTS_DECREMENT:-false} == true && $count -gt 0 ]]; then
       printf '%s\n' "$((count - 1))" >"$POWER_CLIENT_STATE"
     fi
     ;;
-  dispatch\ closewindow\ address:*)
+  dispatch\ hl.dsp.window.close*)
     [[ ${POWER_CLOSE_DISPATCH_FAIL:-false} != true ]]
     ;;
   *)
@@ -139,16 +145,19 @@ grep -Fxq 'systemctl suspend' "$POWER_TEST_LOG" || fail 'suspend did not use sys
 printf '%s\n' '==> reboot closes applications while the graphical session remains alive'
 reset_log
 printf '2\n' >"$POWER_CLIENT_STATE"
-reboot_events=$(POWER_CLIENTS_DECREMENT=true run_power reboot)
+reboot_events=$(POWER_INCLUDE_TRAY_CLIENT=true POWER_CLIENTS_DECREMENT=true run_power reboot)
 pending=$XDG_STATE_HOME/enoshima/power/pending.json
 jq -e '
   .schema == 1 and .action == "reboot" and .phase == "login1_dispatching" and
   .boot_id_before == "boot-a" and .session == "test-session"
 ' "$pending" >/dev/null || fail 'reboot checkpoint is invalid'
-grep -Fxq 'hyprctl dispatch closewindow address:0xabc' "$POWER_TEST_LOG" ||
+grep -F 'hl.dsp.window.close' "$POWER_TEST_LOG" | grep -Fq 'address:0xabc' ||
   fail 'reboot did not send an exact-address close request to the first client'
-grep -Fxq 'hyprctl dispatch closewindow address:0xabd' "$POWER_TEST_LOG" ||
+grep -F 'hl.dsp.window.close' "$POWER_TEST_LOG" | grep -Fq 'address:0xabd' ||
   fail 'reboot did not send an exact-address close request to the second client'
+if grep -Fq 'address:0xtray' "$POWER_TEST_LOG"; then
+  fail 'reboot tried to close the persistent XEmbed tray infrastructure client'
+fi
 if grep -Fq 'hyprshutdown' "$POWER_TEST_LOG"; then
   fail 'reboot still depends on hyprshutdown application-close cleanup'
 fi

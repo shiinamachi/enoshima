@@ -51,7 +51,7 @@ case ${1:-start} in
     esac
     "$enoshima_greeter_command" --user "$enoshima_user"
     status=$?
-    "$hyprctl_command" dispatch exit >/dev/null 2>&1 || true
+    "$hyprctl_command" dispatch 'hl.dsp.exit()' >/dev/null 2>&1 || true
     exit "$status"
     ;;
   lid-closed)

@@ -43,8 +43,8 @@ JSON
     ;;
   dispatch)
     printf 'hyprctl %s\n' "$*" >>"${FAKE_CALL_LOG:?}"
-    if [[ ${2:-} == focuswindow && ${3:-} == address:* ]]; then
-      printf '%s\n' "${3#address:}" >"${FAKE_ACTIVE:?}"
+    if [[ ${2:-} == hl.dsp.focus* && ${2:-} =~ address:(0x[0-9A-Fa-f]+) ]]; then
+      printf '%s\n' "${BASH_REMATCH[1]}" >"${FAKE_ACTIVE:?}"
     fi
     ;;
   *) exit 64 ;;
@@ -123,7 +123,7 @@ env \
   KAKAOTALK_FOCUS_WINDOW_ACTION="$fake_bin/desktop-window-action" \
   bash "$repair" >/dev/null
 [[ $(<"$FAKE_ACTIVE") == 0xaaa ]]
-grep -Fq -- 'dispatch focuswindow address:0xaaa' "$FAKE_CALL_LOG"
+grep -Fq -- 'dispatch hl.dsp.focus({ window = "address:0xaaa" })' "$FAKE_CALL_LOG"
 
 if env KAKAOTALK_FOCUS_HYPRCTL="$fake_bin/hyprctl" \
   bash "$repair" --address 0xccc >/dev/null 2>&1; then
@@ -145,8 +145,9 @@ printf '%s\n' \
     bash "$guard" --stdin
 [[ $(grep -c '^repair --address 0xaaa$' "$FAKE_CALL_LOG") -eq 1 ]]
 grep -Fq -- \
-  'dispatch movetoworkspacesilent special:tray,address:0xbbb' "$FAKE_CALL_LOG"
-if grep -Fq -- 'special:tray,address:0xccc' "$FAKE_CALL_LOG"; then
+  'dispatch hl.dsp.window.move({ workspace = "special:tray", follow = false, window = "address:0xbbb" })' \
+  "$FAKE_CALL_LOG"
+if grep -Fq -- 'address:0xccc' "$FAKE_CALL_LOG"; then
   printf 'A real-size explorer surface was hidden as a tray helper.\n' >&2
   exit 1
 fi

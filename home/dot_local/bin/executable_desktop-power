@@ -130,7 +130,13 @@ client_addresses() {
     return
   fi
   "$hyprctl_bin" clients -j 2>/dev/null |
-    jq -c '[.[] | select((.mapped // true) == true) | .address]' 2>/dev/null || printf '[]\n'
+    jq -c '[.[] |
+      select((.mapped // true) == true) |
+      select((.class // "") != "xembed-sni-proxy") |
+      select((.initialClass // "") != "xembed-sni-proxy") |
+      select((.workspace.name // "") != "special:tray") |
+      .address
+    ]' 2>/dev/null || printf '[]\n'
 }
 
 remaining_client_count() {
@@ -153,7 +159,8 @@ close_clients() {
   deadline_ns=$(($(date +%s%N) + close_timeout_seconds * 1000000000))
   while IFS= read -r address; do
     [[ -n $address ]] || continue
-    if ! "$hyprctl_bin" dispatch closewindow "address:$address" >/dev/null 2>&1 &&
+    if ! "$hyprctl_bin" dispatch \
+      "hl.dsp.window.close({ window = \"address:$address\" })" >/dev/null 2>&1 &&
       client_is_present "$address"; then
       return 70
     fi

@@ -97,7 +97,7 @@ for contract in \
   '"$hyprctl_command" keyword monitor "$internal_output,disable"' \
   '"$hyprctl_command" keyword monitor "$internal_rule"' \
   '"$enoshima_greeter_command" --user "$enoshima_user"' \
-  '"$hyprctl_command" dispatch exit'; do
+  '"$hyprctl_command" dispatch '\''hl.dsp.exit()'\'''; do
   assert_contains "$greetd_session" "$contract"
 done
 assert_contains "$login_tasks" 'dest: /usr/local/lib/enoshima/greetd-session'
@@ -139,7 +139,7 @@ grep -Fxq 'hyprctl keyword monitor eDP-1,disable' "$work/session.log" ||
   fail 'closed-lid startup did not disable eDP when an external output existed'
 grep -Fxq 'enoshima-greeter --user kentakang' "$work/session.log" ||
   fail 'startup did not run Enoshima Auth for the managed user'
-grep -Fxq 'hyprctl dispatch exit' "$work/session.log" ||
+grep -Fxq 'hyprctl dispatch hl.dsp.exit()' "$work/session.log" ||
   fail 'Enoshima Auth exit did not stop the isolated compositor'
 
 : >"$work/session.log"

@@ -62,7 +62,8 @@ if [[ $active != "$address" ]]; then
   # This is also the fallback when the Quickshell sentinel has not started.
   # The exact address prevents another Kakao popup or unrelated window from
   # receiving the focus repair.
-  "$hyprctl_bin" dispatch focuswindow "address:$address" >/dev/null
+  "$hyprctl_bin" dispatch \
+    "hl.dsp.focus({ window = \"address:$address\" })" >/dev/null
 fi
 
 active=$("$hyprctl_bin" activewindow -j 2>/dev/null | jq -r '.address // ""' || true)
