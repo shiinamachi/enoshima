@@ -139,7 +139,7 @@ def create_runtime_inventory(service: VMService, record: dict[str, Any]) -> None
             "secure_boot": True,
             "thunderbolt": False,
             "tpm": True,
-            "virtual_gpu_3d": False,
+            "virtual_gpu_3d": True,
             "vm_test_host": False,
             "wwan": False,
         },

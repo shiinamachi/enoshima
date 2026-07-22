@@ -1,7 +1,7 @@
 ---
 name: converge
 base_image: arch-cloud-reproducible
-domain_template: domain-fast.xml.j2
+domain_template: domain-desktop.xml.j2
 profile: enoshima-vm
 timeout_minutes: 240
 resources:

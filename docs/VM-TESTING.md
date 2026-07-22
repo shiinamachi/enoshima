@@ -84,6 +84,9 @@ The lanes have distinct purposes:
 - `converge`, `reboot`, `desktop`, `login`, and `ui-review` use a versioned signed image and the
   complete Arch Linux Archive repository snapshot declared in
   `tests/vm/images/manifest.yaml`.
+- `converge` retains a virtual GPU across its reboot so the managed
+  greetd/Hyprland greeter is validated against a real compositor backend after
+  the second, idempotent bootstrap.
 - `reboot` logs in through production greetd, waits for a real application
   client, and asks Hyprland to spawn `desktop-power` from the active local
   Wayland session. This preserves the same login1/polkit identity as the Power
@@ -132,7 +135,9 @@ The lanes have distinct purposes:
 - `boot-security` creates a separate 96 GiB sparse disk, partitions only guest
   `/dev/vdb`, builds LUKS2 and Btrfs subvolumes, creates and signs UKIs with
   disposable keys, enrolls the VM firmware, tests PCR 7 TPM unlock, proves the
-  recovery-key path, and verifies an unsigned UKI cannot boot.
+  recovery-key path, and verifies an unsigned UKI cannot boot. Its secure
+  domain also provides the virtual GPU required by the enabled production
+  greetd service after boot.
 
 The boot-security lane initially unlocks with a randomly generated disposable
 recovery key because Secure Boot changes PCR 7 after key enrollment. It then

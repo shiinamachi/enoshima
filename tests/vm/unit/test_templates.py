@@ -44,6 +44,17 @@ def test_domain_templates_render_as_xml_without_host_mounts(tmp_path: Path) -> N
         if name == "domain-desktop.xml.j2":
             assert '<controller type="usb" model="qemu-xhci"/>' in rendered
             assert '<input type="tablet" bus="usb"/>' in rendered
+        if name == "domain-secure-boot.xml.j2":
+            assert '<controller type="usb" model="qemu-xhci"/>' in rendered
+            assert '<input type="tablet" bus="usb"/>' in rendered
+            assert '<graphics type="spice" autoport="yes">' in rendered
+            assert '<acceleration accel3d="yes"/>' in rendered
+
+
+def test_rebooted_converge_suite_provides_a_graphical_greetd_device() -> None:
+    suite = load_suite("converge", RuntimePaths.discover())
+
+    assert suite.domain_template == "domain-desktop.xml.j2"
 
 
 def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:

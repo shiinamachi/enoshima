@@ -41,12 +41,23 @@
       <readonly/>
     </disk>
     <controller type="virtio-serial" index="0"/>
+    <controller type="usb" model="qemu-xhci"/>
+    <input type="tablet" bus="usb"/>
     <channel type="unix">
       <target type="virtio" name="org.qemu.guest_agent.0"/>
     </channel>
     <tpm model="tpm-crb">
       <backend type="emulator" version="2.0" persistent_state="yes"/>
     </tpm>
+    <graphics type="spice" autoport="yes">
+      <listen type="none"/>
+      <gl enable="yes"/>
+    </graphics>
+    <video>
+      <model type="virtio" heads="1" primary="yes">
+        <acceleration accel3d="yes"/>
+      </model>
+    </video>
     <serial type="pty"/>
     <console type="pty"/>
     <rng model="virtio">
