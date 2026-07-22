@@ -725,12 +725,20 @@ class VMService:
                 ["cat", "/proc/sys/kernel/random/boot_id"]
             ).stdout.strip()
             log_path = REMOTE_ARTIFACTS / f"desktop-power-reboot-{iteration}.jsonl"
-            launch = (
-                f"install -d -m 0700 {REMOTE_ARTIFACTS}; "
-                f"nohup desktop-power reboot >{log_path} 2>&1 </dev/null &"
+            guest.exec(
+                ["install", "-d", "-m", "0700", str(REMOTE_ARTIFACTS)],
+                timeout=15,
+            )
+            # Dispatch through the compositor so login1/polkit evaluates the
+            # request as coming from the active local Wayland session. A
+            # process forked directly by SSH is correctly classified as a
+            # remote session and cannot exercise the real Power Menu path.
+            power_command = f"desktop-power reboot >{log_path} 2>&1"
+            launch = self._hypr_dispatch(
+                f"hl.dsp.exec_cmd({json.dumps(power_command)})"
             )
             launched = guest.exec(
-                self._graphical_shell(launch), timeout=30, check=False
+                self._hypr_command(launch), timeout=30, check=False
             )
             if launched.returncode != 0:
                 raise VMError(

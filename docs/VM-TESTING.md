@@ -81,6 +81,12 @@ The lanes have distinct purposes:
 - `converge`, `reboot`, `desktop`, `login`, and `ui-review` use a versioned signed image and the
   complete Arch Linux Archive repository snapshot declared in
   `tests/vm/images/manifest.yaml`.
+- `reboot` logs in through production greetd, waits for a real application
+  client, and asks Hyprland to spawn `desktop-power` from the active local
+  Wayland session. This preserves the same login1/polkit identity as the Power
+  Menu instead of accidentally testing a remote SSH authorization path. Every
+  one of its ten iterations must close the initial application set, change the
+  boot ID, log in again, and verify the persisted power checkpoint.
 - `desktop` enables virtio-gpu 3D/SPICE, logs in through the production greetd
   and Enoshima Greeter path to obtain a real seat0 session, creates 2880×1800
   at 1.5× and 2560×1440 at 1× headless outputs, proves the Ghostty and

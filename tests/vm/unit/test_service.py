@@ -355,6 +355,9 @@ def test_reboot_suite_uses_the_desktop_power_path_ten_times() -> None:
     assert "iterations: 10" in suite
     method = source[source.index("def _reboot_via_desktop_power") :]
     assert "desktop-power reboot" in method
+    assert "hl.dsp.exec_cmd" in method
+    assert "self._hypr_command(launch)" in method
+    assert "self._graphical_shell(launch)" not in method
     assert "desktop-power did not change the guest boot ID" in method
     assert "desktop-power checkpoint was not verified after login" in method
 
