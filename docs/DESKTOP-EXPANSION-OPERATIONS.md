@@ -202,8 +202,10 @@ desktop-power suspend
 desktop-power doctor
 ```
 
-재시작과 종료는 `hyprshutdown --no-exit --no-fork`로 앱의 정상 close 요청과
-저장 확인을 먼저 처리하되 Hyprland와 user manager는 유지한다. 앱 정리가 끝나면
+재시작과 종료는 처음 수집한 각 Hyprland client address에 `closewindow` 요청을
+보내 앱의 정상 close와 저장 확인을 먼저 처리하되 Hyprland와 user manager는
+유지한다. 새 client는 전환 중 임의로 닫지 않으며, 30초 안에 처음 client set이
+정리되지 않으면 전원 전환을 중단하고 오류를 표시한다. 앱 정리가 끝나면
 systemd-logind의 `Reboot` 또는 `PowerOff` D-Bus method를 직접 호출하며,
 직접 호출이 실패할 때만 `systemctl`을 fallback으로 사용한다. 요청 직전에 현재
 boot ID와 `requested` phase가

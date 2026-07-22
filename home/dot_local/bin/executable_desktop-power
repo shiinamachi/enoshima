@@ -17,6 +17,7 @@ readonly result_file=$state_dir/last-result.json
 readonly lock_file=$state_dir/controller.lock
 readonly cancel_dir=$state_dir/cancel
 readonly boot_id_file=${DESKTOP_POWER_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}
+readonly close_timeout_seconds=${DESKTOP_POWER_CLOSE_TIMEOUT_SECONDS:-30}
 
 die() {
   printf 'desktop-power: %s\n' "$*" >&2
@@ -46,6 +47,8 @@ fi
 
 command -v jq >/dev/null 2>&1 || die 'jq is required'
 command -v flock >/dev/null 2>&1 || die 'flock is required'
+[[ $close_timeout_seconds =~ ^[1-9][0-9]*$ ]] ||
+  die 'application close timeout must be a positive integer'
 [[ ! -L $state_dir ]] || die "$state_dir must not be a symbolic link"
 install -d -m 0700 "$state_dir"
 chmod 0700 "$state_dir"
@@ -137,6 +140,39 @@ remaining_client_count() {
     '$initial | map(select(. as $address | $current | index($address))) | length'
 }
 
+client_is_present() {
+  local address=$1 current
+  current=$(client_addresses)
+  jq -e --arg address "$address" 'index($address) != null' <<<"$current" >/dev/null
+}
+
+close_clients() {
+  local request_id=$1 action=$2 initial=$3 total=$4 cancel_file=$5
+  local address remaining previous_remaining=$total deadline_ns now_ns
+
+  deadline_ns=$(($(date +%s%N) + close_timeout_seconds * 1000000000))
+  while IFS= read -r address; do
+    [[ -n $address ]] || continue
+    if ! "$hyprctl_bin" dispatch closewindow "address:$address" >/dev/null 2>&1 &&
+      client_is_present "$address"; then
+      return 70
+    fi
+  done < <(jq -r '.[]' <<<"$initial")
+
+  while true; do
+    remaining=$(remaining_client_count "$initial")
+    if [[ $remaining != "$previous_remaining" ]]; then
+      emit_event "$request_id" closing-apps "$action" "$remaining" "$total"
+      previous_remaining=$remaining
+    fi
+    ((remaining == 0)) && return 0
+    [[ -f $cancel_file && ! -L $cancel_file ]] && return 130
+    now_ns=$(date +%s%N)
+    ((now_ns < deadline_ns)) || return 124
+    sleep 0.1
+  done
+}
+
 can_action() {
   local method=$1 output
   if ! command -v "$busctl_bin" >/dev/null 2>&1; then
@@ -214,10 +250,10 @@ record_checkpoint() {
 }
 
 run_power_transition() {
-  local action=$1 capability_method=$2 login1_method=$3 status result checkpoint request_id total remaining previous_remaining close_log initial_clients close_pid cancel_file cancelled=false
+  local action=$1 capability_method=$2 login1_method=$3 status result checkpoint request_id total remaining initial_clients cancel_file error_status error_message
   require_available "$capability_method" "$action"
-  command -v "$hyprshutdown_bin" >/dev/null 2>&1 ||
-    die "hyprshutdown command not found: $hyprshutdown_bin"
+  command -v "$hyprctl_bin" >/dev/null 2>&1 ||
+    die "hyprctl command not found: $hyprctl_bin"
   request_id="$(date +%s%N)-$$"
   cancel_file=$(cancel_file_for "$request_id")
   rm -f -- "$cancel_file"
@@ -227,37 +263,18 @@ run_power_transition() {
   initial_clients=$(client_addresses)
   total=$(jq 'length' <<<"$initial_clients")
   emit_event "$request_id" closing-apps "$action" "$total" "$total"
-  close_log=$(mktemp "$state_dir/.hyprshutdown.XXXXXX")
-  chmod 0600 "$close_log"
-
-  # Keep Hyprland and the user manager alive while applications process their
-  # normal close requests. The system transition must not be a post-command of
-  # a user-scoped unit because that unit disappears with the graphical session.
-  "$hyprshutdown_bin" --no-exit --no-fork --verbose >"$close_log" 2>&1 &
-  close_pid=$!
-  previous_remaining=$total
-  while kill -0 "$close_pid" 2>/dev/null; do
-    remaining=$(remaining_client_count "$initial_clients")
-    if [[ $remaining != "$previous_remaining" ]]; then
-      emit_event "$request_id" closing-apps "$action" "$remaining" "$total"
-      previous_remaining=$remaining
-    fi
-    if [[ -f $cancel_file && ! -L $cancel_file ]]; then
-      cancelled=true
-      kill -TERM "$close_pid" 2>/dev/null || true
-      break
-    fi
-    sleep 0.1
-  done
-
-  if wait "$close_pid"; then
+  # Keep Hyprland and the user manager alive while sending each client an
+  # address-scoped compositor close request. This avoids making the system
+  # transition depend on hyprshutdown's renderer cleanup path and preserves
+  # the exact client set used for progress and cancellation.
+  if close_clients "$request_id" "$action" "$initial_clients" "$total" "$cancel_file"; then
     status=0
   else
     status=$?
   fi
 
-  if [[ $cancelled == true ]]; then
-    rm -f -- "$cancel_file" "$pending_file" "$close_log"
+  if ((status == 130)); then
+    rm -f -- "$cancel_file" "$pending_file"
     emit_event "$request_id" cancelled "$action" null "$total" user-cancelled
     return 130
   fi
@@ -266,16 +283,21 @@ run_power_transition() {
   if ((status == 0)); then
     remaining=$(remaining_client_count "$initial_clients")
     emit_event "$request_id" closing-apps "$action" "$remaining" "$total"
-    rm -f -- "$close_log"
   else
-    emit_event "$request_id" error "$action" null "$total" application-close-failed
+    if ((status == 124)); then
+      error_status=app_close_timeout
+      error_message=application-close-timeout
+    else
+      error_status=app_close_failed
+      error_message=application-close-failed
+    fi
+    emit_event "$request_id" error "$action" null "$total" "$error_message"
     result=$(jq -c --arg verifiedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      --arg status app_close_failed --argjson exitCode "$status" \
+      --arg status "$error_status" --argjson exitCode "$status" \
       '. + {verified_at:$verifiedAt,status:$status,app_close_exit_code:$exitCode}' "$pending_file")
     write_json "$result_file" "$result"
     rm -f -- "$pending_file"
-    rm -f -- "$close_log"
-    die "application close phase failed before $action"
+    die "$error_message before $action"
   fi
 
   checkpoint=$(jq -c \

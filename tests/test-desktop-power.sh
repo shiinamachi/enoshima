@@ -81,17 +81,29 @@ FAKE
 cat >"$DESKTOP_POWER_HYPRCTL" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ $* == 'clients -j' ]]
-count=$(<"${POWER_CLIENT_STATE:?}")
-printf '['
-for ((index=0; index<count; ++index)); do
-  ((index == 0)) || printf ','
-  printf '{"address":"0x%x","mapped":true}' "$((0xabc + index))"
-done
-printf ']\n'
-if [[ ${POWER_CLIENTS_DECREMENT:-false} == true && $count -gt 0 ]]; then
-  printf '%s\n' "$((count - 1))" >"$POWER_CLIENT_STATE"
-fi
+printf 'hyprctl' >>"${POWER_TEST_LOG:?}"
+for argument in "$@"; do printf ' %q' "$argument" >>"$POWER_TEST_LOG"; done
+printf '\n' >>"$POWER_TEST_LOG"
+case $* in
+  'clients -j')
+    count=$(<"${POWER_CLIENT_STATE:?}")
+    printf '['
+    for ((index=0; index<count; ++index)); do
+      ((index == 0)) || printf ','
+      printf '{"address":"0x%x","mapped":true}' "$((0xabc + index))"
+    done
+    printf ']\n'
+    if [[ ${POWER_CLIENTS_DECREMENT:-false} == true && $count -gt 0 ]]; then
+      printf '%s\n' "$((count - 1))" >"$POWER_CLIENT_STATE"
+    fi
+    ;;
+  dispatch\ closewindow\ address:*)
+    [[ ${POWER_CLOSE_DISPATCH_FAIL:-false} != true ]]
+    ;;
+  *)
+    exit 2
+    ;;
+esac
 FAKE
 
 chmod 0700 "$work"/bin/*
@@ -133,8 +145,13 @@ jq -e '
   .schema == 1 and .action == "reboot" and .phase == "login1_dispatching" and
   .boot_id_before == "boot-a" and .session == "test-session"
 ' "$pending" >/dev/null || fail 'reboot checkpoint is invalid'
-grep -Fxq 'hyprshutdown --no-exit --no-fork --verbose' "$POWER_TEST_LOG" ||
-  fail 'reboot did not keep Hyprland alive during application close'
+grep -Fxq 'hyprctl dispatch closewindow address:0xabc' "$POWER_TEST_LOG" ||
+  fail 'reboot did not send an exact-address close request to the first client'
+grep -Fxq 'hyprctl dispatch closewindow address:0xabd' "$POWER_TEST_LOG" ||
+  fail 'reboot did not send an exact-address close request to the second client'
+if grep -Fq 'hyprshutdown' "$POWER_TEST_LOG"; then
+  fail 'reboot still depends on hyprshutdown application-close cleanup'
+fi
 grep -Fxq 'busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager Reboot b true' "$POWER_TEST_LOG" ||
   fail 'reboot did not reach the login1 manager'
 grep -Fq '"phase":"closing-apps"' <<<"$reboot_events" ||
@@ -166,19 +183,31 @@ jq -e '.status == "not_completed" and .action == "poweroff"' \
   fail 'incomplete poweroff was not recorded'
 
 printf '%s\n' '==> application close failure is explicit and retains no stale checkpoint'
-if POWER_HYPRSHUTDOWN_FAIL=true run_power reboot 2>/dev/null; then
+printf '1\n' >"$POWER_CLIENT_STATE"
+if POWER_CLOSE_DISPATCH_FAIL=true run_power reboot 2>/dev/null; then
   fail 'failed application close unexpectedly succeeded'
 fi
 [[ ! -e $pending ]] || fail 'dispatch failure retained a pending checkpoint'
-jq -e '.status == "app_close_failed" and .app_close_exit_code == 1 and .action == "reboot"' \
+jq -e '.status == "app_close_failed" and .app_close_exit_code == 70 and .action == "reboot"' \
   "$XDG_STATE_HOME/enoshima/power/last-result.json" >/dev/null ||
   fail 'application close failure was not persisted'
+
+printf '%s\n' '==> application close timeout is bounded and explicit'
+printf '1\n' >"$POWER_CLIENT_STATE"
+if DESKTOP_POWER_CLOSE_TIMEOUT_SECONDS=1 run_power reboot 2>/dev/null; then
+  fail 'timed-out application close unexpectedly succeeded'
+fi
+[[ ! -e $pending ]] || fail 'application close timeout retained a pending checkpoint'
+jq -e '.status == "app_close_timeout" and .app_close_exit_code == 124 and .action == "reboot"' \
+  "$XDG_STATE_HOME/enoshima/power/last-result.json" >/dev/null ||
+  fail 'application close timeout was not persisted'
 
 printf '%s\n' '==> application close can be cancelled before login1 dispatch'
 rm -f -- "$pending"
 reset_log
+printf '1\n' >"$POWER_CLIENT_STATE"
 cancel_events=$work/cancel-events.jsonl
-POWER_HYPRSHUTDOWN_DELAY=2 run_power reboot >"$cancel_events" &
+DESKTOP_POWER_CLOSE_TIMEOUT_SECONDS=5 run_power reboot >"$cancel_events" &
 transition_pid=$!
 for _ in {1..100}; do
   [[ -f $pending ]] && break
@@ -196,6 +225,7 @@ grep -Fq '"phase":"cancelled"' "$cancel_events" || fail 'cancelled phase was not
 if grep -Fq 'Manager Reboot b true' "$POWER_TEST_LOG"; then
   fail 'cancelled transition reached login1 dispatch'
 fi
+printf '0\n' >"$POWER_CLIENT_STATE"
 
 printf '%s\n' '==> systemctl is used only if direct login1 dispatch fails'
 reset_log
