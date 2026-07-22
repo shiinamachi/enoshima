@@ -81,10 +81,12 @@ pacstrap -K "$target" \
   linux \
   linux-firmware \
   linux-lts \
+  make \
   networkmanager \
   nftables \
   openssh \
   qemu-guest-agent \
+  ripgrep \
   sbctl \
   sbsigntools \
   sudo \

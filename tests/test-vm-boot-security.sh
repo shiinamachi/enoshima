@@ -21,6 +21,12 @@ grep -Fq 'wipefs --all --force "$disk"' "$builder" ||
   fail 'disk preparation is not explicit'
 grep -Eq '^  parted \\$' "$builder" ||
   fail 'disk builder does not install the package that provides partprobe'
+grep -Eq '^  make \\$' "$builder" ||
+  fail 'boot target cannot invoke the repository validation entrypoint'
+grep -Eq '^  ripgrep \\$' "$builder" ||
+  fail 'boot target lacks the search tool required by repository validation'
+grep -Fq 'recovery key must contain exactly 64 bytes without a newline' "$builder" ||
+  fail 'interactive recovery key format is not enforced'
 grep -Fq 'cryptsetup luksFormat --type luks2' "$builder" ||
   fail 'boot target is not formatted as LUKS2'
 grep -Fq 'mkfs.fat -F 32 -n ENOSHIMAESP' "$builder" ||
