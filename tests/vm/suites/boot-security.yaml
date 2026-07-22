@@ -20,6 +20,7 @@ steps:
   - prepare_boot_disk
   - boot_with_recovery
   - upload_worktree
+  - seed_codex_electron_cache
   - create_runtime_inventory
   - assert_secure_boot
   - enroll_tpm

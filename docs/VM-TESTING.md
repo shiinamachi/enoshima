@@ -55,6 +55,15 @@ Every suite starts from a new qcow2 overlay and uploads the current worktree,
 including non-ignored untracked files. It therefore tests uncommitted edits,
 not a fresh clone of the remote default branch.
 
+Before bootstrap, suites also seed valid
+`~/.cache/codex-desktop/electron/electron-v*-linux-*.zip` archives into the
+guest's matching build cache. The runner verifies every transfer with SHA-256
+and records the archive name, size, and digest in the run observations. This
+keeps repeated release suites independent of a transient GitHub release-asset
+stall; if no host cache exists, the production installer retains its normal
+network download path. Set `ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR` to select a
+different host cache directory.
+
 ```bash
 make vm-smoke
 make vm-converge

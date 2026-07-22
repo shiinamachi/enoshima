@@ -17,6 +17,7 @@ steps:
   - wait_for_cloud_init
   - wait_for_guest_agent
   - upload_worktree
+  - seed_codex_electron_cache
   - run_validate
   - run_bootstrap:
       report: first

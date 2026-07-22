@@ -12,6 +12,7 @@ import sys
 import time
 import uuid
 import xml.etree.ElementTree as ET
+import zipfile
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -39,7 +40,7 @@ from .config import (
 )
 from .errors import FailureCategory, VMError
 from .guest import Guest, parse_json_result, source_identity_json
-from .image import ImageCache
+from .image import ImageCache, file_sha256
 from .libvirt_backend import LibvirtBackend
 from .security import (
     append_audit,
@@ -58,6 +59,9 @@ from .ui_review import (
 REMOTE_ROOT = PurePosixPath("/home/kentakang/enoshima-test")
 REMOTE_SOURCE = REMOTE_ROOT / "source"
 REMOTE_ARTIFACTS = REMOTE_ROOT / "artifacts"
+REMOTE_CODEX_ELECTRON_CACHE = PurePosixPath(
+    "/home/kentakang/.cache/codex-desktop/electron"
+)
 REMOTE_LOGIN_PASSWORD = REMOTE_ROOT / "secrets" / "login-password"
 REMOTE_LOGIN_CREDENTIAL = REMOTE_ROOT / "secrets" / "chpasswd-input"
 
@@ -427,6 +431,63 @@ class VMService:
             FailureCategory.VALIDATION_FAILED,
         )
 
+    def _seed_codex_electron_cache(self, record: dict[str, Any]) -> None:
+        cache_root = Path(
+            os.environ.get(
+                "ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR",
+                Path.home() / ".cache" / "codex-desktop" / "electron",
+            )
+        ).expanduser()
+        archives = sorted(cache_root.glob("electron-v*-linux-*.zip"))
+        observation: dict[str, object] = {"status": "absent", "archives": []}
+
+        if archives:
+            total_size = 0
+            uploaded: list[dict[str, object]] = []
+            guest = self._guest(record)
+            for archive in archives:
+                if archive.is_symlink() or not archive.is_file():
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        f"invalid Codex Electron cache entry: {archive}",
+                    )
+                size = archive.stat().st_size
+                total_size += size
+                if size > 512 * 1024 * 1024 or total_size > 1024 * 1024 * 1024:
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        "Codex Electron cache exceeds the VM seed limit",
+                    )
+                if not zipfile.is_zipfile(archive):
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        f"Codex Electron cache is not a valid ZIP archive: {archive}",
+                    )
+
+                digest = file_sha256(archive)
+                remote = REMOTE_CODEX_ELECTRON_CACHE / archive.name
+                guest.upload_file(archive, remote, mode=0o600)
+                remote_result = guest.exec(
+                    ["sha256sum", "--", str(remote)], timeout=180
+                )
+                remote_digest = remote_result.stdout.split(maxsplit=1)[0]
+                if remote_digest != digest:
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        "Codex Electron cache transfer checksum mismatch: "
+                        f"{archive.name}",
+                    )
+                uploaded.append(
+                    {"name": archive.name, "size": size, "sha256": digest}
+                )
+
+            observation = {"status": "seeded", "archives": uploaded}
+
+        record.setdefault("observations", {})["codex_electron_cache"] = observation
+        record["updated_at"] = utc_now()
+        self._write_record(record)
+        self._audit("vm_seed_codex_electron_cache", run_id=record["run_id"])
+
     def _run_bootstrap(self, record: dict[str, Any], config: Any) -> None:
         values = config if isinstance(config, dict) else {}
         report = str(values.get("report", "current"))
@@ -612,6 +673,42 @@ class VMService:
         self._audit("vm_reboot", run_id=run_id)
         return {"before_boot_id": before, "after_boot_id": after}
 
+    def _wait_for_power_clients(
+        self,
+        record: dict[str, Any],
+        *,
+        timeout_seconds: int = 90,
+    ) -> list[dict[str, Any]]:
+        command = self._hypr_command(
+            "hyprctl -j clients | jq -c '[.[] | "
+            "select((.mapped // true) == true) | "
+            'select((.class // "") != "xembed-sni-proxy") | '
+            'select((.initialClass // "") != "xembed-sni-proxy") | '
+            'select((.workspace.name // "") != "special:tray") | '
+            "{address,class,initialClass,title,pid}]'"
+        )
+        deadline = time.monotonic() + timeout_seconds
+        last_clients: list[dict[str, Any]] = []
+        while time.monotonic() < deadline:
+            result = self._guest(record).exec(command, timeout=15, check=False)
+            if result.returncode == 0:
+                try:
+                    document = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    document = []
+                if isinstance(document, list):
+                    last_clients = [
+                        client for client in document if isinstance(client, dict)
+                    ]
+                    if last_clients:
+                        return last_clients
+            time.sleep(1)
+        raise VMError(
+            FailureCategory.REBOOT_FAILED,
+            "no closeable application client appeared after graphical login",
+            {"last_clients": last_clients},
+        )
+
     def _reboot_via_desktop_power(self, record: dict[str, Any], config: Any) -> None:
         values = config if isinstance(config, dict) else {}
         iterations = values.get("iterations", 1)
@@ -621,8 +718,9 @@ class VMService:
                 "desktop power reboot iterations must be between 1 and 10",
             )
         guest = self._guest(record)
-        results: list[dict[str, str]] = []
+        results: list[dict[str, object]] = []
         for iteration in range(1, iterations + 1):
+            clients_before = self._wait_for_power_clients(record)
             before = guest.exec(
                 ["cat", "/proc/sys/kernel/random/boot_id"]
             ).stdout.strip()
@@ -684,6 +782,7 @@ class VMService:
                 {
                     "before_boot_id": before,
                     "after_boot_id": after,
+                    "closeable_clients": clients_before,
                 }
             )
         record.setdefault("observations", {})["desktop_power_reboots"] = results
@@ -700,6 +799,11 @@ class VMService:
             '/usr/local/bin:/usr/bin"; ' + command
         )
         return ["bash", "-lc", shell]
+
+    @staticmethod
+    def _hypr_dispatch(expression: str) -> str:
+        """Build a Hyprland 0.55+ Lua dispatcher command for the guest shell."""
+        return f"hyprctl dispatch {shlex.quote(expression)}"
 
     def query_desktop(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
@@ -2002,7 +2106,11 @@ class VMService:
             )
         guest = self._guest(record)
         guest.exec(
-            self._hypr_command(f"hyprctl dispatch focuswindow address:{address}"),
+            self._hypr_command(
+                self._hypr_dispatch(
+                    f'hl.dsp.focus({{ window = "address:{address}" }})'
+                )
+            ),
             timeout=10,
         )
         if state == "inactive":
@@ -2013,7 +2121,11 @@ class VMService:
             )
             guest.exec(
                 self._hypr_command(
-                    "hyprctl dispatch focuswindow address:" + str(secondary["address"])
+                    self._hypr_dispatch(
+                        'hl.dsp.focus({ window = "address:'
+                        + str(secondary["address"])
+                        + '" })'
+                    )
                 ),
                 timeout=10,
             )
@@ -2041,7 +2153,9 @@ class VMService:
             cursor_y = max(4, int(at[1]) - 18)
             guest.exec(
                 self._hypr_command(
-                    f"hyprctl dispatch movecursor {cursor_x} {cursor_y}"
+                    self._hypr_dispatch(
+                        f"hl.dsp.cursor.move({{ x = {cursor_x}, y = {cursor_y} }})"
+                    )
                 ),
                 timeout=10,
             )
@@ -2242,16 +2356,27 @@ class VMService:
             address = str(client["address"])
             guest.exec(
                 self._hypr_command(
-                    f"hyprctl dispatch movetoworkspacesilent 1,address:{address}"
+                    self._hypr_dispatch(
+                        "hl.dsp.window.move({ workspace = 1, follow = false, "
+                        f'window = "address:{address}" }})'
+                    )
                 ),
                 timeout=10,
             )
-        guest.exec(self._hypr_command("hyprctl dispatch workspace 1"), timeout=10)
+        guest.exec(
+            self._hypr_command(
+                self._hypr_dispatch("hl.dsp.focus({ workspace = 1 })")
+            ),
+            timeout=10,
+        )
         focus_key = "thunar" if state == "inactive-window" else "ghostty"
         guest.exec(
             self._hypr_command(
-                "hyprctl dispatch focuswindow address:"
-                + str(found[focus_key]["address"])
+                self._hypr_dispatch(
+                    'hl.dsp.focus({ window = "address:'
+                    + str(found[focus_key]["address"])
+                    + '" })'
+                )
             ),
             timeout=10,
         )
@@ -2674,6 +2799,8 @@ class VMService:
             self.backend.wait_guest_agent(record["domain"])
         elif action == "upload_worktree":
             self.upload_worktree(record["run_id"])
+        elif action == "seed_codex_electron_cache":
+            self._seed_codex_electron_cache(record)
         elif action == "run_validate":
             self._run_validate(record)
         elif action == "run_bootstrap":

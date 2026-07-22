@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import subprocess
 import xml.etree.ElementTree as ET
+import zipfile
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -51,6 +53,34 @@ class ReadyGuest(ScreenshotGuest):
                 "",
             )
         return CommandResult(tuple(argv), 0, "", "")
+
+
+class CacheSeedGuest(ScreenshotGuest):
+    def __init__(self) -> None:
+        super().__init__()
+        self.uploads: list[tuple[Path, str, int]] = []
+
+    def upload_file(self, local: Path, remote, *, mode: int = 0o600) -> None:
+        self.uploads.append((local, str(remote), mode))
+
+    def exec(self, argv, **_kwargs):
+        self.commands.append(tuple(argv))
+        archive = self.uploads[-1][0]
+        digest = sha256(archive.read_bytes()).hexdigest()
+        return CommandResult(tuple(argv), 0, f"{digest}  {argv[-1]}\n", "")
+
+
+class PowerClientGuest(ScreenshotGuest):
+    def __init__(self) -> None:
+        super().__init__()
+        self.responses = [
+            "[]\n",
+            '[{"address":"0xabc","class":"discord","pid":42}]\n',
+        ]
+
+    def exec(self, argv, **_kwargs):
+        self.commands.append(tuple(argv))
+        return CommandResult(tuple(argv), 0, self.responses.pop(0), "")
 
 
 def test_junit_report_preserves_step_failure_and_duration(tmp_path) -> None:
@@ -129,6 +159,52 @@ def test_stable_ui_accepts_only_a_bounded_animated_region(
 def test_normalized_image_metric_prefers_parenthesized_value() -> None:
     assert normalized_image_metric("64 (0.000976577)") == 0.000976577
     assert normalized_image_metric("0.9995") == 0.9995
+
+
+def test_codex_electron_cache_seed_is_explicit_and_checksum_verified(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    guest = CacheSeedGuest()
+    cache = tmp_path / "electron-cache"
+    cache.mkdir()
+    archive = cache / "electron-v42.3.0-linux-x64.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("electron", "fixture")
+
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
+    monkeypatch.setattr(service, "_guest", lambda _record: guest)
+    monkeypatch.setattr(service, "_write_record", lambda _record: None)
+    monkeypatch.setattr(service, "_audit", lambda *_args, **_kwargs: None)
+    record = {"run_id": "run-012345abcdef"}
+
+    service._seed_codex_electron_cache(record)
+
+    assert guest.uploads == [
+        (
+            archive,
+            "/home/kentakang/.cache/codex-desktop/electron/"
+            "electron-v42.3.0-linux-x64.zip",
+            0o600,
+        )
+    ]
+    seeded = record["observations"]["codex_electron_cache"]
+    assert seeded["status"] == "seeded"
+    assert seeded["archives"][0]["sha256"] == sha256(archive.read_bytes()).hexdigest()
+
+
+def test_every_bootstrap_suite_seeds_the_optional_electron_cache() -> None:
+    suites = RuntimePaths.discover().project / "suites"
+    for path in suites.glob("*.yaml"):
+        text = path.read_text(encoding="utf-8")
+        if "run_bootstrap" not in text:
+            continue
+        assert "- seed_codex_electron_cache" in text
+        assert text.rindex("- upload_worktree") < text.index("- run_bootstrap")
+        assert text.index("- seed_codex_electron_cache") < text.index(
+            "- run_bootstrap"
+        )
 
 
 def test_stable_ui_accepts_perceptually_identical_renderer_noise(
@@ -281,6 +357,25 @@ def test_reboot_suite_uses_the_desktop_power_path_ten_times() -> None:
     assert "desktop-power reboot" in method
     assert "desktop-power did not change the guest boot ID" in method
     assert "desktop-power checkpoint was not verified after login" in method
+
+
+def test_power_reboot_waits_for_a_real_application_client(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    guest = PowerClientGuest()
+    monkeypatch.setattr(service, "_guest", lambda _record: guest)
+    monkeypatch.setattr("enoshima_vm.service.time.sleep", lambda _seconds: None)
+
+    clients = service._wait_for_power_clients(
+        {"run_id": "run-012345abcdef"}, timeout_seconds=1
+    )
+
+    assert clients == [{"address": "0xabc", "class": "discord", "pid": 42}]
+    command = " ".join(guest.commands[0])
+    assert "xembed-sni-proxy" in command
+    assert "special:tray" in command
 
 
 def test_disposable_login_password_is_newline_free_for_gnome_keyring() -> None:
