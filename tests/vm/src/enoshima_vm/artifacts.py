@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
 
+from .errors import FailureCategory, VMError
 from .guest import Guest
 
 COLLECTION_COMMANDS: tuple[tuple[str, list[str]], ...] = (
@@ -35,6 +36,20 @@ def collect_fixed_artifacts(
 ) -> list[str]:
     artifact_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     collected: list[str] = []
+    try:
+        probe = guest.exec(["true"], timeout=10, check=False)
+    except VMError as error:
+        if error.category != FailureCategory.SSH_TIMEOUT:
+            raise
+        probe = None
+    if probe is None or probe.returncode != 0:
+        name = "guest-unreachable.txt"
+        (artifact_dir / name).write_text(
+            "Guest SSH was unavailable; remote artifact collection was skipped.\n",
+            encoding="utf-8",
+        )
+        return [name]
+
     for name, argv in COLLECTION_COMMANDS:
         result = guest.exec(argv, timeout=180, check=False)
         body = result.stdout
