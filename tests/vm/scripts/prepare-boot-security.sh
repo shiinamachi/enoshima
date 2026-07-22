@@ -33,6 +33,7 @@ pacman -Syu --needed --noconfirm \
   cryptsetup \
   dosfstools \
   gptfdisk \
+  parted \
   sbsigntools
 
 if findmnt --source "${disk}1" >/dev/null 2>&1 ||

@@ -19,6 +19,8 @@ grep -Fq '[[ $disk == /dev/vdb ]]' "$builder" ||
 # shellcheck disable=SC2016
 grep -Fq 'wipefs --all --force "$disk"' "$builder" ||
   fail 'disk preparation is not explicit'
+grep -Eq '^  parted \\$' "$builder" ||
+  fail 'disk builder does not install the package that provides partprobe'
 grep -Fq 'cryptsetup luksFormat --type luks2' "$builder" ||
   fail 'boot target is not formatted as LUKS2'
 grep -Fq 'for subvolume in @ @home @var_log @swap' "$builder" ||
