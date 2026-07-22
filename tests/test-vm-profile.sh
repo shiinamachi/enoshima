@@ -62,8 +62,12 @@ grep -Fq 'Ensure the SDDM configuration drop-in directory exists' \
 jq -e '
   .zram_size_expression == "min(ram / 4, 8192)" and
   .zram_compression_algorithm == "zstd" and
-  .zram_swap_priority == 100
-' <<<"$inventory_json" >/dev/null || fail 'VM zram policy is incomplete'
+  .zram_swap_priority == 100 and
+  (.system_units_masked | index("systemd-networkd-wait-online.service") != null)
+' <<<"$inventory_json" >/dev/null || fail 'VM zram or network-service policy is incomplete'
+grep -Fq 'loop: "{{ system_units_masked }}"' \
+  "$repo_root/ansible/roles/services/tasks/system.yml" ||
+  fail 'service convergence does not enforce profile-scoped masked units'
 for retry_result in desired_packages_install optional_packages_install; do
   grep -Fq "until: $retry_result is succeeded" \
     "$repo_root/ansible/roles/packages/tasks/main.yml" ||

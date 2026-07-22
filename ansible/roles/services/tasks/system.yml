@@ -1,4 +1,12 @@
 ---
+- name: Stop, disable, and mask conflicting system units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+    masked: true
+  loop: "{{ system_units_masked }}"
+
 - name: Enable and start desired system units
   ansible.builtin.systemd_service:
     name: "{{ item }}"

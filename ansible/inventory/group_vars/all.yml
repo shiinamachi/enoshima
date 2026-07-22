@@ -56,6 +56,7 @@ subordinate_id_count: 65536
 
 system_units_started: []
 system_units_enabled_only: []
+system_units_masked: []
 user_units_started: []
 wwan_modemmanager_stop_timeout: 15s
 desktop_hibernation_enabled: false

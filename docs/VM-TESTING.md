@@ -67,6 +67,11 @@ production installer retains its normal network download path. Set
 `ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR` or `ENOSHIMA_VM_CODEX_DMG` to select a
 different host cache location.
 
+The VM profile makes NetworkManager the managed network owner and masks the
+cloud image's stale `systemd-networkd-wait-online.service`. This prevents a
+managed reboot from leaving a failed two-minute wait job after networking has
+already converged through NetworkManager.
+
 ```bash
 make vm-smoke
 make vm-converge

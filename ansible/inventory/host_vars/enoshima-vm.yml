@@ -48,6 +48,12 @@ system_units_started:
 system_units_enabled_only:
   - getty@.service
 
+# The cloud image enables networkd's wait-online unit even after the managed
+# desktop switches network ownership to NetworkManager. Mask only the stale
+# waiter so it cannot hold boot for two minutes and leave a failed unit behind.
+system_units_masked:
+  - systemd-networkd-wait-online.service
+
 user_units_started:
   - hypridle.service
   - hyprpaper.service
