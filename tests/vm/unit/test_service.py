@@ -11,7 +11,11 @@ import pytest
 from enoshima_vm.config import RuntimePaths
 from enoshima_vm.errors import VMError
 from enoshima_vm.process import CommandResult
-from enoshima_vm.service import VMService, normalized_image_metric
+from enoshima_vm.service import (
+    VMService,
+    _write_recovery_key,
+    normalized_image_metric,
+)
 
 
 class ScreenshotGuest:
@@ -435,6 +439,17 @@ def test_disposable_login_password_is_newline_free_for_gnome_keyring() -> None:
         )
     ]
     assert "the password for the login keyring was invalid" in keyring
+
+
+def test_disposable_luks_recovery_key_is_newline_free(tmp_path: Path) -> None:
+    recovery_key = tmp_path / "luks-recovery.key"
+
+    _write_recovery_key(recovery_key)
+
+    value = recovery_key.read_bytes()
+    assert len(value) == 64
+    assert set(value) <= set(b"0123456789abcdef")
+    assert recovery_key.stat().st_mode & 0o777 == 0o600
 
 
 def test_ui_review_login_suppresses_managed_application_autostarts() -> None:

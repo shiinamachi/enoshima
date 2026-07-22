@@ -22,7 +22,7 @@ def test_boot_with_recovery_tolerates_ssh_timeout_and_types_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     recovery_key = tmp_path / "recovery.key"
-    recovery_key.write_text("disposable-recovery-key\n", encoding="utf-8")
+    recovery_key.write_text("disposable-recovery-key", encoding="utf-8")
     outcomes = iter(
         (
             result("before-boot\n"),
@@ -67,7 +67,7 @@ def test_boot_with_recovery_preserves_non_ssh_vm_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     recovery_key = tmp_path / "recovery.key"
-    recovery_key.write_text("disposable-recovery-key\n", encoding="utf-8")
+    recovery_key.write_text("disposable-recovery-key", encoding="utf-8")
     outcomes = iter(
         (
             result("before-boot\n"),

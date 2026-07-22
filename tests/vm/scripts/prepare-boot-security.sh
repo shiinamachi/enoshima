@@ -18,6 +18,10 @@ die() {
 [[ -r $recovery_key && ! -L $recovery_key ]] || die 'recovery key is unavailable'
 [[ -r $authorized_key && ! -L $authorized_key ]] || die 'SSH public key is unavailable'
 [[ $(stat -c '%a' "$recovery_key") == 600 ]] || die 'recovery key must have mode 0600'
+[[ $(stat -c '%s' "$recovery_key") == 64 ]] ||
+  die 'recovery key must contain exactly 64 bytes without a newline'
+LC_ALL=C grep -Eq '^[0-9a-f]{64}$' "$recovery_key" ||
+  die 'recovery key must be lowercase hexadecimal'
 
 cleanup() {
   set +e

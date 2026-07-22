@@ -77,6 +77,13 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _write_recovery_key(path: Path) -> None:
+    # This file is both a cryptsetup key file and a value typed at the initrd
+    # prompt. A trailing newline would become key material only in the former.
+    path.write_text(secrets.token_hex(32), encoding="utf-8")
+    path.chmod(0o600)
+
+
 def normalized_image_metric(output: str) -> float:
     """Return ImageMagick's normalized metric value.
 
@@ -217,8 +224,7 @@ class VMService:
             secret_dir = run_dir / "secrets"
             secret_dir.mkdir(mode=0o700)
             recovery_key = secret_dir / "luks-recovery.key"
-            recovery_key.write_text(secrets.token_hex(32) + "\n", encoding="utf-8")
-            recovery_key.chmod(0o600)
+            _write_recovery_key(recovery_key)
             record["recovery_key"] = str(recovery_key)
         self._write_record(record)
         try:
