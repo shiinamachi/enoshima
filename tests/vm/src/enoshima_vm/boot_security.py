@@ -88,14 +88,14 @@ def boot_with_recovery(
         if not _guest_ssh_reachable(guest):
             if not observed_down:
                 observed_down = True
-                # SSH disappears near the start of systemd shutdown, while
-                # bounded service stops may continue for up to 90 seconds.
-                # Leave additional firmware and boot-loader headroom before
-                # typing so input cannot interrupt OVMF and open its boot menu.
-                next_input = now + 150
+                # The target UKI exposes its recovery prompt on ttyS0. Input
+                # sent there cannot interrupt OVMF's graphical boot menu, so a
+                # short shutdown grace is sufficient and retries can safely
+                # span a slow reboot until sd-encrypt starts reading.
+                next_input = now + 20
             elif next_input is not None and now >= next_input:
-                service.backend.type_text(record["domain"], recovery_value)
-                next_input = now + 30
+                service.backend.type_serial_text(record["domain"], recovery_value)
+                next_input = now + 10
         elif observed_down:
             after = guest.exec(
                 ["cat", "/proc/sys/kernel/random/boot_id"], check=False
@@ -173,7 +173,8 @@ def create_runtime_inventory(service: VMService, record: dict[str, Any]) -> None
         "desktop_hibernation_enabled": True,
         "desktop_hibernation_swap_size_gib": 32,
         "kernel_command_line": (
-            "root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=subvol=@ rw"
+            "root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=subvol=@ rw "
+            "console=tty0 console=ttyS0,115200n8"
         ),
         "uki_presets": [
             {

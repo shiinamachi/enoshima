@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import os
+import pty
+import tty
+
+import pytest
+
 from enoshima_vm.config import RuntimePaths
+from enoshima_vm.errors import FailureCategory, VMError
 from enoshima_vm.libvirt_backend import LibvirtBackend
 from enoshima_vm.process import CommandResult
 
@@ -31,6 +38,61 @@ def test_type_text_waits_for_each_qemu_key_release(tmp_path, monkeypatch) -> Non
 
     assert calls == [(("KEY_A",), 80), (("KEY_7",), 80), (("KEY_ENTER",), 100)]
     assert waits == [0.12, 0.12]
+
+
+def test_type_serial_text_writes_only_to_the_managed_console(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(
+        tmp_path,
+        tmp_path,
+        tmp_path / "cache",
+        tmp_path / "state",
+    )
+    backend = LibvirtBackend(paths)
+    master, slave = pty.openpty()
+    tty.setraw(slave)
+    console = os.ttyname(slave)
+
+    monkeypatch.setattr(
+        backend,
+        "virsh",
+        lambda args, **_kwargs: CommandResult(
+            tuple(str(value) for value in args), 0, f"{console}\n", ""
+        ),
+    )
+    try:
+        backend.type_serial_text(
+            "enoshima-test-run-012345abcdef", "disposable-recovery-key"
+        )
+        assert os.read(master, 128) == b"disposable-recovery-key\n"
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
+def test_type_serial_text_rejects_an_unmanaged_path(tmp_path, monkeypatch) -> None:
+    paths = RuntimePaths(
+        tmp_path,
+        tmp_path,
+        tmp_path / "cache",
+        tmp_path / "state",
+    )
+    backend = LibvirtBackend(paths)
+    monkeypatch.setattr(
+        backend,
+        "virsh",
+        lambda args, **_kwargs: CommandResult(
+            tuple(str(value) for value in args), 0, "/tmp/console\n", ""
+        ),
+    )
+
+    with pytest.raises(VMError) as caught:
+        backend.type_serial_text(
+            "enoshima-test-run-012345abcdef", "disposable-recovery-key"
+        )
+
+    assert caught.value.category == FailureCategory.HARNESS_ERROR
 
 
 def test_pointer_events_use_the_absolute_qemu_tablet(tmp_path, monkeypatch) -> None:

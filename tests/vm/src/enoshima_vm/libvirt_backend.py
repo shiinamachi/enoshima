@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import socket
+import stat
 import subprocess
 import time
 from dataclasses import dataclass
@@ -373,8 +376,52 @@ class LibvirtBackend:
         if submit:
             self.send_keys(domain, ["KEY_ENTER"])
 
+    def type_serial_text(
+        self, domain: str, value: str, *, submit: bool = True
+    ) -> None:
+        require_domain(domain)
+        tty_path = self.virsh(["ttyconsole", domain]).stdout.strip()
+        if not re.fullmatch(r"/dev/pts/[0-9]+", tty_path):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"libvirt returned an unsafe serial console path for {domain}",
+                {"path": tty_path},
+            )
+
+        flags = os.O_WRONLY | os.O_NOCTTY | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            descriptor = os.open(tty_path, flags)
+        except OSError as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"could not open the serial console for {domain}",
+                {"path": tty_path, "error": str(error)},
+            ) from error
+
+        try:
+            if not stat.S_ISCHR(os.fstat(descriptor).st_mode):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    f"serial console for {domain} is not a character device",
+                    {"path": tty_path},
+                )
+            payload = value.encode("ascii") + (b"\n" if submit else b"")
+            while payload:
+                written = os.write(descriptor, payload)
+                if written <= 0:
+                    raise OSError("serial console accepted no input")
+                payload = payload[written:]
+        except (OSError, UnicodeEncodeError) as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"could not write recovery input to {domain}",
+                {"path": tty_path, "error": str(error)},
+            ) from error
+        finally:
+            os.close(descriptor)
+
 
 def os_access(path: Path) -> bool:
-    import os
-
     return os.access(path, os.R_OK | os.W_OK)

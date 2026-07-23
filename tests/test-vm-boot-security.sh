@@ -26,6 +26,8 @@ grep -Eq '^  chezmoi \\$' <<<"$pacstrap_block" ||
   fail 'boot target lacks the dotfile client required by bootstrap'
 grep -Fq 'recovery key must contain exactly 64 bytes without a newline' "$builder" ||
   fail 'interactive recovery key format is not enforced'
+grep -Fq 'console=tty0 console=ttyS0,115200n8' "$builder" ||
+  fail 'recovery input is not isolated from the graphical firmware console'
 grep -Fq 'cryptsetup luksFormat --type luks2' "$builder" ||
   fail 'boot target is not formatted as LUKS2'
 grep -Fq 'mkfs.fat -F 32 -n ENOSHIMAESP' "$builder" ||
@@ -54,6 +56,8 @@ grep -Fq 'test_unsigned_rejection' "$repo_root/tests/vm/src/enoshima_vm/service.
   fail 'suite service omits the negative Secure Boot test'
 grep -Fq 'test_recovery_path' "$repo_root/tests/vm/src/enoshima_vm/service.py" ||
   fail 'suite service omits the LUKS recovery path'
+grep -Fq 'type_serial_text' "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
+  fail 'LUKS recovery still injects text through the firmware keyboard path'
 grep -Fq 'apply_boot_artifacts: true' "$suite" ||
   fail 'kernel-update UKI regeneration is not exercised'
 validate_line=$(grep -n -- '  - run_validate' "$suite" | cut -d: -f1)

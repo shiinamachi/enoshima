@@ -120,7 +120,7 @@ cat >"$target/etc/crypttab.initramfs" <<EOF
 cryptroot UUID=$root_luks_uuid none tpm2-device=auto,x-initrd.attach,discard
 EOF
 printf '%s\n' \
-  'root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=subvol=@ rw' \
+  'root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=subvol=@ rw console=tty0 console=ttyS0,115200n8' \
   >"$target/etc/kernel/cmdline"
 cat >"$target/etc/mkinitcpio.conf" <<'EOF'
 MODULES=()
@@ -176,7 +176,7 @@ arch-chroot "$target" mkinitcpio -P
 install -m 0600 "$target/efi/EFI/Linux/arch-linux.efi" \
   "$target/root/arch-linux-unsigned.efi"
 printf '%s\0' \
-  'root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=subvol=@ rw enoshima.unsigned_test=1' \
+  'root=/dev/mapper/cryptroot rootfstype=btrfs rootflags=subvol=@ rw console=tty0 console=ttyS0,115200n8 enoshima.unsigned_test=1' \
   >"$target/root/enoshima-unsigned-cmdline"
 objcopy --update-section \
   ".cmdline=$target/root/enoshima-unsigned-cmdline" \
