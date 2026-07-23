@@ -123,4 +123,9 @@ helper_install_line=$(grep -n -m1 'dest: /usr/local/libexec/enoshima-rebuild-uki
   "$system_tasks" | cut -d: -f1)
 [[ -n $helper_directory_line && -n $helper_install_line ]]
 ((helper_directory_line < helper_install_line))
+postflight=$repo_root/scripts/postflight.sh
+grep -Fq 'check "managed UKIs are present" sudo -n bash -c' "$postflight"
+grep -Fq \
+  'check_or_warn "managed UKIs carry a Secure Boot signature" sudo -n bash -c' \
+  "$postflight"
 printf 'Transactional UKI tests passed.\n'

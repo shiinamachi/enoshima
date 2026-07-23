@@ -605,7 +605,7 @@ if capability boot_artifacts; then
     test -f /var/lib/enoshima/boot-artifacts-applied
   check "managed kernel command line is present" test -s /etc/kernel/cmdline
   check "managed initramfs crypttab is present" test -s /etc/crypttab.initramfs
-  check "managed UKIs are present" bash -c \
+  check "managed UKIs are present" sudo -n bash -c \
     'compgen -G "/efi/EFI/Linux/arch-*.efi" >/dev/null'
 else
   skip "managed boot artifact checks" \
@@ -618,7 +618,7 @@ if capability secure_boot; then
     '[[ $(od -An -j4 -N1 -tu1 /sys/firmware/efi/efivars/SecureBoot-* 2>/dev/null | tr -d " ") == 1 ]]'
   # The image loop belongs to the child shell.
   # shellcheck disable=SC2016
-  check_or_warn "managed UKIs carry a Secure Boot signature" bash -c \
+  check_or_warn "managed UKIs carry a Secure Boot signature" sudo -n bash -c \
     'for image in /efi/EFI/Linux/arch-*.efi; do [[ $image == *-unsigned.efi ]] && continue; sbverify --list "$image" >/dev/null || exit 1; done'
 else
   skip "Secure Boot enforcement checks" \
