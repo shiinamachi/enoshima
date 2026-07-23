@@ -51,15 +51,36 @@ grep -Fq '<feature enabled="no" name="enrolled-keys"/>' "$domain_template" ||
   fail 'OVMF setup mode is not requested for disposable keys'
 grep -Fq '<backend type="emulator" version="2.0" persistent_state="yes"/>' \
   "$domain_template" || fail 'persistent per-domain swtpm is not configured'
+grep -Fq '<log file="{{ run_dir }}/serial.log" append="off"/>' \
+  "$domain_template" || fail 'serial recovery prompt output is not retained'
 
 grep -Fq 'test_unsigned_rejection' "$repo_root/tests/vm/src/enoshima_vm/service.py" ||
   fail 'suite service omits the negative Secure Boot test'
+grep -Fq 'set-oneshot' "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
+  fail 'unsigned UKI test must preserve the persistent signed default'
+grep -Fq 'service.backend.reset' "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
+  fail 'unsigned UKI test cannot recover from the firmware boot manager'
 grep -Fq 'test_recovery_path' "$repo_root/tests/vm/src/enoshima_vm/service.py" ||
   fail 'suite service omits the LUKS recovery path'
 grep -Fq 'type_serial_text' "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
   fail 'LUKS recovery still injects text through the firmware keyboard path'
 grep -Fq 'read_serial_text' "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
   fail 'LUKS recovery input is not gated on the serial passphrase prompt'
+grep -Fq 'prompt_count > submitted_prompt_count' \
+  "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
+  fail 'LUKS recovery input repeats without a new passphrase prompt'
+grep -Fq 'serial_size <= prompt_input_serial_size' \
+  "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
+  fail 'lost serial input is not retried from observable console state'
+grep -Fq 'managed_fstab_static_entries' \
+  "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
+  fail 'runtime inventory does not preserve dedicated Btrfs mounts'
+grep -Fq 'assert-recovery-mounts' \
+  "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
+  fail 'recovery validation does not prove dedicated mounts survived reboot'
+grep -Fq 'sbverify --cert /var/lib/sbctl/keys/db/db.pem' \
+  "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
+  fail 'runtime assertions do not verify UKIs against the enrolled db certificate'
 grep -Fq 'apply_boot_artifacts: true' "$suite" ||
   fail 'kernel-update UKI regeneration is not exercised'
 validate_line=$(grep -n -- '  - run_validate' "$suite" | cut -d: -f1)

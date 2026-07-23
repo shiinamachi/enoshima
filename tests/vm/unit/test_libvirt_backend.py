@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import os
-import pty
+import select
 
 import pytest
 
 from enoshima_vm.config import RuntimePaths
-from enoshima_vm.errors import FailureCategory, VMError
 from enoshima_vm.libvirt_backend import LibvirtBackend
 from enoshima_vm.process import CommandResult
 
@@ -37,7 +36,7 @@ def test_type_text_waits_for_each_qemu_key_release(tmp_path, monkeypatch) -> Non
     assert waits == [0.12, 0.12]
 
 
-def test_type_serial_text_writes_only_to_the_managed_console(
+def test_type_serial_text_uses_libvirt_console_without_argv_secret(
     tmp_path, monkeypatch
 ) -> None:
     paths = RuntimePaths(
@@ -47,27 +46,60 @@ def test_type_serial_text_writes_only_to_the_managed_console(
         tmp_path / "state",
     )
     backend = LibvirtBackend(paths)
-    master, slave = pty.openpty()
-    console = os.ttyname(slave)
+    calls: list[tuple[str, ...]] = []
+    processes: list[object] = []
+    waits: list[float] = []
 
-    monkeypatch.setattr(
-        backend,
-        "virsh",
-        lambda args, **_kwargs: CommandResult(
-            tuple(str(value) for value in args), 0, f"{console}\n", ""
-        ),
+    class FakeProcess:
+        def __init__(self, argv, *, stdin, stdout, **_kwargs) -> None:
+            calls.append(tuple(argv))
+            self.console = os.dup(stdin)
+            self.returncode: int | None = None
+            self.received = b""
+            os.write(stdout, b"Connected to domain fixture\nEscape character is ^]\n")
+            processes.append(self)
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, *, timeout):
+            chunks = []
+            while select.select([self.console], [], [], 0)[0]:
+                chunks.append(os.read(self.console, 128))
+            self.received = b"".join(chunks)
+            os.close(self.console)
+            self.returncode = 0
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr("enoshima_vm.libvirt_backend.subprocess.Popen", FakeProcess)
+    monkeypatch.setattr("enoshima_vm.libvirt_backend.time.sleep", waits.append)
+
+    backend.type_serial_text(
+        "enoshima-test-run-012345abcdef", "disposable-recovery-key"
     )
-    try:
-        backend.type_serial_text(
-            "enoshima-test-run-012345abcdef", "disposable-recovery-key"
+
+    assert calls == [
+        (
+            "virsh",
+            "--connect",
+            "qemu:///session",
+            "console",
+            "enoshima-test-run-012345abcdef",
+            "--safe",
         )
-        assert os.read(master, 128) == b"disposable-recovery-key\r"
-    finally:
-        os.close(master)
-        os.close(slave)
+    ]
+    assert "disposable-recovery-key" not in calls[0]
+    assert processes[0].received == b"disposable-recovery-key\r\x1d"
+    assert waits == [0.5]
 
 
-def test_read_serial_text_drains_prompt_without_blocking(tmp_path, monkeypatch) -> None:
+def test_read_serial_text_uses_the_managed_log_and_reboot_offset(tmp_path) -> None:
     paths = RuntimePaths(
         tmp_path,
         tmp_path,
@@ -75,28 +107,21 @@ def test_read_serial_text_drains_prompt_without_blocking(tmp_path, monkeypatch) 
         tmp_path / "state",
     )
     backend = LibvirtBackend(paths)
-    master, slave = pty.openpty()
-    console = os.ttyname(slave)
-    monkeypatch.setattr(
-        backend,
-        "virsh",
-        lambda args, **_kwargs: CommandResult(
-            tuple(str(value) for value in args), 0, f"{console}\n", ""
-        ),
+    log = paths.state / "runs" / "run-012345abcdef" / "serial.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("old boot output\n", encoding="utf-8")
+    offset = backend.serial_log_size("enoshima-test-run-012345abcdef")
+    log.write_text(
+        "old boot output\nPlease enter passphrase for cryptroot: ", encoding="utf-8"
     )
-    try:
-        os.write(master, b"Please enter passphrase for cryptroot: ")
-        assert (
-            backend.read_serial_text("enoshima-test-run-012345abcdef")
-            == "Please enter passphrase for cryptroot: "
-        )
-        assert backend.read_serial_text("enoshima-test-run-012345abcdef") == ""
-    finally:
-        os.close(master)
-        os.close(slave)
+
+    assert (
+        backend.read_serial_text("enoshima-test-run-012345abcdef", start_offset=offset)
+        == "Please enter passphrase for cryptroot: "
+    )
 
 
-def test_type_serial_text_rejects_an_unmanaged_path(tmp_path, monkeypatch) -> None:
+def test_type_serial_text_rejects_an_unmanaged_domain(tmp_path) -> None:
     paths = RuntimePaths(
         tmp_path,
         tmp_path,
@@ -104,20 +129,8 @@ def test_type_serial_text_rejects_an_unmanaged_path(tmp_path, monkeypatch) -> No
         tmp_path / "state",
     )
     backend = LibvirtBackend(paths)
-    monkeypatch.setattr(
-        backend,
-        "virsh",
-        lambda args, **_kwargs: CommandResult(
-            tuple(str(value) for value in args), 0, "/tmp/console\n", ""
-        ),
-    )
-
-    with pytest.raises(VMError) as caught:
-        backend.type_serial_text(
-            "enoshima-test-run-012345abcdef", "disposable-recovery-key"
-        )
-
-    assert caught.value.category == FailureCategory.HARNESS_ERROR
+    with pytest.raises(ValueError):
+        backend.type_serial_text("unmanaged-domain", "disposable-recovery-key")
 
 
 def test_pointer_events_use_the_absolute_qemu_tablet(tmp_path, monkeypatch) -> None:
@@ -148,3 +161,26 @@ def test_pointer_events_use_the_absolute_qemu_tablet(tmp_path, monkeypatch) -> N
     assert '"axis":"y","value":200' in calls[0][2]
     assert '"button":"left"' in calls[1][2]
     assert '"down":true' in calls[1][2]
+
+
+def test_reset_uses_libvirt_for_a_managed_disposable_domain(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(
+        tmp_path,
+        tmp_path,
+        tmp_path / "cache",
+        tmp_path / "state",
+    )
+    backend = LibvirtBackend(paths)
+    calls: list[tuple[tuple[str, ...], int]] = []
+
+    def virsh(args, *, timeout=120, **_kwargs):
+        calls.append((tuple(args), timeout))
+        return CommandResult(tuple(str(value) for value in args), 0, "", "")
+
+    monkeypatch.setattr(backend, "virsh", virsh)
+
+    backend.reset("enoshima-test-run-012345abcdef")
+
+    assert calls == [(("reset", "enoshima-test-run-012345abcdef"), 30)]

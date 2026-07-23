@@ -49,6 +49,7 @@ def test_domain_templates_render_as_xml_without_host_mounts(tmp_path: Path) -> N
             assert '<input type="tablet" bus="usb"/>' in rendered
             assert '<graphics type="spice" autoport="yes">' in rendered
             assert '<acceleration accel3d="yes"/>' in rendered
+            assert f'<log file="{tmp_path}/serial.log" append="off"/>' in rendered
 
 
 def test_rebooted_converge_suite_provides_a_graphical_greetd_device() -> None:

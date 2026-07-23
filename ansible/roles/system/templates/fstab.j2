@@ -5,6 +5,9 @@
 # systemd-gpt-auto-generator on this host. The dedicated swap subvolume is
 # managed only when disk-backed hibernation is enabled.
 # <file system> <dir> <type> <options> <dump> <pass>
+{% for entry in managed_fstab_static_entries %}
+{{ entry }}
+{% endfor %}
 {% if desktop_hibernation_enabled | bool %}
 UUID={{ root_btrfs_uuid }} /swap btrfs subvol=@swap,noatime,compress=no 0 0
 /swap/swapfile none swap defaults,pri=10 0 0

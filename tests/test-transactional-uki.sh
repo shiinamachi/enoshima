@@ -5,6 +5,7 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/ansible/roles/system/files/enoshima-rebuild-uki
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
+export ORDER_LOG=$work/order.log
 
 mkdir -p "$work/presets" "$work/esp"
 printf 'root=/dev/mapper/cryptroot resume=UUID=test resume_offset=42\n' >"$work/cmdline"
@@ -27,6 +28,8 @@ EOF
 cat >"$work/objcopy" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+[[ \$# -eq 4 && \$4 == */enoshima-uki-inspection.* ]]
+printf 'objcopy\n' >>"\$ORDER_LOG"
 section=\$2
 destination=\${section#*=}
 cp "$work/cmdline" "\$destination"
@@ -49,10 +52,12 @@ ENOSHIMA_UKI_ALLOW_UNPRIVILEGED=true \
 grep -Fq 'sync -f "${destination%/*}"' "$helper"
 grep -Fq 'rollback UKI verification failed' "$helper"
 grep -Fq 'installed UKI verification failed' "$helper"
+: >"$ORDER_LOG"
 
 cat >"$work/sbsign" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'sbsign\n' >>"$ORDER_LOG"
 while (($# > 0)); do
   case $1 in
     --key | --cert) shift 2 ;;
@@ -66,6 +71,7 @@ EOF
 cat >"$work/sbverify" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'sbverify\n' >>"$ORDER_LOG"
 [[ $1 == --cert && -s $2 ]]
 grep -Fq signed "$3"
 EOF
@@ -89,6 +95,7 @@ ENOSHIMA_UKI_ALLOW_UNPRIVILEGED=true \
   bash "$helper"
 
 grep -Fq signed "$work/esp/arch-linux.efi"
+[[ $(paste -sd ' ' "$ORDER_LOG") == 'objcopy sbsign sbverify' ]]
 
 # A failed candidate validation must preserve both bootable generations.
 printf 'known-good\n' >"$work/esp/arch-linux.efi"
@@ -96,6 +103,7 @@ printf 'known-previous\n' >"$work/esp/arch-linux-previous.efi"
 cat >"$work/objcopy" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+[[ $# -eq 4 && $4 == */enoshima-uki-inspection.* ]]
 section=$2
 destination=${section#*=}
 printf 'wrong-command-line\n' >"$destination"
@@ -128,4 +136,6 @@ grep -Fq 'check "managed UKIs are present" sudo -n bash -c' "$postflight"
 grep -Fq \
   'check_or_warn "managed UKIs carry a Secure Boot signature" sudo -n bash -c' \
   "$postflight"
+# shellcheck disable=SC2016 # Match the literal child-shell variables.
+grep -Fq 'sbverify --cert "$certificate" "$image"' "$postflight"
 printf 'Transactional UKI tests passed.\n'

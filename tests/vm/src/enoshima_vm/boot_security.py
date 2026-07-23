@@ -34,6 +34,26 @@ def _guest_ssh_reachable(guest: Any) -> bool:
     return result.returncode == 0
 
 
+def _reject_recovery_secret_echo(
+    service: VMService,
+    record: dict[str, Any],
+    recovery_value: str,
+    serial_text: str,
+) -> None:
+    if recovery_value not in serial_text:
+        return
+    serial_log = service._run_dir(record["run_id"]) / "serial.log"
+    if serial_log.is_file():
+        secret = recovery_value.encode()
+        serial_log.write_bytes(
+            serial_log.read_bytes().replace(secret, b"[REDACTED_RECOVERY_KEY]")
+        )
+    raise VMError(
+        FailureCategory.SECURE_BOOT_FAILED,
+        "the serial console echoed the disposable recovery key",
+    )
+
+
 REMOTE_RUNTIME_INVENTORY = PurePosixPath(
     "/home/kentakang/enoshima-test/runtime-inventory"
 )
@@ -75,13 +95,18 @@ def boot_with_recovery(
         before = guest.exec(
             ["cat", "/proc/sys/kernel/random/boot_id"], check=False
         ).stdout.strip()
+        serial_offset = service.backend.serial_log_size(record["domain"])
         service.backend.reboot(record["domain"])
     else:
+        serial_offset = 0
         service.backend.start(record["domain"])
 
     recovery_value = Path(record["recovery_key"]).read_text(encoding="utf-8").strip()
     deadline = time.monotonic() + timeout_seconds
-    next_input: float | None = None
+    submitted_prompt_count = 0
+    prompt_input_attempts = 0
+    prompt_input_serial_size = 0
+    prompt_input_retry_at: float | None = None
     observed_down = False
     observed_prompt = False
     serial_tail = ""
@@ -95,15 +120,49 @@ def boot_with_recovery(
             # sent only after sd-encrypt explicitly asks for a passphrase, so
             # slow service shutdown and firmware timing cannot poison the
             # prompt or open OVMF's graphical boot menu.
-            serial_tail = (
-                serial_tail + service.backend.read_serial_text(record["domain"])
-            )[-65536:]
-            if "enter passphrase" in serial_tail.casefold():
+            serial_tail = service.backend.read_serial_text(
+                record["domain"], start_offset=serial_offset
+            )
+            _reject_recovery_secret_echo(service, record, recovery_value, serial_tail)
+            serial_size = len(serial_tail.encode("utf-8"))
+            prompt_count = serial_tail.casefold().count("enter passphrase")
+            if prompt_count:
                 observed_prompt = True
-            if observed_prompt and (next_input is None or now >= next_input):
+            if (
+                prompt_input_retry_at is not None
+                and serial_size > prompt_input_serial_size
+            ):
+                # Serial progress proves the guest consumed the submitted
+                # line. A wrong key produces a fresh prompt and is handled by
+                # the monotonically increasing prompt count below.
+                prompt_input_retry_at = None
+            if prompt_count > submitted_prompt_count:
+                submitted_prompt_count = prompt_count
+                prompt_input_attempts = 0
                 service.backend.type_serial_text(record["domain"], recovery_value)
-                next_input = now + 10
+                prompt_input_attempts = 1
+                prompt_input_serial_size = serial_size
+                prompt_input_retry_at = now + 3
+            elif (
+                prompt_input_retry_at is not None
+                and now >= prompt_input_retry_at
+                and serial_size <= prompt_input_serial_size
+            ):
+                if prompt_input_attempts >= 3:
+                    raise VMError(
+                        FailureCategory.SECURE_BOOT_FAILED,
+                        "the serial console did not consume recovery input",
+                        {"prompt_input_attempts": prompt_input_attempts},
+                    )
+                service.backend.type_serial_text(record["domain"], recovery_value)
+                prompt_input_attempts += 1
+                prompt_input_serial_size = serial_size
+                prompt_input_retry_at = now + 3
         elif observed_down:
+            serial_tail = service.backend.read_serial_text(
+                record["domain"], start_offset=serial_offset
+            )
+            _reject_recovery_secret_echo(service, record, recovery_value, serial_tail)
             after = guest.exec(
                 ["cat", "/proc/sys/kernel/random/boot_id"], check=False
             ).stdout.strip()
@@ -117,6 +176,7 @@ def boot_with_recovery(
         {
             "observed_ssh_down": observed_down,
             "observed_recovery_prompt": observed_prompt,
+            "serial_output_bytes": len(serial_tail.encode("utf-8")),
         },
     )
 
@@ -179,6 +239,21 @@ def create_runtime_inventory(service: VMService, record: dict[str, Any]) -> None
         "esp_partition_partuuid": metadata["esp_partition_partuuid"],
         "manage_boot_config": True,
         "manage_fstab": True,
+        "managed_fstab_static_entries": [
+            (
+                f"UUID={metadata['root_btrfs_uuid']} / btrfs "
+                "rw,noatime,compress=zstd,subvol=@ 0 0"
+            ),
+            (
+                f"UUID={metadata['root_btrfs_uuid']} /home btrfs "
+                "rw,noatime,compress=zstd,subvol=@home 0 0"
+            ),
+            (
+                f"UUID={metadata['root_btrfs_uuid']} /var/log btrfs "
+                "rw,noatime,compress=zstd,subvol=@var_log 0 0"
+            ),
+            (f"UUID={metadata['esp_partition_uuid']} /efi vfat rw,umask=0077 0 2"),
+        ],
         "secure_boot_sign_uki": True,
         "snapper_configure_root": True,
         "desktop_hibernation_enabled": True,
@@ -257,8 +332,14 @@ def assert_secure_boot(service: VMService, record: dict[str, Any]) -> None:
             'test "$(od -An -j4 -N1 -tu1 '
             "/sys/firmware/efi/efivars/SecureBoot-* | tr -d ' ')\" = 1"
         ),
-        "sudo sbverify --list /efi/EFI/Linux/arch-linux.efi",
-        "sudo sbverify --list /efi/EFI/Linux/arch-linux-lts.efi",
+        (
+            "sudo sbverify --cert /var/lib/sbctl/keys/db/db.pem "
+            "/efi/EFI/Linux/arch-linux.efi"
+        ),
+        (
+            "sudo sbverify --cert /var/lib/sbctl/keys/db/db.pem "
+            "/efi/EFI/Linux/arch-linux-lts.efi"
+        ),
     ]
     service._run_checked(
         record,
@@ -302,6 +383,19 @@ def test_recovery_path(service: VMService, record: dict[str, Any]) -> None:
         timeout_seconds=180,
     )
     boot_with_recovery(service, record)
+    service._run_checked(
+        record,
+        "assert-recovery-mounts",
+        [
+            "bash",
+            "-lc",
+            "mountpoint --quiet /home && mountpoint --quiet /var/log && "
+            "mountpoint --quiet /efi && "
+            "test -s /home/kentakang/.ssh/authorized_keys",
+        ],
+        FailureCategory.SECURE_BOOT_FAILED,
+        timeout_seconds=60,
+    )
     enroll_tpm(service, record)
 
 
@@ -314,10 +408,9 @@ def test_unsigned_rejection(service: VMService, record: dict[str, Any]) -> None:
             "restore-signed-uki-default",
             [
                 "sudo",
-                "sed",
-                "-i",
-                "s/^default .*/default enoshima.conf/",
-                "/efi/loader/loader.conf",
+                "bootctl",
+                "set-default",
+                "enoshima.conf",
             ],
             FailureCategory.SECURE_BOOT_FAILED,
         )
@@ -343,10 +436,9 @@ def test_unsigned_rejection(service: VMService, record: dict[str, Any]) -> None:
         "select-unsigned-uki",
         [
             "sudo",
-            "sed",
-            "-i",
-            "s/^default .*/default enoshima-unsigned.conf/",
-            "/efi/loader/loader.conf",
+            "bootctl",
+            "set-oneshot",
+            "enoshima-unsigned.conf",
         ],
         FailureCategory.SECURE_BOOT_FAILED,
     )
@@ -381,12 +473,20 @@ def test_unsigned_rejection(service: VMService, record: dict[str, Any]) -> None:
             "negative Secure Boot test did not begin a reboot",
         )
 
-    service.backend.send_keys(record["domain"], ["KEY_UP"])
-    service.backend.send_keys(record["domain"], ["KEY_ENTER"])
+    # Firmware is allowed to stop at its boot manager after rejecting the
+    # one-shot unsigned entry. Reset the disposable guest so systemd-boot
+    # consumes its persistent signed default without relying on menu timing.
+    service.backend.reset(record["domain"])
     guest.wait_ssh(240)
     service.backend.wait_guest_agent(record["domain"], 180)
+    cmdline = guest.exec(["cat", "/proc/cmdline"]).stdout
+    if "enoshima.unsigned_test=1" in cmdline:
+        raise VMError(
+            FailureCategory.SECURE_BOOT_FAILED,
+            "unsigned UKI unexpectedly booted after firmware rejection",
+        )
     restore_signed_default()
-    write_evidence("manual-signed-entry")
+    write_evidence("reset-to-persistent-signed-default")
 
 
 def collect_boot_security(service: VMService, record: dict[str, Any]) -> None:

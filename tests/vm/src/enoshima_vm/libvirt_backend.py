@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-import re
+import pty
+import select
 import shutil
 import socket
 import stat
@@ -18,7 +19,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from .config import DOMAIN_PREFIX, MAX_ACTIVE_DOMAINS, RuntimePaths, Suite
 from .errors import FailureCategory, VMError
 from .process import CommandResult, run
-from .security import require_domain
+from .security import confined_path, require_domain
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +248,11 @@ class LibvirtBackend:
         require_domain(domain)
         self.virsh(["reboot", domain, "--mode", "agent"], timeout=30)
 
+    def reset(self, domain: str) -> None:
+        """Hard-reset a disposable guest that cannot service an agent reboot."""
+        require_domain(domain)
+        self.virsh(["reset", domain], timeout=30)
+
     def poweroff(self, domain: str) -> None:
         require_domain(domain)
         self.virsh(["shutdown", domain, "--mode", "agent"], timeout=30, check=False)
@@ -379,92 +385,151 @@ class LibvirtBackend:
             self.send_keys(domain, ["KEY_ENTER"])
 
     def type_serial_text(self, domain: str, value: str, *, submit: bool = True) -> None:
-        descriptor, tty_path = self._open_serial_console(domain)
+        managed_domain = require_domain(domain)
         try:
-            # A UART Enter key is carriage return. Newline is not translated
-            # by QEMU's raw serial chardev and leaves sd-encrypt waiting.
             payload = value.encode("ascii") + (b"\r" if submit else b"")
-            while payload:
-                written = os.write(descriptor, payload)
+        except UnicodeEncodeError as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"serial recovery input for {managed_domain} is not ASCII",
+            ) from error
+
+        master, slave = pty.openpty()
+        tty.setraw(slave, when=termios.TCSANOW)
+        process: subprocess.Popen[bytes] | None = None
+        try:
+            process = subprocess.Popen(
+                [
+                    "virsh",
+                    "--connect",
+                    self.uri,
+                    "console",
+                    managed_domain,
+                    "--safe",
+                ],
+                stdin=slave,
+                stdout=slave,
+                stderr=slave,
+                close_fds=True,
+            )
+            os.close(slave)
+            slave = -1
+
+            connected = False
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                ready, _, _ = select.select([master], [], [], 0.1)
+                if ready:
+                    output = os.read(master, 4096)
+                    if (
+                        b"Connected to domain" in output
+                        or b"Escape character is" in output
+                    ):
+                        connected = True
+                        break
+                if process.poll() is not None:
+                    break
+            if not connected:
+                raise OSError("libvirt serial console did not become ready")
+
+            # A UART Enter key is carriage return. Send it through libvirt's
+            # console stream rather than opening QEMU's PTY slave directly;
+            # the latter can discard a complete write when the descriptor is
+            # closed before QEMU drains its side of the pair.
+            remaining = payload
+            while remaining:
+                written = os.write(master, remaining)
                 if written <= 0:
                     raise OSError("serial console accepted no input")
-                payload = payload[written:]
-        except (OSError, UnicodeEncodeError) as error:
+                remaining = remaining[written:]
+            termios.tcdrain(master)
+            # Keep the console attached long enough for the guest UART to
+            # consume the complete line. The boot loop separately confirms
+            # serial progress and retries only while the same prompt is idle.
+            time.sleep(0.5)
+            os.write(master, b"\x1d")
+            returncode = process.wait(timeout=5)
+            if returncode:
+                raise OSError(f"libvirt serial console exited with {returncode}")
+        except (OSError, subprocess.TimeoutExpired) as error:
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
-                f"could not write recovery input to {domain}",
-                {"path": tty_path, "error": str(error)},
+                f"could not write recovery input to {managed_domain}",
+                {"error": str(error)},
             ) from error
         finally:
-            os.close(descriptor)
+            if slave >= 0:
+                os.close(slave)
+            os.close(master)
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2)
 
-    def read_serial_text(self, domain: str, *, max_bytes: int = 65536) -> str:
+    def serial_log_size(self, domain: str) -> int:
+        path = self._serial_log_path(domain)
+        try:
+            return path.stat().st_size
+        except FileNotFoundError:
+            return 0
+
+    def read_serial_text(
+        self,
+        domain: str,
+        *,
+        start_offset: int = 0,
+        max_bytes: int = 65536,
+    ) -> str:
+        if start_offset < 0:
+            raise ValueError("serial read offset must not be negative")
         if not 1 <= max_bytes <= 1024 * 1024:
             raise ValueError("serial read limit must be between 1 and 1048576 bytes")
-        descriptor, tty_path = self._open_serial_console(domain, nonblocking=True)
-        chunks: list[bytes] = []
-        remaining = max_bytes
-        try:
-            while remaining:
-                try:
-                    chunk = os.read(descriptor, min(remaining, 8192))
-                except BlockingIOError:
-                    break
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                remaining -= len(chunk)
-        except OSError as error:
-            raise VMError(
-                FailureCategory.HARNESS_ERROR,
-                f"could not read the serial console for {domain}",
-                {"path": tty_path, "error": str(error)},
-            ) from error
-        finally:
-            os.close(descriptor)
-        return b"".join(chunks).decode("utf-8", errors="replace")
-
-    def _open_serial_console(
-        self, domain: str, *, nonblocking: bool = False
-    ) -> tuple[int, str]:
-        require_domain(domain)
-        tty_path = self.virsh(["ttyconsole", domain]).stdout.strip()
-        if not re.fullmatch(r"/dev/pts/[0-9]+", tty_path):
-            raise VMError(
-                FailureCategory.HARNESS_ERROR,
-                f"libvirt returned an unsafe serial console path for {domain}",
-                {"path": tty_path},
-            )
-
-        flags = os.O_RDWR | os.O_NOCTTY | os.O_CLOEXEC
-        if nonblocking:
-            flags |= os.O_NONBLOCK
+        path = self._serial_log_path(domain)
+        flags = os.O_RDONLY | os.O_CLOEXEC
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         try:
-            descriptor = os.open(tty_path, flags)
+            descriptor = os.open(path, flags)
+        except FileNotFoundError:
+            return ""
         except OSError as error:
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
-                f"could not open the serial console for {domain}",
-                {"path": tty_path, "error": str(error)},
+                f"could not open the serial log for {domain}",
+                {"path": str(path), "error": str(error)},
             ) from error
 
         try:
-            if not stat.S_ISCHR(os.fstat(descriptor).st_mode):
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode):
                 raise VMError(
                     FailureCategory.HARNESS_ERROR,
-                    f"serial console for {domain} is not a character device",
-                    {"path": tty_path},
+                    f"serial log for {domain} is not a regular file",
+                    {"path": str(path)},
                 )
-            # libvirt exposes QEMU's UART through a PTY slave. Canonical host
-            # line discipline buffers or rewrites recovery input, so mirror
-            # virsh console and put the slave in raw mode before writing.
-            tty.setraw(descriptor, when=termios.TCSANOW)
-            return descriptor, tty_path
-        except BaseException:
+            size = metadata.st_size
+            if start_offset > size:
+                start_offset = 0
+            offset = max(start_offset, size - max_bytes)
+            os.lseek(descriptor, offset, os.SEEK_SET)
+            return os.read(descriptor, max_bytes).decode("utf-8", errors="replace")
+        except OSError as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"could not read the serial log for {domain}",
+                {"path": str(path), "error": str(error)},
+            ) from error
+        finally:
             os.close(descriptor)
-            raise
+
+    def _serial_log_path(self, domain: str) -> Path:
+        managed_domain = require_domain(domain)
+        run_id = managed_domain.removeprefix(DOMAIN_PREFIX)
+        runs_root = self.paths.state / "runs"
+        return confined_path(runs_root, runs_root / run_id / "serial.log")
 
 
 def os_access(path: Path) -> bool:

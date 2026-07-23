@@ -58,7 +58,9 @@
         <acceleration accel3d="yes"/>
       </model>
     </video>
-    <serial type="pty"/>
+    <serial type="pty">
+      <log file="{{ run_dir }}/serial.log" append="off"/>
+    </serial>
     <console type="pty"/>
     <rng model="virtio">
       <backend model="random">/dev/urandom</backend>

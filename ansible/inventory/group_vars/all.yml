@@ -36,6 +36,11 @@ pacman_parallel_downloads: 10
 pacman_disable_download_timeout: false
 manage_boot_config: false
 manage_fstab: false
+# Hardware profiles may declare static mounts that must survive the managed
+# hibernation entries. The physical profile currently relies on the UKI and
+# systemd-gpt-auto-generator, while disposable boot-security guests supply
+# their separate Btrfs subvolumes through this list.
+managed_fstab_static_entries: []
 apply_boot_artifacts: false
 secure_boot_sign_uki: false
 boot_artifact_state_file: /var/lib/enoshima/boot-artifacts-applied

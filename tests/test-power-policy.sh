@@ -31,6 +31,8 @@ grep -Fq 'Existing /swap/swapfile is smaller' "$power_tasks" ||
   fail 'existing swapfile replacement is not guarded'
 grep -Fq 'subvol=@swap,noatime,compress=no' "$fstab" || fail '@swap is not mounted separately'
 grep -Fq '/swap/swapfile none swap defaults,pri=10' "$fstab" || fail 'swapfile is not persistent'
+grep -Fq '{% for entry in managed_fstab_static_entries %}' "$fstab" ||
+  fail 'hardware-specific static mounts are not preserved'
 grep -Fq 'resume=UUID={{ root_btrfs_uuid }}' "$kernel_cmdline" || fail 'resume device is missing'
 grep -Fq 'resume_offset={{ hibernation_resume_offset.stdout | trim }}' "$kernel_cmdline" ||
   fail 'calculated resume offset is missing'

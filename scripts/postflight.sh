@@ -619,7 +619,7 @@ if capability secure_boot; then
   # The image loop belongs to the child shell.
   # shellcheck disable=SC2016
   check_or_warn "managed UKIs carry a Secure Boot signature" sudo -n bash -c \
-    'for image in /efi/EFI/Linux/arch-*.efi; do [[ $image == *-unsigned.efi ]] && continue; sbverify --list "$image" >/dev/null || exit 1; done'
+    'certificate=/var/lib/sbctl/keys/db/db.pem; [[ -r $certificate ]] || exit 1; for image in /efi/EFI/Linux/arch-*.efi; do [[ $image == *-unsigned.efi ]] && continue; sbverify --cert "$certificate" "$image" >/dev/null || exit 1; done'
 else
   skip "Secure Boot enforcement checks" \
     "capability secure_boot=false" "secure-boot"

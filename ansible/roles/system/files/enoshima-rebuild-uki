@@ -69,11 +69,13 @@ for preset in "${presets[@]}"; do
   signed_candidate=${destination%/*}/.${name}.enoshima-signed
   temporary_preset=$(mktemp "$temp_root/enoshima-uki-preset.XXXXXX")
   cmdline_dump=$(mktemp "$temp_root/enoshima-uki-cmdline.XXXXXX")
+  objcopy_output=$(mktemp "$temp_root/enoshima-uki-inspection.XXXXXX")
 
   cleanup_iteration() {
     rm -f -- \
       "$temporary_preset" \
       "$cmdline_dump" \
+      "$objcopy_output" \
       "$candidate" \
       "$previous_candidate" \
       "$signed_candidate"
@@ -86,6 +88,17 @@ for preset in "${presets[@]}"; do
 
   "$mkinitcpio_bin" -p "$temporary_preset"
   [[ -s $candidate && ! -L $candidate ]] || die "candidate UKI was not created: $candidate"
+  # With no explicit output, objcopy rewrites the input PE in place and drops
+  # its Authenticode overlay. Write the inspected PE to a disposable regular
+  # file so the candidate stays intact; /dev/null is not a valid PE output.
+  "$objcopy_bin" \
+    --dump-section ".cmdline=$cmdline_dump" \
+    "$candidate" \
+    "$objcopy_output" 2>/dev/null ||
+    die "candidate UKI has no readable .cmdline section: $candidate"
+  embedded_cmdline=$(tr -d '\0' <"$cmdline_dump" | normalize_cmdline)
+  [[ $embedded_cmdline == "$expected_cmdline" ]] ||
+    die "candidate UKI command line does not match $cmdline_file"
   if [[ $secure_boot_signing == true ]]; then
     "$sbsign_bin" \
       --key "$secure_boot_key" \
@@ -98,11 +111,6 @@ for preset in "${presets[@]}"; do
       die "signed UKI candidate verification failed: $signed_candidate"
     mv -f -- "$signed_candidate" "$candidate"
   fi
-  "$objcopy_bin" --dump-section ".cmdline=$cmdline_dump" "$candidate" 2>/dev/null ||
-    die "candidate UKI has no readable .cmdline section: $candidate"
-  embedded_cmdline=$(tr -d '\0' <"$cmdline_dump" | normalize_cmdline)
-  [[ $embedded_cmdline == "$expected_cmdline" ]] ||
-    die "candidate UKI command line does not match $cmdline_file"
 
   if [[ -e $destination ]]; then
     [[ -f $destination && ! -L $destination ]] || die "unsafe current UKI: $destination"
