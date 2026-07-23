@@ -5,6 +5,8 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 manifest=${AUR_MANIFEST:-$repo_root/packages/aur.txt}
 paru_url=${AUR_PARU_URL:-https://aur.archlinux.org/paru.git}
 sudo_command=${SUDO_COMMAND_WRAPPER:-sudo}
+max_attempts=${AUR_INSTALL_MAX_ATTEMPTS:-4}
+retry_delay_seconds=${AUR_INSTALL_RETRY_DELAY_SECONDS:-10}
 bootstrap_dir=
 
 cleanup() {
@@ -27,6 +29,14 @@ if [[ $EUID -eq 0 ]]; then
 fi
 [[ -f $manifest && ! -L $manifest ]] || {
   echo "AUR approval manifest is missing or unsafe: $manifest" >&2
+  exit 1
+}
+[[ $max_attempts =~ ^[1-9][0-9]*$ ]] || {
+  echo "AUR_INSTALL_MAX_ATTEMPTS must be a positive integer." >&2
+  exit 1
+}
+[[ $retry_delay_seconds =~ ^[0-9]+$ ]] || {
+  echo "AUR_INSTALL_RETRY_DELAY_SECONDS must be a non-negative integer." >&2
   exit 1
 }
 
@@ -102,19 +112,33 @@ if ! command -v paru >/dev/null 2>&1 || ! paru --version >/dev/null 2>&1; then
 else
   for package in "${aur_packages[@]}"; do
     printf '==> Installing approved AUR package base: %s\n' "$package"
-    if paru \
-      --sudo "$sudo_command" \
-      --noupgrademenu \
-      --nosudoloop \
-      --skipreview \
-      --pgpfetch \
-      --noconfirm \
-      --needed \
-      -S \
-      -- "$package"; then
+    status=1
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+      if paru \
+        --sudo "$sudo_command" \
+        --noupgrademenu \
+        --nosudoloop \
+        --skipreview \
+        --pgpfetch \
+        --noconfirm \
+        --needed \
+        -S \
+        -- "$package"; then
+        status=0
+        break
+      else
+        status=$?
+      fi
+      if ((attempt < max_attempts)); then
+        printf \
+          'WARNING: approved AUR package base %s attempt %d/%d failed; retrying in %ss.\n' \
+          "$package" "$attempt" "$max_attempts" "$retry_delay_seconds" >&2
+        sleep "$retry_delay_seconds"
+      fi
+    done
+    if ((status == 0)); then
       printf 'SUCCESS: approved AUR package base converged: %s\n' "$package"
     else
-      status=$?
       record_failure "AUR package base $package" "$status"
     fi
   done
