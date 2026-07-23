@@ -378,9 +378,55 @@ class LibvirtBackend:
         if submit:
             self.send_keys(domain, ["KEY_ENTER"])
 
-    def type_serial_text(
-        self, domain: str, value: str, *, submit: bool = True
-    ) -> None:
+    def type_serial_text(self, domain: str, value: str, *, submit: bool = True) -> None:
+        descriptor, tty_path = self._open_serial_console(domain)
+        try:
+            # A UART Enter key is carriage return. Newline is not translated
+            # by QEMU's raw serial chardev and leaves sd-encrypt waiting.
+            payload = value.encode("ascii") + (b"\r" if submit else b"")
+            while payload:
+                written = os.write(descriptor, payload)
+                if written <= 0:
+                    raise OSError("serial console accepted no input")
+                payload = payload[written:]
+        except (OSError, UnicodeEncodeError) as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"could not write recovery input to {domain}",
+                {"path": tty_path, "error": str(error)},
+            ) from error
+        finally:
+            os.close(descriptor)
+
+    def read_serial_text(self, domain: str, *, max_bytes: int = 65536) -> str:
+        if not 1 <= max_bytes <= 1024 * 1024:
+            raise ValueError("serial read limit must be between 1 and 1048576 bytes")
+        descriptor, tty_path = self._open_serial_console(domain, nonblocking=True)
+        chunks: list[bytes] = []
+        remaining = max_bytes
+        try:
+            while remaining:
+                try:
+                    chunk = os.read(descriptor, min(remaining, 8192))
+                except BlockingIOError:
+                    break
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+        except OSError as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"could not read the serial console for {domain}",
+                {"path": tty_path, "error": str(error)},
+            ) from error
+        finally:
+            os.close(descriptor)
+        return b"".join(chunks).decode("utf-8", errors="replace")
+
+    def _open_serial_console(
+        self, domain: str, *, nonblocking: bool = False
+    ) -> tuple[int, str]:
         require_domain(domain)
         tty_path = self.virsh(["ttyconsole", domain]).stdout.strip()
         if not re.fullmatch(r"/dev/pts/[0-9]+", tty_path):
@@ -390,7 +436,9 @@ class LibvirtBackend:
                 {"path": tty_path},
             )
 
-        flags = os.O_WRONLY | os.O_NOCTTY | os.O_CLOEXEC
+        flags = os.O_RDWR | os.O_NOCTTY | os.O_CLOEXEC
+        if nonblocking:
+            flags |= os.O_NONBLOCK
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         try:
@@ -413,22 +461,10 @@ class LibvirtBackend:
             # line discipline buffers or rewrites recovery input, so mirror
             # virsh console and put the slave in raw mode before writing.
             tty.setraw(descriptor, when=termios.TCSANOW)
-            # A UART Enter key is carriage return. Newline is not translated
-            # by QEMU's raw serial chardev and leaves sd-encrypt waiting.
-            payload = value.encode("ascii") + (b"\r" if submit else b"")
-            while payload:
-                written = os.write(descriptor, payload)
-                if written <= 0:
-                    raise OSError("serial console accepted no input")
-                payload = payload[written:]
-        except (OSError, UnicodeEncodeError) as error:
-            raise VMError(
-                FailureCategory.HARNESS_ERROR,
-                f"could not write recovery input to {domain}",
-                {"path": tty_path, "error": str(error)},
-            ) from error
-        finally:
+            return descriptor, tty_path
+        except BaseException:
             os.close(descriptor)
+            raise
 
 
 def os_access(path: Path) -> bool:

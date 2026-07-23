@@ -58,6 +58,8 @@ grep -Fq 'test_recovery_path' "$repo_root/tests/vm/src/enoshima_vm/service.py" |
   fail 'suite service omits the LUKS recovery path'
 grep -Fq 'type_serial_text' "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
   fail 'LUKS recovery still injects text through the firmware keyboard path'
+grep -Fq 'read_serial_text' "$repo_root/tests/vm/src/enoshima_vm/boot_security.py" ||
+  fail 'LUKS recovery input is not gated on the serial passphrase prompt'
 grep -Fq 'apply_boot_artifacts: true' "$suite" ||
   fail 'kernel-update UKI regeneration is not exercised'
 validate_line=$(grep -n -- '  - run_validate' "$suite" | cut -d: -f1)

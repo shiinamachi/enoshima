@@ -42,13 +42,15 @@ def test_boot_with_recovery_tolerates_ssh_timeout_and_types_key(
     guest = SimpleNamespace(exec=execute)
     backend = SimpleNamespace(
         reboot=lambda _domain: None,
+        read_serial_text=lambda _domain: next(serial_output),
         type_serial_text=lambda domain, text: typed.append((domain, text)),
         wait_guest_agent=lambda domain, seconds: waited.append((domain, seconds)),
     )
     service = SimpleNamespace(_guest=lambda _record: guest, backend=backend)
     typed: list[tuple[str, str]] = []
     waited: list[tuple[str, int]] = []
-    monotonic_values = iter((0.0, 0.0, 0.0, 21.0, 21.0, 22.0, 22.0))
+    serial_output = iter(("systemd is shutting down\n", "Please enter passphrase: "))
+    monotonic_values = iter((0.0, 0.0, 1.0, 2.0))
     monkeypatch.setattr(
         "enoshima_vm.boot_security.time.monotonic",
         lambda: next(monotonic_values),

@@ -29,9 +29,7 @@ def test_type_text_waits_for_each_qemu_key_release(tmp_path, monkeypatch) -> Non
             (tuple(keys), hold_milliseconds)
         ),
     )
-    monkeypatch.setattr(
-        "enoshima_vm.libvirt_backend.time.sleep", waits.append
-    )
+    monkeypatch.setattr("enoshima_vm.libvirt_backend.time.sleep", waits.append)
 
     backend.type_text("enoshima-test-run-012345abcdef", "a7")
 
@@ -64,6 +62,35 @@ def test_type_serial_text_writes_only_to_the_managed_console(
             "enoshima-test-run-012345abcdef", "disposable-recovery-key"
         )
         assert os.read(master, 128) == b"disposable-recovery-key\r"
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
+def test_read_serial_text_drains_prompt_without_blocking(tmp_path, monkeypatch) -> None:
+    paths = RuntimePaths(
+        tmp_path,
+        tmp_path,
+        tmp_path / "cache",
+        tmp_path / "state",
+    )
+    backend = LibvirtBackend(paths)
+    master, slave = pty.openpty()
+    console = os.ttyname(slave)
+    monkeypatch.setattr(
+        backend,
+        "virsh",
+        lambda args, **_kwargs: CommandResult(
+            tuple(str(value) for value in args), 0, f"{console}\n", ""
+        ),
+    )
+    try:
+        os.write(master, b"Please enter passphrase for cryptroot: ")
+        assert (
+            backend.read_serial_text("enoshima-test-run-012345abcdef")
+            == "Please enter passphrase for cryptroot: "
+        )
+        assert backend.read_serial_text("enoshima-test-run-012345abcdef") == ""
     finally:
         os.close(master)
         os.close(slave)

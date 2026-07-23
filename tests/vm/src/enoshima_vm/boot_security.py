@@ -83,17 +83,24 @@ def boot_with_recovery(
     deadline = time.monotonic() + timeout_seconds
     next_input: float | None = None
     observed_down = False
-    while time.monotonic() < deadline:
+    observed_prompt = False
+    serial_tail = ""
+    while True:
         now = time.monotonic()
+        if now >= deadline:
+            break
         if not _guest_ssh_reachable(guest):
-            if not observed_down:
-                observed_down = True
-                # The target UKI exposes its recovery prompt on ttyS0. Input
-                # sent there cannot interrupt OVMF's graphical boot menu, so a
-                # short shutdown grace is sufficient and retries can safely
-                # span a slow reboot until sd-encrypt starts reading.
-                next_input = now + 20
-            elif next_input is not None and now >= next_input:
+            observed_down = True
+            # Drain ttyS0 from the beginning of the reboot. Recovery input is
+            # sent only after sd-encrypt explicitly asks for a passphrase, so
+            # slow service shutdown and firmware timing cannot poison the
+            # prompt or open OVMF's graphical boot menu.
+            serial_tail = (
+                serial_tail + service.backend.read_serial_text(record["domain"])
+            )[-65536:]
+            if "enter passphrase" in serial_tail.casefold():
+                observed_prompt = True
+            if observed_prompt and (next_input is None or now >= next_input):
                 service.backend.type_serial_text(record["domain"], recovery_value)
                 next_input = now + 10
         elif observed_down:
@@ -107,6 +114,10 @@ def boot_with_recovery(
     raise VMError(
         FailureCategory.SECURE_BOOT_FAILED,
         "the encrypted boot disk did not accept its disposable recovery key",
+        {
+            "observed_ssh_down": observed_down,
+            "observed_recovery_prompt": observed_prompt,
+        },
     )
 
 
