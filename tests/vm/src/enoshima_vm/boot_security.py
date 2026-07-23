@@ -81,14 +81,21 @@ def boot_with_recovery(
 
     recovery_value = Path(record["recovery_key"]).read_text(encoding="utf-8").strip()
     deadline = time.monotonic() + timeout_seconds
-    next_input = time.monotonic() + 15
+    next_input: float | None = None
     observed_down = False
     while time.monotonic() < deadline:
+        now = time.monotonic()
         if not _guest_ssh_reachable(guest):
-            observed_down = True
-            if time.monotonic() >= next_input:
+            if not observed_down:
+                observed_down = True
+                # The guest agent can report the reboot before firmware has
+                # handed control to the encrypted-volume prompt. Start the
+                # grace period only after SSH is actually unreachable so key
+                # input cannot interrupt OVMF and open its boot device menu.
+                next_input = now + 30
+            elif next_input is not None and now >= next_input:
                 service.backend.type_text(record["domain"], recovery_value)
-                next_input = time.monotonic() + 20
+                next_input = now + 30
         elif observed_down:
             after = guest.exec(
                 ["cat", "/proc/sys/kernel/random/boot_id"], check=False
