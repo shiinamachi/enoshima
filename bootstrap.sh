@@ -208,9 +208,11 @@ install_bootstrap_dependencies() {
     base-devel \
     chezmoi \
     git \
+    gtk4 \
     hyprland \
     imagemagick \
     jq \
+    json-glib \
     librsvg \
     lua \
     mise \

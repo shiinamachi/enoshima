@@ -77,8 +77,10 @@ bootstrap_dependencies=$(
 for package in \
   base-devel \
   chezmoi \
+  gtk4 \
   hyprland \
   imagemagick \
+  json-glib \
   librsvg \
   lua \
   ripgrep \
