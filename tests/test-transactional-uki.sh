@@ -117,4 +117,10 @@ fi
 
 grep -Fq '/usr/local/libexec/enoshima-rebuild-uki' \
   "$repo_root/ansible/roles/system/handlers/main.yml"
+system_tasks=$repo_root/ansible/roles/system/tasks/main.yml
+helper_directory_line=$(grep -n -m1 'path: /usr/local/libexec' "$system_tasks" | cut -d: -f1)
+helper_install_line=$(grep -n -m1 'dest: /usr/local/libexec/enoshima-rebuild-uki' \
+  "$system_tasks" | cut -d: -f1)
+[[ -n $helper_directory_line && -n $helper_install_line ]]
+((helper_directory_line < helper_install_line))
 printf 'Transactional UKI tests passed.\n'

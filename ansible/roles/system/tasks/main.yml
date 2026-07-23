@@ -6,6 +6,14 @@
     groups: "{{ target_user_groups }}"
     append: true
 
+- name: Ensure local system helper directory exists
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Configure subordinate user ID range
   ansible.builtin.lineinfile:
     path: /etc/subuid

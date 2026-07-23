@@ -1,12 +1,4 @@
 ---
-- name: Ensure local system helper directory exists
-  ansible.builtin.file:
-    path: /usr/local/libexec
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
 - name: Ensure NetworkManager dispatcher directory exists
   ansible.builtin.file:
     path: /etc/NetworkManager/dispatcher.d
