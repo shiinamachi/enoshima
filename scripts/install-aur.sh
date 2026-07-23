@@ -8,6 +8,7 @@ sudo_command=${SUDO_COMMAND_WRAPPER:-sudo}
 max_attempts=${AUR_INSTALL_MAX_ATTEMPTS:-4}
 retry_delay_seconds=${AUR_INSTALL_RETRY_DELAY_SECONDS:-10}
 bootstrap_dir=
+paru_converged=1
 
 cleanup() {
   if [[ -n $bootstrap_dir ]]; then
@@ -71,13 +72,16 @@ printf '  %s\n' "${aur_packages[@]}"
 bootstrap_paru() {
   local makepkg_config status
 
+  if [[ -n $bootstrap_dir ]]; then
+    rm -rf -- "$bootstrap_dir"
+  fi
   bootstrap_dir=$(mktemp -d)
   if git clone --quiet --depth 1 "$paru_url" "$bootstrap_dir/paru"; then
     :
   else
     status=$?
-    record_failure "bootstrap paru clone" "$status"
-    return 1
+    printf 'ERROR: bootstrap paru clone exited with status %d.\n' "$status" >&2
+    return "$status"
   fi
 
   makepkg_config=$bootstrap_dir/makepkg.conf
@@ -85,8 +89,10 @@ bootstrap_paru() {
     :
   else
     status=$?
-    record_failure "bootstrap paru makepkg configuration" "$status"
-    return 1
+    printf \
+      'ERROR: bootstrap paru makepkg configuration exited with status %d.\n' \
+      "$status" >&2
+    return "$status"
   fi
   printf '\nPACMAN_AUTH=(%q)\n' "$sudo_command" >>"$makepkg_config"
 
@@ -97,20 +103,50 @@ bootstrap_paru() {
     :
   else
     status=$?
-    record_failure "bootstrap paru build" "$status"
-    return 1
+    printf 'ERROR: bootstrap paru build exited with status %d.\n' "$status" >&2
+    return "$status"
   fi
 }
 
-if ! command -v paru >/dev/null 2>&1 || ! paru --version >/dev/null 2>&1; then
-  echo "==> Bootstrapping paru from its currently approved AUR package base"
-  bootstrap_paru || true
+converge_paru() {
+  local attempt status=1
+
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    if bootstrap_paru; then
+      return 0
+    else
+      status=$?
+    fi
+    if ((attempt < max_attempts)); then
+      printf \
+        'WARNING: bootstrap paru attempt %d/%d failed; retrying in %ss.\n' \
+        "$attempt" "$max_attempts" "$retry_delay_seconds" >&2
+      sleep "$retry_delay_seconds"
+    fi
+  done
+  record_failure "bootstrap paru" "$status"
+  return "$status"
+}
+
+if [[ -v approved[paru] ]] ||
+  ! command -v paru >/dev/null 2>&1 ||
+  ! paru --version >/dev/null 2>&1; then
+  echo "==> Converging paru from its currently approved AUR package base"
+  if ! converge_paru; then
+    paru_converged=0
+  fi
 fi
 
 if ! command -v paru >/dev/null 2>&1 || ! paru --version >/dev/null 2>&1; then
   record_failure "AUR package convergence: paru is unavailable" 127
 else
   for package in "${aur_packages[@]}"; do
+    if [[ $package == paru ]]; then
+      if ((paru_converged == 1)); then
+        printf 'SUCCESS: approved AUR package base converged: paru\n'
+      fi
+      continue
+    fi
     printf '==> Installing approved AUR package base: %s\n' "$package"
     status=1
     for ((attempt = 1; attempt <= max_attempts; attempt++)); do
