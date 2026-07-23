@@ -70,6 +70,10 @@
   community.general.pacman:
     update_cache: true
     upgrade: true
+  register: full_upgrade_result
+  retries: 4
+  delay: 10
+  until: full_upgrade_result is succeeded
   when: >-
     (perform_full_upgrade | bool)
     or (pacman_configuration is changed)

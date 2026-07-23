@@ -68,7 +68,10 @@ jq -e '
 grep -Fq 'loop: "{{ system_units_masked }}"' \
   "$repo_root/ansible/roles/services/tasks/system.yml" ||
   fail 'service convergence does not enforce profile-scoped masked units'
-for retry_result in desired_packages_install optional_packages_install; do
+for retry_result in \
+  full_upgrade_result \
+  desired_packages_install \
+  optional_packages_install; do
   grep -Fq "until: $retry_result is succeeded" \
     "$repo_root/ansible/roles/packages/tasks/main.yml" ||
     fail "package convergence does not retry transient downloads: $retry_result"
