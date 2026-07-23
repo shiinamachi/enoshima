@@ -626,7 +626,9 @@ assert_not_contains home/dot_config/swaync/style.css '"JetBrainsMono Nerd Font"'
 assert_contains home/dot_config/systemd/user/hyprsunset-quick.service \
   'ExecStart=/usr/bin/hyprsunset --temperature 4500'
 
-if /usr/bin/python -c 'import gi' >/dev/null 2>&1; then
+if /usr/bin/python -c \
+  'import gi; raise SystemExit(0 if hasattr(gi, "require_version") else 1)' \
+  >/dev/null 2>&1; then
   /usr/bin/python - <<'PY'
 import gi
 
