@@ -7,7 +7,9 @@ import shutil
 import socket
 import stat
 import subprocess
+import termios
 import time
+import tty
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -407,6 +409,10 @@ class LibvirtBackend:
                     f"serial console for {domain} is not a character device",
                     {"path": tty_path},
                 )
+            # libvirt exposes QEMU's UART through a PTY slave. Canonical host
+            # line discipline buffers or rewrites recovery input, so mirror
+            # virsh console and put the slave in raw mode before writing.
+            tty.setraw(descriptor, when=termios.TCSANOW)
             # A UART Enter key is carriage return. Newline is not translated
             # by QEMU's raw serial chardev and leaves sd-encrypt waiting.
             payload = value.encode("ascii") + (b"\r" if submit else b"")

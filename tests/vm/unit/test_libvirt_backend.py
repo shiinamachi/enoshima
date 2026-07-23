@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import pty
-import tty
 
 import pytest
 
@@ -51,7 +50,6 @@ def test_type_serial_text_writes_only_to_the_managed_console(
     )
     backend = LibvirtBackend(paths)
     master, slave = pty.openpty()
-    tty.setraw(slave)
     console = os.ttyname(slave)
 
     monkeypatch.setattr(
