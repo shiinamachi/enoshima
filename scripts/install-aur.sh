@@ -70,7 +70,7 @@ echo "==> Converging approved AUR package bases at their current revisions"
 printf '  %s\n' "${aur_packages[@]}"
 
 bootstrap_paru() {
-  local makepkg_config status
+  local makepkg_config rust_toolchain status
 
   if [[ -n $bootstrap_dir ]]; then
     rm -rf -- "$bootstrap_dir"
@@ -96,9 +96,24 @@ bootstrap_paru() {
   fi
   printf '\nPACMAN_AUTH=(%q)\n' "$sudo_command" >>"$makepkg_config"
 
+  rust_toolchain=
+  if command -v mise >/dev/null 2>&1; then
+    rust_toolchain=$(
+      MISE_CONFIG_FILE="${MISE_CONFIG_FILE:-$repo_root/home/dot_config/mise/config.toml}" \
+        mise ls --current --json | jq -r '.rust[0].version // empty'
+    )
+  else
+    rust_toolchain=${RUSTUP_TOOLCHAIN:-}
+  fi
+  if [[ ! $rust_toolchain =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo 'ERROR: mise did not resolve the managed Rust toolchain for paru.' >&2
+    return 1
+  fi
+
   if (
     cd "$bootstrap_dir/paru"
-    makepkg --config "$makepkg_config" --install --noconfirm --syncdeps
+    RUSTUP_TOOLCHAIN="$rust_toolchain" \
+      makepkg --config "$makepkg_config" --install --noconfirm --syncdeps
   ); then
     :
   else

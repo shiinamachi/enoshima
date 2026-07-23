@@ -77,9 +77,15 @@ git -C "$work/paru-source" \
 cat >"$work/bin/makepkg" <<'MAKEPKG'
 #!/usr/bin/env bash
 set -eu
-printf '%s\n' "$*" >>"$AUR_MAKEPKG_LOG"
+printf '%s|%s\n' "${RUSTUP_TOOLCHAIN:-}" "$*" >>"$AUR_MAKEPKG_LOG"
 MAKEPKG
 chmod +x "$work/bin/makepkg"
+cat >"$work/bin/mise" <<'MISE'
+#!/usr/bin/env bash
+set -eu
+printf '{"rust":[{"version":"1.90.0"}]}\n'
+MISE
+chmod +x "$work/bin/mise"
 printf 'paru\nbeta-bin\n' >"$work/aur.txt"
 : >"$work/attempts.log"
 env \
@@ -92,6 +98,8 @@ env \
   "$installer" >"$work/paru.out"
 [[ $(wc -l <"$work/makepkg.log") -eq 1 ]] ||
   fail 'the approved paru package was not converged exactly once by makepkg'
+grep -Fq '1.90.0|--config ' "$work/makepkg.log" ||
+  fail 'the approved paru build did not select the mise-managed Rust toolchain'
 [[ $(grep -c -- '--needed -S -- beta-bin' "$work/attempts.log") -eq 1 ]] ||
   fail 'a package after paru was not converged exactly once'
 if grep -Fq -- '--needed -S -- paru' "$work/attempts.log"; then
