@@ -407,7 +407,9 @@ class LibvirtBackend:
                     f"serial console for {domain} is not a character device",
                     {"path": tty_path},
                 )
-            payload = value.encode("ascii") + (b"\n" if submit else b"")
+            # A UART Enter key is carriage return. Newline is not translated
+            # by QEMU's raw serial chardev and leaves sd-encrypt waiting.
+            payload = value.encode("ascii") + (b"\r" if submit else b"")
             while payload:
                 written = os.write(descriptor, payload)
                 if written <= 0:

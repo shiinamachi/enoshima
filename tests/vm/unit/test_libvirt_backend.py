@@ -65,7 +65,7 @@ def test_type_serial_text_writes_only_to_the_managed_console(
         backend.type_serial_text(
             "enoshima-test-run-012345abcdef", "disposable-recovery-key"
         )
-        assert os.read(master, 128) == b"disposable-recovery-key\n"
+        assert os.read(master, 128) == b"disposable-recovery-key\r"
     finally:
         os.close(master)
         os.close(slave)
