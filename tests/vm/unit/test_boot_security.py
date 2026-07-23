@@ -48,7 +48,7 @@ def test_boot_with_recovery_tolerates_ssh_timeout_and_types_key(
     service = SimpleNamespace(_guest=lambda _record: guest, backend=backend)
     typed: list[tuple[str, str]] = []
     waited: list[tuple[str, int]] = []
-    monotonic_values = iter((0.0, 0.0, 0.0, 31.0, 31.0, 32.0, 32.0))
+    monotonic_values = iter((0.0, 0.0, 0.0, 151.0, 151.0, 152.0, 152.0))
     monkeypatch.setattr(
         "enoshima_vm.boot_security.time.monotonic",
         lambda: next(monotonic_values),

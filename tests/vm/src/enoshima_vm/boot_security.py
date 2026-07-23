@@ -88,11 +88,11 @@ def boot_with_recovery(
         if not _guest_ssh_reachable(guest):
             if not observed_down:
                 observed_down = True
-                # The guest agent can report the reboot before firmware has
-                # handed control to the encrypted-volume prompt. Start the
-                # grace period only after SSH is actually unreachable so key
-                # input cannot interrupt OVMF and open its boot device menu.
-                next_input = now + 30
+                # SSH disappears near the start of systemd shutdown, while
+                # bounded service stops may continue for up to 90 seconds.
+                # Leave additional firmware and boot-loader headroom before
+                # typing so input cannot interrupt OVMF and open its boot menu.
+                next_input = now + 150
             elif next_input is not None and now >= next_input:
                 service.backend.type_text(record["domain"], recovery_value)
                 next_input = now + 30
