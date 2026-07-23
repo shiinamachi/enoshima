@@ -76,6 +76,9 @@ for retry_result in \
     "$repo_root/ansible/roles/packages/tasks/main.yml" ||
     fail "package convergence does not retry transient downloads: $retry_result"
 done
+grep -Fq 'until: flatpak_remote_result is succeeded' \
+  "$repo_root/ansible/roles/user_tools/tasks/main.yml" ||
+  fail 'Flatpak remote convergence does not retry transient downloads'
 grep -Fxq '  - electron39' "$repo_root/ansible/inventory/host_vars/enoshima-vm.yml" ||
   fail 'VM profile omits the pinned Electron qualification runtime'
 if grep -Fxq electron39 "$repo_root/packages/native.txt"; then

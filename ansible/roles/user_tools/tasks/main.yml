@@ -5,6 +5,10 @@
     flatpakrepo_url: "{{ item.url }}"
     method: user
     state: present
+  register: flatpak_remote_result
+  retries: 4
+  delay: 10
+  until: flatpak_remote_result is succeeded
   loop: "{{ flatpak_user_remotes }}"
 
 - name: Install user-scoped Flatpak applications
