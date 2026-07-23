@@ -199,26 +199,53 @@ validate_repository() {
 }
 
 install_bootstrap_dependencies() {
+  local attempt
+  local max_attempts=${BOOTSTRAP_PACKAGE_MAX_ATTEMPTS:-4}
+  local retry_delay_seconds=${BOOTSTRAP_PACKAGE_RETRY_DELAY_SECONDS:-10}
+
+  [[ $max_attempts =~ ^[1-9][0-9]*$ ]] || {
+    echo "Error: BOOTSTRAP_PACKAGE_MAX_ATTEMPTS must be a positive integer" >&2
+    return 1
+  }
+  [[ $retry_delay_seconds =~ ^[0-9]+$ ]] || {
+    echo "Error: BOOTSTRAP_PACKAGE_RETRY_DELAY_SECONDS must be a non-negative integer" >&2
+    return 1
+  }
+
   # Bootstrap must use the machine's current, valid pacman configuration.
   # The Ansible template is rendered only after Ansible is available; passing
   # that Jinja source directly to pacman breaks profile-specific values and
   # discards the VM snapshot archive's download policy.
-  "$SUDO_COMMAND_WRAPPER" pacman -Syu --needed --noconfirm \
-    ansible-core \
-    base-devel \
-    chezmoi \
-    git \
-    gtk4 \
-    hyprland \
-    imagemagick \
-    jq \
-    json-glib \
-    librsvg \
-    lua \
-    mise \
-    ripgrep \
-    rustup \
-    yq
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    if "$SUDO_COMMAND_WRAPPER" pacman -Syu --needed --noconfirm \
+      ansible-core \
+      base-devel \
+      chezmoi \
+      git \
+      gtk4 \
+      hyprland \
+      imagemagick \
+      jq \
+      json-glib \
+      librsvg \
+      lua \
+      mise \
+      ripgrep \
+      rustup \
+      yq; then
+      return 0
+    fi
+
+    if ((attempt < max_attempts)); then
+      printf \
+        'WARNING: bootstrap package upgrade attempt %d/%d failed; retrying in %ss.\n' \
+        "$attempt" "$max_attempts" "$retry_delay_seconds" >&2
+      sleep "$retry_delay_seconds"
+    fi
+  done
+
+  echo "Error: bootstrap package upgrade exhausted its retry budget" >&2
+  return 1
 }
 
 install_ansible_collection() {

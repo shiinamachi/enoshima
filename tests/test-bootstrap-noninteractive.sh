@@ -57,6 +57,10 @@ fi
 # shellcheck disable=SC2016 # Assertion intentionally matches literal bootstrap source.
 grep -Fq '"$SUDO_COMMAND_WRAPPER" pacman -Syu --needed --noconfirm' "$bootstrap" ||
   fail 'bootstrap does not perform a full upgrade with the active pacman policy'
+grep -Fq 'BOOTSTRAP_PACKAGE_MAX_ATTEMPTS:-4' "$bootstrap" ||
+  fail 'bootstrap package convergence has no bounded retry budget'
+grep -Fq 'bootstrap package upgrade exhausted its retry budget' "$bootstrap" ||
+  fail 'bootstrap package convergence does not report exhausted retries'
 grep -Fq 'register: pacman_configuration' \
   "$repo_root/ansible/roles/packages/tasks/main.yml" ||
   fail 'Ansible does not track pacman repository configuration changes'
@@ -85,9 +89,32 @@ for package in \
   lua \
   ripgrep \
   yq; do
-  grep -Eq "^[[:space:]]+$package( \\\\)?$" <<<"$bootstrap_dependencies" ||
+  grep -Eq "^[[:space:]]+$package( \\\\|; then)?$" <<<"$bootstrap_dependencies" ||
     fail "bootstrap validation prerequisite is missing: $package"
 done
+
+retry_work=$(mktemp -d)
+trap 'rm -rf -- "$retry_work"' EXIT
+# shellcheck disable=SC2016 # The generated mock must expand these variables when it runs.
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'count=0' \
+  '[[ ! -f $BOOTSTRAP_PACMAN_ATTEMPT_FILE ]] || read -r count <"$BOOTSTRAP_PACMAN_ATTEMPT_FILE"' \
+  'count=$((count + 1))' \
+  'printf "%s\\n" "$count" >"$BOOTSTRAP_PACMAN_ATTEMPT_FILE"' \
+  '((count >= 3))' >"$retry_work/sudo-wrapper"
+chmod +x "$retry_work/sudo-wrapper"
+(
+  eval "$bootstrap_dependencies"
+  export BOOTSTRAP_PACMAN_ATTEMPT_FILE="$retry_work/attempts"
+  export SUDO_COMMAND_WRAPPER="$retry_work/sudo-wrapper"
+  export BOOTSTRAP_PACKAGE_MAX_ATTEMPTS=3
+  export BOOTSTRAP_PACKAGE_RETRY_DELAY_SECONDS=0
+  install_bootstrap_dependencies >/dev/null 2>&1
+) || fail 'bootstrap package convergence did not recover within its retry budget'
+[[ $(<"$retry_work/attempts") == 3 ]] ||
+  fail 'bootstrap package convergence did not exercise the expected retries'
 
 # shellcheck disable=SC2016 # Assertion intentionally matches literal bootstrap source.
 grep -Fq 'PATH="/usr/bin:/bin:$PATH"' "$bootstrap" ||
