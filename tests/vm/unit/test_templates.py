@@ -157,11 +157,39 @@ def test_vm_profile_keeps_the_snapshot_archive_download_policy_after_ansible() -
 
     assert defaults["pacman_parallel_downloads"] == 10
     assert defaults["pacman_disable_download_timeout"] is False
+    assert defaults["pacman_prefetch_timeout_seconds"] == 0
+    assert defaults["pacman_prefetch_attempt_timeout_seconds"] == 300
     assert vm_vars["pacman_parallel_downloads"] == 1
     assert vm_vars["pacman_disable_download_timeout"] is True
+    assert vm_vars["pacman_prefetch_timeout_seconds"] == 1800
+    assert vm_vars["pacman_prefetch_attempt_timeout_seconds"] == 300
     assert "ParallelDownloads = {{ pacman_parallel_downloads }}" in template
     assert "{% if pacman_disable_download_timeout | bool %}" in template
     assert "DisableDownloadTimeout" in template
+
+    environment = Environment(
+        loader=FileSystemLoader(repository / "ansible/roles/packages/templates"),
+        autoescape=False,
+        undefined=StrictUndefined,
+    )
+    prefetch = environment.get_template("pacman-prefetch.sh.j2").render(
+        pacman_prefetch_timeout_seconds=1800,
+        pacman_prefetch_attempt_timeout_seconds=300,
+    )
+    assert "readonly timeout_seconds=1800" in prefetch
+    assert "readonly attempt_timeout_seconds=300" in prefetch
+    assert "timeout --signal=TERM --kill-after=30s" in prefetch
+    assert "pacman -Syuw --needed --noconfirm --" in prefetch
+    assert "ps -C pacman -o stat=" in prefetch
+    assert "rm -f /var/lib/pacman/db.lck" in prefetch
+    syntax = subprocess.run(
+        ["bash", "-n"],
+        input=prefetch,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert syntax.returncode == 0, syntax.stderr
 
 
 def test_cloud_init_network_matches_the_qemu_user_network_interface() -> None:

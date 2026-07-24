@@ -34,6 +34,11 @@ perform_full_upgrade: true
 manage_pacman_config: true
 pacman_parallel_downloads: 10
 pacman_disable_download_timeout: false
+# A positive prefetch deadline separates network transfer from the package
+# transaction. Physical hosts use pacman's normal timeout behavior by default;
+# reproducible VM profiles opt in for throttled archive mirrors.
+pacman_prefetch_timeout_seconds: 0
+pacman_prefetch_attempt_timeout_seconds: 300
 manage_boot_config: false
 manage_fstab: false
 # Hardware profiles may declare static mounts that must survive the managed

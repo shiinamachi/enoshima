@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly timeout_seconds={{ pacman_prefetch_timeout_seconds | default(0) | int }}
+readonly attempt_timeout_seconds={{ pacman_prefetch_attempt_timeout_seconds | default(300) | int }}
+readonly deadline=$((SECONDS + timeout_seconds))
+
+if (($# == 0)); then
+  exit 0
+fi
+
+for attempt in 1 2 3 4 5 6 7 8; do
+  remaining_seconds=$((deadline - SECONDS))
+  if ((remaining_seconds <= 0)); then
+    break
+  fi
+
+  current_timeout_seconds=$attempt_timeout_seconds
+  if ((remaining_seconds < current_timeout_seconds)); then
+    current_timeout_seconds=$remaining_seconds
+  fi
+
+  if timeout --signal=TERM --kill-after=30s \
+    "${current_timeout_seconds}s" \
+    pacman -Syuw --needed --noconfirm -- "$@"; then
+    exit 0
+  else
+    status=$?
+    printf >&2 \
+      'pacman prefetch attempt %d failed: status=%d timeout=%ds\n' \
+      "$attempt" "$status" "$current_timeout_seconds"
+  fi
+
+  pacman_running=false
+  while IFS= read -r process_state; do
+    if [[ ${process_state:0:1} != Z ]]; then
+      pacman_running=true
+      break
+    fi
+  done < <(ps -C pacman -o stat=)
+  if [[ -e /var/lib/pacman/db.lck && $pacman_running == false ]]; then
+    rm -f /var/lib/pacman/db.lck
+    printf >&2 'removed stale pacman database lock after failed prefetch\n'
+  fi
+
+  if ((attempt < 8)); then
+    backoff_seconds=$((attempt * 8))
+    remaining_seconds=$((deadline - SECONDS))
+    if ((remaining_seconds <= backoff_seconds)); then
+      break
+    fi
+    sleep "$backoff_seconds"
+  fi
+done
+
+printf >&2 'pacman prefetch exhausted its %ds deadline\n' "$timeout_seconds"
+exit 1

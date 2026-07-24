@@ -55,6 +55,27 @@
         | list
       }}
 
+- name: Compose desired native and management package set
+  ansible.builtin.set_fact:
+    desired_packages: >-
+      {{
+        (native_packages
+        + management_packages
+        + (additional_native_packages | default([]))
+        + (vm_host_packages | default([])))
+        | unique
+        | list
+      }}
+
+- name: Compose package prefetch set
+  ansible.builtin.set_fact:
+    pacman_prefetch_packages: >-
+      {{
+        (desired_packages + optional_dependency_packages)
+        | unique
+        | list
+      }}
+
 - name: Configure pacman repositories before package operations
   ansible.builtin.template:
     src: pacman.conf.j2
@@ -65,6 +86,27 @@
     backup: true
   register: pacman_configuration
   when: manage_pacman_config | bool
+
+- name: Prefetch reproducible package payload with bounded retries
+  when: pacman_prefetch_timeout_seconds | int > 0
+  block:
+    - name: Install transient bounded pacman prefetch helper
+      ansible.builtin.template:
+        src: pacman-prefetch.sh.j2
+        dest: /run/enoshima-pacman-prefetch
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Download desired package payload before transactions
+      ansible.builtin.command:
+        argv: "{{ ['/run/enoshima-pacman-prefetch'] + pacman_prefetch_packages }}"
+      changed_when: false
+  always:
+    - name: Remove transient bounded pacman prefetch helper
+      ansible.builtin.file:
+        path: /run/enoshima-pacman-prefetch
+        state: absent
 
 - name: Perform supported full system upgrade
   community.general.pacman:
@@ -99,15 +141,7 @@
 
 - name: Install desired native and management packages
   community.general.pacman:
-    name: >-
-      {{
-        (native_packages
-        + management_packages
-        + (additional_native_packages | default([]))
-        + (vm_host_packages | default([])))
-        | unique
-        | list
-      }}
+    name: "{{ desired_packages }}"
     state: present
   register: desired_packages_install
   retries: 4
