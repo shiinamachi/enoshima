@@ -53,6 +53,7 @@ export TEST_INSTALLED=$work/installed
 export XDG_CACHE_HOME=$work/cache
 export XDG_STATE_HOME=$work/state
 export CODEX_DESKTOP_REPOSITORY=$work/upstream
+export CODEX_DESKTOP_REF=main
 export CODEX_DESKTOP_MAX_BUILD_THREADS=3
 
 "$installer"
@@ -65,6 +66,23 @@ revision_marker=$XDG_STATE_HOME/enoshima/codex-desktop-linux/installed-source-re
 [[ -d $source_checkout/.git ]] || fail 'upstream source checkout was not cached'
 [[ $(<"$revision_marker") == $(git -C "$work/upstream" rev-parse HEAD) ]] ||
   fail 'installed source revision was not recorded'
+
+pin_revision=$(git -C "$work/upstream" rev-parse HEAD)
+pin_cache=$work/pin-cache
+pin_state=$work/pin-state
+mkdir -p "$pin_state/enoshima/codex-desktop-linux"
+printf '%s\n' "$pin_revision" \
+  >"$pin_state/enoshima/codex-desktop-linux/installed-source-revision"
+CODEX_DESKTOP_REF=$pin_revision \
+  XDG_CACHE_HOME=$pin_cache \
+  XDG_STATE_HOME=$pin_state \
+  "$installer"
+pin_checkout=$pin_cache/enoshima/codex-desktop-linux/source
+[[ $(git -C "$pin_checkout" rev-parse HEAD) == "$pin_revision" ]] ||
+  fail 'pinned source revision was not checked out'
+if git -C "$pin_checkout" symbolic-ref --quiet HEAD >/dev/null; then
+  fail 'pinned source checkout is attached to a moving branch'
+fi
 
 "$installer"
 [[ $(wc -l <"$TEST_BUILD_LOG") -eq 1 ]] || fail 'current source revision rebuilt unnecessarily'
@@ -79,6 +97,11 @@ mkdir -p "$XDG_CACHE_HOME/codex-desktop"
 truncate -s 512 "$XDG_CACHE_HOME/codex-desktop/Codex.dmg"
 printf koly | dd of="$XDG_CACHE_HOME/codex-desktop/Codex.dmg" \
   bs=1 seek=0 conv=notrunc status=none
+export CODEX_DESKTOP_DMG_SHA256
+CODEX_DESKTOP_DMG_SHA256=$(
+  sha256sum "$XDG_CACHE_HOME/codex-desktop/Codex.dmg"
+)
+CODEX_DESKTOP_DMG_SHA256=${CODEX_DESKTOP_DMG_SHA256%% *}
 "$installer"
 [[ $(wc -l <"$TEST_BUILD_LOG") -eq 2 ]] || fail 'new upstream source revision did not rebuild'
 tail -n 1 "$TEST_BUILD_LOG" |
@@ -86,6 +109,61 @@ tail -n 1 "$TEST_BUILD_LOG" |
   fail 'updated build did not receive its source-derived version'
 [[ $(<"$revision_marker") == $(git -C "$work/upstream" rev-parse HEAD) ]] ||
   fail 'updated source revision was not recorded'
+
+wrong_digest_log=$work/wrong-digest.log
+if CODEX_DESKTOP_DMG_SHA256=$(
+  printf '0%.0s' {1..64}
+) "$installer" >"$wrong_digest_log" 2>&1; then
+  fail 'a DMG cache with an unexpected digest was accepted'
+fi
+grep -Fq 'Codex DMG cache digest is' "$wrong_digest_log" ||
+  fail 'a rejected DMG cache did not report its digest mismatch'
+
+export TEST_ATTEMPT_FILE=$work/build-attempted
+cat >"$work/upstream/Makefile" <<'MAKEFILE'
+.PHONY: install-native
+install-native:
+	@if [ -f '$(TEST_ATTEMPT_FILE)' ]; then \
+		touch '$(TEST_INSTALLED)'; \
+	else \
+		touch '$(TEST_ATTEMPT_FILE)'; sleep 5; \
+	fi
+MAKEFILE
+git -C "$work/upstream" add Makefile
+GIT_AUTHOR_DATE=2026-07-17T00:02:00Z \
+  GIT_COMMITTER_DATE=2026-07-17T00:02:00Z \
+  git -C "$work/upstream" commit --quiet -m 'transiently hanging fixture'
+
+retry_log=$work/retry.log
+CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS=1 \
+  CODEX_DESKTOP_BUILD_ATTEMPTS=2 \
+  "$installer" >"$retry_log" 2>&1
+grep -Fq 'Timed-out Codex Desktop build; retrying' "$retry_log" ||
+  fail 'a timed-out upstream build was not retried'
+[[ $(<"$revision_marker") == $(git -C "$work/upstream" rev-parse HEAD) ]] ||
+  fail 'a recovered retry did not advance the installed revision marker'
+
+previous_revision=$(<"$revision_marker")
+cat >"$work/upstream/Makefile" <<'MAKEFILE'
+.PHONY: install-native
+install-native:
+	@sleep 5
+MAKEFILE
+git -C "$work/upstream" add Makefile
+GIT_AUTHOR_DATE=2026-07-17T00:03:00Z \
+  GIT_COMMITTER_DATE=2026-07-17T00:03:00Z \
+  git -C "$work/upstream" commit --quiet -m 'permanently hanging fixture'
+
+timeout_log=$work/timeout.log
+if CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS=1 \
+  CODEX_DESKTOP_BUILD_ATTEMPTS=1 \
+  "$installer" >"$timeout_log" 2>&1; then
+  fail 'a hung upstream build was not bounded'
+fi
+grep -Fq 'the upstream build exceeded 1s on all attempts' "$timeout_log" ||
+  fail 'a timed-out upstream build was not reported clearly'
+[[ $(<"$revision_marker") == "$previous_revision" ]] ||
+  fail 'a timed-out build advanced the installed revision marker'
 
 grep -Fxq chatgpt-desktop-bin "$repo_root/packages/absent.txt" ||
   fail 'retired AUR package is not declared absent'

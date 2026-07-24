@@ -83,14 +83,17 @@ and the remaining approved bases are still attempted. `SKIP_LOCAL=true` and
 `tpx1c13` profile requires both phases.
 
 Codex Desktop is not installed from the `chatgpt-desktop-bin` AUR package.
-After the AUR phase, `scripts/install-codex-desktop.sh` fast-forwards an
-XDG-cached `ilysenko/codex-desktop-linux` `main` checkout, derives a stable
-package version from the source commit, and runs the upstream native Arch
-build/install path with the managed mise runtimes. The resulting
-`codex-desktop` package includes the upstream update manager. Repeated runs
-skip the expensive build while the recorded source revision and installed
-package still match; `SKIP_CODEX_DESKTOP=true` is the partial-recovery escape
-hatch.
+After the AUR phase, `scripts/install-codex-desktop.sh` checks out the reviewed
+commit in `packages/codex-desktop-source-revision.txt`, verifies a cached DMG
+against `packages/codex-desktop-dmg-sha256.txt`, derives a stable package
+version from the source commit, and runs the upstream native Arch build/install
+path with the managed mise runtimes. The build has a bounded timeout and retry
+budget, and the resulting `codex-desktop` package includes the transactional
+upstream update manager. Repeated runs skip the expensive build while the
+recorded source revision and installed package still match;
+`SKIP_CODEX_DESKTOP=true` is the partial-recovery escape hatch. Updating either
+lock requires a fresh VM convergence run that records an accepted upstream DMG
+verdict.
 
 Local packages are built only when the declared version differs from the
 installed version and are installed before Ansible so their systemd units

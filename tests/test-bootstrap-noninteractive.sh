@@ -5,6 +5,8 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 bootstrap=$repo_root/bootstrap.sh
 aur_installer=$repo_root/scripts/install-aur.sh
 codex_installer=$repo_root/scripts/install-codex-desktop.sh
+codex_revision_lock=$repo_root/packages/codex-desktop-source-revision.txt
+codex_dmg_lock=$repo_root/packages/codex-desktop-dmg-sha256.txt
 local_package_installer=$repo_root/scripts/install-local-packages.sh
 font_package=$repo_root/packages/local/ttf-jetendard/PKGBUILD
 git_config=$repo_root/home/dot_gitconfig
@@ -48,6 +50,19 @@ grep -Fq 'mise exec --' "$codex_installer" ||
   fail 'Codex Desktop build does not use the managed development runtimes'
 grep -Fq 'PACKAGE_WITH_UPDATER=1' "$codex_installer" ||
   fail 'Codex Desktop build does not include the upstream update manager'
+grep -Fq 'CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS' "$codex_installer" ||
+  fail 'Codex Desktop build has no bounded timeout'
+grep -Fq 'CODEX_DESKTOP_BUILD_ATTEMPTS' "$codex_installer" ||
+  fail 'Codex Desktop build has no bounded retry policy'
+grep -Eq '^[0-9a-f]{40}$' "$codex_revision_lock" ||
+  fail 'Codex Desktop source revision is not locked to a full commit'
+grep -Eq '^[0-9a-f]{64}$' "$codex_dmg_lock" ||
+  fail 'Codex Desktop DMG is not locked to a SHA-256 digest'
+grep -Fq 'checkout --quiet --detach' "$codex_installer" ||
+  fail 'Codex Desktop source pin is not checked out detached'
+# shellcheck disable=SC2016 # Assertion intentionally matches literal installer source.
+grep -Fq 'sha256sum -- "$dmg_cache"' "$codex_installer" ||
+  fail 'Codex Desktop cached DMG is not verified against its lock'
 if grep -Fq 'make bootstrap-native' "$codex_installer"; then
   fail 'Codex Desktop installer bypasses the managed native dependency manifests'
 fi

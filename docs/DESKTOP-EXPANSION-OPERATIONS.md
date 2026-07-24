@@ -56,11 +56,16 @@ postflight를 포함한 실행 가능한 후속 단계는 계속한다. 마지�
 실패하면 `FAILURE`로 기록하고 다음 승인 package 설치를 계속한다.
 
 Codex Desktop은 `chatgpt-desktop-bin` AUR package를 사용하지 않는다.
-`scripts/install-codex-desktop.sh`가 `ilysenko/codex-desktop-linux`의 `main`
-checkout을 XDG cache에서 fast-forward로만 갱신하고 upstream의 Arch native
-package를 로컬에서 빌드한다. 설치된 source revision이 같으면 재빌드하지 않으며,
-upstream update manager는 package에 포함한다. 이 단계만 복구 목적으로 생략할
-때는 `SKIP_CODEX_DESKTOP=true`를 사용한다.
+`scripts/install-codex-desktop.sh`가
+`packages/codex-desktop-source-revision.txt`의 검증된
+`ilysenko/codex-desktop-linux` commit을 detached checkout하고, cache된 DMG는
+`packages/codex-desktop-dmg-sha256.txt`와 일치할 때만 upstream의 Arch native
+package를 로컬에서 빌드한다. 빌드는 timeout과 재시도 횟수가 제한되며, 설치된
+source revision이 같으면 재빌드하지 않는다. upstream update manager는 package에
+포함하되 candidate acceptance가 실패하면 현재 설치를 유지한다. lock을 갱신할
+때는 fresh `vm-converge`에서 upstream DMG acceptance와 두 번째 수렴의 변경 0건을
+확인한다. 이 단계만 복구 목적으로 생략할 때는 `SKIP_CODEX_DESKTOP=true`를
+사용한다.
 
 `pear-desktop-bin`도 같은 승인 목록에 포함된다. 설치 후 Launcher 검색, Dock pin/unpin,
 최소화·복원·닫기를 확인하고 `hyprctl clients -j`로 실제 class/title을 관찰하기 전에는

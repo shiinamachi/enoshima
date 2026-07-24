@@ -300,8 +300,11 @@ Official Arch packages provide Ghostty, Zed, Discord, Obsidian, and FileZilla.
 Bottles is installed from user-scoped Flathub. Google Chrome, Slack, Parsec,
 Pear Desktop, and the requested unofficial Notion package are approved AUR
 package bases. Codex Desktop is built into a native `codex-desktop` pacman
-package from the current `ilysenko/codex-desktop-linux` `main` branch instead
-of the retired `chatgpt-desktop-bin` AUR package. Firefox and Kitty are removed.
+package from a repository-locked, VM-qualified
+`ilysenko/codex-desktop-linux` commit instead of the retired
+`chatgpt-desktop-bin` AUR package. Its cached upstream DMG is also verified
+against the repository-owned SHA-256 lock before a build. Firefox and Kitty are
+removed.
 
 The complete allowlist in `packages/aur.txt`, not individual upstream commits,
 defines the AUR trust boundary. Bootstrap installs the current revision of each
