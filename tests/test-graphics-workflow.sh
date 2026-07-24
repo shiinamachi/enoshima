@@ -159,11 +159,13 @@ printf -v smoke_command \
   printf 'y\n'
   sleep 0.1
   printf 'y\n'
-  sleep 0.1
+  # Give the background raw-GIMP launcher a scheduling window before the
+  # already-buffered final answer lets the interactive helper exit.
+  sleep 2
   printf 'y\n'
 } | script --quiet --return --command "$smoke_command" /dev/null \
   >"$smoke_output" 2>&1
-for _ in {1..20}; do
+for _ in {1..200}; do
   [[ -f $uwsm_log && $(wc -l <"$uwsm_log") -ge 2 ]] && break
   sleep 0.05
 done
