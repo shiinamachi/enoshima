@@ -132,6 +132,11 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "en_US.UTF-8 UTF-8" in reproducible
     assert "ko_KR.UTF-8 UTF-8" in reproducible
     assert "LANG=en_US.UTF-8" in reproducible
+    assert "DNS=1.1.1.1 9.9.9.9" in reproducible
+    assert "FallbackDNS=" in reproducible
+    assert "Domains=~." in reproducible
+    assert "systemctl restart systemd-resolved.service" in reproducible
+    assert "resolvectl flush-caches" in reproducible
     assert 'command -v "$command"' in reproducible
     assert "touch /var/lib/enoshima-cloud-ready" in reproducible
     cloud_config = yaml.safe_load(reproducible)

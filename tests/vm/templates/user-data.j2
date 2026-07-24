@@ -41,6 +41,14 @@ write_files:
     permissions: '0644'
     content: |
       LANG=en_US.UTF-8
+  - path: /etc/systemd/resolved.conf.d/20-enoshima-vm.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Resolve]
+      DNS=1.1.1.1 9.9.9.9
+      FallbackDNS=
+      Domains=~.
   - path: /etc/nftables.conf
     owner: root:root
     permissions: '0600'
@@ -69,6 +77,11 @@ write_files:
       # Load the isolation policy before a full upgrade can replace nftables
       # userspace while the guest is still running the image's original kernel.
       systemctl enable --now nftables.service
+      # QEMU's slirp proxy inherits the first host resolv.conf entry, which may
+      # be a Docker/VPN resolver unreachable from the unprivileged QEMU process.
+      # Use public resolvers through the already permitted internet path.
+      systemctl restart systemd-resolved.service
+      resolvectl flush-caches
       sed -i -E 's/^#?ParallelDownloads.*/ParallelDownloads = 1/' \
         /etc/pacman.conf
       grep -qxF 'DisableDownloadTimeout' /etc/pacman.conf || \

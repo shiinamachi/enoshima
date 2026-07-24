@@ -92,6 +92,13 @@ external NTP reply; without the runtime-only mask, Arch's `pacman-init.service`
 can hold `cloud-final` and sshd behind `time-sync.target`. The mask exists only
 inside the disposable guest and does not alter the workstation policy.
 
+The seed also routes guest DNS directly through Cloudflare and Quad9. QEMU's
+slirp proxy otherwise inherits the first host `resolv.conf` entry, which can be
+an unreachable Docker or VPN resolver even when the host's resolver stack can
+fall through to a working secondary. These public DNS endpoints use the same
+internet-only egress boundary as package mirrors; private LAN ranges remain
+blocked.
+
 The VM profile makes NetworkManager the managed network owner and masks the
 cloud image's stale `systemd-networkd-wait-online.service`. This prevents a
 managed reboot from leaving a failed two-minute wait job after networking has
