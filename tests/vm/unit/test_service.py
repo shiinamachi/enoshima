@@ -287,6 +287,7 @@ def test_pacman_cache_round_trip_is_snapshot_scoped_and_bounded(
     guest = PacmanCacheGuest(
         {
             "alpha-1.0-1-x86_64.pkg.tar.zst": b"alpha-package",
+            "alpha-1.0-1-x86_64.pkg.tar.zst.sig": b"alpha-signature",
             "beta-2.0-1-any.pkg.tar.zst": b"beta-package",
         }
     )
@@ -301,12 +302,15 @@ def test_pacman_cache_round_trip_is_snapshot_scoped_and_bounded(
     assert cache_root.is_relative_to(paths.cache)
     assert sorted(path.name for path in package_root.iterdir()) == [
         "alpha-1.0-1-x86_64.pkg.tar.zst",
+        "alpha-1.0-1-x86_64.pkg.tar.zst.sig",
         "beta-2.0-1-any.pkg.tar.zst",
     ]
     assert archive.is_file()
     metadata = json.loads(manifest.read_text(encoding="utf-8"))
-    assert metadata["package_count"] == 2
-    assert metadata["package_bytes"] == len(b"alpha-packagebeta-package")
+    assert metadata["package_count"] == 3
+    assert metadata["package_bytes"] == len(
+        b"alpha-packagealpha-signaturebeta-package"
+    )
     assert record["observations"]["pacman_cache_collect"]["status"] == "updated"
 
     seed_guest = CacheSeedGuest()

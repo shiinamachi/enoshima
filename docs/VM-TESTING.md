@@ -69,16 +69,17 @@ different host cache location.
 
 Pinned bootstrap suites also maintain a base-image-scoped package payload cache
 under `~/.cache/enoshima-vm/pacman`. Only complete regular
-`*.pkg.tar.<compression>` files are retained; partial downloads, repository
-databases, locks, and guest configuration never enter the cache. A bootstrap
-run imports any previously verified payload before Ansible and exports newly
-completed packages even when a later bootstrap step fails. The runner bounds
-individual and aggregate sizes, rejects links and unsafe archive members,
-checks the seed transfer with SHA-256, and keeps each Arch image snapshot in a
-separate directory. Pacman still validates the pinned repository metadata,
-checksums, and package signatures before installation. This cache removes
-repeated multi-gigabyte Archive downloads without changing Arch's full-upgrade
-transaction or making a repaired overlay count as a passing run.
+`*.pkg.tar.<compression>` payloads and their detached `.sig` files are retained;
+partial downloads, repository databases, locks, and guest configuration never
+enter the cache. A bootstrap run imports any previously verified payload before
+Ansible and exports newly completed packages even when a later bootstrap step
+fails. The runner bounds individual and aggregate sizes, rejects links and
+unsafe archive members, checks the seed transfer with SHA-256, and keeps each
+Arch image snapshot in a separate directory. Pacman still validates the pinned
+repository metadata, checksums, and package signatures before installation.
+This cache removes repeated multi-gigabyte Archive downloads without changing
+Arch's full-upgrade transaction or making a repaired overlay count as a passing
+run.
 
 The VM profile makes NetworkManager the managed network owner and masks the
 cloud image's stale `systemd-networkd-wait-online.service`. This prevents a

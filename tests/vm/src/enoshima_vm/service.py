@@ -78,7 +78,7 @@ UI_STABILITY_MAX_CHANGED_PIXEL_RATIO = 0.0025
 UI_STABILITY_MAX_NORMALIZED_RMSE = 0.004
 UI_STABILITY_MAX_SSIM_ERROR = 0.005
 PACMAN_PACKAGE_PATTERN = re.compile(
-    r"^[A-Za-z0-9@._+:~-]+\.pkg\.tar\.(?:zst|xz|gz|bz2|lrz|lzo|Z)$"
+    r"^[A-Za-z0-9@._+:~-]+\.pkg\.tar\.(?:zst|xz|gz|bz2|lrz|lzo|Z)(?:\.sig)?$"
 )
 PACMAN_CACHE_MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024
 PACMAN_CACHE_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024
