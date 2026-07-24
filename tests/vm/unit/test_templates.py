@@ -83,6 +83,13 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "for attempt in 1 2 3 4 5 6 7 8" in reproducible
     assert "ParallelDownloads = 1" in reproducible
     assert "DisableDownloadTimeout" in reproducible
+    assert "cloud_bootstrap_timeout_seconds=1080" in reproducible
+    assert "pacman_attempt_timeout_seconds=300" in reproducible
+    assert "cloud_bootstrap_deadline=$((SECONDS +" in reproducible
+    assert "timeout --signal=TERM --kill-after=30s" in reproducible
+    assert '"${attempt_timeout_seconds}s"' in reproducible
+    assert "status=$?" in reproducible
+    assert "exhausted its %ds deadline" in reproducible
     enable_firewall = "systemctl enable --now nftables.service"
     assert reproducible.index(enable_firewall) < reproducible.index("pacman -Syu")
     assert "systemctl is-enabled --quiet nftables.service" in reproducible

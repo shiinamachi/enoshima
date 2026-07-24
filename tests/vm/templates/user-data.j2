@@ -67,17 +67,45 @@ write_files:
       grep -qxF 'DisableDownloadTimeout' /etc/pacman.conf || \
         sed -i '/^ParallelDownloads = 1$/a DisableDownloadTimeout' \
           /etc/pacman.conf
+      cloud_bootstrap_timeout_seconds=1080
+      pacman_attempt_timeout_seconds=300
+      cloud_bootstrap_deadline=$((SECONDS + cloud_bootstrap_timeout_seconds))
       installed=false
       for attempt in 1 2 3 4 5 6 7 8; do
-        if pacman -Syu --needed --noconfirm "${packages[@]}"; then
-          installed=true
+        remaining_seconds=$((cloud_bootstrap_deadline - SECONDS))
+        if (( remaining_seconds <= 0 )); then
           break
         fi
+        attempt_timeout_seconds=$pacman_attempt_timeout_seconds
+        if (( remaining_seconds < attempt_timeout_seconds )); then
+          attempt_timeout_seconds=$remaining_seconds
+        fi
+        if timeout --signal=TERM --kill-after=30s \
+          "${attempt_timeout_seconds}s" \
+          pacman -Syu --needed --noconfirm "${packages[@]}"; then
+          installed=true
+          break
+        else
+          status=$?
+          printf >&2 \
+            'cloud bootstrap pacman attempt %d failed: status=%d timeout=%ds\n' \
+            "$attempt" "$status" "$attempt_timeout_seconds"
+        fi
         if (( attempt < 8 )); then
-          sleep $((attempt * 8))
+          backoff_seconds=$((attempt * 8))
+          remaining_seconds=$((cloud_bootstrap_deadline - SECONDS))
+          if (( remaining_seconds <= backoff_seconds )); then
+            break
+          fi
+          sleep "$backoff_seconds"
         fi
       done
-      "$installed"
+      if [[ $installed != true ]]; then
+        printf >&2 \
+          'cloud bootstrap package installation exhausted its %ds deadline\n' \
+          "$cloud_bootstrap_timeout_seconds"
+        exit 1
+      fi
       for command in ansible-playbook chezmoi git hyprctl jq make python3 rg yq; do
         command -v "$command" >/dev/null
       done
