@@ -86,6 +86,12 @@ can spend up to 18 minutes completing its bounded Archive package downloads
 before sshd becomes reachable. Reboot SSH cycling and ordinary guest commands
 retain their separate five-minute limits.
 
+The NoCloud seed runtime-masks `systemd-time-wait-sync.service`. QEMU already
+provides the current host RTC, while the isolated guest may never receive an
+external NTP reply; without the runtime-only mask, Arch's `pacman-init.service`
+can hold `cloud-final` and sshd behind `time-sync.target`. The mask exists only
+inside the disposable guest and does not alter the workstation policy.
+
 The VM profile makes NetworkManager the managed network owner and masks the
 cloud image's stale `systemd-networkd-wait-online.service`. This prevents a
 managed reboot from leaving a failed two-minute wait job after networking has

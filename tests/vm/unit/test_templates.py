@@ -86,6 +86,13 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "DisableDownloadTimeout" in reproducible
     assert "cloud_bootstrap_timeout_seconds=1080" in reproducible
     assert "pacman_download_timeout_seconds=300" in reproducible
+    assert (
+        "[systemctl, mask, --runtime, --now, systemd-time-wait-sync.service]"
+        in reproducible
+    )
+    assert reproducible.index("systemd-time-wait-sync.service") < reproducible.index(
+        "enoshima-cloud-bootstrap"
+    )
     assert "cloud_bootstrap_deadline=$((SECONDS +" in reproducible
     assert "timeout --signal=TERM --kill-after=30s" in reproducible
     assert '"${attempt_timeout_seconds}s"' in reproducible

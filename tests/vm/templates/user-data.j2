@@ -7,6 +7,12 @@ growpart:
   mode: auto
   devices: ['/']
 resize_rootfs: true
+bootcmd:
+  # The isolated guest inherits a current QEMU RTC but may never receive an
+  # external NTP reply. Arch's pacman-init.service waits for time-sync.target,
+  # so a live time-wait job would deadlock cloud-final and sshd before the
+  # runner can collect diagnostics.
+  - [systemctl, mask, --runtime, --now, systemd-time-wait-sync.service]
 users:
   - name: {{ user }}
     gecos: Enoshima VM Test User
