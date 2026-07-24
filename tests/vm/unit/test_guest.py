@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from enoshima_vm.errors import FailureCategory, VMError
-from enoshima_vm.guest import Guest
+from enoshima_vm.guest import INITIAL_SSH_TIMEOUT_SECONDS, Guest
 from enoshima_vm.process import CommandResult
 
 
@@ -21,6 +21,10 @@ def timeout() -> VMError:
 
 def success() -> CommandResult:
     return CommandResult(("ssh",), 0, "", "")
+
+
+def test_initial_ssh_budget_covers_cloud_bootstrap_deadline() -> None:
+    assert INITIAL_SSH_TIMEOUT_SECONDS == 1200
 
 
 def test_wait_ssh_retries_an_initial_command_timeout(monkeypatch) -> None:

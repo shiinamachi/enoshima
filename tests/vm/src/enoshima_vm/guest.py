@@ -13,6 +13,8 @@ from pathlib import Path, PurePosixPath
 from .errors import FailureCategory, VMError
 from .process import CommandResult, run
 
+INITIAL_SSH_TIMEOUT_SECONDS = 1200
+
 
 @dataclass(frozen=True, slots=True)
 class SourceIdentity:
@@ -71,7 +73,7 @@ class Guest:
                 f"guest command timed out: {argv[0]}",
             ) from error
 
-    def wait_ssh(self, timeout_seconds: int = 300) -> None:
+    def wait_ssh(self, timeout_seconds: int = INITIAL_SSH_TIMEOUT_SECONDS) -> None:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
             try:

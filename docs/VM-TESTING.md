@@ -81,6 +81,11 @@ This cache removes repeated multi-gigabyte Archive downloads without changing
 Arch's full-upgrade transaction or making a repaired overlay count as a passing
 run.
 
+Initial SSH readiness allows 20 minutes because the reproducible cloud image
+can spend up to 18 minutes completing its bounded Archive package downloads
+before sshd becomes reachable. Reboot SSH cycling and ordinary guest commands
+retain their separate five-minute limits.
+
 The VM profile makes NetworkManager the managed network owner and masks the
 cloud image's stale `systemd-networkd-wait-online.service`. This prevents a
 managed reboot from leaving a failed two-minute wait job after networking has
