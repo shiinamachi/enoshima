@@ -227,7 +227,8 @@ The service rejects unmanaged run IDs and libvirt domains, allows only the
 `enoshima-test-` prefix, limits active domains to one, caps CPU/RAM/disk, binds
 SSH forwarding to `127.0.0.1`, creates no host filesystem mounts or device
 passthrough, and rejects LAN-enabled suite definitions. The guest firewall
-allows established traffic and DNS while rejecting private address ranges.
+allows established traffic and both UDP/TCP DNS to QEMU's isolated proxy while
+rejecting every other private address range.
 Every service action is written to a mode-0600 JSONL audit log with sensitive
 arguments redacted.
 

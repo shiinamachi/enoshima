@@ -81,7 +81,7 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert archive in reproducible
     assert "archive.archlinux.org" not in latest
     assert "enoshima-cloud-bootstrap" in reproducible
-    assert "for attempt in 1 2 3 4 5 6 7 8" in reproducible
+    assert "while (( SECONDS < cloud_bootstrap_deadline )); do" in reproducible
     assert "ParallelDownloads = 1" in reproducible
     assert "DisableDownloadTimeout" in reproducible
     assert "cloud_bootstrap_timeout_seconds=1080" in reproducible
@@ -94,6 +94,8 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
         "enoshima-cloud-bootstrap"
     )
     assert "cloud_bootstrap_deadline=$((SECONDS +" in reproducible
+    assert "if (( backoff_seconds > 60 )); then" in reproducible
+    assert "attempt=$((attempt + 1))" in reproducible
     assert "timeout --signal=TERM --kill-after=30s" in reproducible
     assert '"${attempt_timeout_seconds}s"' in reproducible
     assert "status=$?" in reproducible
@@ -108,6 +110,8 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     )
     enable_firewall = "systemctl enable --now nftables.service"
     assert reproducible.index(enable_firewall) < reproducible.index("pacman -Syu")
+    assert "ip daddr 10.0.2.3 udp dport 53 accept" in reproducible
+    assert "ip daddr 10.0.2.3 tcp dport 53 accept" in reproducible
     assert "systemctl is-enabled --quiet nftables.service" in reproducible
     assert 'pacman -Syu --needed --noconfirm "${packages[@]}"' not in reproducible
     for package in (

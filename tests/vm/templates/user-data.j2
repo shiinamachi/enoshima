@@ -50,6 +50,7 @@ write_files:
           type filter hook output priority 0; policy accept;
           ct state established,related accept
           ip daddr 10.0.2.3 udp dport 53 accept
+          ip daddr 10.0.2.3 tcp dport 53 accept
           ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } reject
         }
       }
@@ -77,7 +78,8 @@ write_files:
       pacman_download_timeout_seconds=300
       cloud_bootstrap_deadline=$((SECONDS + cloud_bootstrap_timeout_seconds))
       downloads_ready=false
-      for attempt in 1 2 3 4 5 6 7 8; do
+      attempt=1
+      while (( SECONDS < cloud_bootstrap_deadline )); do
         remaining_seconds=$((cloud_bootstrap_deadline - SECONDS))
         if (( remaining_seconds <= 0 )); then
           break
@@ -108,14 +110,16 @@ write_files:
             printf >&2 'removed stale pacman database lock after failed download\n'
           fi
         fi
-        if (( attempt < 8 )); then
-          backoff_seconds=$((attempt * 8))
-          remaining_seconds=$((cloud_bootstrap_deadline - SECONDS))
-          if (( remaining_seconds <= backoff_seconds )); then
-            break
-          fi
-          sleep "$backoff_seconds"
+        backoff_seconds=$((attempt * 8))
+        if (( backoff_seconds > 60 )); then
+          backoff_seconds=60
         fi
+        remaining_seconds=$((cloud_bootstrap_deadline - SECONDS))
+        if (( remaining_seconds <= backoff_seconds )); then
+          break
+        fi
+        sleep "$backoff_seconds"
+        attempt=$((attempt + 1))
       done
       if [[ $downloads_ready != true ]]; then
         printf >&2 \
