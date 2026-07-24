@@ -97,6 +97,7 @@
         owner: root
         group: root
         mode: "0700"
+      changed_when: false
 
     - name: Download desired package payload before transactions
       ansible.builtin.command:
@@ -107,6 +108,7 @@
       ansible.builtin.file:
         path: /run/enoshima-pacman-prefetch
         state: absent
+      changed_when: false
 
 - name: Perform supported full system upgrade
   community.general.pacman:

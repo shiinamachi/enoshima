@@ -182,6 +182,17 @@ def test_vm_profile_keeps_the_snapshot_archive_download_policy_after_ansible() -
     assert "pacman -Syuw --needed --noconfirm --" in prefetch
     assert "ps -C pacman -o stat=" in prefetch
     assert "rm -f /var/lib/pacman/db.lck" in prefetch
+    package_tasks = (
+        repository / "ansible/roles/packages/tasks/main.yml"
+    ).read_text(encoding="utf-8")
+    for task_name in (
+        "Install transient bounded pacman prefetch helper",
+        "Remove transient bounded pacman prefetch helper",
+    ):
+        task = package_tasks.split(f"- name: {task_name}", 1)[1].split(
+            "\n    - name:", 1
+        )[0]
+        assert "changed_when: false" in task
     syntax = subprocess.run(
         ["bash", "-n"],
         input=prefetch,
