@@ -111,6 +111,42 @@ run_hyprpm_state_command() {
   return 1
 }
 
+run_with_bounded_retries() {
+  local label=$1 max_attempts=$2 retry_delay_seconds=$3
+  local attempt status
+  shift 3
+
+  [[ $max_attempts =~ ^[1-9][0-9]*$ ]] || {
+    echo "Error: $label retry attempts must be a positive integer" >&2
+    return 2
+  }
+  [[ $retry_delay_seconds =~ ^[0-9]+$ ]] || {
+    echo "Error: $label retry delay must be zero or a positive integer" >&2
+    return 2
+  }
+
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    # Keep an attempt in a subshell so a command's die/exit only terminates
+    # that attempt. This lets a transient DNS or transport failure recover
+    # without weakening the final bounded failure.
+    if ("$@"); then
+      return 0
+    else
+      status=$?
+    fi
+
+    if ((attempt == max_attempts)); then
+      printf 'Error: %s exhausted %d attempts (last status: %d)\n' \
+        "$label" "$max_attempts" "$status" >&2
+      return "$status"
+    fi
+
+    printf 'WARNING: %s attempt %d/%d failed; retrying in %ss.\n' \
+      "$label" "$attempt" "$max_attempts" "$retry_delay_seconds" >&2
+    sleep "$retry_delay_seconds"
+  done
+}
+
 converge_hyprland_plugins() {
   local cache_root
   local official_repo=https://github.com/hyprwm/hyprland-plugins
@@ -325,8 +361,15 @@ run_integrated_postflight() {
 }
 
 converge_hyprland_plugins_step() {
+  local max_attempts=${HYPRPM_CONVERGE_MAX_ATTEMPTS:-4}
+  local retry_delay_seconds=${HYPRPM_CONVERGE_RETRY_DELAY_SECONDS:-15}
+
   refresh_sudo_credentials
-  converge_hyprland_plugins
+  run_with_bounded_retries \
+    "Hyprland plugin convergence" \
+    "$max_attempts" \
+    "$retry_delay_seconds" \
+    converge_hyprland_plugins
 }
 
 cleanup() {

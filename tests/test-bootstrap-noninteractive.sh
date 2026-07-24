@@ -54,6 +54,8 @@ grep -Fq 'CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS' "$codex_installer" ||
   fail 'Codex Desktop build has no bounded timeout'
 grep -Fq 'CODEX_DESKTOP_BUILD_ATTEMPTS' "$codex_installer" ||
   fail 'Codex Desktop build has no bounded retry policy'
+grep -Fq 'CODEX_DESKTOP_BUILD_RETRY_DELAY_SECONDS' "$codex_installer" ||
+  fail 'Codex Desktop build has no bounded retry delay'
 grep -Eq '^[0-9a-f]{40}$' "$codex_revision_lock" ||
   fail 'Codex Desktop source revision is not locked to a full commit'
 grep -Eq '^[0-9a-f]{64}$' "$codex_dmg_lock" ||
@@ -130,6 +132,32 @@ chmod +x "$retry_work/sudo-wrapper"
 ) || fail 'bootstrap package convergence did not recover within its retry budget'
 [[ $(<"$retry_work/attempts") == 3 ]] ||
   fail 'bootstrap package convergence did not exercise the expected retries'
+
+retry_helper=$(
+  sed -n '/^run_with_bounded_retries()/,/^}/p' "$bootstrap"
+)
+hypr_retry_work=$retry_work/hyprpm
+mkdir -p "$hypr_retry_work"
+(
+  eval "$retry_helper"
+  # shellcheck disable=SC2329 # Invoked indirectly by run_with_bounded_retries.
+  transient_hyprpm_convergence() {
+    local count=0
+    [[ ! -f $HYPRPM_RETRY_ATTEMPT_FILE ]] ||
+      read -r count <"$HYPRPM_RETRY_ATTEMPT_FILE"
+    count=$((count + 1))
+    printf '%s\n' "$count" >"$HYPRPM_RETRY_ATTEMPT_FILE"
+    ((count >= 3))
+  }
+  export HYPRPM_RETRY_ATTEMPT_FILE=$hypr_retry_work/attempts
+  run_with_bounded_retries \
+    "Hyprland plugin convergence" 3 0 transient_hyprpm_convergence
+) >/dev/null 2>&1 ||
+  fail 'Hyprland plugin convergence did not recover within its retry budget'
+[[ $(<"$hypr_retry_work/attempts") == 3 ]] ||
+  fail 'Hyprland plugin convergence did not exercise the expected retries'
+grep -Fq 'HYPRPM_CONVERGE_MAX_ATTEMPTS:-4' "$bootstrap" ||
+  fail 'Hyprland plugin convergence has no bounded retry budget'
 
 # shellcheck disable=SC2016 # Assertion intentionally matches literal bootstrap source.
 grep -Fq 'PATH="/usr/bin:/bin:$PATH"' "$bootstrap" ||

@@ -137,11 +137,42 @@ GIT_AUTHOR_DATE=2026-07-17T00:02:00Z \
 retry_log=$work/retry.log
 CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS=1 \
   CODEX_DESKTOP_BUILD_ATTEMPTS=2 \
+  CODEX_DESKTOP_BUILD_RETRY_DELAY_SECONDS=0 \
   "$installer" >"$retry_log" 2>&1
-grep -Fq 'Timed-out Codex Desktop build; retrying' "$retry_log" ||
+grep -Fq 'Codex Desktop build attempt 1/2 failed with status 124; retrying in 0s.' \
+  "$retry_log" ||
   fail 'a timed-out upstream build was not retried'
 [[ $(<"$revision_marker") == $(git -C "$work/upstream" rev-parse HEAD) ]] ||
   fail 'a recovered retry did not advance the installed revision marker'
+
+previous_revision=$(<"$revision_marker")
+export TEST_FAILURE_ATTEMPT_FILE=$work/failed-build-attempts
+cat >"$work/upstream/Makefile" <<'MAKEFILE'
+.PHONY: install-native
+install-native:
+	@count=0; \
+	if [ -f '$(TEST_FAILURE_ATTEMPT_FILE)' ]; then \
+		read -r count <'$(TEST_FAILURE_ATTEMPT_FILE)'; \
+	fi; \
+	count=$$((count + 1)); \
+	printf '%s\n' "$$count" >'$(TEST_FAILURE_ATTEMPT_FILE)'; \
+	if [ "$$count" -lt 2 ]; then exit 2; fi; \
+	touch '$(TEST_INSTALLED)'
+MAKEFILE
+git -C "$work/upstream" add Makefile
+GIT_AUTHOR_DATE=2026-07-17T00:03:00Z \
+  GIT_COMMITTER_DATE=2026-07-17T00:03:00Z \
+  git -C "$work/upstream" commit --quiet -m 'transiently failing fixture'
+
+failure_retry_log=$work/failure-retry.log
+CODEX_DESKTOP_BUILD_ATTEMPTS=2 \
+  CODEX_DESKTOP_BUILD_RETRY_DELAY_SECONDS=0 \
+  "$installer" >"$failure_retry_log" 2>&1
+grep -Fq 'Codex Desktop build attempt 1/2 failed with status 2; retrying in 0s.' \
+  "$failure_retry_log" ||
+  fail 'a non-timeout transient upstream failure was not retried'
+[[ $(<"$revision_marker") == $(git -C "$work/upstream" rev-parse HEAD) ]] ||
+  fail 'a recovered non-timeout retry did not advance the installed revision marker'
 
 previous_revision=$(<"$revision_marker")
 cat >"$work/upstream/Makefile" <<'MAKEFILE'
@@ -150,8 +181,8 @@ install-native:
 	@sleep 5
 MAKEFILE
 git -C "$work/upstream" add Makefile
-GIT_AUTHOR_DATE=2026-07-17T00:03:00Z \
-  GIT_COMMITTER_DATE=2026-07-17T00:03:00Z \
+GIT_AUTHOR_DATE=2026-07-17T00:04:00Z \
+  GIT_COMMITTER_DATE=2026-07-17T00:04:00Z \
   git -C "$work/upstream" commit --quiet -m 'permanently hanging fixture'
 
 timeout_log=$work/timeout.log

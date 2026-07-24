@@ -13,7 +13,8 @@ dmg_cache=${CODEX_DESKTOP_DMG_CACHE:-$cache_home/codex-desktop/Codex.dmg}
 revision_marker=$state_dir/installed-source-revision
 max_build_threads=${CODEX_DESKTOP_MAX_BUILD_THREADS:-0}
 build_timeout_seconds=${CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS:-1800}
-build_attempts=${CODEX_DESKTOP_BUILD_ATTEMPTS:-2}
+build_attempts=${CODEX_DESKTOP_BUILD_ATTEMPTS:-3}
+build_retry_delay_seconds=${CODEX_DESKTOP_BUILD_RETRY_DELAY_SECONDS:-15}
 mise_config=$repo_root/home/dot_config/mise/config.toml
 
 export GIT_TERMINAL_PROMPT=0
@@ -55,6 +56,9 @@ if [[ ! $build_timeout_seconds =~ ^[1-9][0-9]*$ ]]; then
 fi
 if [[ ! $build_attempts =~ ^[1-9][0-9]*$ ]]; then
   die 'CODEX_DESKTOP_BUILD_ATTEMPTS must be a positive integer'
+fi
+if [[ ! $build_retry_delay_seconds =~ ^[0-9]+$ ]]; then
+  die 'CODEX_DESKTOP_BUILD_RETRY_DELAY_SECONDS must be zero or a positive integer'
 fi
 if [[ -e $dmg_cache || -L $dmg_cache ]]; then
   [[ -f $dmg_cache && ! -L $dmg_cache ]] ||
@@ -172,13 +176,16 @@ for ((attempt = 1; attempt <= build_attempts; attempt++)); do
     status=$?
   fi
 
-  if ((status != 124 && status != 137)); then
-    die "the upstream build failed with status $status"
-  fi
   if ((attempt == build_attempts)); then
-    die "the upstream build exceeded ${build_timeout_seconds}s on all attempts"
+    if ((status == 124 || status == 137)); then
+      die "the upstream build exceeded ${build_timeout_seconds}s on all attempts"
+    fi
+    die "the upstream build failed with status $status after $build_attempts attempts"
   fi
-  printf '==> Timed-out Codex Desktop build; retrying from its transactional installer\n'
+  printf \
+    'WARNING: Codex Desktop build attempt %d/%d failed with status %d; retrying in %ss.\n' \
+    "$attempt" "$build_attempts" "$status" "$build_retry_delay_seconds" >&2
+  sleep "$build_retry_delay_seconds"
 done
 
 [[ $build_succeeded == true ]] || die 'the upstream build did not complete'
