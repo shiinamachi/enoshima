@@ -68,28 +68,39 @@ write_files:
         sed -i '/^ParallelDownloads = 1$/a DisableDownloadTimeout' \
           /etc/pacman.conf
       cloud_bootstrap_timeout_seconds=1080
-      pacman_attempt_timeout_seconds=300
+      pacman_download_timeout_seconds=300
       cloud_bootstrap_deadline=$((SECONDS + cloud_bootstrap_timeout_seconds))
-      installed=false
+      downloads_ready=false
       for attempt in 1 2 3 4 5 6 7 8; do
         remaining_seconds=$((cloud_bootstrap_deadline - SECONDS))
         if (( remaining_seconds <= 0 )); then
           break
         fi
-        attempt_timeout_seconds=$pacman_attempt_timeout_seconds
+        attempt_timeout_seconds=$pacman_download_timeout_seconds
         if (( remaining_seconds < attempt_timeout_seconds )); then
           attempt_timeout_seconds=$remaining_seconds
         fi
         if timeout --signal=TERM --kill-after=30s \
           "${attempt_timeout_seconds}s" \
-          pacman -Syu --needed --noconfirm "${packages[@]}"; then
-          installed=true
+          pacman -Syuw --needed --noconfirm "${packages[@]}"; then
+          downloads_ready=true
           break
         else
           status=$?
           printf >&2 \
-            'cloud bootstrap pacman attempt %d failed: status=%d timeout=%ds\n' \
+            'cloud bootstrap download attempt %d failed: status=%d timeout=%ds\n' \
             "$attempt" "$status" "$attempt_timeout_seconds"
+          pacman_running=false
+          while IFS= read -r process_state; do
+            if [[ ${process_state:0:1} != Z ]]; then
+              pacman_running=true
+              break
+            fi
+          done < <(ps -C pacman -o stat=)
+          if [[ -e /var/lib/pacman/db.lck && $pacman_running == false ]]; then
+            rm -f /var/lib/pacman/db.lck
+            printf >&2 'removed stale pacman database lock after failed download\n'
+          fi
         fi
         if (( attempt < 8 )); then
           backoff_seconds=$((attempt * 8))
@@ -100,12 +111,16 @@ write_files:
           sleep "$backoff_seconds"
         fi
       done
-      if [[ $installed != true ]]; then
+      if [[ $downloads_ready != true ]]; then
         printf >&2 \
-          'cloud bootstrap package installation exhausted its %ds deadline\n' \
+          'cloud bootstrap package download exhausted its %ds deadline\n' \
           "$cloud_bootstrap_timeout_seconds"
         exit 1
       fi
+      # All network payload is verified in the bounded phase above. Keep the
+      # database transaction outside timeout so it cannot be interrupted after
+      # package installation has begun.
+      pacman -Su --needed --noconfirm "${packages[@]}"
       for command in ansible-playbook chezmoi git hyprctl jq make python3 rg yq; do
         command -v "$command" >/dev/null
       done

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -84,16 +85,24 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "ParallelDownloads = 1" in reproducible
     assert "DisableDownloadTimeout" in reproducible
     assert "cloud_bootstrap_timeout_seconds=1080" in reproducible
-    assert "pacman_attempt_timeout_seconds=300" in reproducible
+    assert "pacman_download_timeout_seconds=300" in reproducible
     assert "cloud_bootstrap_deadline=$((SECONDS +" in reproducible
     assert "timeout --signal=TERM --kill-after=30s" in reproducible
     assert '"${attempt_timeout_seconds}s"' in reproducible
     assert "status=$?" in reproducible
-    assert "exhausted its %ds deadline" in reproducible
+    assert 'pacman -Syuw --needed --noconfirm "${packages[@]}"' in reproducible
+    assert "ps -C pacman -o stat=" in reproducible
+    assert "rm -f /var/lib/pacman/db.lck" in reproducible
+    assert "package download exhausted its %ds deadline" in reproducible
+    transaction = 'pacman -Su --needed --noconfirm "${packages[@]}"'
+    assert transaction in reproducible
+    assert reproducible.index("timeout --signal=TERM") < reproducible.index(
+        transaction
+    )
     enable_firewall = "systemctl enable --now nftables.service"
     assert reproducible.index(enable_firewall) < reproducible.index("pacman -Syu")
     assert "systemctl is-enabled --quiet nftables.service" in reproducible
-    assert 'pacman -Syu --needed --noconfirm "${packages[@]}"' in reproducible
+    assert 'pacman -Syu --needed --noconfirm "${packages[@]}"' not in reproducible
     for package in (
         "ansible",
         "base-devel",
@@ -114,6 +123,20 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "LANG=en_US.UTF-8" in reproducible
     assert 'command -v "$command"' in reproducible
     assert "touch /var/lib/enoshima-cloud-ready" in reproducible
+    cloud_config = yaml.safe_load(reproducible)
+    cloud_bootstrap = next(
+        item["content"]
+        for item in cloud_config["write_files"]
+        if item["path"] == "/usr/local/libexec/enoshima-cloud-bootstrap"
+    )
+    syntax = subprocess.run(
+        ["bash", "-n"],
+        input=cloud_bootstrap,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert syntax.returncode == 0, syntax.stderr
 
 
 def test_vm_profile_keeps_the_snapshot_archive_download_policy_after_ansible() -> None:
