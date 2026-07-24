@@ -31,8 +31,8 @@ desktop_expansion_sddm_theme_enabled: true
 # progress without weakening the physical workstation's pacman defaults.
 pacman_parallel_downloads: 1
 pacman_disable_download_timeout: true
-pacman_prefetch_timeout_seconds: 1800
-pacman_prefetch_attempt_timeout_seconds: 300
+pacman_prefetch_timeout_seconds: 3600
+pacman_prefetch_attempt_timeout_seconds: 600
 
 # The deterministic UI qualification fixture uses Arch's packaged Electron
 # runtime. Real workstations use each managed application's bundled runtime.

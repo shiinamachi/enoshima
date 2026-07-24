@@ -258,6 +258,7 @@ class Guest:
         local: Path,
         *,
         recursive: bool = False,
+        timeout: float = 300,
     ) -> None:
         local.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         argv = [
@@ -281,7 +282,7 @@ class Guest:
             argv.append("-r")
         argv.extend([f"{self.user}@127.0.0.1:{remote}", str(local)])
         try:
-            run(argv, timeout=300)
+            run(argv, timeout=timeout)
         except Exception as error:
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
@@ -295,6 +296,7 @@ class Guest:
         remote: PurePosixPath,
         *,
         mode: int = 0o600,
+        timeout: float = 120,
     ) -> None:
         if not local.is_file():
             raise VMError(
@@ -323,7 +325,7 @@ class Guest:
             f"{self.user}@127.0.0.1:{remote}",
         ]
         try:
-            run(argv, timeout=120)
+            run(argv, timeout=timeout)
             self.exec(["chmod", f"{mode:o}", str(remote)])
         except Exception as error:
             raise VMError(

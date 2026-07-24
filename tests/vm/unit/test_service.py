@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import io
+import json
 import subprocess
+import tarfile
 import xml.etree.ElementTree as ET
 import zipfile
 from hashlib import sha256
@@ -64,7 +67,15 @@ class CacheSeedGuest(ScreenshotGuest):
         super().__init__()
         self.uploads: list[tuple[Path, str, int]] = []
 
-    def upload_file(self, local: Path, remote, *, mode: int = 0o600) -> None:
+    def upload_file(
+        self,
+        local: Path,
+        remote,
+        *,
+        mode: int = 0o600,
+        timeout: float = 120,
+    ) -> None:
+        del timeout
         self.uploads.append((local, str(remote), mode))
 
     def exec(self, argv, **_kwargs):
@@ -72,6 +83,43 @@ class CacheSeedGuest(ScreenshotGuest):
         archive = self.uploads[-1][0]
         digest = sha256(archive.read_bytes()).hexdigest()
         return CommandResult(tuple(argv), 0, f"{digest}  {argv[-1]}\n", "")
+
+
+class PacmanCacheGuest(ScreenshotGuest):
+    def __init__(self, packages: dict[str, bytes]) -> None:
+        super().__init__()
+        self.packages = packages
+        self.uploads: list[tuple[Path, str, int]] = []
+
+    def upload_file(
+        self,
+        local: Path,
+        remote,
+        *,
+        mode: int = 0o600,
+        timeout: float = 120,
+    ) -> None:
+        del timeout
+        self.uploads.append((local, str(remote), mode))
+
+    def exec(self, argv, **_kwargs):
+        self.commands.append(tuple(argv))
+        if tuple(argv[:2]) == ("sudo", "find"):
+            output = "".join(
+                f"{name}\t{len(payload)}\n"
+                for name, payload in sorted(self.packages.items())
+            )
+            return CommandResult(tuple(argv), 0, output, "")
+        return CommandResult(tuple(argv), 0, "", "")
+
+    def download(self, _remote, local: Path, *, timeout: float = 300) -> None:
+        del timeout
+        local.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with tarfile.open(local, mode="w") as bundle:
+            for name, payload in sorted(self.packages.items()):
+                info = tarfile.TarInfo(name)
+                info.size = len(payload)
+                bundle.addfile(info, io.BytesIO(payload))
 
 
 class PowerClientGuest(ScreenshotGuest):
@@ -225,6 +273,60 @@ def test_codex_dmg_cache_seed_rejects_an_invalid_udif_trailer(
         service._seed_codex_electron_cache({"run_id": "run-012345abcdef"})
 
 
+def test_pacman_cache_round_trip_is_snapshot_scoped_and_bounded(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    record = {
+        "run_id": "run-012345abcdef",
+        "base_image": str(
+            tmp_path / "arch-cloud-reproducible-f419d4e29aebfc01.qcow2"
+        ),
+    }
+    guest = PacmanCacheGuest(
+        {
+            "alpha-1.0-1-x86_64.pkg.tar.zst": b"alpha-package",
+            "beta-2.0-1-any.pkg.tar.zst": b"beta-package",
+        }
+    )
+    monkeypatch.setattr(service, "_guest", lambda _record: guest)
+    monkeypatch.setattr(service, "_write_record", lambda _record: None)
+    monkeypatch.setattr(service, "_audit", lambda *_args, **_kwargs: None)
+    service._run_dir(record["run_id"]).mkdir(mode=0o700, parents=True)
+
+    service._collect_pacman_cache(record)
+
+    cache_root, package_root, archive, manifest = service._pacman_cache_paths(record)
+    assert cache_root.is_relative_to(paths.cache)
+    assert sorted(path.name for path in package_root.iterdir()) == [
+        "alpha-1.0-1-x86_64.pkg.tar.zst",
+        "beta-2.0-1-any.pkg.tar.zst",
+    ]
+    assert archive.is_file()
+    metadata = json.loads(manifest.read_text(encoding="utf-8"))
+    assert metadata["package_count"] == 2
+    assert metadata["package_bytes"] == len(b"alpha-packagebeta-package")
+    assert record["observations"]["pacman_cache_collect"]["status"] == "updated"
+
+    seed_guest = CacheSeedGuest()
+    monkeypatch.setattr(service, "_guest", lambda _record: seed_guest)
+    service._seed_pacman_cache(record)
+
+    assert seed_guest.uploads == [
+        (
+            archive,
+            "/home/kentakang/enoshima-test/cache/pacman-seed.tar",
+            0o600,
+        )
+    ]
+    assert record["observations"]["pacman_cache_seed"]["status"] == "seeded"
+    assert any(
+        command[:3] == ("sudo", "tar", "--extract")
+        for command in seed_guest.commands
+    )
+
+
 def test_every_bootstrap_suite_seeds_the_optional_electron_cache() -> None:
     suites = RuntimePaths.discover().project / "suites"
     for path in suites.glob("*.yaml"):
@@ -236,6 +338,8 @@ def test_every_bootstrap_suite_seeds_the_optional_electron_cache() -> None:
         assert text.index("- seed_codex_electron_cache") < text.index(
             "- run_bootstrap"
         )
+        assert "- seed_pacman_cache" in text
+        assert text.index("- seed_pacman_cache") < text.index("- run_bootstrap")
 
 
 def test_stable_ui_accepts_perceptually_identical_renderer_noise(

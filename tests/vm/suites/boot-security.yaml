@@ -18,11 +18,13 @@ steps:
   - wait_for_guest_agent
   - upload_worktree
   - seed_codex_electron_cache
+  - seed_pacman_cache
   - run_validate
   - prepare_boot_disk
   - boot_with_recovery
   - upload_worktree
   - seed_codex_electron_cache
+  - seed_pacman_cache
   - create_runtime_inventory
   - assert_secure_boot
   - enroll_tpm

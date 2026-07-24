@@ -9,6 +9,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tarfile
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -65,12 +66,22 @@ REMOTE_CODEX_ELECTRON_CACHE = PurePosixPath(
 REMOTE_CODEX_DMG_CACHE = PurePosixPath(
     "/home/kentakang/.cache/codex-desktop/Codex.dmg"
 )
+REMOTE_PACMAN_CACHE_ROOT = REMOTE_ROOT / "cache"
+REMOTE_PACMAN_CACHE_SEED = REMOTE_PACMAN_CACHE_ROOT / "pacman-seed.tar"
+REMOTE_PACMAN_CACHE_DELTA = REMOTE_PACMAN_CACHE_ROOT / "pacman-delta.tar"
+REMOTE_PACMAN_CACHE_FILES = REMOTE_PACMAN_CACHE_ROOT / "pacman-files"
+REMOTE_SYSTEM_PACMAN_CACHE = PurePosixPath("/var/cache/pacman/pkg")
 REMOTE_LOGIN_PASSWORD = REMOTE_ROOT / "secrets" / "login-password"
 REMOTE_LOGIN_CREDENTIAL = REMOTE_ROOT / "secrets" / "chpasswd-input"
 
 UI_STABILITY_MAX_CHANGED_PIXEL_RATIO = 0.0025
 UI_STABILITY_MAX_NORMALIZED_RMSE = 0.004
 UI_STABILITY_MAX_SSIM_ERROR = 0.005
+PACMAN_PACKAGE_PATTERN = re.compile(
+    r"^[A-Za-z0-9@._+:~-]+\.pkg\.tar\.(?:zst|xz|gz|bz2|lrz|lzo|Z)$"
+)
+PACMAN_CACHE_MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024
+PACMAN_CACHE_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024
 
 
 def utc_now() -> str:
@@ -554,6 +565,488 @@ class VMService:
         self._write_record(record)
         self._audit("vm_seed_codex_electron_cache", run_id=record["run_id"])
 
+    def _pacman_cache_paths(
+        self, record: dict[str, Any]
+    ) -> tuple[Path, Path, Path, Path]:
+        base_image = Path(str(record.get("base_image", ""))).name
+        if not base_image:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "VM record has no base image for the pacman cache",
+            )
+        readable = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(base_image).stem)[:80]
+        identity = sha256(base_image.encode()).hexdigest()[:16]
+        root = confined_path(
+            self.paths.cache,
+            self.paths.cache / "pacman" / f"{readable}-{identity}",
+        )
+        return (
+            root,
+            root / "packages",
+            root / "seed.tar",
+            root / "manifest.json",
+        )
+
+    @staticmethod
+    def _validate_pacman_package_name(name: str) -> None:
+        if not PACMAN_PACKAGE_PATTERN.fullmatch(name):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"invalid pacman cache package name: {name!r}",
+            )
+
+    def _host_pacman_packages(self, package_root: Path) -> list[Path]:
+        if not package_root.exists():
+            return []
+        if package_root.is_symlink() or not package_root.is_dir():
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                f"invalid pacman cache directory: {package_root}",
+            )
+        packages: list[Path] = []
+        total_size = 0
+        for package in sorted(package_root.iterdir()):
+            if not PACMAN_PACKAGE_PATTERN.fullmatch(package.name):
+                continue
+            if package.is_symlink() or not package.is_file():
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    f"invalid pacman cache entry: {package}",
+                )
+            size = package.stat().st_size
+            if size <= 0 or size > PACMAN_CACHE_MAX_FILE_BYTES:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    f"pacman cache entry has an invalid size: {package}",
+                )
+            total_size += size
+            if total_size > PACMAN_CACHE_MAX_TOTAL_BYTES:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "pacman package cache exceeds the managed size limit",
+                )
+            packages.append(package)
+        return packages
+
+    def _rebuild_pacman_seed_archive(
+        self, record: dict[str, Any], package_root: Path, archive: Path, manifest: Path
+    ) -> dict[str, object]:
+        packages = self._host_pacman_packages(package_root)
+        cache_root = archive.parent
+        cache_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        temporary = cache_root / f".{archive.name}.{uuid.uuid4().hex}.new"
+        total_size = 0
+        package_manifest: list[dict[str, object]] = []
+        try:
+            with tarfile.open(temporary, mode="w") as bundle:
+                for package in packages:
+                    size = package.stat().st_size
+                    total_size += size
+                    info = tarfile.TarInfo(package.name)
+                    info.size = size
+                    info.mode = 0o644
+                    info.uid = 0
+                    info.gid = 0
+                    info.mtime = 0
+                    with package.open("rb") as source:
+                        bundle.addfile(info, source)
+                    package_manifest.append({"name": package.name, "size": size})
+            temporary.chmod(0o600)
+            os.replace(temporary, archive)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+        payload: dict[str, object] = {
+            "schema": 1,
+            "base_image": Path(str(record["base_image"])).name,
+            "archive_sha256": file_sha256(archive),
+            "archive_size": archive.stat().st_size,
+            "package_count": len(packages),
+            "package_bytes": total_size,
+            "packages": package_manifest,
+        }
+        temporary_manifest = manifest.with_suffix(".json.new")
+        temporary_manifest.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary_manifest.chmod(0o600)
+        os.replace(temporary_manifest, manifest)
+        return payload
+
+    def _seed_pacman_cache(self, record: dict[str, Any]) -> None:
+        _, _, archive, manifest = self._pacman_cache_paths(record)
+        observation: dict[str, object] = {"status": "absent"}
+        if archive.exists() or manifest.exists():
+            if (
+                archive.is_symlink()
+                or manifest.is_symlink()
+                or not archive.is_file()
+                or not manifest.is_file()
+            ):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "pacman seed cache is incomplete or unsafe",
+                )
+            if (
+                archive.stat().st_size <= 0
+                or archive.stat().st_size > PACMAN_CACHE_MAX_TOTAL_BYTES
+            ):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "pacman seed archive exceeds the managed size limit",
+                )
+            try:
+                metadata = json.loads(manifest.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as error:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "pacman seed manifest is unreadable",
+                    {"error": str(error)},
+                ) from error
+            raw_packages = metadata.get("packages")
+            if not isinstance(raw_packages, list):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "pacman seed manifest has no package list",
+                )
+            expected_packages: dict[str, int] = {}
+            expected_bytes = 0
+            for entry in raw_packages:
+                if (
+                    not isinstance(entry, dict)
+                    or not isinstance(entry.get("name"), str)
+                    or not isinstance(entry.get("size"), int)
+                ):
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        "pacman seed manifest contains an invalid package entry",
+                    )
+                name = entry["name"]
+                size = entry["size"]
+                self._validate_pacman_package_name(name)
+                if (
+                    name in expected_packages
+                    or size <= 0
+                    or size > PACMAN_CACHE_MAX_FILE_BYTES
+                ):
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        f"pacman seed manifest contains an invalid package: {name!r}",
+                    )
+                expected_packages[name] = size
+                expected_bytes += size
+                if expected_bytes > PACMAN_CACHE_MAX_TOTAL_BYTES:
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        "pacman seed manifest exceeds the managed size limit",
+                    )
+            observed_packages: dict[str, int] = {}
+            try:
+                with tarfile.open(archive, mode="r") as bundle:
+                    for member in bundle.getmembers():
+                        if (
+                            member.name not in expected_packages
+                            or member.name in observed_packages
+                            or not member.isreg()
+                            or member.size != expected_packages[member.name]
+                        ):
+                            raise VMError(
+                                FailureCategory.HARNESS_ERROR,
+                                "pacman seed archive contains an unsafe member: "
+                                f"{member.name!r}",
+                            )
+                        observed_packages[member.name] = member.size
+            except (OSError, tarfile.TarError) as error:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "pacman seed archive is unreadable",
+                    {"error": str(error)},
+                ) from error
+            if (
+                metadata.get("schema") != 1
+                or metadata.get("base_image")
+                != Path(str(record["base_image"])).name
+                or metadata.get("archive_size") != archive.stat().st_size
+                or metadata.get("archive_sha256") != file_sha256(archive)
+                or metadata.get("package_count") != len(expected_packages)
+                or metadata.get("package_bytes") != expected_bytes
+                or observed_packages != expected_packages
+            ):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "pacman seed archive does not match its manifest",
+                )
+
+            guest = self._guest(record)
+            guest.upload_file(
+                archive,
+                REMOTE_PACMAN_CACHE_SEED,
+                mode=0o600,
+                timeout=30 * 60,
+            )
+            try:
+                remote_digest = guest.exec(
+                    ["sha256sum", "--", str(REMOTE_PACMAN_CACHE_SEED)],
+                    timeout=10 * 60,
+                ).stdout.split(maxsplit=1)[0]
+                if remote_digest != metadata["archive_sha256"]:
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        "pacman seed archive transfer checksum mismatch",
+                    )
+                guest.exec(
+                    [
+                        "sudo",
+                        "install",
+                        "-d",
+                        "-m",
+                        "0755",
+                        str(REMOTE_SYSTEM_PACMAN_CACHE),
+                    ]
+                )
+                guest.exec(
+                    [
+                        "sudo",
+                        "tar",
+                        "--extract",
+                        "--file",
+                        str(REMOTE_PACMAN_CACHE_SEED),
+                        "--directory",
+                        str(REMOTE_SYSTEM_PACMAN_CACHE),
+                        "--no-same-owner",
+                        "--no-same-permissions",
+                    ],
+                    timeout=30 * 60,
+                )
+            finally:
+                guest.exec(
+                    ["rm", "-f", "--", str(REMOTE_PACMAN_CACHE_SEED)],
+                    check=False,
+                )
+            observation = {
+                "status": "seeded",
+                "package_count": metadata["package_count"],
+                "package_bytes": metadata["package_bytes"],
+                "archive_sha256": metadata["archive_sha256"],
+            }
+
+        record.setdefault("observations", {})["pacman_cache_seed"] = observation
+        record["updated_at"] = utc_now()
+        self._write_record(record)
+        self._audit("vm_seed_pacman_cache", run_id=record["run_id"])
+
+    def _remote_pacman_packages(
+        self, record: dict[str, Any]
+    ) -> dict[str, int]:
+        guest = self._guest(record)
+        result = guest.exec(
+            [
+                "sudo",
+                "find",
+                str(REMOTE_SYSTEM_PACMAN_CACHE),
+                "-maxdepth",
+                "1",
+                "-type",
+                "f",
+                "-printf",
+                "%f\t%s\n",
+            ],
+            timeout=120,
+        )
+        packages: dict[str, int] = {}
+        total_size = 0
+        for line in result.stdout.splitlines():
+            try:
+                name, raw_size = line.rsplit("\t", 1)
+                size = int(raw_size)
+            except (ValueError, TypeError) as error:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    f"invalid guest pacman cache manifest line: {line!r}",
+                ) from error
+            if not PACMAN_PACKAGE_PATTERN.fullmatch(name):
+                continue
+            self._validate_pacman_package_name(name)
+            if name in packages or size <= 0 or size > PACMAN_CACHE_MAX_FILE_BYTES:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    f"invalid guest pacman cache entry: {name!r}",
+                )
+            total_size += size
+            if total_size > PACMAN_CACHE_MAX_TOTAL_BYTES:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "guest pacman package cache exceeds the managed size limit",
+                )
+            packages[name] = size
+        return packages
+
+    def _collect_pacman_cache(self, record: dict[str, Any]) -> None:
+        cache_root, package_root, archive, manifest = self._pacman_cache_paths(record)
+        remote_packages = self._remote_pacman_packages(record)
+        package_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        host_packages = {
+            package.name: package.stat().st_size
+            for package in self._host_pacman_packages(package_root)
+        }
+        missing = sorted(
+            name
+            for name, size in remote_packages.items()
+            if host_packages.get(name) != size
+        )
+        added_bytes = sum(remote_packages[name] for name in missing)
+        observation: dict[str, object] = {
+            "status": "current",
+            "remote_package_count": len(remote_packages),
+            "added_package_count": 0,
+            "added_package_bytes": 0,
+        }
+        if missing:
+            run_dir = self._run_dir(record["run_id"])
+            local_files = run_dir / "pacman-cache-files"
+            local_delta = run_dir / "pacman-cache-delta.tar"
+            local_files.write_bytes(
+                b"\0".join(name.encode() for name in missing) + b"\0"
+            )
+            local_files.chmod(0o600)
+            guest = self._guest(record)
+            guest.exec(
+                [
+                    "install",
+                    "-d",
+                    "-m",
+                    "0700",
+                    str(REMOTE_PACMAN_CACHE_ROOT),
+                ]
+            )
+            guest.upload_file(
+                local_files,
+                REMOTE_PACMAN_CACHE_FILES,
+                mode=0o600,
+                timeout=120,
+            )
+            try:
+                guest.exec(
+                    [
+                        "sudo",
+                        "tar",
+                        "--create",
+                        "--file",
+                        str(REMOTE_PACMAN_CACHE_DELTA),
+                        "--directory",
+                        str(REMOTE_SYSTEM_PACMAN_CACHE),
+                        "--null",
+                        "--verbatim-files-from",
+                        "--files-from",
+                        str(REMOTE_PACMAN_CACHE_FILES),
+                    ],
+                    timeout=30 * 60,
+                )
+                guest.exec(
+                    [
+                        "sudo",
+                        "chown",
+                        "kentakang:kentakang",
+                        str(REMOTE_PACMAN_CACHE_DELTA),
+                    ]
+                )
+                guest.download(
+                    REMOTE_PACMAN_CACHE_DELTA,
+                    local_delta,
+                    timeout=30 * 60,
+                )
+                expected = set(missing)
+                observed: set[str] = set()
+                with tarfile.open(local_delta, mode="r") as bundle:
+                    for member in bundle.getmembers():
+                        if (
+                            member.name not in expected
+                            or member.name in observed
+                            or not member.isreg()
+                            or member.size != remote_packages.get(member.name)
+                            or member.size <= 0
+                            or member.size > PACMAN_CACHE_MAX_FILE_BYTES
+                        ):
+                            raise VMError(
+                                FailureCategory.HARNESS_ERROR,
+                                f"unsafe pacman cache archive member: {member.name!r}",
+                            )
+                        self._validate_pacman_package_name(member.name)
+                        source = bundle.extractfile(member)
+                        if source is None:
+                            raise VMError(
+                                FailureCategory.HARNESS_ERROR,
+                                f"pacman cache archive member is unreadable: "
+                                f"{member.name!r}",
+                            )
+                        destination = package_root / member.name
+                        temporary = package_root / (
+                            f".{member.name}.{uuid.uuid4().hex}.new"
+                        )
+                        try:
+                            with source, temporary.open("wb") as output:
+                                shutil.copyfileobj(source, output, length=1024 * 1024)
+                            if temporary.stat().st_size != member.size:
+                                raise VMError(
+                                    FailureCategory.HARNESS_ERROR,
+                                    "pacman cache archive member was truncated: "
+                                    f"{member.name!r}",
+                                )
+                            temporary.chmod(0o600)
+                            os.replace(temporary, destination)
+                        finally:
+                            temporary.unlink(missing_ok=True)
+                        observed.add(member.name)
+                if observed != expected:
+                    raise VMError(
+                        FailureCategory.HARNESS_ERROR,
+                        "pacman cache archive omitted requested packages",
+                    )
+                metadata = self._rebuild_pacman_seed_archive(
+                    record, package_root, archive, manifest
+                )
+                observation = {
+                    "status": "updated",
+                    "remote_package_count": len(remote_packages),
+                    "added_package_count": len(missing),
+                    "added_package_bytes": added_bytes,
+                    "package_count": metadata["package_count"],
+                    "package_bytes": metadata["package_bytes"],
+                    "archive_sha256": metadata["archive_sha256"],
+                }
+            finally:
+                local_files.unlink(missing_ok=True)
+                local_delta.unlink(missing_ok=True)
+                guest.exec(
+                    [
+                        "rm",
+                        "-f",
+                        "--",
+                        str(REMOTE_PACMAN_CACHE_FILES),
+                        str(REMOTE_PACMAN_CACHE_DELTA),
+                    ],
+                    check=False,
+                )
+        elif remote_packages and (not archive.is_file() or not manifest.is_file()):
+            metadata = self._rebuild_pacman_seed_archive(
+                record, package_root, archive, manifest
+            )
+            observation = {
+                "status": "rebuilt",
+                "remote_package_count": len(remote_packages),
+                "added_package_count": 0,
+                "added_package_bytes": 0,
+                "package_count": metadata["package_count"],
+                "package_bytes": metadata["package_bytes"],
+                "archive_sha256": metadata["archive_sha256"],
+            }
+
+        record.setdefault("observations", {})["pacman_cache_collect"] = observation
+        record["updated_at"] = utc_now()
+        self._write_record(record)
+        self._audit("vm_collect_pacman_cache", run_id=record["run_id"])
+
     def _run_bootstrap(self, record: dict[str, Any], config: Any) -> None:
         values = config if isinstance(config, dict) else {}
         report = str(values.get("report", "current"))
@@ -580,13 +1073,29 @@ class VMService:
             f"--conflict-policy backup --report-dir {remote_report} "
             f"--report-format json{apply_boot_artifacts}"
         )
-        self._run_checked(
-            record,
-            f"bootstrap-{report}",
-            self._remote_shell(command),
-            FailureCategory.BOOTSTRAP_FAILED,
-            timeout_seconds=4 * 60 * 60,
-        )
+        try:
+            self._run_checked(
+                record,
+                f"bootstrap-{report}",
+                self._remote_shell(command),
+                FailureCategory.BOOTSTRAP_FAILED,
+                timeout_seconds=4 * 60 * 60,
+            )
+        finally:
+            try:
+                self._collect_pacman_cache(record)
+            except VMError as error:
+                record.setdefault("observations", {})["pacman_cache_collect"] = {
+                    "status": "failed",
+                    "error": str(error),
+                }
+                record["updated_at"] = utc_now()
+                self._write_record(record)
+                self._audit(
+                    "vm_collect_pacman_cache",
+                    run_id=record["run_id"],
+                    result="failed",
+                )
         packages = (
             self._guest(record)
             .exec(self._remote_shell("pacman -Qq | LC_ALL=C sort"), timeout=120)
@@ -2877,6 +3386,8 @@ class VMService:
             self.upload_worktree(record["run_id"])
         elif action == "seed_codex_electron_cache":
             self._seed_codex_electron_cache(record)
+        elif action == "seed_pacman_cache":
+            self._seed_pacman_cache(record)
         elif action == "run_validate":
             self._run_validate(record)
         elif action == "run_bootstrap":

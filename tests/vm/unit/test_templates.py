@@ -161,8 +161,8 @@ def test_vm_profile_keeps_the_snapshot_archive_download_policy_after_ansible() -
     assert defaults["pacman_prefetch_attempt_timeout_seconds"] == 300
     assert vm_vars["pacman_parallel_downloads"] == 1
     assert vm_vars["pacman_disable_download_timeout"] is True
-    assert vm_vars["pacman_prefetch_timeout_seconds"] == 1800
-    assert vm_vars["pacman_prefetch_attempt_timeout_seconds"] == 300
+    assert vm_vars["pacman_prefetch_timeout_seconds"] == 3600
+    assert vm_vars["pacman_prefetch_attempt_timeout_seconds"] == 600
     assert "ParallelDownloads = {{ pacman_parallel_downloads }}" in template
     assert "{% if pacman_disable_download_timeout | bool %}" in template
     assert "DisableDownloadTimeout" in template
