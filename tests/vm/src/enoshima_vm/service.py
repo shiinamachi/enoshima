@@ -543,6 +543,33 @@ class VMService:
                     )
 
             digest = file_sha256(dmg)
+            digest_lock = (
+                self.paths.repository / "packages" / "codex-desktop-dmg-sha256.txt"
+            )
+            try:
+                expected_digest = digest_lock.read_text(encoding="utf-8").strip()
+            except OSError as error:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "Codex DMG digest lock could not be read",
+                    {"path": str(digest_lock), "error": str(error)},
+                ) from error
+            if not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "Codex DMG digest lock is invalid",
+                    {"path": str(digest_lock)},
+                )
+            if digest != expected_digest:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "Codex DMG cache does not match the repository digest lock",
+                    {
+                        "path": str(dmg),
+                        "actual": digest,
+                        "expected": expected_digest,
+                    },
+                )
             guest = self._guest(record)
             guest.upload_file(dmg, REMOTE_CODEX_DMG_CACHE, mode=0o600)
             remote_result = guest.exec(

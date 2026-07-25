@@ -302,6 +302,11 @@ def test_codex_electron_cache_seed_is_explicit_and_checksum_verified(
         bundle.writestr("electron", "fixture")
     dmg = tmp_path / "Codex.dmg"
     dmg.write_bytes(b"koly" + (b"\0" * 508))
+    digest_lock = tmp_path / "packages" / "codex-desktop-dmg-sha256.txt"
+    digest_lock.parent.mkdir()
+    digest_lock.write_text(
+        sha256(dmg.read_bytes()).hexdigest() + "\n", encoding="utf-8"
+    )
 
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_DMG", str(dmg))
@@ -330,6 +335,26 @@ def test_codex_electron_cache_seed_is_explicit_and_checksum_verified(
     assert seeded["archives"][0]["sha256"] == sha256(archive.read_bytes()).hexdigest()
     assert seeded["dmg"]["status"] == "seeded"
     assert seeded["dmg"]["sha256"] == sha256(dmg.read_bytes()).hexdigest()
+
+
+def test_codex_dmg_cache_seed_rejects_a_stale_valid_cache(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    cache = tmp_path / "electron-cache"
+    cache.mkdir()
+    dmg = tmp_path / "Codex.dmg"
+    dmg.write_bytes(b"koly" + (b"\0" * 508))
+    digest_lock = tmp_path / "packages" / "codex-desktop-dmg-sha256.txt"
+    digest_lock.parent.mkdir()
+    digest_lock.write_text(("0" * 64) + "\n", encoding="utf-8")
+
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_DMG", str(dmg))
+
+    with pytest.raises(VMError, match="does not match the repository digest lock"):
+        service._seed_codex_electron_cache({"run_id": "run-012345abcdef"})
 
 
 def test_codex_dmg_cache_seed_rejects_an_invalid_udif_trailer(

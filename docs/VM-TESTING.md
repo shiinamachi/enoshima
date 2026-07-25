@@ -59,11 +59,14 @@ Before bootstrap, suites also seed valid
 `~/.cache/codex-desktop/electron/electron-v*-linux-*.zip` archives and the
 installed source checkout's `Codex.dmg` into the guest's matching build cache.
 The runner validates the ZIP container and Apple UDIF trailer, verifies every
-transfer with SHA-256, and records each name, size, and digest in the run
-observations. The installer passes a seeded DMG to the upstream build
-explicitly, so repeated release suites do not depend on a 600 MiB upstream
-download completing during bootstrap. If a host cache is absent, the
-production installer retains its normal network download path. Set
+transfer with SHA-256, requires the DMG digest to match
+`packages/codex-desktop-dmg-sha256.txt`, and records each name, size, and digest
+in the run observations. A stale but structurally valid host DMG therefore
+fails before guest bootstrap instead of poisoning a long release run. The
+installer passes a seeded DMG to the upstream build explicitly, so repeated
+release suites do not depend on a 600 MiB upstream download completing during
+bootstrap. If a host cache is absent, the production installer retains its
+normal network download path. Set
 `ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR` or `ENOSHIMA_VM_CODEX_DMG` to select a
 different host cache location.
 
