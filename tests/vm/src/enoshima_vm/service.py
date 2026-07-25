@@ -2602,6 +2602,33 @@ class VMService:
             {"state": state, "clients": last_clients},
         )
 
+    def _prepare_notification_review(self, record: dict[str, Any]) -> None:
+        self._run_checked(
+            record,
+            "isolate-notification-review-daemon",
+            self._hypr_command(
+                "systemctl --user stop swaync.service; "
+                "systemctl --user reset-failed swaync.service || true; "
+                "systemctl --user mask --runtime --force swaync.service"
+            ),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+
+    def _restore_notification_review(self, record: dict[str, Any]) -> None:
+        self._stop_notification_review(record)
+        self._run_checked(
+            record,
+            "restore-notification-review-daemon",
+            self._hypr_command(
+                "systemctl --user unmask --runtime swaync.service; "
+                "systemctl --user reset-failed swaync.service || true; "
+                "systemctl --user start swaync.service"
+            ),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+
     def _stop_notification_review(self, record: dict[str, Any]) -> None:
         pid_path = REMOTE_ROOT / "ui-fixture" / "swaync.pid"
         shell = (
@@ -2611,6 +2638,17 @@ class VMService:
             "if test -e /proc/$pid/exe && "
             'test "$(readlink -f /proc/$pid/exe)" = /usr/bin/swaync; '
             "then kill -TERM $pid; fi; "
+            "for attempt in $(seq 1 60); do "
+            "owner=$(timeout 2s busctl --user --no-pager --no-legend list "
+            "| awk '$1 == \"org.freedesktop.Notifications\" { print $2 }'); "
+            'test "$owner" != "$pid" && break; '
+            "sleep 0.05; "
+            "done; "
+            "owner=$(timeout 2s busctl --user --no-pager --no-legend list "
+            "| awk '$1 == \"org.freedesktop.Notifications\" { print $2 }'); "
+            'if test "$owner" = "$pid" && test -e /proc/$pid/exe && '
+            'test "$(readlink -f /proc/$pid/exe)" = /usr/bin/swaync; '
+            "then kill -KILL $pid; fi; "
             f"rm -f {pid_path}; fi"
         )
         self._guest(record).exec(self._remote_shell(shell), timeout=15, check=False)
@@ -2642,7 +2680,6 @@ class VMService:
             "export DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus; "
             "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
             "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
-            "systemctl --user stop swaync.service; "
             f"nohup env LANG={locale} LC_ALL={locale} XDG_RUNTIME_DIR=$runtime "
             "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus WAYLAND_DISPLAY=$wayland "
             "/home/kentakang/.local/bin/enoshima-swaync "
@@ -2659,7 +2696,14 @@ class VMService:
         ready_deadline = time.monotonic() + 20
         while time.monotonic() < ready_deadline:
             ready = guest.exec(
-                self._hypr_command("swaync-client -D"), timeout=5, check=False
+                self._hypr_command(
+                    f"pid=$(cat {pid_path}); "
+                    "owner=$(timeout 2s busctl --user --no-pager --no-legend list "
+                    "| awk '$1 == \"org.freedesktop.Notifications\" { print $2 }'); "
+                    'test "$owner" = "$pid"'
+                ),
+                timeout=5,
+                check=False,
             )
             if ready.returncode == 0:
                 break
@@ -3209,6 +3253,8 @@ class VMService:
         artifact_root = Path(record["artifact_dir"]) / "ui-review"
         artifact_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._close_ui_review_clients(record)
+        if "notification-center" in surfaces:
+            self._prepare_notification_review(record)
         output = "HEADLESS-UI"
         captures: list[dict[str, object]] = []
         overflow_failures: list[dict[str, object]] = []
@@ -3399,14 +3445,12 @@ class VMService:
         )
         record.setdefault("observations", {})["ui_review"] = summary
         self._stop_auth_review(record)
-        self._stop_notification_review(record)
+        if "notification-center" in surfaces:
+            self._restore_notification_review(record)
+        else:
+            self._stop_notification_review(record)
         self._stop_titlebar_review(record)
         self._stop_desktop_shell_review(record)
-        self._guest(record).exec(
-            self._hypr_command("systemctl --user start swaync.service"),
-            timeout=30,
-            check=False,
-        )
         self._write_record(record)
         if overflow_failures:
             raise VMError(

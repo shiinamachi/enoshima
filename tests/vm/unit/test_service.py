@@ -866,6 +866,36 @@ def test_ui_review_cleanup_preserves_reserved_tray_clients() -> None:
     assert [client["address"] for client in targets] == ["0x2", "0x3"]
 
 
+def test_notification_review_owns_the_dbus_daemon_without_systemd_races() -> None:
+    source = (
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
+    ).read_text(encoding="utf-8")
+    prepare = source[
+        source.index("def _prepare_notification_review") : source.index(
+            "def _restore_notification_review"
+        )
+    ]
+    start = source[
+        source.index("def _start_notification_review") : source.index(
+            "def _stop_titlebar_review"
+        )
+    ]
+    review = source[
+        source.index("def _run_ui_review") : source.index(
+            "def _run_electron_qualification"
+        )
+    ]
+
+    assert "systemctl --user stop swaync.service" in prepare
+    assert "systemctl --user mask --runtime --force swaync.service" in prepare
+    assert "systemctl --user stop swaync.service" not in start
+    assert "org.freedesktop.Notifications" in start
+    assert 'test "$owner" = "$pid"' in start
+    assert 'if "notification-center" in surfaces:' in review
+    assert "self._prepare_notification_review(record)" in review
+    assert "self._restore_notification_review(record)" in review
+
+
 def test_ui_review_resets_quickshell_layers_at_every_surface_boundary() -> None:
     source = (
         RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
