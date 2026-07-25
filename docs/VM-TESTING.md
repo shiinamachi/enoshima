@@ -57,18 +57,20 @@ not a fresh clone of the remote default branch.
 
 Before bootstrap, suites also seed valid
 `~/.cache/codex-desktop/electron/electron-v*-linux-*.zip` archives and the
-installed source checkout's `Codex.dmg` into the guest's matching build cache.
-The runner validates the ZIP container and Apple UDIF trailer, verifies every
-transfer with SHA-256, requires the DMG digest to match
+installed source checkout's `Codex.dmg`, plus the managed Node runtime archive,
+into the guest's matching build caches. The runner validates the archive
+containers and Apple UDIF trailer, verifies every transfer with SHA-256,
+requires the managed Node archive to match
+`packages/codex-desktop-node-runtime.sha256`, requires the DMG to match
 `packages/codex-desktop-dmg-sha256.txt`, and records each name, size, and digest
-in the run observations. A stale but structurally valid host DMG therefore
+in the run observations. A stale but structurally valid host payload therefore
 fails before guest bootstrap instead of poisoning a long release run. The
-installer passes a seeded DMG to the upstream build explicitly, so repeated
-release suites do not depend on a 600 MiB upstream download completing during
-bootstrap. If a host cache is absent, the production installer retains its
-normal network download path. Set
-`ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR` or `ENOSHIMA_VM_CODEX_DMG` to select a
-different host cache location.
+installer consumes these verified caches, so repeated release suites do not
+depend on either the 600 MiB DMG or managed Node runtime download completing
+during bootstrap. If a host cache is absent, the production installer retains
+its normal network download path. Set
+`ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR`, `ENOSHIMA_VM_CODEX_NODE_ARCHIVE`, or
+`ENOSHIMA_VM_CODEX_DMG` to select a different host cache location.
 
 Pinned bootstrap suites also maintain a base-image-scoped package payload cache
 under `~/.cache/enoshima-vm/pacman`. Only complete regular

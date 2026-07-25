@@ -300,15 +300,27 @@ def test_codex_electron_cache_seed_is_explicit_and_checksum_verified(
     archive = cache / "electron-v42.3.0-linux-x64.zip"
     with zipfile.ZipFile(archive, "w") as bundle:
         bundle.writestr("electron", "fixture")
+    node_archive = tmp_path / "node-v22.22.2-linux-x64.tar.xz"
+    with tarfile.open(node_archive, mode="w:xz") as bundle:
+        info = tarfile.TarInfo("node-v22.22.2-linux-x64/README.md")
+        payload = b"fixture"
+        info.size = len(payload)
+        bundle.addfile(info, io.BytesIO(payload))
+    node_lock = tmp_path / "packages" / "codex-desktop-node-runtime.sha256"
+    node_lock.parent.mkdir()
+    node_lock.write_text(
+        f"{sha256(node_archive.read_bytes()).hexdigest()}  {node_archive.name}\n",
+        encoding="utf-8",
+    )
     dmg = tmp_path / "Codex.dmg"
     dmg.write_bytes(b"koly" + (b"\0" * 508))
     digest_lock = tmp_path / "packages" / "codex-desktop-dmg-sha256.txt"
-    digest_lock.parent.mkdir()
     digest_lock.write_text(
         sha256(dmg.read_bytes()).hexdigest() + "\n", encoding="utf-8"
     )
 
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_NODE_ARCHIVE", str(node_archive))
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_DMG", str(dmg))
     monkeypatch.setattr(service, "_guest", lambda _record: guest)
     monkeypatch.setattr(service, "_write_record", lambda _record: None)
@@ -325,6 +337,12 @@ def test_codex_electron_cache_seed_is_explicit_and_checksum_verified(
             0o600,
         ),
         (
+            node_archive,
+            "/home/kentakang/.cache/codex-desktop/node-runtime/"
+            "node-v22.22.2-linux-x64.tar.xz",
+            0o600,
+        ),
+        (
             dmg,
             "/home/kentakang/.cache/codex-desktop/Codex.dmg",
             0o600,
@@ -333,8 +351,39 @@ def test_codex_electron_cache_seed_is_explicit_and_checksum_verified(
     seeded = record["observations"]["codex_electron_cache"]
     assert seeded["status"] == "seeded"
     assert seeded["archives"][0]["sha256"] == sha256(archive.read_bytes()).hexdigest()
+    assert seeded["node_runtime"]["status"] == "seeded"
+    assert seeded["node_runtime"]["sha256"] == sha256(
+        node_archive.read_bytes()
+    ).hexdigest()
     assert seeded["dmg"]["status"] == "seeded"
     assert seeded["dmg"]["sha256"] == sha256(dmg.read_bytes()).hexdigest()
+
+
+def test_codex_node_runtime_seed_rejects_a_stale_valid_archive(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    cache = tmp_path / "electron-cache"
+    cache.mkdir()
+    node_archive = tmp_path / "node-v22.22.2-linux-x64.tar.xz"
+    with tarfile.open(node_archive, mode="w:xz") as bundle:
+        info = tarfile.TarInfo("node-v22.22.2-linux-x64/README.md")
+        payload = b"fixture"
+        info.size = len(payload)
+        bundle.addfile(info, io.BytesIO(payload))
+    node_lock = tmp_path / "packages" / "codex-desktop-node-runtime.sha256"
+    node_lock.parent.mkdir()
+    node_lock.write_text(
+        f"{'0' * 64}  {node_archive.name}\n", encoding="utf-8"
+    )
+
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_NODE_ARCHIVE", str(node_archive))
+    monkeypatch.setenv("ENOSHIMA_VM_CODEX_DMG", str(tmp_path / "missing.dmg"))
+
+    with pytest.raises(VMError, match="does not match its digest lock"):
+        service._seed_codex_electron_cache({"run_id": "run-012345abcdef"})
 
 
 def test_codex_dmg_cache_seed_rejects_a_stale_valid_cache(
@@ -344,13 +393,20 @@ def test_codex_dmg_cache_seed_rejects_a_stale_valid_cache(
     service = VMService(paths)
     cache = tmp_path / "electron-cache"
     cache.mkdir()
+    node_lock = tmp_path / "packages" / "codex-desktop-node-runtime.sha256"
+    node_lock.parent.mkdir()
+    node_lock.write_text(
+        f"{'0' * 64}  node-v22.22.2-linux-x64.tar.xz\n", encoding="utf-8"
+    )
     dmg = tmp_path / "Codex.dmg"
     dmg.write_bytes(b"koly" + (b"\0" * 508))
     digest_lock = tmp_path / "packages" / "codex-desktop-dmg-sha256.txt"
-    digest_lock.parent.mkdir()
     digest_lock.write_text(("0" * 64) + "\n", encoding="utf-8")
 
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
+    monkeypatch.setenv(
+        "ENOSHIMA_VM_CODEX_NODE_ARCHIVE", str(tmp_path / "missing-node.tar.xz")
+    )
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_DMG", str(dmg))
 
     with pytest.raises(VMError, match="does not match the repository digest lock"):
@@ -364,10 +420,18 @@ def test_codex_dmg_cache_seed_rejects_an_invalid_udif_trailer(
     service = VMService(paths)
     cache = tmp_path / "electron-cache"
     cache.mkdir()
+    node_lock = tmp_path / "packages" / "codex-desktop-node-runtime.sha256"
+    node_lock.parent.mkdir()
+    node_lock.write_text(
+        f"{'0' * 64}  node-v22.22.2-linux-x64.tar.xz\n", encoding="utf-8"
+    )
     dmg = tmp_path / "Codex.dmg"
     dmg.write_bytes(b"invalid" + (b"\0" * 505))
 
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
+    monkeypatch.setenv(
+        "ENOSHIMA_VM_CODEX_NODE_ARCHIVE", str(tmp_path / "missing-node.tar.xz")
+    )
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_DMG", str(dmg))
 
     with pytest.raises(VMError, match="no UDIF trailer"):

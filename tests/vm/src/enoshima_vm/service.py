@@ -66,6 +66,9 @@ REMOTE_CODEX_ELECTRON_CACHE = PurePosixPath(
 REMOTE_CODEX_DMG_CACHE = PurePosixPath(
     "/home/kentakang/.cache/codex-desktop/Codex.dmg"
 )
+REMOTE_CODEX_NODE_CACHE = PurePosixPath(
+    "/home/kentakang/.cache/codex-desktop/node-runtime"
+)
 REMOTE_PACMAN_CACHE_ROOT = REMOTE_ROOT / "cache"
 REMOTE_PACMAN_CACHE_SEED = REMOTE_PACMAN_CACHE_ROOT / "pacman-seed.tar"
 REMOTE_PACMAN_CACHE_DELTA = REMOTE_PACMAN_CACHE_ROOT / "pacman-delta.tar"
@@ -472,9 +475,47 @@ class VMService:
                 / "Codex.dmg",
             )
         ).expanduser()
+        node_lock = (
+            self.paths.repository
+            / "packages"
+            / "codex-desktop-node-runtime.sha256"
+        )
+        try:
+            node_lock_fields = node_lock.read_text(encoding="utf-8").split()
+        except OSError as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "Codex managed Node runtime lock could not be read",
+                {"path": str(node_lock), "error": str(error)},
+            ) from error
+        if (
+            len(node_lock_fields) != 2
+            or not re.fullmatch(r"[0-9a-f]{64}", node_lock_fields[0])
+            or not re.fullmatch(
+                r"node-v[0-9]+\.[0-9]+\.[0-9]+-linux-x64\.tar\.xz",
+                node_lock_fields[1],
+            )
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "Codex managed Node runtime lock is invalid",
+                {"path": str(node_lock)},
+            )
+        expected_node_digest, node_archive_name = node_lock_fields
+        node_archive = Path(
+            os.environ.get(
+                "ENOSHIMA_VM_CODEX_NODE_ARCHIVE",
+                Path.home()
+                / ".cache"
+                / "codex-desktop"
+                / "node-runtime"
+                / node_archive_name,
+            )
+        ).expanduser()
         observation: dict[str, object] = {
             "status": "absent",
             "archives": [],
+            "node_runtime": {"status": "absent"},
             "dmg": {"status": "absent"},
         }
 
@@ -520,6 +561,60 @@ class VMService:
 
             observation["status"] = "seeded"
             observation["archives"] = uploaded
+
+        if node_archive.exists() or node_archive.is_symlink():
+            if (
+                node_archive.is_symlink()
+                or not node_archive.is_file()
+                or node_archive.name != node_archive_name
+            ):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    f"invalid Codex managed Node runtime cache: {node_archive}",
+                )
+            node_size = node_archive.stat().st_size
+            if node_size <= 0 or node_size > 256 * 1024 * 1024:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "Codex managed Node runtime cache has an invalid size",
+                    {"path": str(node_archive), "size": node_size},
+                )
+            if not tarfile.is_tarfile(node_archive):
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "Codex managed Node runtime cache is not a tar archive",
+                    {"path": str(node_archive)},
+                )
+            node_digest = file_sha256(node_archive)
+            if node_digest != expected_node_digest:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "Codex managed Node runtime cache does not match its digest lock",
+                    {
+                        "path": str(node_archive),
+                        "actual": node_digest,
+                        "expected": expected_node_digest,
+                    },
+                )
+            guest = self._guest(record)
+            remote_node_archive = REMOTE_CODEX_NODE_CACHE / node_archive_name
+            guest.upload_file(node_archive, remote_node_archive, mode=0o600)
+            remote_result = guest.exec(
+                ["sha256sum", "--", str(remote_node_archive)], timeout=180
+            )
+            remote_digest = remote_result.stdout.split(maxsplit=1)[0]
+            if remote_digest != node_digest:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "Codex managed Node runtime transfer checksum mismatch",
+                )
+            observation["status"] = "seeded"
+            observation["node_runtime"] = {
+                "status": "seeded",
+                "name": node_archive_name,
+                "size": node_size,
+                "sha256": node_digest,
+            }
 
         if dmg.exists() or dmg.is_symlink():
             if dmg.is_symlink() or not dmg.is_file():
