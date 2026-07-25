@@ -77,6 +77,8 @@ REMOTE_LOGIN_CREDENTIAL = REMOTE_ROOT / "secrets" / "chpasswd-input"
 UI_STABILITY_MAX_CHANGED_PIXEL_RATIO = 0.0025
 UI_STABILITY_MAX_NORMALIZED_RMSE = 0.004
 UI_STABILITY_MAX_SSIM_ERROR = 0.005
+UI_STABILITY_TIMEOUT_SECONDS = 20
+UI_STABILITY_MINIMUM_FRAME_COUNT = 3
 PACMAN_PACKAGE_PATTERN = re.compile(
     r"^[A-Za-z0-9@._+:~-]+\.pkg\.tar\.(?:zst|xz|gz|bz2|lrz|lzo|Z)(?:\.sig)?$"
 )
@@ -1640,6 +1642,61 @@ class VMService:
             f"expected layer did not appear: {namespace}",
         )
 
+    def _wait_for_ui_review_layer(
+        self,
+        record: dict[str, Any],
+        output: str,
+        namespace: str,
+        *,
+        present: bool,
+        timeout_seconds: float = 20,
+    ) -> None:
+        guest = self._guest(record)
+        deadline = time.monotonic() + timeout_seconds
+        last_layers: object = {}
+        while time.monotonic() < deadline:
+            result = guest.exec(
+                self._hypr_command("hyprctl -j layers"), timeout=15, check=False
+            )
+            if result.returncode == 0:
+                try:
+                    last_layers = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    last_layers = {}
+                output_layers = (
+                    last_layers.get(output, {})
+                    if isinstance(last_layers, dict)
+                    else {}
+                )
+                namespaces: set[str] = set()
+
+                def visit(value: object) -> None:
+                    if isinstance(value, dict):
+                        candidate = value.get("namespace")
+                        if isinstance(candidate, str):
+                            namespaces.add(candidate)
+                        for child in value.values():
+                            visit(child)
+                    elif isinstance(value, list):
+                        for child in value:
+                            visit(child)
+
+                visit(output_layers)
+                if (namespace in namespaces) is present:
+                    return
+            time.sleep(0.1)
+        expected = "appear" if present else "disappear"
+        raise VMError(
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            f"production UI layer did not {expected}",
+            {
+                "output": output,
+                "namespace": namespace,
+                "expected_present": present,
+                "layers": last_layers,
+            },
+        )
+
     def _prepare_login(self, record: dict[str, Any]) -> None:
         secret_dir = self._run_dir(record["run_id"]) / "secrets"
         secret_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -2090,17 +2147,26 @@ class VMService:
         name: str,
         output: str,
         *,
-        timeout_seconds: float = 8,
+        timeout_seconds: float = UI_STABILITY_TIMEOUT_SECONDS,
     ) -> dict[str, object]:
         deadline = time.monotonic() + timeout_seconds
+        frame_count = 0
         previous_hash = ""
         previous_path: Path | None = None
         last_capture: dict[str, object] | None = None
         best_stability: dict[str, float] | None = None
         best_previous_path: Path | None = None
         best_current_path: Path | None = None
-        while time.monotonic() < deadline:
+        # A fixture ACK confirms that the production model accepted the state,
+        # while the compositor can still need one more frame to map a new
+        # layer-shell surface.  Always permit one comparison after that first
+        # transitional pair, even when a slow screenshot crossed the deadline.
+        while (
+            frame_count < UI_STABILITY_MINIMUM_FRAME_COUNT
+            or time.monotonic() < deadline
+        ):
             last_capture = self.screenshot(record["run_id"], name, output)
+            frame_count += 1
             image_path = Path(str(last_capture["path"]))
             current_hash = sha256(image_path.read_bytes()).hexdigest()
             if current_hash == previous_hash:
@@ -2132,12 +2198,19 @@ class VMService:
                     try:
                         changed_pixels = float(comparison.stderr.strip())
                     except ValueError:
-                        changed_pixels = -1
+                        changed_pixels = -1.0
                     total_pixels = int(last_capture["width"]) * int(
                         last_capture["height"]
                     )
-                    changed_ratio = changed_pixels / total_pixels
-                    if 0 <= changed_ratio <= UI_STABILITY_MAX_CHANGED_PIXEL_RATIO:
+                    changed_ratio = (
+                        changed_pixels / total_pixels
+                        if changed_pixels >= 0
+                        else None
+                    )
+                    if (
+                        changed_ratio is not None
+                        and changed_ratio <= UI_STABILITY_MAX_CHANGED_PIXEL_RATIO
+                    ):
                         last_capture["stability_changed_pixel_ratio"] = round(
                             changed_ratio, 8
                         )
@@ -2191,8 +2264,13 @@ class VMService:
                         except ValueError:
                             pass
                         else:
+                            diagnostic_changed_ratio = (
+                                changed_ratio if changed_ratio is not None else 1.0
+                            )
                             stability = {
-                                "changed_pixel_ratio": round(changed_ratio, 8),
+                                "changed_pixel_ratio": round(
+                                    diagnostic_changed_ratio, 8
+                                ),
                                 "normalized_rmse": round(normalized_rmse, 8),
                                 "ssim_error": round(ssim_error, 8),
                             }
@@ -2215,7 +2293,7 @@ class VMService:
                                 or ssim_error <= UI_STABILITY_MAX_SSIM_ERROR
                             ):
                                 last_capture["stability_changed_pixel_ratio"] = round(
-                                    changed_ratio, 8
+                                    diagnostic_changed_ratio, 8
                                 )
                                 last_capture["stability_normalized_rmse"] = round(
                                     normalized_rmse, 8
@@ -2283,6 +2361,7 @@ class VMService:
                 "name": name,
                 "output": output,
                 "last_capture": last_capture,
+                "frame_count": frame_count,
                 "best_stability": best_stability,
                 "diagnostic_previous": diagnostic_previous,
                 "diagnostic_current": diagnostic_current,
@@ -3047,6 +3126,23 @@ class VMService:
                 record, "desktop-shell", "default", output
             )
             self._wait_for_ui_fixture_ready(record, reset_sequence)
+            titlebar_menu_state = (
+                case.surface == "system-titlebar"
+                and case.state
+                in {
+                    "keyboard-focus",
+                    "system-menu",
+                    "action-running",
+                    "action-error",
+                }
+            )
+            if titlebar_menu_state:
+                self._wait_for_ui_review_layer(
+                    record,
+                    output,
+                    "enoshima-window-menu",
+                    present=False,
+                )
             if case.surface == "auth":
                 self._start_auth_review(record, case.locale, case.state)
             elif case.surface == "notification-center":
@@ -3061,6 +3157,13 @@ class VMService:
                     {"address": str(client["address"])},
                 )
                 fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
+                if titlebar_menu_state:
+                    self._wait_for_ui_review_layer(
+                        record,
+                        output,
+                        "enoshima-window-menu",
+                        present=True,
+                    )
             elif case.surface == "desktop-shell":
                 self._start_desktop_shell_review(record, case.locale, case.state)
                 sequence = self._write_ui_fixture_state(

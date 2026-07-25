@@ -208,6 +208,82 @@ def test_stable_ui_accepts_only_a_bounded_animated_region(
     assert not image.with_name(".busy.png.previous").exists()
 
 
+def test_stable_ui_retries_after_a_slow_transitional_frame(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    image = tmp_path / "artifacts" / "screenshots" / "transition.png"
+    frames = [b"before-layer-map", b"after-layer-map", b"after-layer-map"]
+    captures = 0
+    monotonic_values = iter([0.0, 0.0, 30.0, 31.0])
+
+    def screenshot(_run_id, _name, _output):
+        nonlocal captures
+        image.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        image.write_bytes(frames[captures])
+        captures += 1
+        return {"path": str(image), "width": 1000, "height": 1000}
+
+    def compare(argv, **_kwargs):
+        metric = argv[argv.index("-metric") + 1]
+        outputs = {"AE": "1000000", "RMSE": "0.2 (0.2)", "SSIM": "0.2"}
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr=outputs[metric])
+
+    monkeypatch.setattr(service, "screenshot", screenshot)
+    monkeypatch.setattr("enoshima_vm.service.subprocess.run", compare)
+    monkeypatch.setattr(
+        "enoshima_vm.service.time.monotonic", lambda: next(monotonic_values)
+    )
+    monkeypatch.setattr("enoshima_vm.service.time.sleep", lambda _seconds: None)
+
+    capture = service._capture_stable_ui(
+        {"run_id": "run-012345abcdef"},
+        "transition",
+        "HEADLESS-UI",
+        timeout_seconds=20,
+    )
+
+    assert captures == 3
+    assert capture["stability_changed_pixel_ratio"] == 0.0
+    assert capture["stability_metric"] == "pixel-hash"
+
+
+def test_stable_ui_does_not_report_a_negative_ratio_for_invalid_ae(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    image = tmp_path / "artifacts" / "screenshots" / "invalid-ae.png"
+    captures = 0
+
+    def screenshot(_run_id, _name, _output):
+        nonlocal captures
+        captures += 1
+        image.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        image.write_bytes(f"frame-{captures}".encode())
+        return {"path": str(image), "width": 1000, "height": 1000}
+
+    def compare(argv, **_kwargs):
+        metric = argv[argv.index("-metric") + 1]
+        outputs = {
+            "AE": "not-a-number",
+            "RMSE": "64 (0.000976577)",
+            "SSIM": "0.0666445",
+        }
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr=outputs[metric])
+
+    monkeypatch.setattr(service, "screenshot", screenshot)
+    monkeypatch.setattr("enoshima_vm.service.subprocess.run", compare)
+
+    capture = service._capture_stable_ui(
+        {"run_id": "run-012345abcdef"}, "invalid-ae", "HEADLESS-UI"
+    )
+
+    assert capture["stability_changed_pixel_ratio"] == 1.0
+    assert capture["stability_metric"] == "normalized-rmse"
+
+
 def test_normalized_image_metric_prefers_parenthesized_value() -> None:
     assert normalized_image_metric("64 (0.000976577)") == 0.000976577
     assert normalized_image_metric("0.9995") == 0.9995
@@ -392,7 +468,7 @@ def test_unstable_ui_retains_the_best_frame_pair_and_difference(
     service = VMService(paths)
     image = tmp_path / "artifacts" / "screenshots" / "unstable.png"
     captures = 0
-    monotonic_values = iter([0.0, 0.0, 0.1, 1.0])
+    monotonic_values = iter([0.0, 1.0])
 
     def screenshot(_run_id, _name, _output):
         nonlocal captures
@@ -426,7 +502,7 @@ def test_unstable_ui_retains_the_best_frame_pair_and_difference(
             timeout_seconds=0.5,
         )
 
-    assert captures == 2
+    assert captures == 3
     assert failure.value.details is not None
     assert failure.value.details["best_stability"] == {
         "changed_pixel_ratio": 1.0,
@@ -656,6 +732,25 @@ def test_titlebar_review_uses_the_supported_maximize_action_contract() -> None:
     assert "--origin compositor" in titlebar
     assert "--origin vm-review" not in titlebar
     assert "maximize-titlebar-fixture" in titlebar
+
+
+def test_titlebar_review_waits_for_the_production_menu_layer_transition() -> None:
+    source = (
+        RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
+    ).read_text(encoding="utf-8")
+    review = source[
+        source.index("def _run_ui_review") : source.index(
+            "def _run_electron_qualification"
+        )
+    ]
+
+    reset = review.index("present=False")
+    fixture = review.index('elif case.surface == "system-titlebar"')
+    ready = review.index("fixture_ack = self._wait_for_ui_fixture_ready", fixture)
+    mapped = review.index("present=True", ready)
+    capture = review.index("capture = self._capture_stable_ui", mapped)
+
+    assert reset < fixture < ready < mapped < capture
 
 
 def test_ui_review_cleanup_preserves_reserved_tray_clients() -> None:
