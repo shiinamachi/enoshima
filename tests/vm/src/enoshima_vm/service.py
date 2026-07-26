@@ -1527,7 +1527,7 @@ class VMService:
             "devices",
         ):
             command = self._hypr_command(f"hyprctl -j {name}")
-            value = guest.exec(command, timeout=30, check=False)
+            value = guest.exec_retryable(command, timeout=30, check=False)
             if value.returncode:
                 raise VMError(
                     FailureCategory.DESKTOP_SESSION_FAILED,
@@ -1660,7 +1660,7 @@ class VMService:
         deadline = time.monotonic() + int(values.get("timeout_seconds", 120))
         last: list[object] = []
         while time.monotonic() < deadline:
-            result = guest.exec(
+            result = guest.exec_retryable(
                 self._hypr_command("hyprctl -j clients"), timeout=15, check=False
             )
             if result.returncode == 0:
@@ -1738,7 +1738,7 @@ class VMService:
         guest = self._guest(record)
         deadline = time.monotonic() + int(values.get("timeout_seconds", 60))
         while time.monotonic() < deadline:
-            result = guest.exec(
+            result = guest.exec_retryable(
                 self._hypr_command("hyprctl -j layers"), timeout=15, check=False
             )
             if result.returncode == 0:
@@ -1777,7 +1777,7 @@ class VMService:
         deadline = time.monotonic() + timeout_seconds
         last_layers: object = {}
         while time.monotonic() < deadline:
-            result = guest.exec(
+            result = guest.exec_retryable(
                 self._hypr_command("hyprctl -j layers"), timeout=15, check=False
             )
             if result.returncode == 0:
@@ -1917,7 +1917,7 @@ class VMService:
         )
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
-            result = guest.exec(
+            result = guest.exec_retryable(
                 self._hypr_command("hyprctl -j monitors"), timeout=15, check=False
             )
             if result.returncode == 0:
@@ -1949,7 +1949,7 @@ class VMService:
             "secret-tool clear enoshima-vm probe >/dev/null'"
         )
         result = guest.exec(self._remote_shell(shell), timeout=20, check=False)
-        clients_result = guest.exec(
+        clients_result = guest.exec_retryable(
             self._hypr_command("hyprctl -j clients"), timeout=10, check=False
         )
         clients = (
@@ -2144,7 +2144,9 @@ class VMService:
             'test -n "$wayland"; export WAYLAND_DISPLAY=$wayland; '
             f"install -d -m 0700 {remote.parent}; grim{output_argument} {remote}"
         )
-        result = self._guest(record).exec(command, timeout=60, check=False)
+        result = self._guest(record).exec_retryable(
+            command, timeout=60, check=False
+        )
         if result.returncode:
             raise VMError(
                 FailureCategory.VISUAL_ASSERTION_FAILED,
@@ -2212,7 +2214,9 @@ class VMService:
         deadline = time.monotonic() + timeout_seconds
         last_error = "ready file was not created"
         while time.monotonic() < deadline:
-            result = guest.exec(["cat", str(ready)], timeout=5, check=False)
+            result = guest.exec_retryable(
+                ["cat", str(ready)], timeout=5, check=False
+            )
             if result.returncode == 0:
                 try:
                     document = json.loads(result.stdout)
@@ -2585,7 +2589,7 @@ class VMService:
         deadline = time.monotonic() + 20
         last_clients: list[object] = []
         while time.monotonic() < deadline:
-            result = self._guest(record).exec(
+            result = self._guest(record).exec_retryable(
                 self._hypr_command("hyprctl -j clients"), timeout=10, check=False
             )
             if result.returncode == 0:
@@ -2695,7 +2699,7 @@ class VMService:
         guest = self._guest(record)
         ready_deadline = time.monotonic() + 20
         while time.monotonic() < ready_deadline:
-            ready = guest.exec(
+            ready = guest.exec_retryable(
                 self._hypr_command(
                     f"pid=$(cat {pid_path}); "
                     "owner=$(timeout 2s busctl --user --no-pager --no-legend list "
@@ -2784,7 +2788,7 @@ class VMService:
             expected = 1
             count_deadline = time.monotonic() + 10
             while time.monotonic() < count_deadline:
-                count = guest.exec(
+                count = guest.exec_retryable(
                     self._hypr_command("swaync-client -c"), timeout=5, check=False
                 )
                 if count.returncode == 0 and int(count.stdout.strip() or 0) >= expected:
@@ -2861,7 +2865,7 @@ class VMService:
         )
 
     def _titlebar_clients(self, record: dict[str, Any]) -> list[dict[str, Any]]:
-        result = self._guest(record).exec(
+        result = self._guest(record).exec_retryable(
             self._hypr_command("hyprctl -j clients"), timeout=10
         )
         return [
@@ -3032,7 +3036,7 @@ class VMService:
 
     def _close_ui_review_clients(self, record: dict[str, Any]) -> None:
         guest = self._guest(record)
-        result = guest.exec(
+        result = guest.exec_retryable(
             self._hypr_command("hyprctl -j clients"), timeout=15, check=False
         )
         if result.returncode != 0:
@@ -3057,7 +3061,7 @@ class VMService:
         deadline = time.monotonic() + 15
         remaining: list[object] = targets
         while time.monotonic() < deadline:
-            result = guest.exec(
+            result = guest.exec_retryable(
                 self._hypr_command("hyprctl -j clients"), timeout=10, check=False
             )
             if result.returncode == 0:
@@ -3159,7 +3163,7 @@ class VMService:
         deadline = time.monotonic() + 30
         last_clients: list[dict[str, Any]] = []
         while time.monotonic() < deadline:
-            result = guest.exec(
+            result = guest.exec_retryable(
                 self._hypr_command("hyprctl -j clients"), timeout=10, check=False
             )
             if result.returncode == 0:

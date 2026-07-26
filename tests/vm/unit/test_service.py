@@ -29,6 +29,9 @@ class ScreenshotGuest:
         self.commands.append(tuple(argv))
         return CommandResult(tuple(argv), 0, "", "")
 
+    def exec_retryable(self, argv, **kwargs):
+        return self.exec(argv, **kwargs)
+
     def download(self, _remote, local: Path) -> None:
         local.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         header = (

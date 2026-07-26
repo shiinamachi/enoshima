@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from enoshima_vm.errors import FailureCategory, VMError
-from enoshima_vm.guest import INITIAL_SSH_TIMEOUT_SECONDS, Guest
+from enoshima_vm.guest import (
+    INITIAL_SSH_TIMEOUT_SECONDS,
+    RETRYABLE_SSH_ATTEMPTS,
+    Guest,
+)
 from enoshima_vm.process import CommandResult
 
 
@@ -23,8 +27,49 @@ def success() -> CommandResult:
     return CommandResult(("ssh",), 0, "", "")
 
 
+def transport_failure() -> CommandResult:
+    return CommandResult(("ssh",), 255, "", "Connection reset by peer")
+
+
 def test_initial_ssh_budget_covers_cloud_bootstrap_deadline() -> None:
     assert INITIAL_SSH_TIMEOUT_SECONDS == 1200
+
+
+def test_retryable_guest_command_recovers_from_transient_transport_loss(
+    monkeypatch,
+) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    outcomes = iter((transport_failure(), success()))
+    calls = 0
+
+    def execute(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return next(outcomes)
+
+    monkeypatch.setattr(guest, "exec", execute)
+    monkeypatch.setattr("enoshima_vm.guest.time.sleep", lambda _seconds: None)
+
+    assert guest.exec_retryable(["hyprctl", "-j", "clients"]) == success()
+    assert calls == 2
+
+
+def test_retryable_guest_command_does_not_repeat_remote_failures(monkeypatch) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    failure = CommandResult(("ssh",), 1, "", "remote assertion failed")
+    calls = 0
+
+    def execute(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return failure
+
+    monkeypatch.setattr(guest, "exec", execute)
+    result = guest.exec_retryable(["false"], check=False)
+
+    assert result == failure
+    assert calls == 1
+    assert RETRYABLE_SSH_ATTEMPTS == 3
 
 
 def test_wait_ssh_retries_an_initial_command_timeout(monkeypatch) -> None:

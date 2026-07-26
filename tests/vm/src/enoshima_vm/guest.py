@@ -14,6 +14,7 @@ from .errors import FailureCategory, VMError
 from .process import CommandResult, run
 
 INITIAL_SSH_TIMEOUT_SECONDS = 1200
+RETRYABLE_SSH_ATTEMPTS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +73,54 @@ class Guest:
                 FailureCategory.SSH_TIMEOUT,
                 f"guest command timed out: {argv[0]}",
             ) from error
+
+    def exec_retryable(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float = 300,
+        check: bool = True,
+    ) -> CommandResult:
+        """Run a caller-declared idempotent command across transient SSH loss."""
+        last_result: CommandResult | None = None
+        last_timeout: VMError | None = None
+        for attempt in range(RETRYABLE_SSH_ATTEMPTS):
+            try:
+                result = self.exec(argv, timeout=timeout, check=False)
+            except VMError as error:
+                if error.category != FailureCategory.SSH_TIMEOUT:
+                    raise
+                last_timeout = error
+            else:
+                last_timeout = None
+                if result.returncode != 255:
+                    if check and result.returncode:
+                        raise subprocess.CalledProcessError(
+                            result.returncode,
+                            result.argv,
+                            output=result.stdout,
+                            stderr=result.stderr,
+                        )
+                    return result
+                last_result = result
+            if attempt + 1 < RETRYABLE_SSH_ATTEMPTS:
+                time.sleep(0.2 * (attempt + 1))
+
+        if last_timeout is not None:
+            raise last_timeout
+        if last_result is None:
+            raise AssertionError("retryable SSH command produced no result")
+        if check:
+            raise VMError(
+                FailureCategory.SSH_TIMEOUT,
+                "retryable guest command lost its SSH transport",
+                {
+                    "command": str(argv[0]),
+                    "attempts": RETRYABLE_SSH_ATTEMPTS,
+                    "stderr": last_result.stderr[-2000:],
+                },
+            )
+        return last_result
 
     def wait_ssh(self, timeout_seconds: int = INITIAL_SSH_TIMEOUT_SECONDS) -> None:
         deadline = time.monotonic() + timeout_seconds
