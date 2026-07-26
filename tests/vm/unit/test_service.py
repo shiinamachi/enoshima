@@ -665,6 +665,14 @@ def test_reboot_suite_uses_the_desktop_power_path_ten_times() -> None:
     assert "hl.dsp.exec_cmd" in method
     assert "self._hypr_command(launch)" in method
     assert "self._graphical_shell(launch)" not in method
+    assert "self._start_power_client_fixture(record)" in method
+    fixture = source[
+        source.index("def _start_power_client_fixture") : source.index(
+            "def _reboot_via_desktop_power"
+        )
+    ]
+    assert "Enoshima Power Fixture" in fixture
+    assert "ghostty" in fixture
     assert "desktop-power did not change the guest boot ID" in method
     assert "desktop-power checkpoint was not verified after login" in method
 
@@ -699,6 +707,23 @@ def test_power_reboot_waits_for_a_real_application_client(
     command = " ".join(guest.commands[0])
     assert "xembed-sni-proxy" in command
     assert "special:tray" in command
+
+
+def test_power_reboot_starts_a_closeable_wayland_fixture(
+    tmp_path, monkeypatch
+) -> None:
+    paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
+    service = VMService(paths)
+    guest = ScreenshotGuest()
+    monkeypatch.setattr(service, "_guest", lambda _record: guest)
+
+    service._start_power_client_fixture({"run_id": "run-012345abcdef"})
+
+    command = " ".join(guest.commands[-1])
+    assert "hl.dsp.exec_cmd" in command
+    assert "ghostty" in command
+    assert "Enoshima Power Fixture" in command
+    assert "sleep infinity" in command
 
 
 def test_disposable_login_password_is_newline_free_for_gnome_keyring() -> None:

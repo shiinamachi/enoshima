@@ -1391,7 +1391,9 @@ class VMService:
         deadline = time.monotonic() + timeout_seconds
         last_clients: list[dict[str, Any]] = []
         while time.monotonic() < deadline:
-            result = self._guest(record).exec(command, timeout=15, check=False)
+            result = self._guest(record).exec_retryable(
+                command, timeout=15, check=False
+            )
             if result.returncode == 0:
                 try:
                     document = json.loads(result.stdout)
@@ -1410,6 +1412,25 @@ class VMService:
             {"last_clients": last_clients},
         )
 
+    def _start_power_client_fixture(self, record: dict[str, Any]) -> None:
+        """Open a real Wayland client instead of relying on app first-run UI."""
+        fixture_command = (
+            "ghostty --title='Enoshima Power Fixture' "
+            "-e sh -lc 'exec sleep infinity'"
+        )
+        launch = self._hypr_dispatch(
+            f"hl.dsp.exec_cmd({json.dumps(fixture_command)})"
+        )
+        result = self._guest(record).exec(
+            self._hypr_command(launch), timeout=30, check=False
+        )
+        if result.returncode != 0:
+            raise VMError(
+                FailureCategory.REBOOT_FAILED,
+                "could not start the closeable desktop-power fixture",
+                {"stderr": result.stderr[-2000:]},
+            )
+
     def _reboot_via_desktop_power(self, record: dict[str, Any], config: Any) -> None:
         values = config if isinstance(config, dict) else {}
         iterations = values.get("iterations", 1)
@@ -1421,6 +1442,7 @@ class VMService:
         guest = self._guest(record)
         results: list[dict[str, object]] = []
         for iteration in range(1, iterations + 1):
+            self._start_power_client_fixture(record)
             clients_before = self._wait_for_power_clients(record)
             before = guest.exec(
                 ["cat", "/proc/sys/kernel/random/boot_id"]
