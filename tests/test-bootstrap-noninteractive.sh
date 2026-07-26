@@ -167,6 +167,41 @@ if [[ $(grep -Fc '/usr/bin/python -m' "$font_package") -ne 2 ]]; then
 fi
 grep -Fq -- '--syncdeps' "$local_package_installer" ||
   fail 'local package convergence does not install declared build dependencies'
+grep -Fq 'LOCAL_PACKAGE_BUILD_ATTEMPTS:-4' "$local_package_installer" ||
+  fail 'local package convergence has no bounded build retry budget'
+grep -Fq 'LOCAL_PACKAGE_BUILD_RETRY_DELAY_SECONDS:-10' "$local_package_installer" ||
+  fail 'local package convergence has no bounded build retry delay'
+
+local_package_retry_helper=$(
+  sed -n '/^build_local_package()/,/^}/p' "$local_package_installer"
+)
+local_package_retry_work=$retry_work/local-package
+mkdir -p "$local_package_retry_work/package"
+(
+  eval "$local_package_retry_helper"
+  # shellcheck disable=SC2329 # Invoked indirectly by the extracted helper.
+  makepkg() {
+    local count=0
+    [[ ! -f $LOCAL_PACKAGE_ATTEMPT_FILE ]] ||
+      read -r count <"$LOCAL_PACKAGE_ATTEMPT_FILE"
+    count=$((count + 1))
+    printf '%s\n' "$count" >"$LOCAL_PACKAGE_ATTEMPT_FILE"
+    ((count >= 3))
+  }
+  # shellcheck disable=SC2329 # Invoked indirectly by the extracted helper.
+  sleep() {
+    :
+  }
+  export LOCAL_PACKAGE_ATTEMPT_FILE=$local_package_retry_work/attempts
+  # shellcheck disable=SC2034 # Read by the extracted helper evaluated above.
+  local_package_build_attempts=3
+  # shellcheck disable=SC2034 # Read by the extracted helper evaluated above.
+  local_package_retry_delay_seconds=0
+  build_local_package fixture "$local_package_retry_work/package"
+) >/dev/null 2>&1 ||
+  fail 'local package convergence did not recover within its retry budget'
+[[ $(<"$local_package_retry_work/attempts") == 3 ]] ||
+  fail 'local package convergence did not exercise the expected retries'
 
 [[ $(git config --file "$git_config" --get core.editor) == 'zeditor --wait' ]] ||
   fail 'Git does not use the managed graphical editor outside bootstrap'

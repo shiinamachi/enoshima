@@ -2,6 +2,53 @@
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+local_package_build_attempts=${LOCAL_PACKAGE_BUILD_ATTEMPTS:-4}
+local_package_retry_delay_seconds=${LOCAL_PACKAGE_BUILD_RETRY_DELAY_SECONDS:-10}
+
+[[ $local_package_build_attempts =~ ^[1-9][0-9]*$ ]] || {
+  echo "LOCAL_PACKAGE_BUILD_ATTEMPTS must be a positive integer." >&2
+  exit 1
+}
+[[ $local_package_retry_delay_seconds =~ ^[0-9]+$ ]] || {
+  echo "LOCAL_PACKAGE_BUILD_RETRY_DELAY_SECONDS must be zero or a positive integer." >&2
+  exit 1
+}
+
+build_local_package() {
+  local package_name=$1 package_dir=$2
+  local attempt status
+
+  for ((attempt = 1; attempt <= local_package_build_attempts; attempt++)); do
+    if (
+      cd "$package_dir"
+      makepkg \
+        --clean \
+        --cleanbuild \
+        --install \
+        --needed \
+        --noconfirm \
+        --rmdeps \
+        --syncdeps
+    ); then
+      return 0
+    else
+      status=$?
+    fi
+
+    if ((attempt == local_package_build_attempts)); then
+      printf \
+        'ERROR: local package %s exhausted %d build attempts (last status: %d).\n' \
+        "$package_name" "$local_package_build_attempts" "$status" >&2
+      return "$status"
+    fi
+
+    printf \
+      'WARNING: local package %s build attempt %d/%d failed with status %d; retrying in %ss.\n' \
+      "$package_name" "$attempt" "$local_package_build_attempts" "$status" \
+      "$local_package_retry_delay_seconds" >&2
+    sleep "$local_package_retry_delay_seconds"
+  done
+}
 
 if [[ $EUID -eq 0 ]]; then
   echo "Local packages must be built as an unprivileged user." >&2
@@ -72,15 +119,5 @@ trap 'rm -rf -- "$build_root"' EXIT
 for package_name in "${pending_packages[@]}"; do
   cp -a -- "$repo_root/packages/local/$package_name" "$build_root/$package_name"
   printf '\n==> Building declared local package: %s\n' "$package_name"
-  (
-    cd "$build_root/$package_name"
-    makepkg \
-      --clean \
-      --cleanbuild \
-      --install \
-      --needed \
-      --noconfirm \
-      --rmdeps \
-      --syncdeps
-  )
+  build_local_package "$package_name" "$build_root/$package_name"
 done
