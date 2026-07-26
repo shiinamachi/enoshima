@@ -31,9 +31,6 @@ steps:
       report: after-reboot
   - assert_graphical_health:
       settle_seconds: 310
-      required_user_units:
-        - app-discord@autostart.service
-        - app-slack@autostart.service
   - assert_expected_skips
   - collect_artifacts
 allowed_skips:

@@ -753,7 +753,7 @@ def test_disposable_luks_recovery_key_is_newline_free(tmp_path: Path) -> None:
     assert recovery_key.stat().st_mode & 0o777 == 0o600
 
 
-def test_ui_review_login_suppresses_managed_application_autostarts() -> None:
+def test_deterministic_login_suites_suppress_managed_application_autostarts() -> None:
     source = (
         RuntimePaths.discover().project / "src" / "enoshima_vm" / "service.py"
     ).read_text(encoding="utf-8")
@@ -761,8 +761,8 @@ def test_ui_review_login_suppresses_managed_application_autostarts() -> None:
         source.index("def _prepare_login") : source.index("def _login_greetd")
     ]
 
-    assert 'record.get("suite") == "ui-review"' in prepare
-    assert "def _suppress_ui_review_autostart" in prepare
+    assert 'suite in {"ui-review", "reboot"}' in prepare
+    assert "def _suppress_managed_application_autostarts" in prepare
     assert "for entry in discord slack kakaotalk" in prepare
     assert "Hidden=true" in prepare
 

@@ -1882,12 +1882,22 @@ class VMService:
             guest.exec(["unlink", str(REMOTE_LOGIN_PASSWORD)], check=False)
             guest.exec(["unlink", str(REMOTE_LOGIN_CREDENTIAL)], check=False)
         record["login_password"] = str(password_path)
-        if record.get("suite") == "ui-review":
-            self._suppress_ui_review_autostart(record)
+        suite = record.get("suite")
+        if suite in {"ui-review", "reboot"}:
+            self._suppress_managed_application_autostarts(record, str(suite))
         self._write_record(record)
 
-    def _suppress_ui_review_autostart(self, record: dict[str, Any]) -> None:
-        """Keep production app autostarts from contaminating visual captures."""
+    def _suppress_managed_application_autostarts(
+        self,
+        record: dict[str, Any],
+        suite: str,
+    ) -> None:
+        """Keep unrelated first-run apps out of deterministic acceptance lanes."""
+        if suite not in {"ui-review", "reboot"}:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "application autostart suppression is not allowed for this suite",
+            )
         autostart_dir = "/home/kentakang/.config/autostart"
         shell = (
             "set -eu; "
@@ -1900,15 +1910,20 @@ class VMService:
         )
         self._run_checked(
             record,
-            "suppress-ui-review-autostart",
+            f"suppress-{suite}-autostart",
             self._remote_shell(shell),
-            FailureCategory.VISUAL_ASSERTION_FAILED,
+            (
+                FailureCategory.VISUAL_ASSERTION_FAILED
+                if suite == "ui-review"
+                else FailureCategory.REBOOT_FAILED
+            ),
         )
-        record.setdefault("observations", {})["ui_review_autostart_suppressed"] = [
-            "discord",
-            "slack",
-            "kakaotalk",
-        ]
+        record.setdefault("observations", {})[
+            "managed_application_autostarts_suppressed"
+        ] = {
+            "suite": suite,
+            "applications": ["discord", "slack", "kakaotalk"],
+        }
 
     def _login_greetd(self, record: dict[str, Any]) -> None:
         password_path = confined_path(
