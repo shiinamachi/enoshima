@@ -130,7 +130,10 @@ class PowerClientGuest(ScreenshotGuest):
         super().__init__()
         self.responses = [
             "[]\n",
-            '[{"address":"0xabc","class":"discord","pid":42}]\n',
+            (
+                '[{"address":"0xabc","class":"com.mitchellh.ghostty",'
+                '"title":"Enoshima Power Fixture","pid":42}]\n'
+            ),
         ]
 
     def exec(self, argv, **_kwargs):
@@ -703,10 +706,18 @@ def test_power_reboot_waits_for_a_real_application_client(
         {"run_id": "run-012345abcdef"}, timeout_seconds=1
     )
 
-    assert clients == [{"address": "0xabc", "class": "discord", "pid": 42}]
+    assert clients == [
+        {
+            "address": "0xabc",
+            "class": "com.mitchellh.ghostty",
+            "title": "Enoshima Power Fixture",
+            "pid": 42,
+        }
+    ]
     command = " ".join(guest.commands[0])
     assert "xembed-sni-proxy" in command
     assert "special:tray" in command
+    assert "Enoshima Power Fixture" in command
 
 
 def test_power_reboot_starts_a_closeable_wayland_fixture(
@@ -722,6 +733,7 @@ def test_power_reboot_starts_a_closeable_wayland_fixture(
     command = " ".join(guest.commands[-1])
     assert "hl.dsp.exec_cmd" in command
     assert "ghostty" in command
+    assert "--confirm-close-surface=false" in command
     assert "Enoshima Power Fixture" in command
     assert "sleep infinity" in command
 

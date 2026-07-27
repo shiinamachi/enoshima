@@ -1386,6 +1386,7 @@ class VMService:
             'select((.class // "") != "xembed-sni-proxy") | '
             'select((.initialClass // "") != "xembed-sni-proxy") | '
             'select((.workspace.name // "") != "special:tray") | '
+            'select((.title // "") == "Enoshima Power Fixture") | '
             "{address,class,initialClass,title,pid}]'"
         )
         deadline = time.monotonic() + timeout_seconds
@@ -1415,7 +1416,8 @@ class VMService:
     def _start_power_client_fixture(self, record: dict[str, Any]) -> None:
         """Open a real Wayland client instead of relying on app first-run UI."""
         fixture_command = (
-            "ghostty --title='Enoshima Power Fixture' "
+            "ghostty --confirm-close-surface=false "
+            "--title='Enoshima Power Fixture' "
             "-e sh -lc 'exec sleep infinity'"
         )
         launch = self._hypr_dispatch(
