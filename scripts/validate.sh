@@ -190,10 +190,86 @@ for host in inventory["all"]["hosts"]:
 
 with (root / ".codex/config.toml").open("rb") as handle:
     codex_config = tomllib.load(handle)
+
+
+def find_keys(value: object, keys: set[str], path: tuple[str, ...] = ()) -> list[str]:
+    matches: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = (*path, key)
+            if key in keys:
+                matches.append(".".join(child_path))
+            matches.extend(find_keys(child, keys, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            matches.extend(find_keys(child, keys, (*path, str(index))))
+    return matches
+
+
+model_routing_keys = {
+    "default_subagent_model",
+    "default_subagent_reasoning_effort",
+    "model",
+    "model_reasoning_effort",
+    "plan_mode_reasoning_effort",
+    "review_model",
+    "service_tier",
+}
+configured_model_routes = find_keys(codex_config, model_routing_keys)
+assert not configured_model_routes, (
+    "project Codex configuration must inherit session model settings; found: "
+    + ", ".join(configured_model_routes)
+)
+
+features = codex_config["features"]
+assert features["fast_mode"] is False
+
+agents = codex_config["agents"]
+assert agents["enabled"] is True
+assert agents["max_concurrent_threads_per_session"] == 3
+
 vm_mcp = codex_config["mcp_servers"]["enoshima_vm"]
 assert vm_mcp["command"] == "uv"
+assert vm_mcp["args"] == [
+    "run",
+    "--locked",
+    "--project",
+    "tests/vm",
+    "enoshima-vm-mcp",
+]
+assert vm_mcp["cwd"] == "."
+assert vm_mcp["startup_timeout_sec"] == 30
+assert vm_mcp["tool_timeout_sec"] == 259200
+assert vm_mcp["enabled"] is True
+assert vm_mcp["required"] is True
 assert vm_mcp["default_tools_approval_mode"] == "writes"
-assert vm_mcp["tools"]["vm_destroy"]["approval_mode"] == "prompt"
+
+vm_tool_approvals = {
+    name: tool["approval_mode"] for name, tool in vm_mcp["tools"].items()
+}
+assert vm_tool_approvals["vm_status"] == "auto"
+assert vm_tool_approvals["vm_query_desktop"] == "auto"
+assert vm_tool_approvals["vm_list_runs"] == "auto"
+assert vm_tool_approvals["verification_plan"] == "auto"
+assert vm_tool_approvals["vm_destroy"] == "prompt"
+
+triage_agent_path = root / ".codex" / "agents" / "enoshima-triage.toml"
+assert triage_agent_path.is_file(), "missing Codex triage agent configuration"
+with triage_agent_path.open("rb") as handle:
+    triage_agent = tomllib.load(handle)
+
+assert triage_agent["name"] == "enoshima_triage"
+assert isinstance(triage_agent["description"], str)
+assert triage_agent["description"].strip()
+assert triage_agent["sandbox_mode"] == "read-only"
+assert isinstance(triage_agent["developer_instructions"], str)
+assert triage_agent["developer_instructions"].strip()
+
+triage_model_routes = find_keys(triage_agent, model_routing_keys)
+assert not triage_model_routes, (
+    "Codex triage agent must inherit session model settings; found: "
+    + ", ".join(triage_model_routes)
+)
 PY
 
 if command -v actionlint >/dev/null 2>&1; then

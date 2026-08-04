@@ -7,6 +7,7 @@ from enoshima_vm.ui_review import (
     load_ui_review_identities,
     load_ui_review_matrix,
     physical_mode,
+    select_ui_review_cases,
 )
 
 
@@ -38,6 +39,32 @@ def test_ui_review_modes_preserve_one_logical_canvas() -> None:
     assert physical_mode(2.0) == "2560x1600@60"
 
 
+def test_ui_review_mode_selects_representative_or_affected_full_matrix() -> None:
+    matrix = load_ui_review_matrix(RuntimePaths.discover().repository)
+    representative = select_ui_review_cases(
+        matrix,
+        surfaces={"power-menu"},
+        matrix_mode="representative",
+        locales={"en_US.UTF-8"},
+        scales={1.0},
+    )
+    affected_full = select_ui_review_cases(
+        matrix,
+        surfaces={"power-menu"},
+        matrix_mode="affected-full",
+    )
+    full = select_ui_review_cases(
+        matrix,
+        surfaces={case.surface for case in matrix},
+        matrix_mode="full",
+    )
+
+    assert len(representative) == 1
+    assert representative[0].state == "default"
+    assert len(affected_full) == 6 * 2 * 3
+    assert len(full) == 432
+
+
 def test_surface_identity_matches_the_current_registry() -> None:
     repository = RuntimePaths.discover().repository
     identity = load_ui_review_identities(repository, {"power-menu"})["power-menu"]
@@ -48,10 +75,9 @@ def test_surface_identity_matches_the_current_registry() -> None:
 
 def test_display_confirmation_fixture_has_a_stable_countdown_frame() -> None:
     repository = RuntimePaths.discover().repository
-    shell = (
-        repository
-        / "home/dot_config/quickshell/cyberdock/shell.qml"
-    ).read_text(encoding="utf-8")
+    shell = (repository / "home/dot_config/quickshell/cyberdock/shell.qml").read_text(
+        encoding="utf-8"
+    )
 
     assert '"deadline": 0,' in shell
     assert '"seconds_remaining": state === "confirmation" ? 12 : 0' in shell
@@ -59,13 +85,11 @@ def test_display_confirmation_fixture_has_a_stable_countdown_frame() -> None:
 
 def test_snap_fixture_covers_every_production_layout() -> None:
     repository = RuntimePaths.discover().repository
-    shell = (
-        repository
-        / "home/dot_config/quickshell/cyberdock/shell.qml"
-    ).read_text(encoding="utf-8")
+    shell = (repository / "home/dot_config/quickshell/cyberdock/shell.qml").read_text(
+        encoding="utf-8"
+    )
     broker = (
-        repository
-        / "home/dot_local/libexec/executable_enoshima-windowd"
+        repository / "home/dot_local/libexec/executable_enoshima-windowd"
     ).read_text(encoding="utf-8")
 
     fixture_layouts = set(re.findall(r'"layoutId": "([^"]+)"', shell))

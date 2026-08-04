@@ -1,11 +1,25 @@
+[features]
+# Fast mode spends extra credits without shortening VM execution.
+fast_mode = false
+
+[agents]
+# Parallelize bounded read-only discovery and triage, not VM execution or
+# overlapping edits. Model and reasoning settings intentionally inherit from
+# the parent session.
+enabled = true
+max_concurrent_threads_per_session = 3
+
 [mcp_servers.enoshima_vm]
 command = "uv"
 args = ["run", "--locked", "--project", "tests/vm", "enoshima-vm-mcp"]
 cwd = "."
 startup_timeout_sec = 30
-tool_timeout_sec = 14400
+# A release can consume 30.5 hours once, and each suite is eligible for one
+# fresh-overlay infrastructure retry. Keep the worst-case 61-hour run plus
+# setup, evidence, and cleanup headroom inside one synchronous MCP call.
+tool_timeout_sec = 259200
 enabled = true
-required = false
+required = true
 default_tools_approval_mode = "writes"
 
 [mcp_servers.enoshima_vm.tools.vm_status]
@@ -15,6 +29,9 @@ approval_mode = "auto"
 approval_mode = "auto"
 
 [mcp_servers.enoshima_vm.tools.vm_list_runs]
+approval_mode = "auto"
+
+[mcp_servers.enoshima_vm.tools.verification_plan]
 approval_mode = "auto"
 
 [mcp_servers.enoshima_vm.tools.vm_destroy]

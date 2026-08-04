@@ -15,7 +15,8 @@ concurrency:
 jobs:
   boot-security:
     runs-on: [self-hosted, linux, x64, enoshima-kvm, trusted]
-    timeout-minutes: 360
+    # The 330-minute suite may receive one fresh-overlay infrastructure retry.
+    timeout-minutes: 720
     env:
       ENOSHIMA_VM_STATE_ROOT: /tmp/enoshima-vm-state-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -35,11 +36,13 @@ jobs:
         run: make vm-clean
 
       - name: Upload boot-security evidence
+        id: upload-evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: enoshima-boot-security-${{ github.run_id }}
+          name: enoshima-boot-security-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            ${{ env.ENOSHIMA_VM_STATE_ROOT }}/checks/**
             ${{ env.ENOSHIMA_VM_STATE_ROOT }}/runs/*/run.json
             ${{ env.ENOSHIMA_VM_STATE_ROOT }}/runs/*/artifacts/**
             ${{ env.ENOSHIMA_VM_STATE_ROOT }}/audit.jsonl
@@ -47,7 +50,7 @@ jobs:
           retention-days: 14
 
       - name: Remove uploaded run reports
-        if: always()
+        if: always() && steps.upload-evidence.outcome == 'success'
         run: |
           expected="/tmp/enoshima-vm-state-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           test "$ENOSHIMA_VM_STATE_ROOT" = "$expected"

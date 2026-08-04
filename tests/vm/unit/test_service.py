@@ -358,9 +358,10 @@ def test_codex_electron_cache_seed_is_explicit_and_checksum_verified(
     assert seeded["status"] == "seeded"
     assert seeded["archives"][0]["sha256"] == sha256(archive.read_bytes()).hexdigest()
     assert seeded["node_runtime"]["status"] == "seeded"
-    assert seeded["node_runtime"]["sha256"] == sha256(
-        node_archive.read_bytes()
-    ).hexdigest()
+    assert (
+        seeded["node_runtime"]["sha256"]
+        == sha256(node_archive.read_bytes()).hexdigest()
+    )
     assert seeded["dmg"]["status"] == "seeded"
     assert seeded["dmg"]["sha256"] == sha256(dmg.read_bytes()).hexdigest()
 
@@ -380,9 +381,7 @@ def test_codex_node_runtime_seed_rejects_a_stale_valid_archive(
         bundle.addfile(info, io.BytesIO(payload))
     node_lock = tmp_path / "packages" / "codex-desktop-node-runtime.sha256"
     node_lock.parent.mkdir()
-    node_lock.write_text(
-        f"{'0' * 64}  {node_archive.name}\n", encoding="utf-8"
-    )
+    node_lock.write_text(f"{'0' * 64}  {node_archive.name}\n", encoding="utf-8")
 
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_ELECTRON_CACHE_DIR", str(cache))
     monkeypatch.setenv("ENOSHIMA_VM_CODEX_NODE_ARCHIVE", str(node_archive))
@@ -451,9 +450,7 @@ def test_pacman_cache_round_trip_is_snapshot_scoped_and_bounded(
     service = VMService(paths)
     record = {
         "run_id": "run-012345abcdef",
-        "base_image": str(
-            tmp_path / "arch-cloud-reproducible-f419d4e29aebfc01.qcow2"
-        ),
+        "base_image": str(tmp_path / "arch-cloud-reproducible-f419d4e29aebfc01.qcow2"),
     }
     guest = PacmanCacheGuest(
         {
@@ -479,9 +476,7 @@ def test_pacman_cache_round_trip_is_snapshot_scoped_and_bounded(
     assert archive.is_file()
     metadata = json.loads(manifest.read_text(encoding="utf-8"))
     assert metadata["package_count"] == 3
-    assert metadata["package_bytes"] == len(
-        b"alpha-packagealpha-signaturebeta-package"
-    )
+    assert metadata["package_bytes"] == len(b"alpha-packagealpha-signaturebeta-package")
     assert record["observations"]["pacman_cache_collect"]["status"] == "updated"
 
     seed_guest = CacheSeedGuest()
@@ -497,8 +492,7 @@ def test_pacman_cache_round_trip_is_snapshot_scoped_and_bounded(
     ]
     assert record["observations"]["pacman_cache_seed"]["status"] == "seeded"
     assert any(
-        command[:3] == ("sudo", "tar", "--extract")
-        for command in seed_guest.commands
+        command[:3] == ("sudo", "tar", "--extract") for command in seed_guest.commands
     )
 
 
@@ -510,9 +504,7 @@ def test_every_bootstrap_suite_seeds_the_optional_electron_cache() -> None:
             continue
         assert "- seed_codex_electron_cache" in text
         assert text.rindex("- upload_worktree") < text.index("- run_bootstrap")
-        assert text.index("- seed_codex_electron_cache") < text.index(
-            "- run_bootstrap"
-        )
+        assert text.index("- seed_codex_electron_cache") < text.index("- run_bootstrap")
         assert "- seed_pacman_cache" in text
         assert text.index("- seed_pacman_cache") < text.index("- run_bootstrap")
 
@@ -720,9 +712,7 @@ def test_power_reboot_waits_for_a_real_application_client(
     assert "Enoshima Power Fixture" in command
 
 
-def test_power_reboot_starts_a_closeable_wayland_fixture(
-    tmp_path, monkeypatch
-) -> None:
+def test_power_reboot_starts_a_closeable_wayland_fixture(tmp_path, monkeypatch) -> None:
     paths = RuntimePaths(tmp_path, tmp_path, tmp_path / "cache", tmp_path / "state")
     service = VMService(paths)
     guest = ScreenshotGuest()
@@ -947,9 +937,7 @@ def test_ui_review_resets_quickshell_layers_at_every_surface_boundary() -> None:
     ]
     reset = review.index("self._reset_ui_review_surface(record)")
     branch = review.index('if case.surface == "auth"')
-    fixture_reset = review.index(
-        'record, "desktop-shell", "default", output', reset
-    )
+    fixture_reset = review.index('record, "desktop-shell", "default", output', reset)
 
     assert reset < fixture_reset < branch
     assert "self._wait_for_ui_fixture_ready(record, reset_sequence)" in review

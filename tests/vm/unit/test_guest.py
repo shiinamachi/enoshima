@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
+import subprocess
+from pathlib import Path, PurePosixPath
+
+import pytest
 
 from enoshima_vm.errors import FailureCategory, VMError
 from enoshima_vm.guest import (
@@ -9,6 +12,7 @@ from enoshima_vm.guest import (
     Guest,
 )
 from enoshima_vm.process import CommandResult
+from enoshima_vm.source import SourceIdentity
 
 
 class ConnectedSocket:
@@ -69,7 +73,113 @@ def test_retryable_guest_command_does_not_repeat_remote_failures(monkeypatch) ->
 
     assert result == failure
     assert calls == 1
-    assert RETRYABLE_SSH_ATTEMPTS == 3
+    assert RETRYABLE_SSH_ATTEMPTS == 2
+
+
+def test_retryable_guest_command_classifies_remote_failure_as_product(
+    monkeypatch,
+) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    failure = CommandResult(("ssh",), 1, "", "plugin option unavailable")
+    monkeypatch.setattr(guest, "exec", lambda *_args, **_kwargs: failure)
+
+    with pytest.raises(VMError) as raised:
+        guest.exec_retryable(["hyprctl", "getoption"])
+
+    assert raised.value.category is FailureCategory.VALIDATION_FAILED
+    assert raised.value.details["exit_code"] == 1
+
+
+def test_upload_rejects_archive_identity_mismatch_before_ssh(
+    tmp_path: Path, monkeypatch
+) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    identity = SourceIdentity(
+        commit="a" * 40,
+        dirty=True,
+        tree_hash="b" * 64,
+        files=("tracked.txt",),
+        untracked_files=(),
+    )
+    monkeypatch.setattr(
+        "enoshima_vm.guest.create_source_archive",
+        lambda *_args, **_kwargs: identity,
+    )
+    monkeypatch.setattr(
+        "enoshima_vm.guest.subprocess.run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("SSH must not start for a mismatched archive")
+        ),
+    )
+
+    with pytest.raises(VMError) as raised:
+        guest.upload_worktree(
+            tmp_path,
+            PurePosixPath("/home/kentakang/enoshima-test/source"),
+            expected_commit="a" * 40,
+            expected_tree_hash="c" * 64,
+        )
+
+    assert raised.value.category is FailureCategory.SOURCE_INVALIDATED
+
+
+def test_worktree_upload_classifies_ssh_exit_255_as_infrastructure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    identity = SourceIdentity(
+        commit="a" * 40,
+        dirty=True,
+        tree_hash="b" * 64,
+        files=("tracked.txt",),
+        untracked_files=(),
+    )
+
+    def freeze(_repository: Path, archive: Path) -> SourceIdentity:
+        archive.write_bytes(b"archive")
+        return identity
+
+    monkeypatch.setattr("enoshima_vm.guest.create_source_archive", freeze)
+    monkeypatch.setattr(
+        "enoshima_vm.guest.subprocess.run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=("ssh",), returncode=255, stdout=b"", stderr=b"connection reset"
+        ),
+    )
+
+    with pytest.raises(VMError) as raised:
+        guest.upload_worktree(
+            tmp_path,
+            PurePosixPath("/home/kentakang/enoshima-test/source"),
+            expected_commit=identity.commit,
+            expected_tree_hash=identity.tree_hash,
+        )
+
+    assert raised.value.category is FailureCategory.SSH_TIMEOUT
+
+
+@pytest.mark.parametrize("operation", ["download", "upload"])
+def test_scp_exit_255_remains_an_ssh_infrastructure_failure(
+    tmp_path: Path, monkeypatch, operation: str
+) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    monkeypatch.setattr(
+        "enoshima_vm.guest.run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            subprocess.CalledProcessError(255, ["scp"])
+        ),
+    )
+
+    with pytest.raises(VMError) as raised:
+        if operation == "download":
+            guest.download(PurePosixPath("/tmp/artifact"), tmp_path / "artifact")
+        else:
+            source = tmp_path / "source"
+            source.write_text("fixture", encoding="utf-8")
+            monkeypatch.setattr(guest, "exec", lambda *_args, **_kwargs: success())
+            guest.upload_file(source, PurePosixPath("/tmp/source"))
+
+    assert raised.value.category is FailureCategory.SSH_TIMEOUT
 
 
 def test_wait_ssh_retries_an_initial_command_timeout(monkeypatch) -> None:

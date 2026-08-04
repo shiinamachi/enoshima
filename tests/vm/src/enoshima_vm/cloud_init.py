@@ -55,7 +55,7 @@ class CloudInitBuilder:
             )
         except Exception as error:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.HOST_INFRA_ERROR,
                 "cannot generate the disposable SSH key",
                 {"error": str(error)},
             ) from error
@@ -102,14 +102,14 @@ class CloudInitBuilder:
             ]
         else:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.HOST_INFRA_ERROR,
                 "cloud-localds or xorriso is required to build the NoCloud seed",
             )
         try:
             run(argv, timeout=60)
         except Exception as error:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.HOST_INFRA_ERROR,
                 "cannot build the NoCloud seed image",
                 {"error": str(error)},
             ) from error

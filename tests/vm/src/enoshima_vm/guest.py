@@ -4,26 +4,19 @@ import json
 import shlex
 import socket
 import subprocess
+import tempfile
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path, PurePosixPath
 
 from .errors import FailureCategory, VMError
 from .process import CommandResult, run
+from .source import SourceIdentity, create_source_archive
 
 INITIAL_SSH_TIMEOUT_SECONDS = 1200
-RETRYABLE_SSH_ATTEMPTS = 3
-
-
-@dataclass(frozen=True, slots=True)
-class SourceIdentity:
-    commit: str
-    dirty: bool
-    worktree_hash: str
-    files: tuple[str, ...]
-    untracked_files: tuple[str, ...]
+# One retry for caller-declared idempotent transport operations. A failed
+# affected suite may receive one separate fresh-overlay INFRA retry.
+RETRYABLE_SSH_ATTEMPTS = 2
 
 
 class Guest:
@@ -63,16 +56,33 @@ class Guest:
             raise ValueError("guest argv must not be empty")
         remote_command = shlex.join(argv)
         try:
-            return run(
+            result = run(
                 [*self.ssh_base(), "--", remote_command],
                 timeout=timeout,
-                check=check,
+                check=False,
             )
         except subprocess.TimeoutExpired as error:
             raise VMError(
                 FailureCategory.SSH_TIMEOUT,
                 f"guest command timed out: {argv[0]}",
             ) from error
+        if result.returncode == 255:
+            raise VMError(
+                FailureCategory.SSH_TIMEOUT,
+                f"guest SSH transport failed: {argv[0]}",
+                {"stderr": result.stderr[-2000:]},
+            )
+        if check and result.returncode:
+            raise VMError(
+                FailureCategory.VALIDATION_FAILED,
+                f"guest command failed: {argv[0]}",
+                {
+                    "command": str(argv[0]),
+                    "exit_code": result.returncode,
+                    "stderr_tail": result.stderr[-4000:],
+                },
+            )
+        return result
 
     def exec_retryable(
         self,
@@ -95,11 +105,14 @@ class Guest:
                 last_timeout = None
                 if result.returncode != 255:
                     if check and result.returncode:
-                        raise subprocess.CalledProcessError(
-                            result.returncode,
-                            result.argv,
-                            output=result.stdout,
-                            stderr=result.stderr,
+                        raise VMError(
+                            FailureCategory.VALIDATION_FAILED,
+                            f"guest command failed: {argv[0]}",
+                            {
+                                "command": str(argv[0]),
+                                "exit_code": result.returncode,
+                                "stderr_tail": result.stderr[-4000:],
+                            },
                         )
                     return result
                 last_result = result
@@ -228,80 +241,80 @@ class Guest:
             },
         )
 
-    @staticmethod
-    def source_identity(repository: Path) -> SourceIdentity:
-        commit = run(["git", "rev-parse", "HEAD"], cwd=repository).stdout.strip()
-        dirty = bool(run(["git", "status", "--porcelain"], cwd=repository).stdout)
-        raw_files = run(
-            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-            cwd=repository,
-        ).stdout
-        files = tuple(sorted(name for name in raw_files.split("\0") if name))
-        untracked_raw = run(
-            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
-            cwd=repository,
-        ).stdout
-        untracked = tuple(sorted(name for name in untracked_raw.split("\0") if name))
-        digest = sha256()
-        for name in files:
-            path = repository / name
-            if not path.is_file() or path.is_symlink():
-                continue
-            digest.update(name.encode())
-            digest.update(b"\0")
-            digest.update(path.read_bytes())
-            digest.update(b"\0")
-        return SourceIdentity(commit, dirty, digest.hexdigest(), files, untracked)
-
     def upload_worktree(
-        self, repository: Path, remote: PurePosixPath
+        self,
+        repository: Path,
+        remote: PurePosixPath,
+        *,
+        expected_commit: str | None = None,
+        expected_tree_hash: str | None = None,
     ) -> SourceIdentity:
-        identity = self.source_identity(repository)
-        file_list = b"\0".join(name.encode() for name in identity.files) + b"\0"
-        tar_process = subprocess.Popen(
-            [
-                "tar",
-                "--null",
-                "--files-from=-",
-                "--create",
-                "--file=-",
-            ],
-            cwd=repository,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        assert tar_process.stdin is not None
-        assert tar_process.stdout is not None
-        remote_command = (
-            f"install -d -m 0700 {shlex.quote(str(remote))} && "
-            f"tar -xf - -C {shlex.quote(str(remote))}"
-        )
-        ssh_process = subprocess.Popen(
-            [*self.ssh_base(), "--", remote_command],
-            stdin=tar_process.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        tar_process.stdout.close()
-        tar_process.stdin.write(file_list)
-        tar_process.stdin.close()
-        ssh_stdout, ssh_stderr = ssh_process.communicate(timeout=600)
-        tar_stderr = tar_process.stderr.read() if tar_process.stderr else b""
-        tar_status = tar_process.wait()
-        if tar_status or ssh_process.returncode:
+        if not remote.is_absolute() or len(remote.parts) < 4:
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
-                "cannot upload the current worktree",
-                {
-                    "tar_status": tar_status,
-                    "tar_stderr": tar_stderr.decode(errors="replace")[-2000:],
-                    "ssh_status": ssh_process.returncode,
-                    "ssh_stdout": ssh_stdout.decode(errors="replace")[-2000:],
-                    "ssh_stderr": ssh_stderr.decode(errors="replace")[-2000:],
-                },
+                f"unsafe remote source root: {remote}",
             )
-        return identity
+        with tempfile.TemporaryDirectory(prefix="enoshima-source-") as temporary:
+            archive = Path(temporary) / "source.tar"
+            identity = create_source_archive(repository, archive)
+            if expected_commit is not None and identity.commit != expected_commit:
+                raise VMError(
+                    FailureCategory.SOURCE_INVALIDATED,
+                    "source commit changed before worktree upload",
+                    {"expected": expected_commit, "actual": identity.commit},
+                )
+            if (
+                expected_tree_hash is not None
+                and identity.tree_hash != expected_tree_hash
+            ):
+                raise VMError(
+                    FailureCategory.SOURCE_INVALIDATED,
+                    "immutable upload archive does not match the verification plan",
+                    {
+                        "expected": f"sha256:{expected_tree_hash}",
+                        "actual": f"sha256:{identity.tree_hash}",
+                    },
+                )
+            remote_command = (
+                f"rm -rf -- {shlex.quote(str(remote))} && "
+                f"install -d -m 0700 {shlex.quote(str(remote))} && "
+                f"tar -xf - -C {shlex.quote(str(remote))}"
+            )
+            with archive.open("rb") as payload:
+                try:
+                    result = subprocess.run(
+                        [*self.ssh_base(), "--", remote_command],
+                        stdin=payload,
+                        capture_output=True,
+                        timeout=600,
+                        check=False,
+                    )
+                except subprocess.TimeoutExpired as error:
+                    raise VMError(
+                        FailureCategory.SSH_TIMEOUT,
+                        "source archive upload timed out",
+                    ) from error
+                except OSError as error:
+                    raise VMError(
+                        FailureCategory.HOST_INFRA_ERROR,
+                        "cannot start the immutable worktree upload",
+                        {"error": str(error)},
+                    ) from error
+            if result.returncode:
+                raise VMError(
+                    (
+                        FailureCategory.SSH_TIMEOUT
+                        if result.returncode == 255
+                        else FailureCategory.HARNESS_ERROR
+                    ),
+                    "cannot upload the immutable worktree archive",
+                    {
+                        "ssh_status": result.returncode,
+                        "ssh_stdout": result.stdout.decode(errors="replace")[-2000:],
+                        "ssh_stderr": result.stderr.decode(errors="replace")[-2000:],
+                    },
+                )
+            return identity
 
     def download(
         self,
@@ -334,10 +347,25 @@ class Guest:
         argv.extend([f"{self.user}@127.0.0.1:{remote}", str(local)])
         try:
             run(argv, timeout=timeout)
-        except Exception as error:
+        except subprocess.TimeoutExpired as error:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.SSH_TIMEOUT,
+                f"guest artifact download timed out: {remote}",
+            ) from error
+        except subprocess.CalledProcessError as error:
+            raise VMError(
+                (
+                    FailureCategory.SSH_TIMEOUT
+                    if error.returncode == 255
+                    else FailureCategory.HARNESS_ERROR
+                ),
                 f"cannot collect guest artifact: {remote}",
+                {"error": str(error)},
+            ) from error
+        except OSError as error:
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                f"cannot start guest artifact download: {remote}",
                 {"error": str(error)},
             ) from error
 
@@ -378,10 +406,27 @@ class Guest:
         try:
             run(argv, timeout=timeout)
             self.exec(["chmod", f"{mode:o}", str(remote)])
-        except Exception as error:
+        except VMError:
+            raise
+        except subprocess.TimeoutExpired as error:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.SSH_TIMEOUT,
+                f"guest file upload timed out: {remote}",
+            ) from error
+        except subprocess.CalledProcessError as error:
+            raise VMError(
+                (
+                    FailureCategory.SSH_TIMEOUT
+                    if error.returncode == 255
+                    else FailureCategory.HARNESS_ERROR
+                ),
                 f"cannot upload guest file: {remote}",
+                {"error": str(error)},
+            ) from error
+        except OSError as error:
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                f"cannot start guest file upload: {remote}",
                 {"error": str(error)},
             ) from error
 
@@ -390,9 +435,14 @@ def source_identity_json(identity: SourceIdentity) -> dict[str, object]:
     return {
         "source_commit": identity.commit,
         "dirty": identity.dirty,
-        "worktree_hash": f"sha256:{identity.worktree_hash}",
+        "worktree_hash": f"sha256:{identity.tree_hash}",
         "file_count": len(identity.files),
-        "untracked_files": list(identity.untracked_files),
+        "untracked_file_count": len(identity.untracked_files),
+        "untracked_files_sample": [
+            name if len(name) <= 256 else name[:243] + "...<truncated>"
+            for name in identity.untracked_files[:10]
+        ],
+        "untracked_files_truncated": len(identity.untracked_files) > 10,
     }
 
 

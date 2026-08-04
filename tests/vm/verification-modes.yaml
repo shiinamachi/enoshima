@@ -1,0 +1,38 @@
+---
+schema: 1
+modes:
+  dev:
+    authoritative: false
+    fresh_overlay: false
+    fail_fast: true
+    overrides:
+      run_electron_qualification:
+        iterations: 1
+      reboot_via_desktop_power:
+        iterations: 1
+      run_ui_review:
+        matrix_mode: representative
+
+  checkpoint:
+    authoritative: true
+    fresh_overlay: true
+    fail_fast: true
+    overrides:
+      run_electron_qualification:
+        iterations: 3
+      reboot_via_desktop_power:
+        iterations: 3
+      run_ui_review:
+        matrix_mode: affected-full
+
+  release:
+    authoritative: true
+    fresh_overlay: true
+    fail_fast: false
+    overrides:
+      run_electron_qualification:
+        iterations: 20
+      reboot_via_desktop_power:
+        iterations: 10
+      run_ui_review:
+        matrix_mode: full

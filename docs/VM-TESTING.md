@@ -20,6 +20,58 @@ VM success never substitutes for T5 hardware acceptance. In particular, the
 runner neither enrolls workstation Secure Boot keys nor changes the
 workstation LUKS or TPM state.
 
+## Verification workflow
+
+Routine changes use the repository-owned selector in
+`tests/verification-map.yaml`; they do not start with a hand-picked broad VM
+lane. The selector returns the focused checks, registered UI surfaces, VM
+suites, and T5 physical gates required by the current change. It is independent
+of the Codex model and reasoning settings.
+
+The selector computes one sorted union from all of these change sources:
+
+- committed changes in `BASE...HEAD`
+- staged changes
+- unstaged changes
+- non-ignored untracked files
+
+Renames contribute both paths. The selection records `HEAD`, the selected
+paths, and a digest of their current contents. Generated paths declared by the
+map do not affect that digest. Before each selected VM suite and after a
+passing suite, the runner verifies `HEAD` and the original selected-path digest
+are still unchanged. A change to that planned source identity requires a new
+plan.
+
+Registered implementation paths in `docs/ui-surfaces.yaml` select their
+surface evidence and the appropriate desktop, login, and `ui-review` lanes.
+Other managed paths use explicit rules in `tests/verification-map.yaml`. Known
+documentation, metadata, generated, and T0-only changes may omit VM execution
+with a recorded `vmOmittedReason`. A changed path under a declared runtime area
+that matches neither a registered surface nor a verification rule fails as
+`UNMAPPED_RUNTIME_PATH`. This fail-closed result must be fixed in the map; it is
+never converted silently into either no VM work or `vm-full`.
+
+The three evidence modes apply overrides to the same canonical suite YAML:
+
+| Mode | Scope and cost | Evidence contract |
+| --- | --- | --- |
+| `dev` | Affected suites; one Electron and reboot iteration; representative affected UI states; fail fast | Diagnostic only and never completion evidence. Policy permits a reused diagnostic environment, although the current runner still creates a fresh overlay. |
+| `checkpoint` | Affected suites; three Electron and reboot iterations; all required states/locales/scales for affected UI surfaces; fail fast | Authoritative evidence from a fresh overlay for one recoverable work unit. |
+| `release` | Frozen, duplicate-free release plan; twenty Electron iterations, ten reboot iterations, and the full UI matrix | Authoritative fresh-overlay evidence for the final source identity. Non-blocking suite failures are retained while the remaining plan runs; a `VM_BLOCKED` result stops it. |
+
+The current release plan is serial and lists every canonical suite once, in
+this exact order:
+
+```text
+smoke -> converge -> reboot -> desktop -> login -> ui-review -> boot-security
+```
+
+An eligible transient infrastructure failure may create one second fresh
+attempt for a plan entry; it does not duplicate that suite in the release
+plan. Image checksum, signature, keyring, and manifest-integrity failures are
+not retryable. The synchronous MCP and trusted CI outer budgets cover two full
+attempts of every canonical suite plus setup, evidence, and cleanup headroom.
+
 ## Host provisioning
 
 The `vm_test_host` capability on `tpx1c13` installs the native packages in
@@ -51,9 +103,30 @@ No base image or VM disk belongs in Git. Verified base images are cached under
 
 ## Running suites
 
-Every suite starts from a new qcow2 overlay and uploads the current worktree,
-including non-ignored untracked files. It therefore tests uncommitted edits,
-not a fresh clone of the remote default branch.
+Use the selector before routine implementation verification. `BASE` defaults
+to `origin/main`, and `MODE` defaults to `checkpoint` for the read-only plan and
+focused-check targets:
+
+```bash
+make verification-plan BASE=origin/main MODE=checkpoint
+make check-affected BASE=origin/main MODE=checkpoint
+make vm-dev BASE=origin/main
+make vm-checkpoint BASE=origin/main
+
+# Run once, only after code and canonical evidence are frozen.
+make vm-release BASE=origin/main
+```
+
+`verification-plan` prints changed paths, focused checks, affected surfaces,
+ordered suites, T5 gates, source identity, and selection reasons without
+running a check. `check-affected` runs only the selected focused/static checks;
+it does not run a VM. Run `vm-dev` only for feedback, then use a fresh passing
+`vm-checkpoint` as the completion evidence for the work unit. `vm-release`
+runs the fixed plan above after all work units and evidence are frozen.
+
+`make vm-full` is a compatibility alias for `make vm-release`; it is not a
+second plan and must not be added after `vm-release`. `make vm-trusted` is the
+corresponding alias for affected checkpoint verification.
 
 Before bootstrap, suites also seed valid
 `~/.cache/codex-desktop/electron/electron-v*-linux-*.zip` archives and the
@@ -109,6 +182,9 @@ cloud image's stale `systemd-networkd-wait-online.service`. This prevents a
 managed reboot from leaving a failed two-minute wait job after networking has
 already converged through NetworkManager.
 
+The direct lane targets remain available for harness development and bounded
+investigation:
+
 ```bash
 make vm-smoke
 make vm-converge
@@ -119,6 +195,15 @@ make vm-ui-review
 make vm-boot-security
 make vm-full
 ```
+
+Direct lane runs do not prove that the selector's complete affected set was
+covered. For repository task completion, use `vm-checkpoint` or `vm-release`.
+
+The current runner creates a new qcow2 overlay in every mode and uploads the
+current worktree, including non-ignored untracked files. It therefore tests
+uncommitted edits, not a fresh clone of the remote default branch. The `dev`
+contract permits future diagnostic reuse, so a fresh `dev` overlay still does
+not become authoritative evidence.
 
 The lanes have distinct purposes:
 
@@ -222,18 +307,96 @@ maximum duration and removes disposable media even when the controlling
 process disappears. `--keep-on-failure` leaves a failed VM available only until
 that same deadline.
 
+Affected and release operations classify the first actionable failure with a
+`failureOrigin` of `PRODUCT`, `TEST_FIXTURE`, or `INFRA`, and attach a stable
+`failureFingerprint`. The fingerprint excludes volatile run/domain IDs,
+timestamps, forwarded ports, temporary paths, PIDs, and long hexadecimal
+values so the retry decision follows the failure rather than one disposable
+guest.
+
+Product and test-fixture failures are not retried against an unchanged
+suite-specific retry digest. Each digest hashes the complete current source
+snapshot matched by that suite's retry dependencies; it never derives identity
+from only the current diff. Checkpoint selection and retry dependencies are
+separate: shared runner, validation, bootstrap, and managed-runtime inputs feed
+every suite that consumes them, while lane-specific contracts and runtime
+inputs invalidate only their consumer lanes. Documentation, host-only tests,
+and instructions remain excluded from later suite-step identity. A failure in
+the early `run_validate` step instead compares the complete frozen source-tree
+digest, so changing a validation test unblocks that validation failure without
+unfreezing an unrelated later desktop assertion. Non-authoritative `dev`
+failures never block a later checkpoint or release attempt. The separate
+source-freeze identity covers HEAD and the complete tracked plus
+non-ignored-untracked upload payload, including paths, contents,
+symlink targets, and executable modes. The runner freezes an immutable archive,
+derives the actual digest from that archive, and uploads it only when it matches
+the plan. A transient infrastructure failure receives at most one additional
+fresh-overlay attempt. If the same infrastructure fingerprint is recorded
+twice without a relevant source change, current and later operations return
+`VM_BLOCKED` before creating another VM.
+
+Failures before a domain can be created are persisted as immutable run records,
+with raw error details and a traceback under their artifact tree, so retry
+history survives later calls. A record becomes fresh and mode-authoritative
+only after an overlay exists. KVM, libvirt, qcow2, host-filesystem, and explicit
+transport or timeout failures are classified as `INFRA`; harness/schema errors remain
+`TEST_FIXTURE`. If HEAD, changed paths, content, symlink targets, or executable
+bits move during any attempt, its persisted record is marked non-authoritative
+and source-invalidated before the operation stops.
+
+Each run summary, run list, selector view, low-level exec/query result, and
+affected/release operation response is intentionally bounded to 32 KiB. A run
+summary includes at most 80 excerpt lines (and at most 16 KiB of excerpt text),
+plus the mode, source identity, verdict, first failed step, origin,
+fingerprint, artifact root, and next verification. Large selector views retain
+counts and bounded previews in both MCP and CLI output. Manual
+exec output and large desktop queries are written to artifacts before a
+bounded preview is returned. Full journals, stack traces, screenshot
+differences, observations, and JUnit output stay under the run artifact tree.
+A complete affected/release report is retained as
+`plans/<operation-id>/plan.json` under the configured state root; the response
+returns that directory as `artifactRoot` and only the first full actionable
+failure needed for triage. The runner creates this report before focused checks
+or VM creation, atomically updates it after each check and suite attempt, and
+keeps it non-authoritative until the operation reaches a final verdict. A host
+restart, cancellation, or outer timeout therefore leaves the latest incomplete
+plan and every completed artifact available for recovery.
+
+`vm_list_runs` returns newest records first in a bounded page with `total`,
+`truncated`, and `nextCursor`; pass the cursor back to continue. Worktree upload
+returns counts and a bounded untracked-file sample while preserving the full
+manifest under the run artifact tree. Focused checks capture stdout and stderr
+to a dedicated artifact directory. Named, affected, and release run entrypoints
+execute those checks and revalidate the source freeze before starting a VM.
+
 ## Codex control surface
 
 The project-scoped `.codex/config.toml` starts the STDIO `enoshima_vm` MCP
 server from the locked Python project. The server exposes:
 
 ```text
+verification_plan     vm_run_affected       vm_run_plan
 vm_create             vm_run_suite          vm_status
 vm_wait               vm_upload_worktree    vm_exec
 vm_reboot             vm_poweroff           vm_screenshot
 vm_query_desktop      vm_collect_artifacts  vm_destroy
 vm_list_runs
 ```
+
+For Codex, `verification_plan` is the read-only selector view,
+`vm_run_affected` is the synchronous `dev` or `checkpoint` execution, and
+`vm_run_plan` is the synchronous frozen `release` execution. One call owns the
+serial suite sequence and returns its bounded result; do not poll a terminal,
+`vm_status`, or `vm_wait` while it runs. Heavy suites are never split across
+agents.
+
+The MCP server is required by project configuration and its tool timeout spans
+the release plan's full declared 30.5-hour budget. If the server cannot start
+or perform VM work, Codex must finish the selected focused checks and report
+`VM_BLOCKED` with the missing suite evidence. It must not fall back to a long
+`make vm-*` shell process or interactive terminal polling. The CLI and Make
+targets remain available to a human operator and for short, bounded harness
+diagnosis.
 
 The service rejects unmanaged run IDs and libvirt domains, allows only the
 `enoshima-test-` prefix, limits active domains to one, caps CPU/RAM/disk, binds
@@ -244,8 +407,13 @@ rejecting every other private address range.
 Every service action is written to a mode-0600 JSONL audit log with sensitive
 arguments redacted.
 
-Codex should use `vm_run_suite` for a final verdict. The lower-level tools are
-for evidence gathering and bounded diagnosis. Destruction requires explicit
+Codex should use `vm_run_affected` for affected checkpoint evidence and
+`vm_run_plan` for final release evidence. `vm_run_suite` accepts only `dev` or
+`checkpoint`, applies the same retry/source-freeze policy to one named lane,
+and cannot claim release authority. Only `vm_run_plan release` can create a
+release result, and its loader enforces the exact canonical order and unique
+membership. The lower-level tools are for evidence gathering and bounded
+diagnosis, not a repaired-guest passing result. Destruction requires explicit
 approval in the project MCP policy.
 
 ## Image and update policy
@@ -279,10 +447,11 @@ References: [official Arch cloud image index](https://geo.mirror.pkgbuild.com/im
 GitHub-hosted infrastructure for pushes and pull requests. It never reaches a
 self-hosted hypervisor.
 
-`.github/workflows/vm-trusted.yml` runs fast, convergence, reboot, desktop, and
-greetd-login lanes for trusted `main` pushes. Manual dispatch additionally
-exposes the exhaustive `ui-review` and release-level `full` lanes without
-running untrusted pull-request code on the hypervisor. The separate
+`.github/workflows/vm-trusted.yml` runs the selector-driven `vm-trusted`
+checkpoint target for trusted `main` pushes. Manual dispatch additionally
+exposes named individual lanes, exhaustive `ui-review`, and the `full` alias
+for the release plan without running untrusted pull-request code on the
+hypervisor. The separate
 `.github/workflows/vm-boot-security.yml` runs on a manual or scheduled trusted
 host. Both require the `self-hosted`, `linux`, `x64`, `enoshima-kvm`, and
 `trusted` labels, use read-only repository permissions, serialize all KVM jobs,
@@ -300,3 +469,19 @@ postflight checks on `tpx1c13` and review the hardware behaviors excluded from
 the VM. Suspend/hibernate, TPM enrollment, Secure Boot key changes, firmware
 updates, WWAN changes, and applying real boot artifacts remain explicit manual
 operations under the installation and workstation contracts.
+
+The selector carries applicable T5 obligations into `physicalGates` in the
+plan and operation result:
+
+| Change class | T5 gate identifiers |
+| --- | --- |
+| Restart and sleep | `suspend-resume`, `sleep-battery-drain`, `post-resume-thermal` |
+| Display hardware | `internal-oled-edid-refresh-rate`, `external-display-dock` |
+| Visible UI review | `internal-external-display-review` |
+| Authentication hardware | `fingerprint-enrollment-authentication` |
+| Boot security | `secure-boot-enrollment`, `tpm-unlock-recovery` |
+| WWAN | `wwan-connectivity-shutdown` |
+
+Preserve applicable names in the final verification report until they are
+completed on `tpx1c13`. A passing checkpoint or release plan never clears a T5
+gate.

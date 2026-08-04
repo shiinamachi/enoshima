@@ -96,13 +96,13 @@ class LibvirtBackend:
         }
         if missing:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.HOST_INFRA_ERROR,
                 "VM host dependencies are missing",
                 {"missing": missing, "checks": checks},
             )
         if not checks["kvm_readable"]:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.HOST_INFRA_ERROR,
                 "/dev/kvm is not readable and writable",
                 checks,
             )
@@ -110,7 +110,7 @@ class LibvirtBackend:
             self.virsh(["uri"], timeout=15)
         except Exception as error:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.HOST_INFRA_ERROR,
                 f"libvirt connection is unavailable: {self.uri}",
                 {"error": str(error), "checks": checks},
             ) from error
@@ -127,7 +127,7 @@ class LibvirtBackend:
         active = self.active_managed_domains()
         if len(active) >= MAX_ACTIVE_DOMAINS:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.HOST_INFRA_ERROR,
                 "maximum active Enoshima VM count reached",
                 {"active": active, "maximum": MAX_ACTIVE_DOMAINS},
             )
@@ -173,7 +173,7 @@ class LibvirtBackend:
                 )
         except Exception as error:
             raise VMError(
-                FailureCategory.HARNESS_ERROR,
+                FailureCategory.HOST_INFRA_ERROR,
                 "cannot create the disposable qcow2 overlay",
                 {"error": str(error)},
             ) from error

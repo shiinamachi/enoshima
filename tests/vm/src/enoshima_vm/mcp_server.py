@@ -5,13 +5,14 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from .results import bound_verification_plan, summarize_run_list, summarize_run_record
 from .service import VMService
 
 INSTRUCTIONS = (
-    "Use this server only for disposable Enoshima test domains. Create at most one "
-    "run, wait for readiness, upload the current worktree, execute or inspect the "
-    "guest, collect artifacts, then destroy it. Never treat repairs made inside a "
-    "dirty guest as a passing test: rerun the suite from a fresh overlay. Host paths, "
+    "Use repository verification_plan before selecting work. Prefer one synchronous "
+    "vm_run_affected call for checkpoint evidence and vm_run_plan for frozen release "
+    "qualification; do not poll a terminal. Keep at most one disposable domain active. "
+    "Never treat repairs made inside a dirty guest as a passing test. Host paths, "
     "host shell execution, device passthrough, LAN bridges, and non-Enoshima libvirt "
     "domains are unavailable. Reports persist; overlays, seed media, vTPM state, and "
     "disposable SSH keys are removed by vm_destroy."
@@ -47,25 +48,62 @@ DESTRUCTIVE = ToolAnnotations(
 @mcp.tool(annotations=WRITE)
 def vm_create(suite: str = "smoke", source_ref: str = "working-tree") -> dict[str, Any]:
     """Create and boot one constrained disposable VM without running its suite."""
-    return service().create(suite, source_ref=source_ref)
+    return summarize_run_record(service().create(suite, source_ref=source_ref))
 
 
 @mcp.tool(annotations=WRITE)
-def vm_run_suite(suite: str = "smoke", keep_on_failure: bool = False) -> dict[str, Any]:
-    """Run a complete declarative suite from a fresh overlay and clean it up."""
-    return service().run_suite(suite, keep_on_failure=keep_on_failure)
+def vm_run_suite(
+    suite: str = "smoke",
+    keep_on_failure: bool = False,
+    verification_mode: str = "checkpoint",
+    base_ref: str = "origin/main",
+) -> dict[str, Any]:
+    """Run one dev/checkpoint suite with repository retry and source-freeze policy."""
+    return service().run_suite_result(
+        suite,
+        keep_on_failure=keep_on_failure,
+        verification_mode=verification_mode,
+        base_ref=base_ref,
+    )
+
+
+@mcp.tool(annotations=READ_ONLY)
+def verification_plan(
+    base_ref: str = "origin/main",
+    mode: str = "checkpoint",
+) -> dict[str, object]:
+    """Return changed paths and the trusted affected verification selection."""
+    return bound_verification_plan(service().verification_plan(base_ref, mode))
+
+
+@mcp.tool(annotations=WRITE)
+def vm_run_affected(
+    base_ref: str = "origin/main",
+    mode: str = "checkpoint",
+) -> dict[str, object]:
+    """Run selected affected suites serially with the repository retry budget."""
+    return service().run_affected(base_ref, mode)
+
+
+@mcp.tool(annotations=WRITE)
+def vm_run_plan(
+    plan: str = "release",
+    base_ref: str = "origin/main",
+) -> dict[str, object]:
+    """Run one trusted repository plan with unique serial suites."""
+    return service().run_plan(plan, base_ref=base_ref)
 
 
 @mcp.tool(annotations=READ_ONLY)
 def vm_status(run_id: str) -> dict[str, Any]:
     """Return the persisted run metadata and current managed-domain state."""
-    return service().status(run_id)
+    return summarize_run_record(service().status(run_id))
 
 
 @mcp.tool(annotations=WRITE)
 def vm_wait(run_id: str, timeout_seconds: int = 1200) -> dict[str, Any]:
     """Wait for SSH, cloud-init, and the QEMU guest agent to become ready."""
-    return service().wait(run_id, timeout_seconds)
+    return summarize_run_record(service().wait(run_id, timeout_seconds))
 
 
 @mcp.tool(annotations=WRITE)
@@ -81,7 +119,7 @@ def vm_exec(
     timeout_seconds: int = 300,
 ) -> dict[str, object]:
     """Execute an argv vector inside the disposable guest, never on the host."""
-    return service().exec(run_id, argv, timeout_seconds=timeout_seconds)
+    return service().exec_bounded(run_id, argv, timeout_seconds=timeout_seconds)
 
 
 @mcp.tool(annotations=WRITE)
@@ -109,7 +147,7 @@ def vm_screenshot(
 @mcp.tool(annotations=READ_ONLY)
 def vm_query_desktop(run_id: str) -> dict[str, object]:
     """Read Hyprland monitor, workspace, client, focus, and input state."""
-    return service().query_desktop(run_id)
+    return service().query_desktop_bounded(run_id)
 
 
 @mcp.tool(annotations=WRITE)
@@ -125,9 +163,12 @@ def vm_destroy(run_id: str) -> dict[str, object]:
 
 
 @mcp.tool(annotations=READ_ONLY)
-def vm_list_runs() -> list[dict[str, object]]:
-    """List persisted Enoshima VM run reports."""
-    return service().list_runs()
+def vm_list_runs(
+    cursor: str | None = None,
+    limit: int = 20,
+) -> dict[str, object]:
+    """List newest persisted run reports with a bounded continuation cursor."""
+    return summarize_run_list(service().list_runs(), cursor=cursor, limit=limit)
 
 
 def main() -> None:

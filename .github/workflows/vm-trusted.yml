@@ -6,12 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: Disposable VM suite to run
+        description: Verification mode or diagnostic VM suite to run
         required: true
-        default: trusted
+        default: checkpoint
         type: choice
         options:
-          - trusted
+          - checkpoint
+          - release
           - smoke
           - converge
           - reboot
@@ -30,23 +31,38 @@ concurrency:
 jobs:
   vm:
     runs-on: [self-hosted, linux, x64, enoshima-kvm, trusted]
-    timeout-minutes: 360
+    # Seven serial suite budgets total 1,830 minutes and each suite may receive
+    # one fresh-overlay infrastructure retry. Retain cleanup/evidence headroom
+    # around the 3,660-minute worst case on the trusted self-hosted runner.
+    timeout-minutes: 4320
     env:
       ENOSHIMA_VM_STATE_ROOT: /tmp/enoshima-vm-state-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out trusted source
         uses: actions/checkout@v4
+        with:
+          # A push may contain multiple commits; the affected selector must
+          # compare the new HEAD with the event's complete pre-push base.
+          fetch-depth: 0
 
       - name: Check KVM host boundary
         run: make vm-preflight
 
-      - name: Run selected disposable suites
+      - name: Run selected verification
         env:
-          REQUESTED_SUITE: ${{ inputs.suite || 'trusted' }}
+          REQUESTED_SUITE: ${{ inputs.suite || 'checkpoint' }}
+          ENOSHIMA_PUSH_BASE: ${{ github.event.before }}
         run: |
+          checkpoint_base=origin/main
+          if [[ "$GITHUB_EVENT_NAME" == push &&
+                "$ENOSHIMA_PUSH_BASE" =~ ^[0-9a-f]{40}$ &&
+                "$ENOSHIMA_PUSH_BASE" != 0000000000000000000000000000000000000000 ]]; then
+            checkpoint_base=$ENOSHIMA_PUSH_BASE
+          fi
           case "$REQUESTED_SUITE" in
-            trusted) make vm-trusted ;;
-            smoke|converge|reboot|desktop|login|ui-review|full) make "vm-$REQUESTED_SUITE" ;;
+            checkpoint) make vm-checkpoint BASE="$checkpoint_base" ;;
+            release|full) make vm-release BASE="$checkpoint_base" ;;
+            smoke|converge|reboot|desktop|login|ui-review) make "vm-$REQUESTED_SUITE" ;;
             *) exit 2 ;;
           esac
 
@@ -55,11 +71,14 @@ jobs:
         run: make vm-clean
 
       - name: Upload VM evidence
+        id: upload-evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: enoshima-vm-${{ github.run_id }}
+          name: enoshima-vm-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            ${{ env.ENOSHIMA_VM_STATE_ROOT }}/plans/*/plan.json
+            ${{ env.ENOSHIMA_VM_STATE_ROOT }}/checks/**
             ${{ env.ENOSHIMA_VM_STATE_ROOT }}/runs/*/run.json
             ${{ env.ENOSHIMA_VM_STATE_ROOT }}/runs/*/artifacts/**
             ${{ env.ENOSHIMA_VM_STATE_ROOT }}/audit.jsonl
@@ -67,7 +86,7 @@ jobs:
           retention-days: 14
 
       - name: Remove uploaded run reports
-        if: always()
+        if: always() && steps.upload-evidence.outcome == 'success'
         run: |
           expected="/tmp/enoshima-vm-state-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           test "$ENOSHIMA_VM_STATE_ROOT" = "$expected"

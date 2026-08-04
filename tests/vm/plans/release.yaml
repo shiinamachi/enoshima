@@ -1,0 +1,13 @@
+---
+schema: 1
+name: release
+mode: release
+suites:
+  - smoke
+  - converge
+  - reboot
+  - desktop
+  - login
+  - ui-review
+  - boot-security
+unique: true

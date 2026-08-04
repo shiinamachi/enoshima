@@ -6,7 +6,9 @@ from collections.abc import Callable
 from typing import Any
 
 from .errors import VMError
+from .results import bound_verification_plan, summarize_run_list, summarize_run_record
 from .service import VMService
+from .verification import VALID_MODES
 
 
 def parser() -> argparse.ArgumentParser:
@@ -23,6 +25,24 @@ def parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run")
     run.add_argument("suite")
     run.add_argument("--keep-on-failure", action="store_true")
+    run.add_argument("--mode", choices=VALID_MODES[:2], default="checkpoint")
+    run.add_argument("--base", default="origin/main")
+
+    verification_plan = commands.add_parser("verification-plan")
+    verification_plan.add_argument("--base", default="origin/main")
+    verification_plan.add_argument("--mode", choices=VALID_MODES, default="checkpoint")
+
+    check_affected = commands.add_parser("check-affected")
+    check_affected.add_argument("--base", default="origin/main")
+    check_affected.add_argument("--mode", choices=VALID_MODES, default="checkpoint")
+
+    run_affected = commands.add_parser("run-affected")
+    run_affected.add_argument("--base", default="origin/main")
+    run_affected.add_argument("--mode", choices=VALID_MODES[:2], default="checkpoint")
+
+    run_plan = commands.add_parser("run-plan")
+    run_plan.add_argument("plan", nargs="?", default="release")
+    run_plan.add_argument("--base", default="origin/main")
 
     create = commands.add_parser("create")
     create.add_argument("suite")
@@ -63,7 +83,9 @@ def parser() -> argparse.ArgumentParser:
     destroy = commands.add_parser("destroy")
     destroy.add_argument("run_id")
 
-    commands.add_parser("list-runs")
+    list_runs = commands.add_parser("list-runs")
+    list_runs.add_argument("--cursor")
+    list_runs.add_argument("--limit", type=int, default=20)
     commands.add_parser("clean")
     return root
 
@@ -71,23 +93,34 @@ def parser() -> argparse.ArgumentParser:
 def dispatch(service: VMService, args: argparse.Namespace) -> Any:
     actions: dict[str, Callable[[], Any]] = {
         "preflight": lambda: service.preflight(args.suite),
-        "run": lambda: service.run_suite(
-            args.suite, keep_on_failure=args.keep_on_failure
+        "run": lambda: service.run_suite_result(
+            args.suite,
+            keep_on_failure=args.keep_on_failure,
+            verification_mode=args.mode,
+            base_ref=args.base,
         ),
-        "create": lambda: service.create(args.suite),
-        "wait": lambda: service.wait(args.run_id, args.timeout),
+        "verification-plan": lambda: bound_verification_plan(
+            service.verification_plan(args.base, args.mode)
+        ),
+        "check-affected": lambda: service.check_affected(args.base, args.mode),
+        "run-affected": lambda: service.run_affected(args.base, args.mode),
+        "run-plan": lambda: service.run_plan(args.plan, base_ref=args.base),
+        "create": lambda: summarize_run_record(service.create(args.suite)),
+        "wait": lambda: summarize_run_record(service.wait(args.run_id, args.timeout)),
         "upload-worktree": lambda: service.upload_worktree(args.run_id),
-        "status": lambda: service.status(args.run_id),
-        "exec": lambda: service.exec(
+        "status": lambda: summarize_run_record(service.status(args.run_id)),
+        "exec": lambda: service.exec_bounded(
             args.run_id, args.argv, timeout_seconds=args.timeout
         ),
         "reboot": lambda: service.reboot(args.run_id, args.timeout),
         "poweroff": lambda: service.poweroff(args.run_id),
         "screenshot": lambda: service.screenshot(args.run_id, args.name, args.output),
-        "query-desktop": lambda: service.query_desktop(args.run_id),
+        "query-desktop": lambda: service.query_desktop_bounded(args.run_id),
         "collect": lambda: service.collect(args.run_id),
         "destroy": lambda: service.destroy(args.run_id),
-        "list-runs": service.list_runs,
+        "list-runs": lambda: summarize_run_list(
+            service.list_runs(), cursor=args.cursor, limit=args.limit
+        ),
         "clean": service.clean,
     }
     return actions[args.command]()
@@ -124,6 +157,8 @@ def main() -> None:
         )
         raise SystemExit(1) from error
     print(json.dumps(result, indent=2))
+    if isinstance(result, dict) and result.get("result") in {"failed", "blocked"}:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

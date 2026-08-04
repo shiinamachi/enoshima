@@ -105,9 +105,7 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "package download exhausted its %ds deadline" in reproducible
     transaction = 'pacman -Su --needed --noconfirm "${packages[@]}"'
     assert transaction in reproducible
-    assert reproducible.index("timeout --signal=TERM") < reproducible.index(
-        transaction
-    )
+    assert reproducible.index("timeout --signal=TERM") < reproducible.index(transaction)
     enable_firewall = "systemctl enable --now nftables.service"
     assert reproducible.index(enable_firewall) < reproducible.index("pacman -Syu")
     assert "ip daddr 10.0.2.3 udp dport 53 accept" in reproducible
@@ -198,9 +196,9 @@ def test_vm_profile_keeps_the_snapshot_archive_download_policy_after_ansible() -
     assert "pacman -Syuw --needed --noconfirm --" in prefetch
     assert "ps -C pacman -o stat=" in prefetch
     assert "rm -f /var/lib/pacman/db.lck" in prefetch
-    package_tasks = (
-        repository / "ansible/roles/packages/tasks/main.yml"
-    ).read_text(encoding="utf-8")
+    package_tasks = (repository / "ansible/roles/packages/tasks/main.yml").read_text(
+        encoding="utf-8"
+    )
     for task_name in (
         "Install transient bounded pacman prefetch helper",
         "Remove transient bounded pacman prefetch helper",

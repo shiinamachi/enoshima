@@ -58,8 +58,7 @@ def load_ui_review_matrix(repository: Path) -> tuple[UiReviewCase, ...]:
         locales = evidence.get("required_locales")
         scales = evidence.get("required_scales")
         if not all(
-            isinstance(value, list) and value
-            for value in (states, locales, scales)
+            isinstance(value, list) and value for value in (states, locales, scales)
         ):
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
@@ -82,6 +81,65 @@ def load_ui_review_matrix(repository: Path) -> tuple[UiReviewCase, ...]:
             "UI surface registry produces duplicate capture keys",
         )
     return tuple(cases)
+
+
+def select_ui_review_cases(
+    matrix: tuple[UiReviewCase, ...],
+    *,
+    surfaces: set[str],
+    matrix_mode: str,
+    locales: set[str] | None = None,
+    scales: set[float] | None = None,
+) -> tuple[UiReviewCase, ...]:
+    if matrix_mode not in {"representative", "affected-full", "full"}:
+        raise VMError(
+            FailureCategory.HARNESS_ERROR,
+            "run_ui_review has an invalid matrix mode",
+            {"matrix_mode": matrix_mode},
+        )
+    selected = [
+        case
+        for case in matrix
+        if case.surface in surfaces
+        and (locales is None or case.locale in locales)
+        and (scales is None or case.scale in scales)
+    ]
+    if matrix_mode == "representative":
+        selected_locales = locales or {"en_US.UTF-8"}
+        selected_scales = scales or {1.0}
+        representatives: list[UiReviewCase] = []
+        for surface in sorted(surfaces):
+            for locale in sorted(selected_locales):
+                for scale in sorted(selected_scales):
+                    candidates = [
+                        case
+                        for case in selected
+                        if case.surface == surface
+                        and case.locale == locale
+                        and case.scale == scale
+                    ]
+                    if not candidates:
+                        raise VMError(
+                            FailureCategory.HARNESS_ERROR,
+                            (
+                                "representative UI review scope is absent from "
+                                "the registry"
+                            ),
+                            {
+                                "surface": surface,
+                                "locale": locale,
+                                "scale": scale,
+                            },
+                        )
+                    representatives.append(
+                        min(
+                            candidates,
+                            key=lambda case: (case.state != "default", case.state),
+                        )
+                    )
+        selected = representatives
+    selected.sort(key=lambda case: (case.locale, case.scale, case.surface, case.state))
+    return tuple(selected)
 
 
 def load_ui_review_identities(
@@ -145,8 +203,9 @@ def physical_mode(scale: float, logical_size: tuple[int, int] = (1280, 800)) -> 
         raise ValueError("scale must be positive")
     width = round(logical_size[0] * scale)
     height = round(logical_size[1] * scale)
-    if abs(width / scale - logical_size[0]) > 0.01 or abs(
-        height / scale - logical_size[1]
-    ) > 0.01:
+    if (
+        abs(width / scale - logical_size[0]) > 0.01
+        or abs(height / scale - logical_size[1]) > 0.01
+    ):
         raise ValueError("scale cannot produce an integral physical mode")
     return f"{width}x{height}@60"

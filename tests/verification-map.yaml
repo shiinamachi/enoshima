@@ -1,0 +1,392 @@
+---
+schema: 1
+
+# These generated files can appear in a dirty worktree but never represent
+# desired configuration or executable source.
+generated_paths:
+  - "**/__pycache__/**"
+  - "**/*.pyc"
+
+# These paths can be reported in changedPaths while legitimately omitting VM
+# execution when no rule or registered UI implementation also matches.
+metadata_paths:
+  - AGENTS.md
+  - "**/AGENTS.md"
+  - README.md
+  - "**/README.md"
+  - LICENSE
+  - "**/LICENSE"
+  - "docs/**"
+  - "state/**"
+  - ".codex/**"
+  - ".agents/**"
+  - "tests/*.sh"
+
+# A changed path in one of these runtime areas must match either a registered
+# UI implementation or a rule below. Unknown runtime paths fail closed.
+runtime_paths:
+  - bootstrap.sh
+  - Makefile
+  - "ansible/**"
+  - "home/**"
+  - "native/**"
+  - "packages/**"
+  - "scripts/**"
+  - "tests/vm/**"
+  - "tests/verification-map.yaml"
+  - ".github/workflows/**"
+
+canonical_suites: &canonical_suites
+  - smoke
+  - converge
+  - reboot
+  - desktop
+  - login
+  - ui-review
+  - boot-security
+
+rules:
+  - id: verification-workflow
+    paths:
+      - Makefile
+      - ".codex/**"
+      - .gitignore
+      - tests/verification-map.yaml
+      - ".github/workflows/**"
+    focused_checks:
+      - make vm-unit
+    checkpoint_suites:
+      - smoke
+    retry_suites: *canonical_suites
+    smallest_real_suite_required: true
+
+  - id: vm-harness
+    paths:
+      - "tests/vm/src/**"
+      - "tests/vm/fixtures/**"
+      - "tests/vm/images/**"
+      - "tests/vm/keys/**"
+      - "tests/vm/plans/**"
+      - "tests/vm/scripts/**"
+      - "tests/vm/suites/**"
+      - "tests/vm/templates/**"
+      - tests/vm/pyproject.toml
+      - tests/vm/uv.lock
+      - tests/vm/verification-modes.yaml
+    focused_checks:
+      - make vm-unit
+    checkpoint_suites:
+      - smoke
+    retry_suites: *canonical_suites
+    smallest_real_suite_required: true
+
+  - id: vm-harness-tests
+    paths:
+      - "tests/vm/unit/**"
+    focused_checks:
+      - make vm-unit
+    checkpoint_suites:
+      - smoke
+    retry_suites: []
+    smallest_real_suite_required: true
+
+  - id: ui-contract
+    paths:
+      - docs/ui-surfaces.yaml
+      - scripts/check-ui-concept-coverage
+      - scripts/check-ui-visual-evidence
+      - "scripts/ui-capture/**"
+    focused_checks:
+      - scripts/check-ui-concept-coverage
+      - tests/test-ui-evidence-gate.sh
+      - make vm-unit
+    checkpoint_suites:
+      - ui-review
+    retry_suites:
+      - ui-review
+    smallest_real_suite_required: true
+
+  - id: auth-contract
+    paths:
+      - scripts/check-auth-theme
+    focused_checks:
+      - scripts/check-auth-theme
+      - tests/test-login-manager.sh
+    checkpoint_suites:
+      - login
+    retry_suites:
+      - login
+    smallest_real_suite_required: true
+
+  - id: bootstrap
+    paths:
+      - bootstrap.sh
+      - "ansible/**"
+      - "packages/**"
+      - scripts/apply-dotfiles.sh
+      - "scripts/install-*.sh"
+      - scripts/lib/bootstrap-failures.sh
+      - scripts/lib/hyprpm-version-socket
+      - scripts/sudo-noninteractive
+    focused_checks:
+      - make validate
+    checkpoint_suites:
+      - converge
+    retry_suites: *canonical_suites
+
+  - id: guest-safe-validation
+    paths:
+      - scripts/validate.sh
+      - scripts/postflight.sh
+      - scripts/lib/inventory-capabilities.sh
+    focused_checks:
+      - make validate
+    checkpoint_suites:
+      - smoke
+    retry_suites: *canonical_suites
+
+  - id: desktop-runtime
+    paths:
+      - "home/dot_config/hypr/**"
+      - "home/dot_config/quickshell/**"
+      - "home/dot_config/waybar/**"
+      - "home/dot_config/swaync/**"
+      - "home/dot_config/gtk-3.0/**"
+      - "home/dot_config/gtk-4.0/**"
+      - "home/dot_config/uwsm/**"
+      - "home/dot_config/xdg-desktop-portal/**"
+      - home/dot_config/chrome-flags.conf
+      - home/dot_config/notion-flags.conf
+      - home/dot_local/bin/executable_audio-output-control
+      - "home/dot_local/bin/executable_cyberdock-*"
+      - "home/dot_local/bin/executable_cyberlauncher-*"
+      - "home/dot_local/bin/executable_cyberosd-*"
+      - "home/dot_local/bin/executable_enoshima-*"
+      - "home/dot_local/bin/executable_desktop-*"
+      - "home/dot_local/bin/executable_*-wayland"
+      - "home/dot_local/bin/executable_graphics-*"
+      - "home/dot_local/bin/executable_hypr-*"
+      - "home/dot_local/bin/executable_kakaotalk*"
+      - home/dot_local/bin/executable_rhwp-enable-defaults
+      - "home/dot_local/bin/executable_swaync-*"
+      - "home/dot_local/bin/executable_waybar-*"
+      - "home/dot_local/bin/executable_workspace-*"
+      - "native/enoshima-decoration/**"
+    focused_checks:
+      - make validate
+    checkpoint_suites:
+      - desktop
+    retry_suites:
+      - converge
+      - reboot
+      - desktop
+      - login
+      - ui-review
+
+  - id: user-convergence
+    paths:
+      - "home/.chezmoitemplates/**"
+      - "home/dot_config/autostart/**"
+      - "home/dot_config/cyberpunk-library/**"
+      - "home/dot_config/enoshima/**"
+      - "home/dot_config/fastfetch/**"
+      - "home/dot_config/ghostty/**"
+      - "home/dot_config/mise/**"
+      - "home/dot_config/obsidian/**"
+      - "home/dot_config/oh-my-zsh/**"
+      - "home/dot_config/private_fcitx5/**"
+      - "home/dot_config/systemd/**"
+      - "home/dot_config/zed/**"
+      - home/dot_config/mimeapps.list
+      - home/dot_config/private_user-dirs.dirs
+      - home/dot_config/starship.toml
+      - home/dot_config/user-dirs.locale
+      - "home/dot_local/bin/executable_cloudflare-one-*"
+      - "home/dot_local/bin/executable_protonmail-bridge-*"
+      - "home/dot_local/bin/executable_rclone-cloud-*"
+      - "home/dot_local/libexec/**"
+      - "home/dot_local/share/**"
+      - home/dot_gitconfig
+      - home/dot_zprofile
+      - home/dot_zshrc
+      - "home/run_*.tmpl"
+    focused_checks:
+      - make validate
+    checkpoint_suites:
+      - converge
+    retry_suites:
+      - converge
+
+  - id: graphical-login
+    paths:
+      - "packages/local/enoshima-greeter/**"
+      - ansible/roles/system/tasks/authentication.yml
+      - ansible/roles/system/tasks/login-manager.yml
+      - "ansible/roles/system/templates/greetd-*"
+      - "ansible/roles/system/templates/pam-*"
+    focused_checks:
+      - tests/test-login-manager.sh
+    checkpoint_suites:
+      - login
+    retry_suites:
+      - reboot
+      - desktop
+      - login
+      - ui-review
+
+  - id: sddm-fallback-login
+    paths:
+      - ansible/roles/system/templates/sddm-*
+      - ansible/roles/system/tasks/desktop.yml
+      - ansible/roles/desktop_expansion/tasks/sddm.yml
+      - "ansible/roles/desktop_expansion/files/sddm-cyberpunk/**"
+    focused_checks:
+      - scripts/check-ui-concept-coverage
+      - tests/test-login-manager.sh
+      - scripts/check-auth-theme
+    checkpoint_suites:
+      - login
+      - ui-review
+    retry_suites:
+      - reboot
+      - desktop
+      - login
+      - ui-review
+    physical_gates:
+      - internal-oled-edid-refresh-rate
+      - external-display-dock
+      - internal-external-display-review
+      - fingerprint-enrollment-authentication
+
+  - id: restart-sensitive
+    paths:
+      - home/dot_config/hypr/hypridle.conf
+      - "home/dot_config/systemd/user/*power*"
+      - "home/dot_local/bin/executable_desktop-power"
+      - ansible/roles/system/tasks/power.yml
+      - ansible/roles/system/templates/logind-lid.conf.j2
+      - ansible/roles/system/templates/sleep-thinkpad.conf.j2
+      - ansible/roles/system/templates/tlp-thinkpad.conf.j2
+      - ansible/roles/system/templates/kernel-cmdline.j2
+    checkpoint_suites:
+      - reboot
+    retry_suites:
+      - reboot
+    physical_gates:
+      - suspend-resume
+      - sleep-battery-drain
+      - post-resume-thermal
+
+  - id: display-hardware
+    paths:
+      - "home/dot_config/enoshima/*display*"
+      - home/dot_config/enoshima/defaults/display.json
+      - "home/dot_local/bin/executable_desktop-display-*"
+      - home/dot_local/bin/executable_workspace-output-route
+      - "home/dot_config/systemd/user/desktop-display-*"
+    checkpoint_suites:
+      - desktop
+    retry_suites:
+      - desktop
+    physical_gates:
+      - internal-oled-edid-refresh-rate
+      - external-display-dock
+
+  - id: boot-security
+    paths:
+      - ansible/roles/system/files/enoshima-rebuild-uki
+      - ansible/roles/system/templates/mkinitcpio-preset.j2
+      - ansible/roles/system/templates/mkinitcpio.conf.j2
+      - ansible/roles/system/templates/crypttab.initramfs.j2
+      - ansible/roles/system/templates/fstab.j2
+      - ansible/roles/system/templates/kernel-cmdline.j2
+      - "tests/vm/boot/**"
+      - "tests/vm/scripts/prepare-boot-security.sh"
+      - "tests/vm/src/enoshima_vm/boot_security.py"
+      - "tests/vm/templates/domain-secure-boot.xml.j2"
+      - "tests/vm/suites/boot-security.yaml"
+    focused_checks:
+      - make vm-unit
+    checkpoint_suites:
+      - boot-security
+    retry_suites:
+      - boot-security
+    physical_gates:
+      - secure-boot-enrollment
+      - tpm-unlock-recovery
+
+  - id: physical-wwan
+    paths:
+      - "packages/local/lenovo-wwan-unlock/**"
+      - ansible/roles/system/tasks/network.yml
+      - "ansible/roles/system/templates/*wwan*"
+      - ansible/roles/system/templates/modemmanager-stop-timeout.conf.j2
+      - "home/dot_local/bin/*wwan*"
+    physical_gates:
+      - wwan-connectivity-shutdown
+
+  - id: physical-fingerprint
+    paths:
+      - ansible/roles/system/tasks/authentication.yml
+      - "ansible/roles/system/templates/pam-*"
+      - "packages/local/enoshima-greeter/**"
+    retry_suites:
+      - login
+    physical_gates:
+      - fingerprint-enrollment-authentication
+
+  - id: repository-tests
+    paths:
+      - "tests/*.sh"
+    focused_checks:
+      - make validate
+
+  - id: state-capture-tooling
+    paths:
+      - scripts/capture-state.sh
+    focused_checks:
+      - make validate
+
+  # These inventories combine several hardware-bound policy families. Until
+  # they are split by concern, select every behavioral lane and physical gate
+  # that their values can affect.
+  - id: physical-inventory-policy
+    paths:
+      - ansible/inventory/group_vars/all.yml
+      - ansible/inventory/host_vars/tpx1c13.yml
+    checkpoint_suites:
+      - reboot
+      - desktop
+      - login
+      - ui-review
+      - boot-security
+    physical_gates:
+      - suspend-resume
+      - sleep-battery-drain
+      - post-resume-thermal
+      - internal-oled-edid-refresh-rate
+      - external-display-dock
+      - internal-external-display-review
+      - fingerprint-enrollment-authentication
+      - secure-boot-enrollment
+      - tpm-unlock-recovery
+      - wwan-connectivity-shutdown
+
+  - id: cross-cutting-system-policy
+    paths:
+      - ansible/roles/system/handlers/main.yml
+      - ansible/roles/system/tasks/main.yml
+      - packages/native.txt
+    checkpoint_suites:
+      - reboot
+      - desktop
+      - login
+      - boot-security
+    physical_gates:
+      - suspend-resume
+      - sleep-battery-drain
+      - post-resume-thermal
+      - fingerprint-enrollment-authentication
+      - secure-boot-enrollment
+      - tpm-unlock-recovery
+      - wwan-connectivity-shutdown

@@ -11,10 +11,13 @@ import subprocess
 import sys
 import tarfile
 import time
+import traceback
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
+from collections import Counter
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
@@ -42,7 +45,21 @@ from .config import (
 from .errors import FailureCategory, VMError
 from .guest import Guest, parse_json_result, source_identity_json
 from .image import ImageCache, file_sha256
+from .impact import (
+    VerificationSelection,
+    assert_selection_unchanged,
+    run_focused_checks,
+    select_verification,
+)
 from .libvirt_backend import LibvirtBackend
+from .results import (
+    MAX_SUMMARY_BYTES,
+    FailureOrigin,
+    failure_fields,
+    retryable_infrastructure_failure,
+    summarize_exec_result,
+    summarize_run_record,
+)
 from .security import (
     append_audit,
     argv_digest,
@@ -55,7 +72,9 @@ from .ui_review import (
     load_ui_review_identities,
     load_ui_review_matrix,
     physical_mode,
+    select_ui_review_cases,
 )
+from .verification import load_verification_mode, load_verification_plan
 
 REMOTE_ROOT = PurePosixPath("/home/kentakang/enoshima-test")
 REMOTE_SOURCE = REMOTE_ROOT / "source"
@@ -63,9 +82,7 @@ REMOTE_ARTIFACTS = REMOTE_ROOT / "artifacts"
 REMOTE_CODEX_ELECTRON_CACHE = PurePosixPath(
     "/home/kentakang/.cache/codex-desktop/electron"
 )
-REMOTE_CODEX_DMG_CACHE = PurePosixPath(
-    "/home/kentakang/.cache/codex-desktop/Codex.dmg"
-)
+REMOTE_CODEX_DMG_CACHE = PurePosixPath("/home/kentakang/.cache/codex-desktop/Codex.dmg")
 REMOTE_CODEX_NODE_CACHE = PurePosixPath(
     "/home/kentakang/.cache/codex-desktop/node-runtime"
 )
@@ -209,7 +226,15 @@ class VMService:
         return checks
 
     def create(
-        self, suite_name: str, *, source_ref: str = "working-tree"
+        self,
+        suite_name: str,
+        *,
+        source_ref: str = "working-tree",
+        verification_mode: str = "dev",
+        planned_source_commit: str | None = None,
+        planned_worktree_digest: str | None = None,
+        planned_source_tree_digest: str | None = None,
+        planned_retry_digest: str | None = None,
     ) -> dict[str, Any]:
         if source_ref != "working-tree":
             raise VMError(
@@ -217,9 +242,7 @@ class VMService:
                 "only the current working tree may be supplied to a VM run",
             )
         suite = load_suite(suite_name, self.paths)
-        self.preflight(suite_name)
-        definitions = load_images(self.paths)
-        definition = definitions[suite.base_image]
+        mode = load_verification_mode(verification_mode, self.paths)
         run_id = f"run-{uuid.uuid4().hex[:12]}"
         run_dir = self._run_dir(run_id)
         run_dir.mkdir(mode=0o700, parents=True)
@@ -235,15 +258,28 @@ class VMService:
             "libvirt_uri": self.uri,
             "artifact_dir": str(run_dir / "artifacts"),
             "source_ref": source_ref,
+            "verification_mode": mode.name,
+            "authoritative": False,
+            "fresh_overlay": False,
+            "current_step": "vm_create",
+            "fresh_overlay_required": mode.fresh_overlay_required,
+            "planned_source_commit": planned_source_commit,
+            "planned_worktree_digest": planned_worktree_digest,
+            "planned_source_tree_digest": planned_source_tree_digest,
+            "planned_retry_digest": planned_retry_digest,
         }
-        if suite.name == "boot-security":
-            secret_dir = run_dir / "secrets"
-            secret_dir.mkdir(mode=0o700)
-            recovery_key = secret_dir / "luks-recovery.key"
-            _write_recovery_key(recovery_key)
-            record["recovery_key"] = str(recovery_key)
         self._write_record(record)
         try:
+            if suite.name == "boot-security":
+                secret_dir = run_dir / "secrets"
+                secret_dir.mkdir(mode=0o700)
+                recovery_key = secret_dir / "luks-recovery.key"
+                _write_recovery_key(recovery_key)
+                record["recovery_key"] = str(recovery_key)
+                self._write_record(record)
+            self.preflight(suite_name)
+            definitions = load_images(self.paths)
+            definition = definitions[suite.base_image]
             base_image = self.images.ensure(definition)
             cloud = self.cloud_init.build(
                 run_dir,
@@ -263,10 +299,13 @@ class VMService:
                     "private_key": str(cloud.private_key),
                     "ssh_host_port": spec.ssh_host_port,
                     "domain_xml": str(spec.xml),
+                    "fresh_overlay": True,
+                    "authoritative": mode.authoritative,
                 }
             )
             if spec.boot_disk:
                 record["boot_disk"] = str(spec.boot_disk)
+            self._write_record(record)
             self.backend.define_and_start(spec)
             record["status"] = "running"
             record["updated_at"] = utc_now()
@@ -290,17 +329,69 @@ class VMService:
             self._audit("vm_create", run_id=run_id)
             return record
         except Exception as error:
+            record["result"] = "failed"
             record["status"] = "failed"
-            record["category"] = (
+            category = (
                 error.category
                 if isinstance(error, VMError)
-                else (FailureCategory.HARNESS_ERROR)
+                else (
+                    FailureCategory.HOST_INFRA_ERROR
+                    if isinstance(
+                        error,
+                        (OSError, subprocess.SubprocessError, TimeoutError),
+                    )
+                    else FailureCategory.HARNESS_ERROR
+                )
             )
+            record["category"] = str(category)
             record["error"] = str(error)
+            record.update(
+                failure_fields(
+                    suite=suite_name,
+                    step="vm_create",
+                    error=error,
+                )
+            )
+            record["next_verification"] = (
+                "restore VM infrastructure or change the relevant fixture source"
+            )
             record["updated_at"] = utc_now()
+            artifact_root = Path(str(record["artifact_dir"])) / "runner"
+            artifact_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            create_error = artifact_root / "create-error.json"
+            create_error.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "suite": suite_name,
+                        "category": str(category),
+                        "message": str(error),
+                        "details": (
+                            error.details if isinstance(error, VMError) else None
+                        ),
+                        "traceback": "".join(traceback.format_exception(error)),
+                    },
+                    indent=2,
+                    default=str,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            create_error.chmod(0o600)
+            record["create_error_artifact"] = str(create_error)
             self._write_record(record)
-            self.backend.destroy(record["domain"])
-            self._remove_ephemeral(record)
+            cleanup_errors: list[str] = []
+            try:
+                self.backend.destroy(record["domain"])
+            except Exception as cleanup_error:
+                cleanup_errors.append(f"domain cleanup: {cleanup_error}")
+            try:
+                self._remove_ephemeral(record)
+            except Exception as cleanup_error:
+                cleanup_errors.append(f"ephemeral cleanup: {cleanup_error}")
+            if cleanup_errors:
+                record["cleanup_errors"] = cleanup_errors
+                self._write_record(record)
             self._audit("vm_create", run_id=run_id, result="failed")
             raise
 
@@ -319,9 +410,38 @@ class VMService:
     def upload_worktree(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
         identity = self._guest(record).upload_worktree(
-            self.paths.repository, REMOTE_SOURCE
+            self.paths.repository,
+            REMOTE_SOURCE,
+            expected_commit=(
+                str(record["planned_source_commit"])
+                if record.get("planned_source_commit")
+                else None
+            ),
+            expected_tree_hash=(
+                str(record["planned_source_tree_digest"])
+                if record.get("planned_source_tree_digest")
+                else None
+            ),
         )
         source = source_identity_json(identity)
+        artifact_root = Path(str(record["artifact_dir"])) / "runner"
+        artifact_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        manifest = artifact_root / "source-manifest.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "source": source,
+                    "files": list(identity.files),
+                    "untrackedFiles": list(identity.untracked_files),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        manifest.chmod(0o600)
+        source["manifest_artifact"] = str(manifest)
         record["source"] = source
         record["updated_at"] = utc_now()
         self._write_record(record)
@@ -356,6 +476,22 @@ class VMService:
             "stderr": result.stderr,
             "duration_ms": duration_ms,
         }
+
+    def exec_bounded(
+        self,
+        run_id: str,
+        argv: Sequence[str],
+        *,
+        timeout_seconds: int = 300,
+    ) -> dict[str, object]:
+        result = self.exec(run_id, argv, timeout_seconds=timeout_seconds)
+        record = self.load_record(run_id)
+        log = self._write_step_log(
+            record,
+            f"manual-exec-{uuid.uuid4().hex[:12]}",
+            result,
+        )
+        return summarize_exec_result(result, artifact_path=str(log))
 
     def _write_step_log(
         self,
@@ -476,9 +612,7 @@ class VMService:
             )
         ).expanduser()
         node_lock = (
-            self.paths.repository
-            / "packages"
-            / "codex-desktop-node-runtime.sha256"
+            self.paths.repository / "packages" / "codex-desktop-node-runtime.sha256"
         )
         try:
             node_lock_fields = node_lock.read_text(encoding="utf-8").split()
@@ -555,9 +689,7 @@ class VMService:
                         "Codex Electron cache transfer checksum mismatch: "
                         f"{archive.name}",
                     )
-                uploaded.append(
-                    {"name": archive.name, "size": size, "sha256": digest}
-                )
+                uploaded.append({"name": archive.name, "size": size, "sha256": digest})
 
             observation["status"] = "seeded"
             observation["archives"] = uploaded
@@ -889,8 +1021,7 @@ class VMService:
                 ) from error
             if (
                 metadata.get("schema") != 1
-                or metadata.get("base_image")
-                != Path(str(record["base_image"])).name
+                or metadata.get("base_image") != Path(str(record["base_image"])).name
                 or metadata.get("archive_size") != archive.stat().st_size
                 or metadata.get("archive_sha256") != file_sha256(archive)
                 or metadata.get("package_count") != len(expected_packages)
@@ -960,9 +1091,7 @@ class VMService:
         self._write_record(record)
         self._audit("vm_seed_pacman_cache", run_id=record["run_id"])
 
-    def _remote_pacman_packages(
-        self, record: dict[str, Any]
-    ) -> dict[str, int]:
+    def _remote_pacman_packages(self, record: dict[str, Any]) -> dict[str, int]:
         guest = self._guest(record)
         result = guest.exec(
             [
@@ -1420,9 +1549,7 @@ class VMService:
             "--title='Enoshima Power Fixture' "
             "-e sh -lc 'exec sleep infinity'"
         )
-        launch = self._hypr_dispatch(
-            f"hl.dsp.exec_cmd({json.dumps(fixture_command)})"
-        )
+        launch = self._hypr_dispatch(f"hl.dsp.exec_cmd({json.dumps(fixture_command)})")
         result = self._guest(record).exec(
             self._hypr_command(launch), timeout=30, check=False
         )
@@ -1462,9 +1589,7 @@ class VMService:
             launch = self._hypr_dispatch(
                 f"hl.dsp.exec_cmd({json.dumps(power_command)})"
             )
-            launched = guest.exec(
-                self._hypr_command(launch), timeout=30, check=False
-            )
+            launched = guest.exec(self._hypr_command(launch), timeout=30, check=False)
             if launched.returncode != 0:
                 raise VMError(
                     FailureCategory.REBOOT_FAILED,
@@ -1561,6 +1686,52 @@ class VMService:
             result[name] = json.loads(value.stdout)
         self._audit("vm_query_desktop", run_id=run_id)
         return result
+
+    def query_desktop_bounded(self, run_id: str) -> dict[str, object]:
+        result = self.query_desktop(run_id)
+        record = self.load_record(run_id)
+        artifact = (
+            Path(record["artifact_dir"])
+            / "hyprctl"
+            / f"manual-query-{uuid.uuid4().hex[:12]}.json"
+        )
+        artifact.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        artifact.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        artifact.chmod(0o600)
+        response: dict[str, object] = {
+            "schema": 1,
+            "artifactPath": str(artifact),
+            "desktop": result,
+        }
+        if len(json.dumps(response, sort_keys=True).encode()) <= MAX_SUMMARY_BYTES:
+            return response
+
+        def count(value: object) -> int:
+            return len(value) if isinstance(value, (dict, list)) else 0
+
+        def compact(value: object) -> dict[str, object]:
+            if not isinstance(value, dict):
+                return {}
+            result: dict[str, object] = {}
+            for key in ("address", "class", "title", "id", "name", "monitor"):
+                candidate = value.get(key)
+                if isinstance(candidate, str):
+                    result[key] = candidate[:1024]
+                elif isinstance(candidate, (int, float, bool)):
+                    result[key] = candidate
+            return result
+
+        return {
+            "schema": 1,
+            "truncated": True,
+            "artifactPath": str(artifact),
+            "counts": {
+                key: count(result.get(key))
+                for key in ("monitors", "workspaces", "clients", "devices")
+            },
+            "activeWindow": compact(result.get("activewindow")),
+            "activeWorkspace": compact(result.get("activeworkspace")),
+        }
 
     def _configure_virtual_displays(self, record: dict[str, Any], config: Any) -> None:
         if not isinstance(config, dict) or not isinstance(config.get("monitors"), list):
@@ -1810,9 +1981,7 @@ class VMService:
                 except json.JSONDecodeError:
                     last_layers = {}
                 output_layers = (
-                    last_layers.get(output, {})
-                    if isinstance(last_layers, dict)
-                    else {}
+                    last_layers.get(output, {}) if isinstance(last_layers, dict) else {}
                 )
                 namespaces: set[str] = set()
 
@@ -2183,9 +2352,7 @@ class VMService:
             'test -n "$wayland"; export WAYLAND_DISPLAY=$wayland; '
             f"install -d -m 0700 {remote.parent}; grim{output_argument} {remote}"
         )
-        result = self._guest(record).exec_retryable(
-            command, timeout=60, check=False
-        )
+        result = self._guest(record).exec_retryable(command, timeout=60, check=False)
         if result.returncode:
             raise VMError(
                 FailureCategory.VISUAL_ASSERTION_FAILED,
@@ -2253,9 +2420,7 @@ class VMService:
         deadline = time.monotonic() + timeout_seconds
         last_error = "ready file was not created"
         while time.monotonic() < deadline:
-            result = guest.exec_retryable(
-                ["cat", str(ready)], timeout=5, check=False
-            )
+            result = guest.exec_retryable(["cat", str(ready)], timeout=5, check=False)
             if result.returncode == 0:
                 try:
                     document = json.loads(result.stdout)
@@ -2368,9 +2533,7 @@ class VMService:
                         last_capture["height"]
                     )
                     changed_ratio = (
-                        changed_pixels / total_pixels
-                        if changed_pixels >= 0
-                        else None
+                        changed_pixels / total_pixels if changed_pixels >= 0 else None
                     )
                     if (
                         changed_ratio is not None
@@ -2441,8 +2604,7 @@ class VMService:
                             }
                             if (
                                 best_stability is None
-                                or normalized_rmse
-                                < best_stability["normalized_rmse"]
+                                or normalized_rmse < best_stability["normalized_rmse"]
                             ):
                                 best_stability = stability
                                 best_previous_path = image_path.with_name(
@@ -2980,9 +3142,7 @@ class VMService:
         guest = self._guest(record)
         guest.exec(
             self._hypr_command(
-                self._hypr_dispatch(
-                    f'hl.dsp.focus({{ window = "address:{address}" }})'
-                )
+                self._hypr_dispatch(f'hl.dsp.focus({{ window = "address:{address}" }})')
             ),
             timeout=10,
         )
@@ -3237,9 +3397,7 @@ class VMService:
                 timeout=10,
             )
         guest.exec(
-            self._hypr_command(
-                self._hypr_dispatch("hl.dsp.focus({ workspace = 1 })")
-            ),
+            self._hypr_command(self._hypr_dispatch("hl.dsp.focus({ workspace = 1 })")),
             timeout=10,
         )
         focus_key = "thunar" if state == "inactive-window" else "ghostty"
@@ -3282,13 +3440,43 @@ class VMService:
                 "UI review surface lacks a real compositor adapter",
                 {"surfaces": sorted(unsupported)},
             )
-        matrix = [
-            case
-            for case in load_ui_review_matrix(self.paths.repository)
-            if case.surface in surfaces
-        ]
-        matrix.sort(
-            key=lambda case: (case.locale, case.scale, case.surface, case.state)
+        matrix_mode = str(values.get("matrix_mode", "full"))
+        requested_locales = values.get("locales")
+        if requested_locales is not None and (
+            not isinstance(requested_locales, list)
+            or not requested_locales
+            or not all(isinstance(locale, str) for locale in requested_locales)
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "run_ui_review locales must be a non-empty string list",
+            )
+        requested_scales = values.get("scales")
+        if requested_scales is not None and (
+            not isinstance(requested_scales, list)
+            or not requested_scales
+            or not all(isinstance(scale, (int, float)) for scale in requested_scales)
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "run_ui_review scales must be a non-empty number list",
+            )
+        locale_filter = (
+            {str(locale) for locale in requested_locales}
+            if requested_locales is not None
+            else None
+        )
+        scale_filter = (
+            {float(scale) for scale in requested_scales}
+            if requested_scales is not None
+            else None
+        )
+        matrix = select_ui_review_cases(
+            load_ui_review_matrix(self.paths.repository),
+            surfaces=surfaces,
+            matrix_mode=matrix_mode,
+            locales=locale_filter,
+            scales=scale_filter,
         )
         if not matrix:
             raise VMError(FailureCategory.HARNESS_ERROR, "UI review matrix is empty")
@@ -3337,16 +3525,12 @@ class VMService:
                 record, "desktop-shell", "default", output
             )
             self._wait_for_ui_fixture_ready(record, reset_sequence)
-            titlebar_menu_state = (
-                case.surface == "system-titlebar"
-                and case.state
-                in {
-                    "keyboard-focus",
-                    "system-menu",
-                    "action-running",
-                    "action-error",
-                }
-            )
+            titlebar_menu_state = case.surface == "system-titlebar" and case.state in {
+                "keyboard-focus",
+                "system-menu",
+                "action-running",
+                "action-error",
+            }
             if titlebar_menu_state:
                 self._wait_for_ui_review_layer(
                     record,
@@ -3475,6 +3659,7 @@ class VMService:
         identical_state_failures = self._ui_review_identical_state_groups(captures)
         summary = {
             "schema": 1,
+            "matrix_mode": matrix_mode,
             "expected": len(matrix),
             "actual": len(captures),
             "surfaces": sorted(surfaces),
@@ -3613,7 +3798,11 @@ class VMService:
 
     def status(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
-        record["domain_state"] = self.backend.state(record["domain"])
+        record["domain_state"] = (
+            "not-created"
+            if record.get("synthetic")
+            else self.backend.state(record["domain"])
+        )
         return record
 
     def poweroff(self, run_id: str) -> dict[str, str]:
@@ -3624,7 +3813,8 @@ class VMService:
 
     def destroy(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
-        self.backend.destroy(record["domain"])
+        if not record.get("synthetic"):
+            self.backend.destroy(record["domain"])
         removed = self._remove_ephemeral(record)
         record["status"] = (
             "completed" if record.get("result") == "passed" else "destroyed"
@@ -3665,18 +3855,29 @@ class VMService:
         if not self.runs_root.exists():
             return []
         records = []
-        for path in sorted(self.runs_root.glob("run-*/run.json"), reverse=True):
+        for path in self.runs_root.glob("run-*/run.json"):
             try:
                 records.append(self.load_record(path.parent.name))
             except (VMError, ValueError, json.JSONDecodeError):
                 continue
+        records.sort(
+            key=lambda record: (
+                str(record.get("updated_at") or record.get("created_at") or ""),
+                str(record.get("run_id") or ""),
+            ),
+            reverse=True,
+        )
         return records
 
     def clean(self) -> dict[str, object]:
         cleaned = []
         for record in self.list_runs():
             has_key = bool(record.get("private_key"))
-            has_domain = self.backend.state(record["domain"]) != "undefined"
+            has_domain = (
+                False
+                if record.get("synthetic")
+                else self.backend.state(record["domain"]) != "undefined"
+            )
             if has_key or has_domain:
                 cleaned.append(self.destroy(record["run_id"]))
         return {"cleaned": cleaned, "preserved_reports": True}
@@ -3801,9 +4002,41 @@ class VMService:
         suite_name: str,
         *,
         keep_on_failure: bool = False,
+        verification_mode: str = "release",
+        surfaces: tuple[str, ...] = (),
+        locales: tuple[str, ...] = (),
+        scales: tuple[float, ...] = (),
+        planned_source_commit: str | None = None,
+        planned_worktree_digest: str | None = None,
+        planned_source_tree_digest: str | None = None,
+        planned_retry_digest: str | None = None,
+        return_on_failure: bool = False,
     ) -> dict[str, Any]:
-        suite = load_suite(suite_name, self.paths)
-        record = self.create(suite_name)
+        canonical_suite = load_suite(suite_name, self.paths)
+        mode = load_verification_mode(verification_mode, self.paths)
+        suite = mode.apply(
+            canonical_suite,
+            surfaces=surfaces,
+            locales=locales,
+            scales=scales,
+        )
+        if mode.authoritative and (
+            not planned_source_commit
+            or not planned_worktree_digest
+            or not planned_source_tree_digest
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "authoritative VM execution requires a frozen source identity",
+            )
+        record = self.create(
+            suite_name,
+            verification_mode=verification_mode,
+            planned_source_commit=planned_source_commit,
+            planned_worktree_digest=planned_worktree_digest,
+            planned_source_tree_digest=planned_source_tree_digest,
+            planned_retry_digest=planned_retry_digest,
+        )
         try:
             for index, raw_step in enumerate(suite.steps, start=1):
                 if isinstance(raw_step, str):
@@ -3846,6 +4079,9 @@ class VMService:
             record["result"] = "passed"
             record["status"] = "passed"
             record["category"] = None
+            record["next_verification"] = (
+                "release plan" if verification_mode == "checkpoint" else None
+            )
             record["updated_at"] = utc_now()
             self._write_record(record)
             self._write_junit(record)
@@ -3862,6 +4098,17 @@ class VMService:
             )
             record["category"] = str(category)
             record["error"] = str(error)
+            record.update(
+                failure_fields(
+                    suite=suite_name,
+                    step=str(record.get("current_step") or "") or None,
+                    error=error,
+                )
+            )
+            record["next_verification"] = (
+                "change the relevant product or fixture source, then rerun the "
+                f"{verification_mode} {suite_name} suite"
+            )
             if isinstance(error, VMError) and error.details:
                 record["details"] = error.details
             record["updated_at"] = utc_now()
@@ -3874,4 +4121,861 @@ class VMService:
                 self._write_record(record)
             if not keep_on_failure:
                 self.destroy(record["run_id"])
+            if return_on_failure:
+                return self.load_record(record["run_id"])
             raise
+
+    def run_suite_result(
+        self,
+        suite_name: str,
+        *,
+        keep_on_failure: bool = False,
+        verification_mode: str = "checkpoint",
+        base_ref: str = "origin/main",
+    ) -> dict[str, object]:
+        if verification_mode == "release":
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "release evidence is available only from the canonical release plan",
+            )
+        load_suite(suite_name, self.paths)
+        selection = select_verification(
+            base_ref=base_ref,
+            mode=verification_mode,
+            paths=self.paths,
+        )
+        focused = run_focused_checks(selection, self.paths)
+        assert_selection_unchanged(selection, self.paths)
+        result = self._run_suite_with_retry_budget(
+            suite_name,
+            selection,
+            keep_on_failure=keep_on_failure,
+        )
+        attempts = result.get("attempts")
+        candidate = (
+            attempts[-1]
+            if isinstance(attempts, list) and attempts
+            else result.get("failure")
+        )
+        response = dict(candidate) if isinstance(candidate, dict) else {}
+        response.update(
+            {
+                "schema": 1,
+                "suite": suite_name,
+                "mode": verification_mode,
+                "result": result.get("result"),
+                "attemptCount": len(attempts) if isinstance(attempts, list) else 0,
+                "focusedChecks": {
+                    "result": focused.get("result"),
+                    "artifactRoot": focused.get("artifactRoot"),
+                    "count": len(focused.get("checks", [])),
+                },
+            }
+        )
+        if result.get("result") == "blocked":
+            response["category"] = str(FailureCategory.VM_BLOCKED)
+        return response
+
+    def verification_plan(
+        self,
+        base_ref: str = "origin/main",
+        mode: str = "checkpoint",
+    ) -> dict[str, object]:
+        return select_verification(
+            base_ref=base_ref,
+            mode=mode,
+            paths=self.paths,
+        ).to_dict()
+
+    def check_affected(
+        self,
+        base_ref: str = "origin/main",
+        mode: str = "checkpoint",
+    ) -> dict[str, object]:
+        selection = select_verification(
+            base_ref=base_ref,
+            mode=mode,
+            paths=self.paths,
+        )
+        result = run_focused_checks(selection, self.paths)
+        assert_selection_unchanged(selection, self.paths)
+        return result
+
+    def _prior_unchanged_failures(
+        self,
+        *,
+        suite: str,
+        retry_digest: str,
+        source_tree_digest: str,
+        verification_mode: str,
+    ) -> list[dict[str, object]]:
+        requested_mode = load_verification_mode(verification_mode, self.paths)
+
+        def retry_identity_matches(record: dict[str, object]) -> bool:
+            if record.get("current_step") == "run_validate":
+                return record.get("planned_source_tree_digest") == source_tree_digest
+            return record.get("planned_retry_digest") == retry_digest
+
+        records = [
+            record
+            for record in self.list_runs()
+            if record.get("suite") == suite
+            and retry_identity_matches(record)
+            and record.get("result") == "failed"
+            and record.get("failure_fingerprint")
+            and not record.get("source_invalidated")
+            and (
+                not requested_mode.authoritative
+                or record.get("verification_mode") != "dev"
+            )
+        ]
+        records.sort(key=lambda record: str(record.get("updated_at", "")), reverse=True)
+        return records
+
+    def _synthetic_failure_record(
+        self,
+        *,
+        suite: str,
+        mode: str,
+        error: BaseException,
+        source_commit: str | None = None,
+        worktree_digest: str | None = None,
+        retry_digest: str | None = None,
+        source_tree_digest: str | None = None,
+    ) -> dict[str, Any]:
+        category = (
+            error.category
+            if isinstance(error, VMError)
+            else FailureCategory.HARNESS_ERROR
+        )
+        run_id = f"run-{uuid.uuid4().hex[:12]}"
+        run_dir = self._run_dir(run_id)
+        artifact_dir = run_dir / "artifacts"
+        record: dict[str, Any] = {
+            "schema": 1,
+            "run_id": run_id,
+            "domain": f"{DOMAIN_PREFIX}{run_id}",
+            "suite": suite,
+            "verification_mode": mode,
+            "result": "failed",
+            "status": "failed",
+            "synthetic": True,
+            "authoritative": False,
+            "fresh_overlay": False,
+            "fresh_overlay_required": load_verification_mode(
+                mode, self.paths
+            ).fresh_overlay_required,
+            "planned_source_commit": source_commit,
+            "planned_worktree_digest": worktree_digest,
+            "planned_source_tree_digest": source_tree_digest,
+            "planned_retry_digest": retry_digest,
+            "current_step": "vm_create",
+            "category": str(category),
+            "error": str(error),
+            "artifact_dir": str(artifact_dir),
+            "created_at": utc_now(),
+            "updated_at": utc_now(),
+            "next_verification": (
+                "restore VM infrastructure or change the relevant fixture source"
+            ),
+        }
+        if isinstance(error, VMError) and error.details:
+            record["details"] = error.details
+        record.update(failure_fields(suite=suite, step="vm_create", error=error))
+        raw_root = artifact_dir / "runner"
+        raw_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        raw_path = raw_root / "synthetic-error.json"
+        raw_path.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "suite": suite,
+                    "mode": mode,
+                    "category": str(category),
+                    "message": str(error),
+                    "details": error.details if isinstance(error, VMError) else None,
+                    "traceback": "".join(traceback.format_exception(error)),
+                },
+                indent=2,
+                default=str,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        raw_path.chmod(0o600)
+        record["synthetic_error_artifact"] = str(raw_path)
+        self._write_record(record)
+        self._audit("vm_synthetic_failure", run_id=run_id, result="failed")
+        return record
+
+    def _blocked_suite_result(
+        self,
+        *,
+        suite: str,
+        mode: str,
+        message: str,
+        previous: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        blocked: dict[str, object] = {
+            "schema": 1,
+            "suite": suite,
+            "mode": mode,
+            "result": "blocked",
+            "category": str(FailureCategory.VM_BLOCKED),
+            "errorExcerpt": message,
+            "nextVerification": (
+                "change the relevant source or restore VM infrastructure"
+            ),
+        }
+        if previous:
+            blocked["runId"] = previous.get("run_id")
+            blocked["run_id"] = previous.get("run_id")
+            blocked["failureOrigin"] = previous.get("failure_origin")
+            blocked["failureFingerprint"] = previous.get("failure_fingerprint")
+            blocked["artifactRoot"] = previous.get("artifact_dir")
+        return blocked
+
+    def _invalidate_attempt_record(
+        self,
+        record: dict[str, Any],
+        error: BaseException,
+    ) -> dict[str, Any]:
+        run_id = record.get("run_id")
+        if isinstance(run_id, str):
+            try:
+                record = self.load_record(run_id)
+            except VMError:
+                record = dict(record)
+        record["invalidated_attempt"] = {
+            "result": record.get("result"),
+            "category": record.get("category"),
+            "failure_origin": record.get("failure_origin"),
+            "failure_fingerprint": record.get("failure_fingerprint"),
+        }
+        record["source_invalidated"] = True
+        record["authoritative"] = False
+        record["result"] = "failed"
+        record["status"] = "invalidated"
+        record["current_step"] = "source_freeze"
+        record["category"] = str(
+            error.category
+            if isinstance(error, VMError)
+            else FailureCategory.HARNESS_ERROR
+        )
+        record["error"] = str(error)
+        record["next_verification"] = (
+            "freeze the worktree, create a new verification plan, and rerun"
+        )
+        record.update(
+            failure_fields(
+                suite=str(record.get("suite")), step="source_freeze", error=error
+            )
+        )
+        record["updated_at"] = utc_now()
+        steps = record.setdefault("steps", [])
+        if isinstance(steps, list) and not any(
+            isinstance(step, dict) and step.get("action") == "source_freeze"
+            for step in steps
+        ):
+            steps.append(
+                {
+                    "index": len(steps) + 1,
+                    "action": "source_freeze",
+                    "status": "failed",
+                    "duration_seconds": 0,
+                }
+            )
+        artifact_dir = record.get("artifact_dir")
+        if isinstance(artifact_dir, str):
+            raw_root = Path(artifact_dir) / "runner"
+            raw_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            raw_path = raw_root / "source-freeze-error.json"
+            raw_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "message": str(error),
+                        "details": (
+                            error.details if isinstance(error, VMError) else None
+                        ),
+                    },
+                    indent=2,
+                    default=str,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            raw_path.chmod(0o600)
+            record["source_freeze_artifact"] = str(raw_path)
+        if isinstance(run_id, str):
+            self._write_record(record)
+            self._write_junit(record)
+        return record
+
+    def _run_suite_with_retry_budget(
+        self,
+        suite: str,
+        selection: VerificationSelection,
+        *,
+        keep_on_failure: bool = False,
+    ) -> dict[str, object]:
+        retry_digest = selection.suite_retry_digests[suite]
+        prior = self._prior_unchanged_failures(
+            suite=suite,
+            retry_digest=retry_digest,
+            source_tree_digest=selection.source_tree_digest,
+            verification_mode=selection.mode,
+        )
+        prior_product = next(
+            (
+                record
+                for record in prior
+                if record.get("failure_origin")
+                in {str(FailureOrigin.PRODUCT), str(FailureOrigin.TEST_FIXTURE)}
+            ),
+            None,
+        )
+        if prior_product:
+            return {
+                "suite": suite,
+                "result": "blocked",
+                "attempts": [],
+                "failure": self._blocked_suite_result(
+                    suite=suite,
+                    mode=selection.mode,
+                    message=(
+                        "unchanged product or test-fixture source already produced "
+                        "an actionable failure"
+                    ),
+                    previous=prior_product,
+                ),
+            }
+
+        prior_nonretryable_infra = next(
+            (
+                record
+                for record in prior
+                if record.get("failure_origin") == str(FailureOrigin.INFRA)
+                and not retryable_infrastructure_failure(record)
+            ),
+            None,
+        )
+        if prior_nonretryable_infra:
+            return {
+                "suite": suite,
+                "result": "blocked",
+                "attempts": [],
+                "failure": self._blocked_suite_result(
+                    suite=suite,
+                    mode=selection.mode,
+                    message=(
+                        "unchanged infrastructure integrity failure is not "
+                        "eligible for automatic retry"
+                    ),
+                    previous=prior_nonretryable_infra,
+                ),
+            }
+
+        infra_counts = Counter(
+            str(record["failure_fingerprint"])
+            for record in prior
+            if record.get("failure_origin") == str(FailureOrigin.INFRA)
+        )
+        exhausted_fingerprint = next(
+            (fingerprint for fingerprint, count in infra_counts.items() if count >= 2),
+            None,
+        )
+        if exhausted_fingerprint:
+            previous = next(
+                record
+                for record in prior
+                if record.get("failure_fingerprint") == exhausted_fingerprint
+            )
+            return {
+                "suite": suite,
+                "result": "blocked",
+                "attempts": [],
+                "failure": self._blocked_suite_result(
+                    suite=suite,
+                    mode=selection.mode,
+                    message=(
+                        "the same infrastructure fingerprint already occurred "
+                        "twice without a relevant source change"
+                    ),
+                    previous=previous,
+                ),
+            }
+
+        attempts: list[dict[str, object]] = []
+        for attempt_index in range(2):
+            try:
+                assert_selection_unchanged(selection, self.paths)
+            except Exception as error:
+                record = self._synthetic_failure_record(
+                    suite=suite,
+                    mode=selection.mode,
+                    error=error,
+                    source_commit=selection.source_commit,
+                    worktree_digest=selection.worktree_digest,
+                    retry_digest=retry_digest,
+                    source_tree_digest=selection.source_tree_digest,
+                )
+                record = self._invalidate_attempt_record(record, error)
+                summary = summarize_run_record(record)
+                attempts.append(summary)
+                return {
+                    "suite": suite,
+                    "result": "blocked",
+                    "attempts": attempts,
+                    "failure": self._blocked_suite_result(
+                        suite=suite,
+                        mode=selection.mode,
+                        message="the worktree changed after verification selection",
+                        previous=record,
+                    ),
+                }
+            existing_run_ids = {
+                str(candidate.get("run_id")) for candidate in self.list_runs()
+            }
+            try:
+                record = self.run_suite(
+                    suite,
+                    keep_on_failure=keep_on_failure,
+                    verification_mode=selection.mode,
+                    surfaces=(
+                        selection.surfaces
+                        if suite == "ui-review" and selection.mode != "release"
+                        else ()
+                    ),
+                    locales=(
+                        selection.locales
+                        if suite == "ui-review" and selection.mode != "release"
+                        else ()
+                    ),
+                    scales=(
+                        selection.scales
+                        if suite == "ui-review" and selection.mode != "release"
+                        else ()
+                    ),
+                    planned_source_commit=selection.source_commit,
+                    planned_worktree_digest=selection.worktree_digest,
+                    planned_source_tree_digest=selection.source_tree_digest,
+                    planned_retry_digest=retry_digest,
+                    return_on_failure=True,
+                )
+            except Exception as error:
+                candidates = [
+                    candidate
+                    for candidate in self._prior_unchanged_failures(
+                        suite=suite,
+                        retry_digest=retry_digest,
+                        source_tree_digest=selection.source_tree_digest,
+                        verification_mode=selection.mode,
+                    )
+                    if str(candidate.get("run_id")) not in existing_run_ids
+                ]
+                record = (
+                    candidates[0]
+                    if candidates
+                    else self._synthetic_failure_record(
+                        suite=suite,
+                        mode=selection.mode,
+                        error=error,
+                        source_commit=selection.source_commit,
+                        worktree_digest=selection.worktree_digest,
+                        retry_digest=retry_digest,
+                        source_tree_digest=selection.source_tree_digest,
+                    )
+                )
+            if record.get("category") == str(FailureCategory.SOURCE_INVALIDATED):
+                invalidation = VMError(
+                    FailureCategory.SOURCE_INVALIDATED,
+                    str(record.get("error") or "uploaded source did not match plan"),
+                    (
+                        record.get("details")
+                        if isinstance(record.get("details"), dict)
+                        else None
+                    ),
+                )
+                record = self._invalidate_attempt_record(record, invalidation)
+                summary = summarize_run_record(record)
+                attempts.append(summary)
+                return {
+                    "suite": suite,
+                    "result": "blocked",
+                    "attempts": attempts,
+                    "failure": self._blocked_suite_result(
+                        suite=suite,
+                        mode=selection.mode,
+                        message="the uploaded source did not match the frozen plan",
+                        previous=record,
+                    ),
+                }
+            try:
+                assert_selection_unchanged(selection, self.paths)
+            except Exception as error:
+                record = self._invalidate_attempt_record(record, error)
+                summary = summarize_run_record(record)
+                attempts.append(summary)
+                return {
+                    "suite": suite,
+                    "result": "blocked",
+                    "attempts": attempts,
+                    "failure": self._blocked_suite_result(
+                        suite=suite,
+                        mode=selection.mode,
+                        message="the worktree changed during suite execution",
+                        previous=record,
+                    ),
+                }
+            summary = summarize_run_record(record)
+            attempts.append(summary)
+            if record.get("result") == "passed":
+                return {"suite": suite, "result": "passed", "attempts": attempts}
+
+            origin = record.get("failure_origin")
+            fingerprint = record.get("failure_fingerprint")
+            if origin != str(FailureOrigin.INFRA):
+                return {
+                    "suite": suite,
+                    "result": "failed",
+                    "attempts": attempts,
+                }
+            if not retryable_infrastructure_failure(record):
+                return {
+                    "suite": suite,
+                    "result": "failed",
+                    "attempts": attempts,
+                }
+            same_failures = [
+                failure
+                for failure in self._prior_unchanged_failures(
+                    suite=suite,
+                    retry_digest=retry_digest,
+                    source_tree_digest=selection.source_tree_digest,
+                    verification_mode=selection.mode,
+                )
+                if failure.get("failure_fingerprint") == fingerprint
+            ]
+            local_same_failures = sum(
+                1
+                for attempt in attempts
+                if attempt.get("failureFingerprint") == fingerprint
+            )
+            if max(len(same_failures), local_same_failures) >= 2:
+                return {
+                    "suite": suite,
+                    "result": "blocked",
+                    "attempts": attempts,
+                    "failure": self._blocked_suite_result(
+                        suite=suite,
+                        mode=selection.mode,
+                        message=(
+                            "the same infrastructure fingerprint occurred twice "
+                            "without a relevant source change"
+                        ),
+                        previous=record,
+                    ),
+                }
+            if keep_on_failure and attempt_index == 0:
+                run_id = record.get("run_id")
+                if isinstance(run_id, str):
+                    # Keep only the final diagnostic attempt. Releasing the
+                    # intermediate domain preserves the one-domain boundary
+                    # and permits the fresh infrastructure retry.
+                    self.destroy(run_id)
+            if attempt_index == 1:
+                break
+        return {"suite": suite, "result": "failed", "attempts": attempts}
+
+    def _write_operation_report(
+        self,
+        *,
+        operation: str,
+        selection: VerificationSelection,
+        suites: tuple[str, ...],
+        results: list[dict[str, object]],
+        focused_checks: dict[str, object] | None = None,
+        operation_id: str | None = None,
+        complete: bool = True,
+        operation_error: BaseException | None = None,
+    ) -> dict[str, object]:
+        operation_id = operation_id or f"{operation}-{uuid.uuid4().hex[:12]}"
+        root = self.paths.state / "plans" / operation_id
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        path = root / "plan.json"
+        if focused_checks is None and operation_error is not None:
+            failed_checks: list[object] = []
+            if (
+                isinstance(operation_error, VMError)
+                and isinstance(operation_error.details, dict)
+                and isinstance(operation_error.details.get("checks"), list)
+            ):
+                failed_checks = operation_error.details["checks"]
+            artifact_root: str | None = None
+            if failed_checks and isinstance(failed_checks[0], dict):
+                stdout_artifact = failed_checks[0].get("stdoutArtifact")
+                if isinstance(stdout_artifact, str):
+                    artifact_root = str(Path(stdout_artifact).parent)
+            focused_checks = {
+                "result": "failed",
+                "checks": failed_checks,
+                "artifactRoot": artifact_root,
+            }
+        created_at = utc_now()
+        if path.is_file():
+            try:
+                previous = json.loads(path.read_text(encoding="utf-8"))
+                created_at = str(previous.get("createdAt") or created_at)
+            except (OSError, json.JSONDecodeError):
+                pass
+        verdict = "running"
+        if operation_error is not None:
+            verdict = "failed"
+        elif not complete:
+            verdict = "running"
+        elif any(result.get("result") == "blocked" for result in results):
+            verdict = "blocked"
+        elif any(result.get("result") == "failed" for result in results):
+            verdict = "failed"
+        else:
+            verdict = "passed"
+        report = {
+            "schema": 1,
+            "operationId": operation_id,
+            "operation": operation,
+            "result": verdict,
+            "authoritative": selection.authoritative and complete,
+            "createdAt": created_at,
+            "updatedAt": utc_now(),
+            "selection": selection.to_dict(),
+            "suites": list(suites),
+            "suiteResults": results,
+            "focusedChecks": focused_checks,
+            "artifactRoot": str(root),
+        }
+        if operation_error is not None:
+            report["operationError"] = {
+                "category": str(
+                    operation_error.category
+                    if isinstance(operation_error, VMError)
+                    else FailureCategory.HARNESS_ERROR
+                ),
+                "message": str(operation_error),
+            }
+        temporary = root / "plan.json.new"
+        temporary.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+
+        compact_results: list[dict[str, object]] = []
+        first_failure: dict[str, object] | None = None
+        for result in results:
+            attempts = result.get("attempts")
+            last_attempt = (
+                attempts[-1]
+                if isinstance(attempts, list) and attempts
+                else result.get("failure")
+            )
+            compact = {
+                "suite": result.get("suite"),
+                "result": result.get("result"),
+                "attemptCount": len(attempts) if isinstance(attempts, list) else 0,
+            }
+            if isinstance(last_attempt, dict):
+                for key in (
+                    "runId",
+                    "failedStep",
+                    "category",
+                    "failureOrigin",
+                    "failureFingerprint",
+                    "artifactRoot",
+                ):
+                    if last_attempt.get(key) is not None:
+                        compact[key] = last_attempt[key]
+                if first_failure is None and result.get("result") != "passed":
+                    first_failure = last_attempt
+            compact_results.append(compact)
+        response: dict[str, object] = {
+            "schema": 1,
+            "operationId": operation_id,
+            "operation": operation,
+            "mode": selection.mode,
+            "result": verdict,
+            "sourceCommit": selection.source_commit,
+            "worktreeDigest": selection.worktree_digest,
+            "authoritative": selection.authoritative and complete,
+            "suites": compact_results,
+            "physicalGates": list(selection.physical_gates),
+            "artifactRoot": str(root),
+        }
+        if focused_checks is not None:
+            response["focusedChecks"] = {
+                "result": focused_checks.get("result"),
+                "artifactRoot": focused_checks.get("artifactRoot"),
+                "count": len(focused_checks.get("checks", [])),
+            }
+        if first_failure:
+            response["firstFailure"] = first_failure
+        if len(json.dumps(response, sort_keys=True).encode()) > 32 * 1024:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "bounded VM operation summary exceeded 32 KiB",
+            )
+        return response
+
+    def run_affected(
+        self,
+        base_ref: str = "origin/main",
+        mode: str = "checkpoint",
+    ) -> dict[str, object]:
+        if mode == "release":
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "release mode requires the canonical release plan",
+            )
+        selection = select_verification(
+            base_ref=base_ref,
+            mode=mode,
+            paths=self.paths,
+        )
+        operation_id = f"affected-{uuid.uuid4().hex[:12]}"
+        results: list[dict[str, object]] = []
+        focused: dict[str, object] | None = None
+        self._write_operation_report(
+            operation="affected",
+            selection=selection,
+            suites=selection.suites,
+            results=results,
+            operation_id=operation_id,
+            complete=False,
+        )
+        try:
+            focused = run_focused_checks(selection, self.paths)
+            self._write_operation_report(
+                operation="affected",
+                selection=selection,
+                suites=selection.suites,
+                results=results,
+                focused_checks=focused,
+                operation_id=operation_id,
+                complete=False,
+            )
+            assert_selection_unchanged(selection, self.paths)
+            mode_definition = load_verification_mode(mode, self.paths)
+            for suite in selection.suites:
+                result = self._run_suite_with_retry_budget(suite, selection)
+                results.append(result)
+                self._write_operation_report(
+                    operation="affected",
+                    selection=selection,
+                    suites=selection.suites,
+                    results=results,
+                    focused_checks=focused,
+                    operation_id=operation_id,
+                    complete=False,
+                )
+                if result.get("result") != "passed" and mode_definition.fail_fast:
+                    break
+        except BaseException as error:
+            self._write_operation_report(
+                operation="affected",
+                selection=selection,
+                suites=selection.suites,
+                results=results,
+                focused_checks=focused,
+                operation_id=operation_id,
+                complete=False,
+                operation_error=error,
+            )
+            raise
+        return self._write_operation_report(
+            operation="affected",
+            selection=selection,
+            suites=selection.suites,
+            results=results,
+            focused_checks=focused,
+            operation_id=operation_id,
+        )
+
+    def run_plan(
+        self,
+        plan_name: str = "release",
+        *,
+        base_ref: str = "origin/main",
+    ) -> dict[str, object]:
+        plan = load_verification_plan(plan_name, self.paths)
+        selection = select_verification(
+            base_ref=base_ref,
+            mode=plan.mode,
+            paths=self.paths,
+        )
+        if plan.mode == "release":
+            checks = [
+                command
+                for command in selection.focused_checks
+                if command != "make vm-unit"
+            ]
+            if "make validate" not in checks:
+                checks.append("make validate")
+            selection = replace(selection, focused_checks=tuple(checks))
+        operation_id = f"{plan.name}-{uuid.uuid4().hex[:12]}"
+        results: list[dict[str, object]] = []
+        focused: dict[str, object] | None = None
+        self._write_operation_report(
+            operation=plan.name,
+            selection=selection,
+            suites=plan.suites,
+            results=results,
+            operation_id=operation_id,
+            complete=False,
+        )
+        try:
+            focused = run_focused_checks(selection, self.paths)
+            self._write_operation_report(
+                operation=plan.name,
+                selection=selection,
+                suites=plan.suites,
+                results=results,
+                focused_checks=focused,
+                operation_id=operation_id,
+                complete=False,
+            )
+            assert_selection_unchanged(selection, self.paths)
+            mode_definition = load_verification_mode(plan.mode, self.paths)
+            for suite in plan.suites:
+                result = self._run_suite_with_retry_budget(suite, selection)
+                results.append(result)
+                self._write_operation_report(
+                    operation=plan.name,
+                    selection=selection,
+                    suites=plan.suites,
+                    results=results,
+                    focused_checks=focused,
+                    operation_id=operation_id,
+                    complete=False,
+                )
+                if result.get("result") == "blocked" or (
+                    result.get("result") != "passed" and mode_definition.fail_fast
+                ):
+                    break
+        except BaseException as error:
+            self._write_operation_report(
+                operation=plan.name,
+                selection=selection,
+                suites=plan.suites,
+                results=results,
+                focused_checks=focused,
+                operation_id=operation_id,
+                complete=False,
+                operation_error=error,
+            )
+            raise
+        return self._write_operation_report(
+            operation=plan.name,
+            selection=selection,
+            suites=plan.suites,
+            results=results,
+            focused_checks=focused,
+            operation_id=operation_id,
+        )
