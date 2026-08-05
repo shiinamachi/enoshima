@@ -1,0 +1,66 @@
+-- Isolated compositor for Enoshima Auth. Do not source the user session here.
+
+hl.monitor({
+    output = "eDP-1",
+    mode = "2880x1800@120",
+    position = "0x540",
+    scale = 2,
+})
+
+hl.monitor({
+    output = "desc:Dell Inc. DELL U2725QE",
+    mode = "3840x2160@120",
+    position = "1440x0",
+    scale = 1.5,
+})
+
+hl.monitor({
+    output = "",
+    mode = "preferred",
+    position = "auto-right",
+    scale = "auto",
+})
+
+hl.env("GTK_USE_PORTAL", "0")
+hl.env("GDK_DEBUG", "no-portals")
+hl.env("GDK_BACKEND", "wayland")
+hl.env("XCURSOR_THEME", "capitaine-cursors")
+hl.env("XCURSOR_SIZE", "24")
+
+-- Enoshima Auth is a native Wayland client. Keeping XWayland out of the
+-- privileged greeter compositor reduces its attack surface and avoids an
+-- XWayland abort/coredump when greetd tears the isolated compositor down after
+-- a successful login.
+hl.config({
+    xwayland = {
+        enabled = false,
+    },
+    input = {
+        kb_layout = "us",
+        kb_options = "korean:ralt_hangul",
+    },
+    cursor = {
+        hide_on_key_press = false,
+    },
+    misc = {
+        disable_hyprland_logo = true,
+        disable_splash_rendering = true,
+        disable_hyprland_guiutils_check = true,
+        force_default_wallpaper = 0,
+    },
+})
+
+hl.bind(
+    "switch:on:Lid Switch",
+    hl.dsp.exec_cmd("/usr/local/lib/enoshima/greetd-session lid-closed"),
+    { locked = true }
+)
+hl.bind(
+    "switch:off:Lid Switch",
+    hl.dsp.exec_cmd("/usr/local/lib/enoshima/greetd-session lid-open"),
+    { locked = true }
+)
+
+hl.on("hyprland.start", function()
+    hl.exec_cmd("/usr/local/lib/enoshima/greetd-session start")
+end)

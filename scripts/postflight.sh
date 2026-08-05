@@ -393,14 +393,21 @@ check "fallback SDDM is disabled" bash -c \
 check "display-manager alias selects greetd" bash -c \
   '[[ $(readlink -f /etc/systemd/system/display-manager.service) == /usr/lib/systemd/system/greetd.service ]]'
 check "greetd uses the isolated Enoshima Auth compositor" grep -Fq \
-  'command = "dbus-run-session start-hyprland -- -c /etc/greetd/hyprland.conf"' \
+  'command = "dbus-run-session start-hyprland -- -c /etc/greetd/hyprland.lua"' \
   /etc/greetd/config.toml
 # The inner expression is intentionally evaluated by bash -c.
 # shellcheck disable=SC2016
 check "greetd configuration is world-readable but root-owned" bash -c \
-  '[[ $(stat -c "%U:%G:%a" /etc/greetd/config.toml) == root:root:644 ]]'
+  '[[ $(stat -c "%U:%G:%a" /etc/greetd/config.toml) == root:root:644 &&
+      $(stat -c "%U:%G:%a" /etc/greetd/hyprland.lua) == root:root:644 ]]'
 check "Enoshima Auth mixed-DPI compositor configuration parses" \
-  Hyprland --verify-config -c /etc/greetd/hyprland.conf
+  env \
+  GREETD_HYPRCTL=/usr/bin/true \
+  GREETD_ENOSHIMA_GREETER=/usr/bin/true \
+  GREETD_LID_STATE_ROOT=/dev/null \
+  Hyprland --verify-config -c /etc/greetd/hyprland.lua
+check "deprecated Enoshima Auth Hyprland configuration is absent" \
+  test ! -e /etc/greetd/hyprland.conf
 check "Enoshima Auth greeter binary is installed" test -x /usr/bin/enoshima-greeter
 check "Enoshima Auth greeter self-test passes" enoshima-greeter --self-test
 check "Enoshima Auth semantic stylesheet is installed" test -f /etc/greetd/enoshima-greeter.css

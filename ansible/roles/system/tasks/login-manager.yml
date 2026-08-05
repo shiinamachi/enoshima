@@ -15,6 +15,15 @@
     group: root
     mode: "0755"
 
+- name: Configure the minimal mixed-DPI Hyprland greeter session
+  ansible.builtin.template:
+    src: greetd-hyprland.lua.j2
+    dest: /etc/greetd/hyprland.lua
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
 - name: Configure greetd to launch the isolated Enoshima Auth compositor
   ansible.builtin.template:
     src: greetd-config.toml.j2
@@ -24,14 +33,10 @@
     mode: "0644"
     backup: true
 
-- name: Configure the minimal mixed-DPI Hyprland greeter session
-  ansible.builtin.template:
-    src: greetd-hyprland.conf.j2
-    dest: /etc/greetd/hyprland.conf
-    owner: root
-    group: root
-    mode: "0644"
-    backup: true
+- name: Remove the deprecated Hyprland greeter configuration
+  ansible.builtin.file:
+    path: /etc/greetd/hyprland.conf
+    state: absent
 
 - name: Install the Enoshima Auth greeter stylesheet
   ansible.builtin.template:

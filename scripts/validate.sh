@@ -28,8 +28,10 @@ if command -v shfmt >/dev/null 2>&1; then
 fi
 
 echo "==> Rendering and checking shell templates"
-render_dir=$(mktemp -d)
+render_dir=$(mktemp -d /tmp/enoshima-validate.XXXXXX)
 trap 'rm -rf -- "$render_dir"' EXIT
+export XDG_RUNTIME_DIR=$render_dir/runtime
+install -d -m 0700 "$XDG_RUNTIME_DIR"
 
 wwan_route_metric=$(
   awk '$1 == "wwan_route_metric:" { print $2; exit }' \

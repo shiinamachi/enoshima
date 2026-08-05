@@ -303,7 +303,10 @@ AC에서는 suspend를 유지하고, 외부 출력이 연결된 상태에서는 
 ```bash
 systemctl is-enabled greetd.service
 systemctl is-enabled sddm.service || true
-Hyprland --verify-config -c /etc/greetd/hyprland.conf
+GREETD_HYPRCTL=/usr/bin/true \
+GREETD_ENOSHIMA_GREETER=/usr/bin/true \
+GREETD_LID_STATE_ROOT=/dev/null \
+  Hyprland --verify-config -c /etc/greetd/hyprland.lua
 grep -F 'Exec=uwsm start -e -D Hyprland start-hyprland' \
   /usr/local/share/wayland-sessions/enoshima-desktop.desktop
 grep -F 'Hidden=true' \

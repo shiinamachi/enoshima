@@ -27,7 +27,7 @@ group_vars=ansible/inventory/group_vars/all.yml
 host_vars=ansible/inventory/host_vars/tpx1c13.yml
 login_tasks=ansible/roles/system/tasks/login-manager.yml
 greetd_config=ansible/roles/system/templates/greetd-config.toml.j2
-greetd_hyprland=ansible/roles/system/templates/greetd-hyprland.conf.j2
+greetd_hyprland=ansible/roles/system/templates/greetd-hyprland.lua.j2
 greetd_session=ansible/roles/system/templates/greetd-session.sh.j2
 greeter_css=ansible/roles/system/templates/enoshima-greeter.css.j2
 greeter_source=packages/local/enoshima-greeter/enoshima-greeter.c
@@ -70,25 +70,61 @@ for path in sys.argv[1:]:
     with open(path, "rb") as handle:
         tomllib.load(handle)
 PY
-assert_contains "$greetd_config" 'command = "dbus-run-session start-hyprland -- -c /etc/greetd/hyprland.conf"'
+assert_contains "$greetd_config" 'command = "dbus-run-session start-hyprland -- -c /etc/greetd/hyprland.lua"'
 assert_contains "$greetd_config" 'user = "greeter"'
+luac -p "$greetd_hyprland"
+if command -v Hyprland >/dev/null 2>&1; then
+  cp -- "$greetd_hyprland" "$work/greetd-hyprland.lua"
+  install -d -m 0700 "$work/runtime"
+  env \
+    GREETD_HYPRCTL=/usr/bin/true \
+    GREETD_ENOSHIMA_GREETER=/usr/bin/true \
+    GREETD_LID_STATE_ROOT=/dev/null \
+    XDG_RUNTIME_DIR="$work/runtime" \
+    Hyprland --verify-config -c "$work/greetd-hyprland.lua" >/dev/null
+fi
 for contract in \
-  'monitor = eDP-1,2880x1800@120,0x540,2' \
-  'monitor = desc:Dell Inc. DELL U2725QE,3840x2160@120,1440x0,1.5' \
-  'monitor = ,preferred,auto-right,auto' \
-  'env = GTK_USE_PORTAL,0' \
-  'env = GDK_DEBUG,no-portals' \
-  'xwayland {' \
+  'hl.monitor({' \
+  'output = "eDP-1"' \
+  'mode = "2880x1800@120"' \
+  'position = "0x540"' \
+  'output = "desc:Dell Inc. DELL U2725QE"' \
+  'mode = "3840x2160@120"' \
+  'position = "1440x0"' \
+  'position = "auto-right"' \
+  'scale = "auto"' \
+  'hl.env("GTK_USE_PORTAL", "0")' \
+  'hl.env("GDK_DEBUG", "no-portals")' \
+  'xwayland = {' \
   'enabled = false' \
-  'bindl = , switch:on:Lid Switch, exec, /usr/local/lib/enoshima/greetd-session lid-closed' \
-  'bindl = , switch:off:Lid Switch, exec, /usr/local/lib/enoshima/greetd-session lid-open' \
-  'exec-once = /usr/local/lib/enoshima/greetd-session start'; do
+  '"switch:on:Lid Switch"' \
+  '"switch:off:Lid Switch"' \
+  'hl.on("hyprland.start", function()' \
+  'hl.exec_cmd("/usr/local/lib/enoshima/greetd-session start")'; do
   assert_contains "$greetd_hyprland" "$contract"
 done
-assert_not_contains "$greetd_hyprland" 'default_monitor = eDP-1'
+assert_not_contains "$greetd_hyprland" 'monitor = '
+assert_not_contains "$greetd_hyprland" 'bindl = '
+assert_not_contains "$greetd_hyprland" 'exec-once = '
 assert_not_contains "$greetd_hyprland" 'waybar'
 assert_not_contains "$greetd_hyprland" 'quickshell'
 assert_not_contains "$greetd_hyprland" 'cyberdock'
+assert_contains "$login_tasks" 'src: greetd-hyprland.lua.j2'
+assert_contains "$login_tasks" 'dest: /etc/greetd/hyprland.lua'
+assert_contains "$login_tasks" 'path: /etc/greetd/hyprland.conf'
+assert_contains "$login_tasks" 'Remove the deprecated Hyprland greeter configuration'
+[[ ! -e ansible/roles/system/templates/greetd-hyprland.conf.j2 ]] ||
+  fail 'deprecated Hyprland greeter template remains in the repository'
+python - "$login_tasks" <<'PY'
+import sys
+
+text = open(sys.argv[1], encoding="utf-8").read()
+lua = text.index("dest: /etc/greetd/hyprland.lua")
+toml = text.index("dest: /etc/greetd/config.toml")
+legacy = text.index("path: /etc/greetd/hyprland.conf")
+if not lua < toml < legacy:
+    raise SystemExit("greetd migration is not interruption-safe")
+PY
 # These contracts intentionally match literal shell variables in the template.
 # shellcheck disable=SC2016
 for contract in \
@@ -235,6 +271,7 @@ assert_contains scripts/postflight.sh \
   'starts and unlocks GNOME Keyring for the session'
 assert_contains scripts/postflight.sh 'fallback SDDM is disabled'
 assert_contains scripts/postflight.sh 'Enoshima Auth mixed-DPI compositor configuration parses'
+assert_contains scripts/postflight.sh 'deprecated Enoshima Auth Hyprland configuration is absent'
 assert_contains scripts/postflight.sh 'Enoshima Auth lid-aware session helper is executable'
 
 printf '%s\n' '==> UWSM session entry is valid'
