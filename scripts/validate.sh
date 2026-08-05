@@ -237,7 +237,10 @@ assert vm_mcp["args"] == [
     "tests/vm",
     "enoshima-vm-mcp",
 ]
-assert vm_mcp["cwd"] == "."
+assert "cwd" not in vm_mcp, (
+    "the project MCP must inherit the active session cwd; an explicit relative "
+    "cwd is resolved from the Codex app-server process"
+)
 assert vm_mcp["startup_timeout_sec"] == 30
 assert vm_mcp["tool_timeout_sec"] == 259200
 assert vm_mcp["enabled"] is True

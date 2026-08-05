@@ -12,7 +12,8 @@ max_concurrent_threads_per_session = 3
 [mcp_servers.enoshima_vm]
 command = "uv"
 args = ["run", "--locked", "--project", "tests/vm", "enoshima-vm-mcp"]
-cwd = "."
+# Do not set cwd here. Codex Desktop resolves an explicit relative cwd from the
+# app-server process, while omitting it uses the active repository session cwd.
 startup_timeout_sec = 30
 # A release can consume 30.5 hours once, and each suite is eligible for one
 # fresh-overlay infrastructure retry. Keep the worst-case 61-hour run plus

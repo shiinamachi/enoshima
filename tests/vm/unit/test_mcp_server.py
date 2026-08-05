@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import tomllib
+from pathlib import Path
+
+import anyio
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
+
 from enoshima_vm import mcp_server
 
 
@@ -74,3 +81,33 @@ def test_mcp_run_list_returns_bounded_page_envelope(monkeypatch) -> None:
         "returned": 0,
         "truncated": False,
     }
+
+
+def test_project_codex_mcp_config_handshakes_from_session_cwd() -> None:
+    root = Path(__file__).resolve().parents[3]
+    config_path = root / ".codex" / "config.toml"
+    with config_path.open("rb") as handle:
+        vm_mcp = tomllib.load(handle)["mcp_servers"]["enoshima_vm"]
+
+    assert "cwd" not in vm_mcp
+
+    async def initialize() -> None:
+        parameters = StdioServerParameters(
+            command=vm_mcp["command"],
+            args=vm_mcp["args"],
+            cwd=root,
+        )
+        async with stdio_client(parameters) as streams:
+            async with ClientSession(*streams) as session:
+                with anyio.fail_after(vm_mcp["startup_timeout_sec"]):
+                    result = await session.initialize()
+                    tools = await session.list_tools()
+
+        assert result.serverInfo.name == "enoshima-vm"
+        assert {tool.name for tool in tools.tools} >= {
+            "verification_plan",
+            "vm_run_affected",
+            "vm_run_plan",
+        }
+
+    anyio.run(initialize)
