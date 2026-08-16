@@ -171,9 +171,5 @@ def vm_list_runs(
     return summarize_run_list(service().list_runs(), cursor=cursor, limit=limit)
 
 
-def main() -> None:
-    mcp.run(transport="stdio")
-
-
 if __name__ == "__main__":
-    main()
+    mcp.run()

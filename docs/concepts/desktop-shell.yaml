@@ -1,12 +1,72 @@
 surface_id: desktop-shell
 status: approved
-source: legacy-concept
-asset: docs/assets/concepts/cyberpunk-desktop-shell.png
-states: [default, active-window, inactive-window, internal-display, external-display]
+asset: docs/assets/concepts/desktop-shell/desktop-shell-accessible-v1.png
+candidates: docs/assets/concepts/desktop-shell/desktop-shell-accessible-candidates-v1.png
+selection: >-
+  Direction B, Quiet Contrast, preserves the existing shell geometry and
+  Enoshima hierarchy while making accessible mode opaque and strengthening
+  semantic text, divider, border, and focus roles. Bright Accent competes with
+  the wallpaper; Monochrome Utility removes useful hierarchy and identity.
+states:
+  - default
+  - active-window
+  - inactive-window
+  - internal-display
+  - external-display
+  - accessible
 invariants:
   - A quiet top status surface and compact centered Cyberdock frame the workspace.
   - Deep navy application surfaces remain more legible than the wallpaper.
+  - Accessible mode changes semantic token strength, pointer size, motion, and transparency without adding a control or changing shell geometry.
+  - Focus, selection, and running states retain edge or shape markers and never depend on color alone.
+behavior:
+  - The accessible appearance profile derives high contrast, 48px pointer, reduced motion, and reduced transparency as one aggregate state.
+  - Default, reduced-motion, and reduced-transparency profiles restore 24px pointer and ordinary contrast tokens.
+  - Appearance transitions do not start, stop, or restart the optional Orca screen reader.
+implementation_constraints:
+  - Derive highContrast only from the existing accessible appearance mode and reuse the shared semantic token object.
+  - Strengthen colorDivider, colorQuietBorder, colorInfoBorder, colorFocusBorder, colorTextMuted, and colorTextSubtle; do not add per-component palette literals.
+  - Accessible surfaces remain opaque, focus edges remain 2px, and existing 44px-or-larger targets retain their geometry.
+  - Default tokens and all non-accessible states remain unchanged.
 acceptance:
   - Waybar and Cyberdock never overlap maximized application content.
   - Internal and external scale review preserves hierarchy and pointer targets.
-  - Reduced transparency keeps every label readable.
+  - Accessible mode is visibly distinct at 1.0, 1.25, and 2.0 without layout shift or glow-only focus.
+  - Korean and English labels remain readable and muted text keeps at least 4.5:1 contrast.
+  - Returning to default restores the 24px pointer and ordinary token strengths.
+generation:
+  tool: built-in-imagegen
+  inspected_references:
+    - docs/assets/concepts/cyberpunk-desktop-shell.png
+  candidate_prompt: |-
+    Use case: ui-mockup. Create one new high-fidelity 16:9 concept board
+    comparing three feasible directions for the existing Enoshima Linux
+    desktop shell's aggregate accessible mode. Preserve the quiet top status
+    surface, compact centered Cyberdock, deep navy Enoshima palette, existing
+    geometry, and Papirus-like symbolic icons. Compare A Bright Accent, B Quiet
+    Contrast, and C Monochrome Utility. Make B strongest: opaque surfaces,
+    brighter neutral dividers, pale muted text, precise 2px focus edges plus
+    existing shape markers, restrained accents, and a 48px pointer. Show Korean
+    and English overflow examples plus default, accessible, keyboard-focus,
+    inactive, 1x, 1.25x, and 2x states outside production UI. Accessible mode
+    aggregates reduced motion, reduced transparency, 48px pointer, and high
+    contrast; default restores 24px. Add no settings panel, custom control,
+    daemon UI, dashboard, glassmorphism, remote font, emoji control, fake code,
+    fake terminal, watermark, or invented configuration UI.
+  final_prompt: |-
+    Use case: ui-mockup. Develop selected B Quiet Contrast into one polished
+    new 16:9 final implementation board for the existing Enoshima desktop
+    shell. Keep production geometry unchanged. Show one 1920x1080 logical
+    accessible-mode desktop with opaque #050623, #0a0c3e, and #161151 surfaces,
+    #f2ecff primary text, strengthened muted text and neutral dividers, a 2px
+    cyan focus edge plus shape marker, violet selection plus shape, running-app
+    marker, and 48px pointer. Outside production UI show default, accessible,
+    keyboard focus, selected, running, inactive, and long-title states; exact
+    redlines for 48px/default 24px pointer, opacity 1.0, 2px focus, 44px target,
+    muted text at least 4.5:1, motion off, blur off, 1x/1.25x/2x, and Korean plus
+    English. Document that highContrast derives only from accessible mode and
+    strengthens semantic divider, border, focus, and muted-text tokens without
+    direct component colors. Appearance transitions must not control Orca.
+    Add no dialog, sidebar, web/mobile UI, glassmorphism, remote font, emoji
+    control, fake code or terminal, pseudo-text, watermark, invented toggle, or
+    daemon UI.

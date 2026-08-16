@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import shlex
+import signal
 import subprocess
+import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import enoshima_vm.impact as impact_module
 from enoshima_vm.config import RuntimePaths
 from enoshima_vm.errors import FailureCategory, VMError
 from enoshima_vm.impact import (
@@ -103,6 +109,17 @@ def test_single_star_does_not_cross_path_segments() -> None:
     assert root.focused_checks == ("make validate",)
 
 
+def test_validate_dedupe_contract_matches_the_canonical_entrypoint() -> None:
+    repository = RuntimePaths.discover().repository
+    source = (repository / "scripts" / "validate.sh").read_text(encoding="utf-8")
+
+    assert '"$repo_root/scripts/check-ui-concept-coverage"' in source
+    assert "tests/test-login-manager.sh" in source
+    assert "tests/test-ui-evidence-gate.sh" in source
+    assert "uv run --locked --project tests/vm pytest" in source
+    assert "uv run --locked --project tests/vm ruff check" in source
+
+
 def test_selector_reverse_maps_ui_implementation_to_surface() -> None:
     selection = select_verification(
         mode="checkpoint",
@@ -111,7 +128,11 @@ def test_selector_reverse_maps_ui_implementation_to_surface() -> None:
 
     assert selection.surfaces == ("launcher",)
     assert selection.suites == ("desktop", "ui-review")
-    assert "scripts/check-ui-concept-coverage" in selection.focused_checks
+    assert selection.focused_checks == ("make validate",)
+    assert any(
+        "scripts/check-ui-concept-coverage" in reason
+        for reason in selection.reasons["make validate"]
+    )
     assert selection.locales == ("en_US.UTF-8", "ko_KR.UTF-8")
     assert selection.scales == (1.0, 1.25, 2.0)
 
@@ -135,6 +156,130 @@ def test_display_driver_preserves_physical_hardware_gates() -> None:
         "internal-oled-edid-refresh-rate",
         "external-display-dock",
     )
+
+
+@pytest.mark.parametrize(
+    ("changed_path", "gate"),
+    [
+        (
+            "home/dot_config/hypr/hyprland.lua",
+            "desktop-capture-recording",
+        ),
+        (
+            "home/dot_config/xdg-desktop-portal/hyprland-portals.conf",
+            "desktop-capture-recording",
+        ),
+        (
+            "home/dot_config/quickshell/cyberdock/shell.qml",
+            "accessibility-screen-reader",
+        ),
+        (
+            "home/dot_config/vicinae/settings.json",
+            "command-palette-staged-rollout",
+        ),
+        (
+            "home/dot_config/hyprshell/config.ron",
+            "overview-keyboard-mixed-dpi",
+        ),
+        (
+            "ansible/roles/system/tasks/observability.yml",
+            "performance-observability-history-overhead",
+        ),
+    ],
+)
+def test_desktop_essentials_preserve_new_physical_gates(
+    changed_path: str,
+    gate: str,
+) -> None:
+    assert gate in select_verification(changed_paths=(changed_path,)).physical_gates
+
+
+@pytest.mark.parametrize(
+    ("changed_path", "expected_gates"),
+    [
+        (
+            "packages/native.txt",
+            (
+                "desktop-capture-recording",
+                "performance-observability-history-overhead",
+            ),
+        ),
+        (
+            "docs/DESKTOP-EXPANSION-OPERATIONS.md",
+            (
+                "desktop-capture-recording",
+                "command-palette-staged-rollout",
+                "overview-keyboard-mixed-dpi",
+            ),
+        ),
+        (
+            "ansible/roles/desktop_expansion/tasks/main.yml",
+            ("command-palette-staged-rollout",),
+        ),
+        (
+            "bootstrap.sh",
+            (
+                "command-palette-staged-rollout",
+                "overview-keyboard-mixed-dpi",
+            ),
+        ),
+        (
+            "home/dot_config/mimeapps.list",
+            ("command-palette-staged-rollout",),
+        ),
+        (
+            "scripts/install-local-packages.sh",
+            (
+                "command-palette-staged-rollout",
+                "overview-keyboard-mixed-dpi",
+            ),
+        ),
+        (
+            "packages/local/hyprshell-bin/overview-direct-input.patch",
+            ("overview-keyboard-mixed-dpi",),
+        ),
+        (
+            "scripts/check-hyprshell-provenance",
+            ("overview-keyboard-mixed-dpi",),
+        ),
+        (
+            "ansible/roles/system/tasks/main.yml",
+            ("performance-observability-history-overhead",),
+        ),
+        (
+            "ansible/roles/system/handlers/main.yml",
+            ("performance-observability-history-overhead",),
+        ),
+    ],
+)
+def test_desktop_essential_production_paths_preserve_physical_gates(
+    changed_path: str,
+    expected_gates: tuple[str, ...],
+) -> None:
+    selection = select_verification(changed_paths=(changed_path,))
+
+    assert set(expected_gates) <= set(selection.physical_gates)
+
+
+@pytest.mark.parametrize(
+    "changed_path",
+    [
+        "docs/concepts/command-palette.yaml",
+        "docs/assets/concepts/command-palette/command-palette-v1.png",
+        "docs/evidence/auth/review.json",
+    ],
+)
+def test_ui_contract_artifacts_require_ui_review(changed_path: str) -> None:
+    selection = select_verification(changed_paths=(changed_path,))
+
+    assert selection.suites == ("ui-review",)
+    assert selection.focused_checks == (
+        "scripts/check-ui-concept-coverage",
+        "tests/test-ui-evidence-gate.sh",
+        "make vm-unit",
+    )
+    assert selection.smallest_real_suite_required is True
+    assert selection.vm_omitted_reason is None
 
 
 def test_codex_mcp_configuration_is_verification_workflow() -> None:
@@ -294,12 +439,17 @@ def test_physical_inventory_selects_every_owned_lane_and_gate(
         "boot-security",
     )
     assert selection.physical_gates == (
+        "accessibility-screen-reader",
         "suspend-resume",
         "sleep-battery-drain",
         "post-resume-thermal",
         "internal-oled-edid-refresh-rate",
         "external-display-dock",
         "internal-external-display-review",
+        "desktop-capture-recording",
+        "command-palette-staged-rollout",
+        "overview-keyboard-mixed-dpi",
+        "performance-observability-history-overhead",
         "fingerprint-enrollment-authentication",
         "secure-boot-enrollment",
         "tpm-unlock-recovery",
@@ -374,6 +524,12 @@ def test_sddm_fallback_preserves_login_visual_and_hardware_contracts(
     assert "internal-external-display-review" in selection.physical_gates
     assert "external-display-dock" in selection.physical_gates
     assert "fingerprint-enrollment-authentication" in selection.physical_gates
+    assert {
+        "desktop-capture-recording",
+        "command-palette-staged-rollout",
+        "overview-keyboard-mixed-dpi",
+        "performance-observability-history-overhead",
+    }.isdisjoint(selection.physical_gates)
 
 
 @pytest.mark.parametrize(
@@ -498,3 +654,71 @@ def test_focused_checks_store_raw_output_in_artifacts(tmp_path: Path) -> None:
     check = result["checks"][0]
     assert Path(check["stdoutArtifact"]).read_text() == "focused-stdout"
     assert Path(check["stderrArtifact"]).read_text() == "focused-stderr"
+
+
+def test_focused_checks_do_not_export_the_payload_lock_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    discovered = RuntimePaths.discover()
+    paths = RuntimePaths(
+        discovered.repository,
+        discovered.project,
+        tmp_path / "cache",
+        tmp_path / "state",
+    )
+    selection = replace(
+        select_verification(changed_paths=("README.md",)),
+        focused_checks=("sh -c 'test -z \"${ENOSHIMA_VM_OPERATION_LOCK_FD-}\"'",),
+    )
+    monkeypatch.setenv("ENOSHIMA_VM_OPERATION_LOCK_FD", "123")
+
+    result = run_focused_checks(selection, paths)
+
+    assert result["result"] == "passed"
+    assert result["checks"][0]["exitCode"] == 0
+
+
+def test_focused_check_idle_deadline_kills_descendants_and_keeps_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    discovered = RuntimePaths.discover()
+    paths = RuntimePaths(
+        discovered.repository,
+        discovered.project,
+        tmp_path / "cache",
+        tmp_path / "state",
+    )
+    child_pid_path = tmp_path / "focused-child.pid"
+    script = (
+        "import pathlib,subprocess,sys,time; "
+        "print('focused-started', flush=True); "
+        "child=subprocess.Popen([sys.executable,'-c',"
+        "'import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN);'"
+        "'time.sleep(30)']); "
+        f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid)); "
+        "time.sleep(30)"
+    )
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
+    selection = replace(
+        select_verification(changed_paths=("README.md",)),
+        focused_checks=(command,),
+    )
+    monkeypatch.setattr(impact_module, "FOCUSED_CHECK_TIMEOUT_SECONDS", 2)
+    monkeypatch.setattr(impact_module, "FOCUSED_CHECK_IDLE_TIMEOUT_SECONDS", 0.3)
+
+    with pytest.raises(VMError) as raised:
+        run_focused_checks(selection, paths)
+
+    checks = raised.value.details["checks"]
+    assert checks[0]["timeoutKind"] == "idle"
+    assert Path(checks[0]["stdoutArtifact"]).read_text() == "focused-started\n"
+    child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        stat_path = Path(f"/proc/{child_pid}/stat")
+        if not stat_path.is_file() or stat_path.read_text().split()[2] == "Z":
+            break
+        time.sleep(0.01)
+    else:
+        os.kill(child_pid, signal.SIGKILL)
+        pytest.fail("focused-check deadline left its descendant alive")

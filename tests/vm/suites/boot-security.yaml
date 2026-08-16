@@ -14,11 +14,11 @@ network:
   allow_lan: false
 steps:
   - wait_for_ssh
+  - seed_pacman_cache
   - wait_for_cloud_init
   - wait_for_guest_agent
   - upload_worktree
   - seed_codex_electron_cache
-  - seed_pacman_cache
   - run_validate
   - prepare_boot_disk
   - boot_with_recovery
@@ -50,6 +50,7 @@ allowed_skips:
   - external-display
   - fingerprint-device
   - fingerprint-enrollment
+  - opt-in-orca-screen-reader-package
   - thunderbolt-controller
   - wwan-modem
 fail_on_unexpected_skip: true

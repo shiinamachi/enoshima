@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+declare -a action
+
+case ${1-} in
+  toggle)
+    (($# == 1)) || exit 2
+    action=(toggle)
+    ;;
+  deeplink)
+    (($# == 2)) || exit 2
+    case $2 in
+      'vicinae://launch/clipboard/history?toggle=true' | \
+        'vicinae://launch/core/search-emojis?toggle=true') ;;
+      *) exit 2 ;;
+    esac
+    action=(deeplink "$2")
+    ;;
+  uri)
+    (($# == 2)) || exit 2
+    # Desktop URI handlers accept untrusted browser input. Only OAuth
+    # callbacks are externally routable; launch/settings/theme/API and all
+    # argument-bearing command deeplinks remain local exact allowlists above.
+    /usr/bin/python - "$2" <<'PY' || exit 2
+import re
+import sys
+from urllib.parse import parse_qsl, urlsplit
+
+raw = sys.argv[1]
+if any(ord(character) < 0x20 or ord(character) == 0x7f for character in raw):
+    raise SystemExit(1)
+
+normalized = raw
+if raw.startswith("com.raycast:/") and not raw.startswith("com.raycast://"):
+    normalized = "com.raycast://" + raw.removeprefix("com.raycast:/")
+parts = urlsplit(normalized)
+if parts.scheme not in {"raycast", "com.raycast"} or parts.hostname != "oauth":
+    raise SystemExit(1)
+if parts.username or parts.password or parts.port or parts.path not in {"", "/"}:
+    raise SystemExit(1)
+items = parse_qsl(parts.query, keep_blank_values=True, strict_parsing=True)
+if len(items) != 2 or {key for key, _ in items} != {"code", "state"}:
+    raise SystemExit(1)
+values = dict(items)
+if not re.fullmatch(r"[A-Za-z0-9._~-]{1,4096}", values["code"]):
+    raise SystemExit(1)
+if not re.fullmatch(r"[A-Za-z0-9_-]{16,4096}", values["state"]):
+    raise SystemExit(1)
+PY
+    action=("$2")
+    ;;
+  *) exit 2 ;;
+esac
+
+if ! systemctl --user is-active --quiet vicinae.service; then
+  systemctl --user start vicinae.service
+fi
+
+# A locked login keyring makes the unit's ExecCondition skip startup. Do not
+# turn a shortcut press into a restart loop or an unbounded IPC wait.
+ready=false
+for _ in {1..20}; do
+  systemctl --user is-active --quiet vicinae.service || exit 1
+  if timeout --signal=TERM --kill-after=1s 0.25s \
+    /usr/bin/vicinae ping >/dev/null 2>&1; then
+    ready=true
+    break
+  fi
+  sleep 0.1
+done
+[[ $ready == true ]] || exit 1
+
+set +e
+timeout --signal=TERM --kill-after=1s 5s /usr/bin/vicinae "${action[@]}"
+status=$?
+set -e
+
+# Vicinae can display the requested layer while its IPC client waits for a
+# response indefinitely. Readiness was proven above; the compositor-visible
+# result is still useful when the bounded action client reaches its timeout.
+case $status in
+  0 | 124) exit 0 ;;
+  *) exit "$status" ;;
+esac

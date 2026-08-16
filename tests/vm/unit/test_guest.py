@@ -7,11 +7,16 @@ import pytest
 
 from enoshima_vm.errors import FailureCategory, VMError
 from enoshima_vm.guest import (
+    GUEST_COMMAND_IDLE_TIMEOUT_SECONDS,
     INITIAL_SSH_TIMEOUT_SECONDS,
     RETRYABLE_SSH_ATTEMPTS,
+    SSH_CONNECT_TIMEOUT_SECONDS,
+    SSH_SERVER_ALIVE_COUNT_MAX,
+    SSH_SERVER_ALIVE_INTERVAL_SECONDS,
     Guest,
+    GuestCommandTimeout,
 )
-from enoshima_vm.process import CommandResult
+from enoshima_vm.process import CommandResult, ProcessIdleTimeout
 from enoshima_vm.source import SourceIdentity
 
 
@@ -31,19 +36,84 @@ def success() -> CommandResult:
     return CommandResult(("ssh",), 0, "", "")
 
 
-def transport_failure() -> CommandResult:
-    return CommandResult(("ssh",), 255, "", "Connection reset by peer")
-
-
 def test_initial_ssh_budget_covers_cloud_bootstrap_deadline() -> None:
     assert INITIAL_SSH_TIMEOUT_SECONDS == 1200
+
+
+def test_ssh_transport_has_bounded_connect_and_keepalive_options() -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    command = guest.ssh_base()
+
+    assert f"ConnectTimeout={SSH_CONNECT_TIMEOUT_SECONDS}" in command
+    assert f"ServerAliveInterval={SSH_SERVER_ALIVE_INTERVAL_SECONDS}" in command
+    assert f"ServerAliveCountMax={SSH_SERVER_ALIVE_COUNT_MAX}" in command
+
+
+def test_long_guest_command_enforces_the_no_output_budget(monkeypatch) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    observed: dict[str, object] = {}
+
+    def stalled(_argv, **kwargs):
+        observed.update(kwargs)
+        raise ProcessIdleTimeout(
+            ("ssh",),
+            3600,
+            GUEST_COMMAND_IDLE_TIMEOUT_SECONDS,
+            output="",
+            stderr="",
+        )
+
+    monkeypatch.setattr("enoshima_vm.guest.run", stalled)
+    with pytest.raises(GuestCommandTimeout) as raised:
+        guest.exec(["bootstrap"], timeout=3600)
+
+    assert observed["idle_timeout"] == GUEST_COMMAND_IDLE_TIMEOUT_SECONDS
+    assert raised.value.category is FailureCategory.SSH_TIMEOUT
+    assert raised.value.details["timeout_kind"] == "idle"
+    assert raised.value.stdout == ""
+    assert raised.value.stderr == ""
+
+
+def test_short_guest_command_does_not_add_an_idle_budget(monkeypatch) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    observed: dict[str, object] = {}
+
+    def execute(_argv, **kwargs):
+        observed.update(kwargs)
+        return success()
+
+    monkeypatch.setattr("enoshima_vm.guest.run", execute)
+    guest.exec(["true"], timeout=30)
+
+    assert observed["idle_timeout"] is None
+
+
+def test_long_guest_command_accepts_a_narrower_call_scoped_idle_budget(
+    monkeypatch,
+) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    observed: dict[str, object] = {}
+
+    def execute(_argv, **kwargs):
+        observed.update(kwargs)
+        return success()
+
+    monkeypatch.setattr("enoshima_vm.guest.run", execute)
+    guest.exec(["bootstrap"], timeout=4500, idle_timeout=1920)
+
+    assert observed["idle_timeout"] == 1920
 
 
 def test_retryable_guest_command_recovers_from_transient_transport_loss(
     monkeypatch,
 ) -> None:
     guest = Guest(22022, Path("fixture-key"))
-    outcomes = iter((transport_failure(), success()))
+    outcomes = iter(
+        (
+            CommandResult(("ssh",), 255, "", "Connection reset by peer"),
+            success(),
+        )
+    )
     calls = 0
 
     def execute(*_args, **_kwargs):
@@ -51,11 +121,27 @@ def test_retryable_guest_command_recovers_from_transient_transport_loss(
         calls += 1
         return next(outcomes)
 
-    monkeypatch.setattr(guest, "exec", execute)
+    monkeypatch.setattr("enoshima_vm.guest.run", execute)
     monkeypatch.setattr("enoshima_vm.guest.time.sleep", lambda _seconds: None)
 
     assert guest.exec_retryable(["hyprctl", "-j", "clients"]) == success()
     assert calls == 2
+
+
+def test_scp_uses_the_bounded_transport_options(tmp_path: Path, monkeypatch) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    observed: list[str] = []
+
+    def execute(argv, **_kwargs):
+        observed.extend(argv)
+        return CommandResult(tuple(argv), 0, "", "")
+
+    monkeypatch.setattr("enoshima_vm.guest.run", execute)
+    guest.download(PurePosixPath("/tmp/artifact"), tmp_path / "artifact")
+
+    assert f"ConnectTimeout={SSH_CONNECT_TIMEOUT_SECONDS}" in observed
+    assert f"ServerAliveInterval={SSH_SERVER_ALIVE_INTERVAL_SECONDS}" in observed
+    assert f"ServerAliveCountMax={SSH_SERVER_ALIVE_COUNT_MAX}" in observed
 
 
 def test_retryable_guest_command_does_not_repeat_remote_failures(monkeypatch) -> None:
@@ -74,6 +160,32 @@ def test_retryable_guest_command_does_not_repeat_remote_failures(monkeypatch) ->
     assert result == failure
     assert calls == 1
     assert RETRYABLE_SSH_ATTEMPTS == 2
+
+
+def test_retryable_guest_command_does_not_repeat_started_command_timeout(
+    monkeypatch,
+) -> None:
+    guest = Guest(22022, Path("fixture-key"))
+    timeout = GuestCommandTimeout(
+        "guest command timed out: bootstrap.sh",
+        {"command": "bootstrap.sh", "timeout_kind": "idle"},
+        stdout="started\n",
+        stderr="",
+    )
+    calls = 0
+
+    def execute(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        raise timeout
+
+    monkeypatch.setattr(guest, "exec", execute)
+
+    with pytest.raises(GuestCommandTimeout) as raised:
+        guest.exec_retryable(["./bootstrap.sh"])
+
+    assert raised.value is timeout
+    assert calls == 1
 
 
 def test_retryable_guest_command_classifies_remote_failure_as_product(

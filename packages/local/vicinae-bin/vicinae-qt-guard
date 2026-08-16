@@ -1,0 +1,371 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+filesystem_root=/
+run_root=/run
+runtime_base=$run_root/enoshima
+lock_file=$runtime_base/vicinae-qt-guard.lock
+mask_ownership_record=native-runtime-mask-owned-v1
+systemd_runtime=$run_root/systemd
+user_unit_runtime=$systemd_runtime/user
+runtime_mask=$user_unit_runtime/vicinae.service
+compatibility_helper=/usr/libexec/vicinae/vicinae-build-compatible
+systemctl_command=/usr/bin/systemctl
+loginctl_command=/usr/bin/loginctl
+id_command=/usr/bin/id
+getent_command=/usr/bin/getent
+timeout_command=/usr/bin/timeout
+vicinae_executable=/usr/bin/vicinae
+vicinae_server_executable=/usr/libexec/vicinae/vicinae-server
+legacy_vicinae_root=/opt/vicinae
+temporary_root=/tmp
+root_uid=0
+root_gid=0
+manager_snapshot=
+declare -a manager_users=()
+
+cleanup() {
+  local status=$?
+  trap - EXIT
+  [[ -z $manager_snapshot ]] || /usr/bin/rm -f -- "$manager_snapshot"
+  exit "$status"
+}
+trap cleanup EXIT
+
+[[ $EUID -eq $root_uid ]] || {
+  echo 'Vicinae Qt guard must run as root.' >&2
+  exit 1
+}
+
+safe_directory() {
+  local path=$1 uid gid mode
+
+  [[ -d $path && ! -L $path ]] || return 1
+  read -r uid gid mode < <(/usr/bin/stat -c '%u %g %a' -- "$path") || return 1
+  [[ $uid == "$root_uid" && $gid == "$root_gid" &&
+    $mode =~ ^[0-7]{3,4}$ ]] || return 1
+  (((8#$mode & 8#022) == 0))
+}
+
+ensure_safe_directory() {
+  local path=$1 parent=$2
+
+  safe_directory "$parent" || return 1
+  if [[ ! -e $path && ! -L $path ]]; then
+    /usr/bin/install -d -o "$root_uid" -g "$root_gid" -m 0755 -- "$path"
+  fi
+  safe_directory "$path"
+}
+
+safe_regular_file() {
+  local path=$1 expected_mode=$2
+
+  [[ -f $path && ! -L $path &&
+    $(/usr/bin/stat -c '%u:%g:%a' -- "$path") == "$root_uid:$root_gid:$expected_mode" ]]
+}
+
+prepare_runtime_paths() {
+  safe_directory "$filesystem_root" || {
+    echo "Unsafe filesystem root: $filesystem_root" >&2
+    return 1
+  }
+  safe_directory "$run_root" || {
+    echo "Unsafe runtime ancestor: $run_root" >&2
+    return 1
+  }
+  ensure_safe_directory "$runtime_base" "$run_root" || {
+    echo "Unsafe Vicinae runtime directory: $runtime_base" >&2
+    return 1
+  }
+  safe_directory "$systemd_runtime" || {
+    echo "Unsafe systemd runtime ancestor: $systemd_runtime" >&2
+    return 1
+  }
+  ensure_safe_directory "$user_unit_runtime" "$systemd_runtime" || {
+    echo "Unsafe systemd user runtime directory: $user_unit_runtime" >&2
+    return 1
+  }
+}
+
+acquire_lock() {
+  if [[ ! -e $lock_file && ! -L $lock_file ]]; then
+    (
+      umask 077
+      set -o noclobber
+      : >"$lock_file"
+    ) 2>/dev/null || true
+  fi
+  safe_regular_file "$lock_file" 600 || {
+    echo 'Vicinae Qt guard lock is unsafe.' >&2
+    return 1
+  }
+  exec 9<>"$lock_file"
+  /usr/bin/flock --exclusive --timeout 60 9 || {
+    echo 'Timed out waiting for the Vicinae Qt guard lock.' >&2
+    return 1
+  }
+  safe_regular_file "$lock_file" 600 &&
+    { [[ ! -s $lock_file ]] ||
+      [[ $(<"$lock_file") =~ ^${mask_ownership_record}\ [0-9]+:[0-9]+$ ]]; }
+}
+
+runtime_mask_safe() {
+  [[ -L $runtime_mask &&
+    $(/usr/bin/stat -c '%u:%g' -- "$runtime_mask") == "$root_uid:$root_gid" &&
+    $(/usr/bin/readlink -- "$runtime_mask") == /dev/null ]]
+}
+
+runtime_mask_owned() {
+  local identity
+
+  runtime_mask_safe || return 1
+  identity=$(/usr/bin/stat -c '%d:%i' -- "$runtime_mask") || return 1
+  [[ $(<"$lock_file") == "$mask_ownership_record $identity" ]]
+}
+
+record_runtime_mask_ownership() {
+  local identity
+
+  safe_regular_file "$lock_file" 600 || return 1
+  runtime_mask_safe || return 1
+  identity=$(/usr/bin/stat -c '%d:%i' -- "$runtime_mask") || return 1
+  printf '%s %s\n' "$mask_ownership_record" "$identity" >"$lock_file"
+  runtime_mask_owned
+}
+
+runtime_mask_ownership_recorded() {
+  [[ -s $lock_file &&
+    $(<"$lock_file") =~ ^${mask_ownership_record}\ [0-9]+:[0-9]+$ ]]
+}
+
+clear_runtime_mask_ownership() {
+  safe_regular_file "$lock_file" 600 || return 1
+  : >"$lock_file"
+  [[ ! -s $lock_file ]]
+}
+
+publish_hold_mask() {
+  safe_directory "$user_unit_runtime" || return 1
+  if [[ -e $runtime_mask || -L $runtime_mask ]]; then
+    runtime_mask_safe
+    return
+  fi
+  # A previous release can be interrupted after unmasking and before clearing
+  # ownership. With no mask left, that record is stale and safe to discard.
+  runtime_mask_ownership_recorded && clear_runtime_mask_ownership
+  "$timeout_command" --signal=TERM --kill-after=2s 20s \
+    "$systemctl_command" --global --runtime mask vicinae.service
+  runtime_mask_safe && record_runtime_mask_ownership
+}
+
+remove_hold_mask() {
+  if [[ ! -e $runtime_mask && ! -L $runtime_mask ]]; then
+    runtime_mask_ownership_recorded && clear_runtime_mask_ownership
+    return 0
+  fi
+  runtime_mask_safe || return 1
+  # Preserve a matching mask that predates this guard transaction. The lock
+  # record is only written after this guard itself creates the native mask.
+  runtime_mask_owned || return 0
+  "$timeout_command" --signal=TERM --kill-after=2s 20s \
+    "$systemctl_command" --global --runtime unmask vicinae.service
+  [[ ! -e $runtime_mask && ! -L $runtime_mask ]] || return 1
+  clear_runtime_mask_ownership
+}
+
+manager_record_valid() {
+  local uid=$1 user=$2 by_uid by_name passwd_entry
+  local actual_user _password actual_uid _gid _gecos _home _shell extra
+
+  [[ $uid =~ ^[0-9]+$ && ${#uid} -le 10 &&
+    $user =~ ^[a-z_][a-z0-9_-]*$ && ${#user} -le 32 ]] || return 1
+  by_uid=$($id_command -nu -- "$uid" 2>/dev/null) || return 1
+  by_name=$($id_command -u -- "$user" 2>/dev/null) || return 1
+  [[ $by_uid == "$user" && $by_name == "$uid" ]] || return 1
+  passwd_entry=$($getent_command passwd "$uid") || return 1
+  [[ $(/usr/bin/wc -l <<<"$passwd_entry") == 1 ]] || return 1
+  IFS=: read -r actual_user _password actual_uid _gid _gecos _home _shell extra \
+    <<<"$passwd_entry"
+  [[ $actual_user == "$user" && $actual_uid == "$uid" && -z $extra ]]
+}
+
+capture_managers() {
+  local uid user linger state extra key
+  local -A seen=()
+
+  manager_users=()
+  manager_snapshot=$(/usr/bin/mktemp --tmpdir="$runtime_base" .managers.XXXXXXXX) ||
+    return 1
+  /usr/bin/chmod 0600 "$manager_snapshot"
+  if ! LC_ALL=C "$timeout_command" --signal=TERM --kill-after=1s 15s \
+    "$loginctl_command" list-users --no-legend --no-pager >"$manager_snapshot"; then
+    echo 'Could not enumerate login and lingering user managers.' >&2
+    return 1
+  fi
+  while read -r uid user linger state extra; do
+    [[ -n $uid || -n $user || -n $linger || -n $state ]] || continue
+    [[ $linger =~ ^(yes|no)$ && $state =~ ^[a-z][a-z-]*$ && -z $extra ]] ||
+      return 1
+    manager_record_valid "$uid" "$user" || return 1
+    key=$uid:$user
+    [[ ! -v seen["$key"] ]] || return 1
+    seen["$key"]=1
+    manager_users+=("$user")
+  done <"$manager_snapshot"
+  /usr/bin/rm -f -- "$manager_snapshot"
+  manager_snapshot=
+}
+
+manager_systemctl() {
+  local user=$1 timeout_seconds=$2
+  shift 2
+  "$timeout_command" --signal=TERM --kill-after=1s "${timeout_seconds}s" \
+    "$systemctl_command" --machine="${user}@.host" --user "$@"
+}
+
+manager_state() {
+  local user=$1 output load_state active_state
+
+  output=$(manager_systemctl "$user" 10 show vicinae.service --no-pager \
+    --property=LoadState --property=ActiveState) || return 1
+  load_state=$(/usr/bin/sed -n 's/^LoadState=//p' <<<"$output")
+  active_state=$(/usr/bin/sed -n 's/^ActiveState=//p' <<<"$output")
+  [[ -n $load_state && -n $active_state &&
+    $(/usr/bin/sed -n '/^LoadState=/p' <<<"$output" | /usr/bin/wc -l) == 1 &&
+    $(/usr/bin/sed -n '/^ActiveState=/p' <<<"$output" | /usr/bin/wc -l) == 1 ]] ||
+    return 1
+  printf '%s\t%s\n' "$load_state" "$active_state"
+}
+
+reload_manager() {
+  local user=$1
+  manager_systemctl "$user" 10 show-environment >/dev/null &&
+    manager_systemctl "$user" 10 daemon-reload
+}
+
+stop_manager() {
+  local user=$1 load_state active_state
+
+  IFS=$'\t' read -r load_state active_state < <(manager_state "$user") || return 1
+  [[ $load_state == masked ]] || return 1
+  manager_systemctl "$user" 20 stop vicinae.service
+}
+
+manager_quiesced() {
+  local user=$1 load_state active_state
+
+  IFS=$'\t' read -r load_state active_state < <(manager_state "$user") || return 1
+  case $load_state:$active_state in
+    masked:inactive | masked:failed)
+      return 0
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+no_direct_vicinae_processes() {
+  local executable link
+
+  for link in /proc/[0-9]*/exe; do
+    [[ -L $link ]] || continue
+    executable=$(/usr/bin/readlink -- "$link" 2>/dev/null || true)
+    case $executable in
+      "$vicinae_executable" | "$vicinae_executable (deleted)" | \
+        "$vicinae_server_executable" | "$vicinae_server_executable (deleted)" | \
+        /usr/libexec/vicinae/vicinae-* | "$legacy_vicinae_root" | \
+        "$legacy_vicinae_root"/* | "$temporary_root"/.mount_vicinae*/*)
+        echo "A direct Vicinae process is still running: ${link%/exe}" >&2
+        return 1
+        ;;
+    esac
+  done
+}
+
+hold_transition() {
+  local user status=0
+
+  publish_hold_mask
+  capture_managers
+  # Every existing manager must observe the native mask before its service is
+  # stopped. Continue the safety pass after an individual failure, then abort
+  # the transaction with the mask retained.
+  for user in "${manager_users[@]}"; do
+    reload_manager "$user" || status=1
+  done
+  for user in "${manager_users[@]}"; do
+    stop_manager "$user" || status=1
+  done
+  for user in "${manager_users[@]}"; do
+    manager_quiesced "$user" || status=1
+  done
+  no_direct_vicinae_processes || status=1
+  return "$status"
+}
+
+compatibility_status() {
+  local status
+
+  safe_regular_file "$compatibility_helper" 755 || return 255
+  set +e
+  "$timeout_command" --signal=TERM --kill-after=2s 60s "$compatibility_helper"
+  status=$?
+  set -e
+  return "$status"
+}
+
+release_if_compatible() {
+  local status user recovery_user
+
+  if compatibility_status; then
+    status=0
+  else
+    status=$?
+  fi
+  if ((status != 0)); then
+    # A package post hook can run without a matching pre hook on a first
+    # install. Establish the hold here as well whenever compatibility is not
+    # proven. Ordinary ABI mismatch is not a failed completed transaction.
+    hold_transition || return 1
+    if ((status == 255 || status == 124 || status == 137)); then
+      echo 'Vicinae compatibility could not be established; the runtime remains held.' >&2
+      return 1
+    fi
+    echo 'Vicinae does not match the live Qt ABI; the runtime remains held.' >&2
+    return 0
+  fi
+
+  capture_managers
+  remove_hold_mask
+  for user in "${manager_users[@]}"; do
+    if ! reload_manager "$user"; then
+      publish_hold_mask || {
+        echo 'Vicinae manager reload failed and its native runtime mask could not be restored.' >&2
+        return 1
+      }
+      for recovery_user in "${manager_users[@]}"; do
+        reload_manager "$recovery_user" || true
+        stop_manager "$recovery_user" || true
+      done
+      echo 'Vicinae manager reload failed; the native runtime mask was restored.' >&2
+      return 1
+    fi
+  done
+}
+
+prepare_runtime_paths
+acquire_lock
+
+case ${1-} in
+  hold)
+    (($# == 1)) || exit 2
+    hold_transition
+    ;;
+  release-if-compatible)
+    (($# == 1)) || exit 2
+    release_if_compatible
+    ;;
+  *)
+    printf 'Usage: %s hold|release-if-compatible\n' "$0" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,572 @@
+# Maintainer: Enoshima workstation maintainers
+
+pkgname=vicinae-bin
+pkgver=0.25.0
+pkgrel=10
+pkgdesc='A focused launcher for the desktop, built from the verified upstream source'
+arch=('x86_64')
+url='https://github.com/vicinaehq/vicinae'
+license=(
+  GPL-3.0-only
+  Apache-2.0
+  BSD-2-Clause
+  BSD-3-Clause
+  CC-BY-3.0
+  CC0-1.0
+  ISC
+  LGPL-2.0-or-later
+  MIT
+  OFL-1.1
+  Unicode-3.0
+  Unlicense
+)
+depends=(
+  binutils
+  gcc-libs
+  glibc
+  hicolor-icon-theme
+  jq
+  layer-shell-qt
+  libglvnd
+  libqalculate
+  libsecret
+  libxcb
+  libxkbcommon
+  nodejs
+  openssl
+  qt6-base
+  qt6-declarative
+  qt6-svg
+  qt6-wayland
+  qtkeychain-qt6
+  syntax-highlighting
+  systemd
+  wayland
+  xcb-util-keysyms
+)
+makedepends=(
+  cmake
+  libcap
+  ninja
+  npm
+  python
+  qt6-shadertools
+  qt6-tools
+  wayland-protocols
+)
+checkdepends=(desktop-file-utils)
+provides=(vicinae)
+conflicts=(vicinae)
+options=('!debug' '!lto')
+
+_commit=7e13b3f5450e9d91b09be2fec2f05c021c8ebb95
+_short_commit=7e13b3f54
+_source_date_epoch=1786353281
+_glaze_commit=b518eec7a22e56ffa238b072c07f47efa7cea97f
+_source_archive="vicinae-${_commit}.tar.gz"
+_glaze_archive="glaze-${_glaze_commit}.tar.gz"
+_source_root="vicinae-${_commit}"
+_glaze_root="glaze-${_glaze_commit}"
+_npm_lock_api=8b87b633cbee1497cd61b54c75d07946e5ee56e14e371c78f4a07ec86778a72f
+_npm_lock_extension_manager=418d4cf1d74edb0c922f56b08a65387bd0314785d45dbacffe2331b8538d73fe
+_npm_lock_raycast_compat=8209dcfab24ef08d9f4ae24985915656cdffcbd635d899222d73e2d2f2a79053
+_npm_cache_workspaces=(
+  src/typescript/api
+  src/typescript/extension-manager
+)
+
+source=(
+  "${_source_archive}::${url}/archive/${_commit}.tar.gz"
+  "${_glaze_archive}::https://github.com/stephenberry/glaze/archive/${_glaze_commit}.tar.gz"
+  'LICENSE::https://raw.githubusercontent.com/vicinaehq/vicinae/v0.25.0/LICENSE'
+  'cmark-gfm-COPYING::https://raw.githubusercontent.com/github/cmark-gfm/0.29.0.gfm.13/COPYING'
+  'kirigami-wheelhandler-COPYING::https://invent.kde.org/frameworks/kirigami/-/raw/85ac54062cf9e0b8c1ec9282fc51cca455bd1c1f/LICENSES/LGPL-2.0-or-later.txt'
+  'vicinae-server-LICENSE::https://raw.githubusercontent.com/vicinaehq/vicinae/v0.25.0/src/server/LICENSE'
+  'glaze-LICENSE::https://raw.githubusercontent.com/stephenberry/glaze/v7.2.0/LICENSE'
+  'react-LICENSE::https://raw.githubusercontent.com/facebook/react/v19.1.1/LICENSE'
+  'pugixml-LICENSE::https://raw.githubusercontent.com/zeux/pugixml/v1.15/LICENSE.md'
+  'sqlcipher-LICENSE::https://raw.githubusercontent.com/sqlcipher/sqlcipher/v4.16.0/LICENSE.md'
+  'tomlplusplus-LICENSE::https://raw.githubusercontent.com/marzer/tomlplusplus/v3.4.0/LICENSE'
+  'zip-LICENSE::https://raw.githubusercontent.com/kuba--/zip/6a528ebe5933a24d9c8090a8ab2a5ff8ac683e29/LICENSE.txt'
+  'miniz-LICENSE::https://raw.githubusercontent.com/richgel999/miniz/3.1.0/LICENSE'
+  'CLI11-LICENSE::https://raw.githubusercontent.com/CLIUtils/CLI11/v2.5.0/LICENSE'
+  'rang-LICENSE::https://raw.githubusercontent.com/agauniyal/rang/v3.2/LICENSE'
+  'fzf-LICENSE::https://raw.githubusercontent.com/junegunn/fzf/b473477c22559ee22cccf6c58df838cf578475c2/LICENSE'
+  'emoji-segmenter-LICENSE::https://raw.githubusercontent.com/google/emoji-segmenter/1cada87c62550446fca6a42a69743688b4539a4c/LICENSE'
+  'unicode-data-LICENSE::https://www.unicode.org/license.txt'
+  'geist-mono-OFL::https://raw.githubusercontent.com/vercel/geist-font/1.7.0/OFL.txt'
+  'outfit-OFL::https://raw.githubusercontent.com/Outfitio/Outfit-Fonts/1.1/OFL.txt'
+  'noto-sans-math-OFL::https://raw.githubusercontent.com/notofonts/math/NotoSansMath-v3.000/OFL.txt'
+  'noto-sans-symbols-OFL::https://raw.githubusercontent.com/notofonts/symbols/NotoSansSymbols-v2.003/OFL.txt'
+  'devicon-LICENSE::https://raw.githubusercontent.com/devicons/devicon/f67c06187c08efa80fb973cb662260faacb40074/LICENSE'
+  'wayland-protocols-COPYING::https://gitlab.freedesktop.org/wayland/wayland-protocols/-/raw/1.49/COPYING'
+  enoshima-install-paths.patch
+  preserve-clipboard-mime-offers.patch
+  20-enoshima-qt-compatibility.conf
+  40-vicinae-qt-pre.hook
+  40-vicinae-qt-post.hook
+  41-vicinae-package-pre.hook
+  vicinae-build-compatible
+  vicinae-qt-guard
+  vicinae.hook
+  vicinae.desktop
+  vicinae-url-handler.desktop
+)
+sha256sums=(
+  '31480daaeda83a943c8cf2f96ea3d86580c30fbca225b6d31c021b80f5b56ee2'
+  '0d108903feb443df316fb53eaec2fd6c1c6d96b368562ad830debc5c6c29c304'
+  '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986'
+  'c22e885f33b821bddb24cf007145e5540655b6c0f403e49e6c76a93c28e6d9a9'
+  'de588a8b1c41fe73ffe1201f9d12c718a988ed8e1302929625a6e7c2bced7461'
+  '34d47ed18ab118421ec7cde3f04673a266d4f5f30ba573ab5147dbff57c55ea5'
+  '5d49e66411a0807a7c8d6b911b9a26b59e940c71aebe561a3ad8b0b80ac4b7b6'
+  'da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93'
+  '0d0b3772af2fa45628a548a3b34583707ebcc68bb6f83ec48ca273aab4a510f1'
+  '2a2826f6acf46fa650730cf42cbb22a642be33a7ef119c9c4f4bf6daf3bef48e'
+  '529bc3900a9571e49db285b0df432397e70b881cc3bf48de6667ae74ff4b06d8'
+  '6c1643ab0353b42030e903654fdb3845570b741da5ffafcaf9d305e8ec79a4a0'
+  '0115478d567121238cf6cc1c0c361926cf07a49d9e4c9e66da97fac6a01646b3'
+  '88cffe4600851e8dad1b8eb1e304d54286a89d2373a1b98f59cb969b9e967b90'
+  '88d9b4eb60579c191ec391ca04c16130572d7eedc4a86daa58bf28c6e14c9bcd'
+  'c308be1be029070dd6a9c1134e19c398169eb9cfbd5f078fb002659db1e1b7cc'
+  'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30'
+  'e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96'
+  '1781d2806a07d91c4edf4740b88449fab7d0eadad53f7c351b94cd4d4eb8c00f'
+  'c676351bf8576b9aba743cd5eaa8c0e7ee0d51f805d720447b4df4ddb6a2e416'
+  'c9c63b8ed6cf76b2ce0c58b241acfc1195c2c928334c989c7047cbdac58773d9'
+  'b118dd41337806a5d4797052c77caf3bd096aed783e5eb21b4d11154351e1ac0'
+  '121194741d4a915b9f5890fdd6dd95121f9b1f816517c792358d72d7c838d664'
+  'f1a2b233e8a9a71c40f4aa885be08a0842ac85bb8588703c1dd7e6e6502e3124'
+  '5611def6c23b88f9958eb7ebb4d26ea1dea1bd1823478c1f7904b70451b88dcb'
+  '53bdbc30cdedf1b0a68240a722248629172ddc158ded1e9b101b6d8e2ad44d5f'
+  '3017479e5c26b2f1a09243f0ed9bfe4ddfb500ebf7c1acf1f0ea46ec5448afa2'
+  'af8a272ebe5d06b699882518e3dbe8b6155a387cabf0b97580f384a349c5f458'
+  '2132e2f77fac9996537923ed1ba71adae7a9bd560d71c229f1a6f2feb4efce87'
+  'b0c6f4cb65ca8754eec8dd56d557a7c5f7cb433a7896e8e90431252967da51fd'
+  'a740ea7ab9c9302695c21362637f6e32ff23e5959e074d37da8e4b006cfe8a58'
+  '952bbd60b19af764d06fcc9833169b9b9f0e671c791b1b12d36ca3a27c2504c9'
+  'd82c7f9d4ad08bab23b986b155789f314778d0b41dedb812fcdedf4f10e0356e'
+  'e67900456fd1c29defcf0f5ca1e78de9aab7241bebb5290c2725efa99dd61079'
+  'e6be7ddb52ccdeb8872a512cbe7b193a1260d8376bd97785d865dc64af578133'
+)
+
+qt_build_snapshot() {
+  local library package resolved
+  local -a build_packages=(
+    binutils cmake gcc gcc-libs glibc layer-shell-qt ninja nodejs npm
+    qt6-base qt6-declarative qt6-shadertools qt6-svg qt6-tools qt6-wayland
+    qtkeychain-qt6 syntax-highlighting wayland-protocols
+  )
+
+  {
+    printf 'qt=%s\n' "$(qmake6 -query QT_VERSION)"
+    for package in "${build_packages[@]}"; do
+      LC_ALL=C pacman -Q "$package"
+    done
+    while IFS= read -r library; do
+      resolved=$(readlink -f -- "$library")
+      [[ $resolved == /usr/lib/* && -f $resolved ]]
+      printf 'library=%s\ttarget=%s\t' "$library" "$resolved"
+      sha256sum -- "$resolved"
+    done < <(
+      find /usr/lib -maxdepth 1 -type l \
+        \( -name 'libQt6*.so.6' -o -name 'libqt6keychain.so.1' \
+        -o -name 'libLayerShellQtInterface.so.6' \) \
+        -print | LC_ALL=C sort
+    )
+    find /usr/include/qt6/QtGui -type f -print0 |
+      LC_ALL=C sort -z |
+      xargs -0 -r sha256sum
+  } | sha256sum | cut -d' ' -f1
+}
+
+configure_npm_environment() {
+  export npm_config_cache="$srcdir/npm-cache"
+  export npm_config_audit=false
+  export npm_config_fund=false
+  export npm_config_ignore_scripts=true
+  export npm_config_update_notifier=false
+}
+
+prepare() {
+  cd "$srcdir/$_source_root"
+  patch --forward --strip=1 --input="$srcdir/enoshima-install-paths.patch"
+  patch --forward --strip=1 \
+    --input="$srcdir/preserve-clipboard-mime-offers.patch"
+
+  printf '%s  %s\n' \
+    "$_npm_lock_api" src/typescript/api/package-lock.json \
+    "$_npm_lock_extension_manager" src/typescript/extension-manager/package-lock.json \
+    "$_npm_lock_raycast_compat" src/typescript/raycast-api-compat/package-lock.json |
+    sha256sum --check --status
+
+  /usr/bin/python - \
+    src/typescript/api/package-lock.json \
+    src/typescript/extension-manager/package-lock.json \
+    src/typescript/raycast-api-compat/package-lock.json <<'PY'
+import json
+from pathlib import Path
+import sys
+
+for raw_path in sys.argv[1:]:
+    path = Path(raw_path)
+    lock = json.loads(path.read_text(encoding="utf-8"))
+    packages = lock.get("packages")
+    if not isinstance(packages, dict) or "" not in packages:
+        raise SystemExit(f"{path}: package lock has no complete packages map")
+    for name, package in packages.items():
+        if not name or package.get("link") is True:
+            continue
+        resolved = package.get("resolved")
+        integrity = package.get("integrity")
+        if name.startswith("../"):
+            # npm lockfile v3 records local workspace targets twice: the
+            # node_modules entry is an explicit link and the sibling package
+            # entry carries no remote URL. Accept only a normalized immediate
+            # sibling that resolves below this reviewed TypeScript workspace.
+            target = (path.parent / name).resolve()
+            workspace = path.parents[1].resolve()
+            if (
+                "/" in name.removeprefix("../")
+                or target.parent != workspace
+                or not (target / "package.json").is_file()
+                or resolved is not None
+                or integrity is not None
+            ):
+                raise SystemExit(f"{path}: unsafe npm workspace entry: {name}")
+            continue
+        if isinstance(resolved, str) and resolved.startswith("file:"):
+            continue
+        if not (
+            isinstance(resolved, str)
+            and resolved.startswith("https://registry.npmjs.org/")
+            and isinstance(integrity, str)
+            and integrity.startswith("sha512-")
+        ):
+            raise SystemExit(f"{path}: unpinned npm package entry: {name}")
+PY
+
+  # Populate only npm's content-addressed cache while network access is
+  # available. Lifecycle scripts stay disabled in both installation phases.
+  configure_npm_environment
+  local workspace
+  for workspace in "${_npm_cache_workspaces[@]}"; do
+    npm --prefix "$workspace" ci --ignore-scripts
+  done
+  npm cache verify
+  for workspace in "${_npm_cache_workspaces[@]}"; do
+    rm -rf -- "$workspace/node_modules"
+  done
+}
+
+build() {
+  export SOURCE_DATE_EPOCH=$_source_date_epoch
+  configure_npm_environment
+  export npm_config_offline=true
+
+  local -a cmake_flags=(
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_INSTALL_PREFIX=/usr
+    -DCMAKE_INSTALL_LIBDIR:STRING=lib
+    -DCMAKE_INSTALL_LIBEXECDIR=libexec
+    -DCMAKE_INSTALL_DATADIR=share
+    -DCMAKE_SKIP_RPATH=ON
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    -DBUILD_TESTS=OFF
+    -DLTO=OFF
+    -DIGNORE_CCACHE=ON
+    -DINSTALL_NODE_MODULES=ON
+    -DTYPESCRIPT_EXTENSIONS=ON
+    -DVICINAE_NODE_RUNTIME_DOWNLOAD=OFF
+    -DQT_QML_NO_CACHEGEN=ON
+    -DINSTALL_MODULES_LOAD_CONFIG=OFF
+    -DUSE_SYSTEM_CMARK_GFM=OFF
+    -DUSE_SYSTEM_GLAZE=OFF
+    -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+    -DUSE_SYSTEM_KF6=ON
+    -DUSE_SYSTEM_QT_KEYCHAIN=ON
+    -DUSE_SYSTEM_LAYER_SHELL=ON
+    -DVICINAE_GIT_TAG=v0.25.0
+    -DVICINAE_GIT_COMMIT_HASH=7e13b3f54
+    -DVICINAE_PROVENANCE=arch_source
+  )
+
+  qt_snapshot=$(qt_build_snapshot)
+  printf '%s\n' "$qt_snapshot" >"$srcdir/qt-build-snapshot"
+
+  cmake \
+    -S "$srcdir/$_source_root" \
+    -B "$srcdir/build" \
+    -G Ninja \
+    "${cmake_flags[@]}" \
+    -DFETCHCONTENT_SOURCE_DIR_GLAZE="$srcdir/$_glaze_root"
+  grep -Fxq 'CMAKE_INSTALL_LIBDIR:STRING=lib' "$srcdir/build/CMakeCache.txt"
+  cmake --build "$srcdir/build" --parallel "${NINJAJOBS:-4}"
+  [[ $(qt_build_snapshot) == "$qt_snapshot" ]]
+}
+
+check() {
+  local elf output
+  local -a executables=(
+    "$srcdir/build/bin/vicinae"
+    "$srcdir/build/bin/vicinae-browser-link"
+    "$srcdir/build/bin/vicinae-data-control-server"
+    "$srcdir/build/bin/vicinae-file-indexer"
+    "$srcdir/build/bin/vicinae-input-server"
+    "$srcdir/build/bin/vicinae-server"
+  )
+
+  [[ -s $srcdir/build/extension-runtime.js ]]
+  grep -Fq 'qrc_vicinae-server_raw_qml_0.cpp' "$srcdir/build/build.ninja"
+  ! grep -Fq '/qmlcachegen' "$srcdir/build/build.ninja"
+  ! find "$srcdir/build" -type f -name '*qmlcache*.cpp' -size +0c -print -quit |
+    grep -q .
+  for elf in "${executables[@]}"; do
+    [[ -x $elf ]]
+    ! readelf -d "$elf" | grep -Eq '\((RPATH|RUNPATH)\)'
+    ! readelf --wide --dyn-syms "$elf" | grep -Fq '@Qt_6_PRIVATE_API'
+    output=$(LC_ALL=C ldd -r "$elf" 2>&1)
+    ! grep -Eq 'not found|undefined symbol:' <<<"$output"
+  done
+  strings -a "$srcdir/build/bin/vicinae-server" | grep -Fxq "v$pkgver"
+  strings -a "$srcdir/build/bin/vicinae-server" | grep -Fxq "$_short_commit"
+  strings -a "$srcdir/build/bin/vicinae-server" | grep -Fxq arch_source
+  cmake --build "$srcdir/build" --target vicinae-clipboard-mime-tests
+  "$srcdir/build/bin/vicinae-clipboard-mime-tests"
+  desktop-file-validate "$srcdir/vicinae.desktop" "$srcdir/vicinae-url-handler.desktop"
+}
+
+package() {
+  local elf needed resolved qt_version package_name package_version
+  local build_id interpreter library_hash mode packages_json libraries_json
+  local executables_json needed_json qt_snapshot relative
+  local -a executables qt_libraries build_packages cmake_flags
+  local -a needed_libraries
+  local -a manifest_arguments upstream_payload expected_upstream_payload
+
+  DESTDIR="$pkgdir" cmake --install "$srcdir/build"
+
+  # The upstream source is patched to make DESTDIR safe. Restrict its install
+  # rules to the six reviewed executables, packaged service, icon, desktops,
+  # and 31 themes before adding Enoshima policy files below.
+  mapfile -t upstream_payload < <(
+    find "$pkgdir/usr" -type f -printf '%P\n' | LC_ALL=C sort
+  )
+  mapfile -t expected_upstream_payload < <(
+    {
+      printf '%s\n' \
+        bin/vicinae \
+        libexec/vicinae/vicinae-browser-link \
+        libexec/vicinae/vicinae-data-control-server \
+        libexec/vicinae/vicinae-file-indexer \
+        libexec/vicinae/vicinae-input-server \
+        libexec/vicinae/vicinae-server \
+        lib/systemd/user/vicinae.service \
+        share/applications/vicinae-url-handler.desktop \
+        share/applications/vicinae.desktop \
+        share/icons/hicolor/512x512/apps/vicinae.png
+      find "$srcdir/$_source_root/extra/themes" -type f \
+        -printf 'share/vicinae/themes/%P\n'
+    } | LC_ALL=C sort
+  )
+  [[ ${upstream_payload[*]} == "${expected_upstream_payload[*]}" ]]
+
+  install -Dm644 vicinae.desktop vicinae-url-handler.desktop \
+    -t "$pkgdir/usr/share/applications"
+  install -Dm644 20-enoshima-qt-compatibility.conf \
+    "$pkgdir/usr/lib/systemd/user/vicinae.service.d/20-enoshima-qt-compatibility.conf"
+  install -Dm644 \
+    40-vicinae-qt-pre.hook \
+    40-vicinae-qt-post.hook \
+    41-vicinae-package-pre.hook \
+    vicinae.hook \
+    -t "$pkgdir/usr/share/libalpm/hooks"
+  install -Dm755 vicinae-build-compatible vicinae-qt-guard \
+    -t "$pkgdir/usr/libexec/vicinae"
+
+  executables=(
+    "$pkgdir/usr/bin/vicinae"
+    "$pkgdir/usr/libexec/vicinae/vicinae-browser-link"
+    "$pkgdir/usr/libexec/vicinae/vicinae-data-control-server"
+    "$pkgdir/usr/libexec/vicinae/vicinae-file-indexer"
+    "$pkgdir/usr/libexec/vicinae/vicinae-input-server"
+    "$pkgdir/usr/libexec/vicinae/vicinae-server"
+  )
+  qt_snapshot=$(<"$srcdir/qt-build-snapshot")
+  [[ $qt_snapshot =~ ^[0-9a-f]{64}$ ]]
+  [[ $(qt_build_snapshot) == "$qt_snapshot" ]]
+  mapfile -t qt_libraries < <(
+    for elf in "${executables[@]}"; do
+      readelf -d "$elf" |
+        sed -n 's/.*Shared library: \[\(libQt6[^]]*\.so\.6\)\].*/\1/p'
+    done | LC_ALL=C sort -u
+  )
+  ((${#qt_libraries[@]} > 0))
+
+  qt_version=$(qmake6 -query QT_VERSION)
+  build_packages=(
+    binutils cmake gcc gcc-libs glibc layer-shell-qt ninja nodejs npm
+    qt6-base qt6-declarative qt6-shadertools qt6-svg qt6-tools qt6-wayland
+    qtkeychain-qt6 syntax-highlighting wayland-protocols
+  )
+  cmake_flags=(
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_INSTALL_PREFIX=/usr
+    -DCMAKE_INSTALL_LIBDIR:STRING=lib
+    -DCMAKE_INSTALL_LIBEXECDIR=libexec
+    -DCMAKE_INSTALL_DATADIR=share
+    -DCMAKE_SKIP_RPATH=ON
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    -DBUILD_TESTS=OFF
+    -DLTO=OFF
+    -DIGNORE_CCACHE=ON
+    -DINSTALL_NODE_MODULES=ON
+    -DTYPESCRIPT_EXTENSIONS=ON
+    -DVICINAE_NODE_RUNTIME_DOWNLOAD=OFF
+    -DQT_QML_NO_CACHEGEN=ON
+    -DINSTALL_MODULES_LOAD_CONFIG=OFF
+    -DUSE_SYSTEM_CMARK_GFM=OFF
+    -DUSE_SYSTEM_GLAZE=OFF
+    -DFETCHCONTENT_SOURCE_DIR_GLAZE='<srcdir>/glaze-b518eec7a22e56ffa238b072c07f47efa7cea97f'
+    -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+    -DUSE_SYSTEM_KF6=ON
+    -DUSE_SYSTEM_QT_KEYCHAIN=ON
+    -DUSE_SYSTEM_LAYER_SHELL=ON
+    -DVICINAE_GIT_TAG=v0.25.0
+    -DVICINAE_GIT_COMMIT_HASH=7e13b3f54
+    -DVICINAE_PROVENANCE=arch_source
+  )
+
+  manifest_arguments=(
+    --arg packageVersion "$pkgver-$pkgrel"
+    --arg qtVersion "$qt_version"
+    --arg sourceSha256 31480daaeda83a943c8cf2f96ea3d86580c30fbca225b6d31c021b80f5b56ee2
+    --arg glazeSha256 0d108903feb443df316fb53eaec2fd6c1c6d96b368562ad830debc5c6c29c304
+    --arg apiLockSha256 "$_npm_lock_api"
+    --arg managerLockSha256 "$_npm_lock_extension_manager"
+    --arg compatLockSha256 "$_npm_lock_raycast_compat"
+    --argjson cmakeFlags "$(printf '%s\n' "${cmake_flags[@]}" | jq -Rsc 'split("\n")[:-1]')"
+  )
+  packages_json='{}'
+  for package_name in "${build_packages[@]}"; do
+    package_version=$(pacman -Q "$package_name" | cut -d' ' -f2-)
+    packages_json=$(jq -cn \
+      --argjson current "$packages_json" \
+      --arg name "$package_name" \
+      --arg version "$package_version" \
+      '$current + {($name): $version}')
+  done
+  libraries_json='{}'
+  for needed in "${qt_libraries[@]}"; do
+    resolved=$(readlink -f -- "/usr/lib/$needed")
+    [[ $resolved == /usr/lib/* && -f $resolved ]]
+    build_id=$(readelf -n "$resolved" |
+      sed -n 's/^[[:space:]]*Build ID: //p' | head -n 1)
+    library_hash=$(sha256sum -- "$resolved")
+    library_hash=${library_hash%% *}
+    libraries_json=$(jq -cn \
+      --argjson current "$libraries_json" \
+      --arg path "/usr/lib/$needed" \
+      --arg target "$(basename -- "$resolved")" \
+      --arg buildId "$build_id" \
+      --arg sha256 "$library_hash" \
+      '$current + {($path): {target: $target, buildId: $buildId, sha256: $sha256}}')
+  done
+  executables_json='{}'
+  for elf in "${executables[@]}"; do
+    relative=${elf#"$pkgdir/"}
+    build_id=$(readelf -n "$elf" |
+      sed -n 's/^[[:space:]]*Build ID: //p' | head -n 1)
+    interpreter=$(readelf -l "$elf" |
+      sed -n 's/.*Requesting program interpreter: \([^]]*\).*/\1/p')
+    mapfile -t needed_libraries < <(
+      readelf -d "$elf" |
+        sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p' |
+        LC_ALL=C sort -u
+    )
+    [[ $build_id =~ ^[0-9a-f]+$ && $interpreter == /lib64/ld-linux-x86-64.so.2 ]]
+    ((${#needed_libraries[@]} > 0))
+    needed_json=$(printf '%s\n' "${needed_libraries[@]}" |
+      jq -Rsc 'split("\n")[:-1]')
+    executables_json=$(jq -cn \
+      --argjson current "$executables_json" \
+      --arg path "$relative" \
+      --arg buildId "$build_id" \
+      --arg interpreter "$interpreter" \
+      --argjson needed "$needed_json" \
+      '$current + {($path): {buildId: $buildId, interpreter: $interpreter, needed: $needed}}')
+  done
+  jq -n \
+    "${manifest_arguments[@]}" \
+    --argjson packages "$packages_json" \
+    --argjson qtLibraries "$libraries_json" \
+    --argjson executables "$executables_json" \
+    --arg qtBuildSnapshotSha256 "$qt_snapshot" \
+    '{
+      schemaVersion: 2,
+      packageVersion: $packageVersion,
+      source: {
+        commit: "7e13b3f5450e9d91b09be2fec2f05c021c8ebb95",
+        sha256: $sourceSha256,
+        sourceDateEpoch: 1786353281
+      },
+      glaze: {
+        commit: "b518eec7a22e56ffa238b072c07f47efa7cea97f",
+        sha256: $glazeSha256
+      },
+      npmLocks: {
+        "src/typescript/api/package-lock.json": $apiLockSha256,
+        "src/typescript/extension-manager/package-lock.json": $managerLockSha256,
+        "src/typescript/raycast-api-compat/package-lock.json": $compatLockSha256
+      },
+      cmakeFlags: $cmakeFlags,
+      buildPackages: $packages,
+      qtVersion: $qtVersion,
+      qtLibraries: $qtLibraries,
+      qtBuildSnapshotSha256: $qtBuildSnapshotSha256,
+      executables: $executables,
+      usesQtGuiPrivate: true,
+      qmlCachegen: false
+    }' >build-environment.json
+  install -Dm644 build-environment.json \
+    "$pkgdir/usr/share/vicinae/build-environment.json"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/vicinae-bin/LICENSE"
+  install -Dm644 \
+    cmark-gfm-COPYING kirigami-wheelhandler-COPYING vicinae-server-LICENSE \
+    glaze-LICENSE react-LICENSE pugixml-LICENSE sqlcipher-LICENSE \
+    tomlplusplus-LICENSE zip-LICENSE miniz-LICENSE CLI11-LICENSE rang-LICENSE \
+    fzf-LICENSE emoji-segmenter-LICENSE unicode-data-LICENSE geist-mono-OFL \
+    outfit-OFL noto-sans-math-OFL noto-sans-symbols-OFL devicon-LICENSE \
+    wayland-protocols-COPYING \
+    -t "$pkgdir/usr/share/licenses/vicinae-bin/bundled"
+
+  [[ ! -e $pkgdir/usr/lib/modules-load.d/vicinae.conf ]]
+  [[ ! -e $pkgdir/opt/vicinae ]]
+  if find "$pkgdir" -mindepth 1 ! -type d ! -type f -print -quit | grep -q .; then
+    return 1
+  fi
+  if find "$pkgdir" -mindepth 1 \( -type d -o -type f \) -perm /0022 \
+    -print -quit | grep -q .; then
+    return 1
+  fi
+  if find "$pkgdir" -type f -perm /6000 -print -quit | grep -q .; then
+    return 1
+  fi
+  ! getcap -r "$pkgdir" 2>/dev/null | grep -q .
+
+  while IFS= read -r -d '' entry; do
+    [[ ! -L $entry && ( -d $entry || -f $entry ) ]] || return 1
+    [[ $(stat -c '%U:%G' "$entry") == root:root ]] || return 1
+    mode=$(stat -c '%a' "$entry") || return 1
+    if [[ -d $entry ]]; then
+      [[ $mode == 755 ]]
+    elif [[ $entry == "$pkgdir/usr/bin/vicinae" || \
+      $entry == "$pkgdir/usr/libexec/vicinae/"* && \
+      $entry != *.conf ]]; then
+      [[ $mode == 755 ]]
+    else
+      [[ $mode == 644 ]]
+    fi
+  done < <(find "$pkgdir" -mindepth 1 -print0)
+}

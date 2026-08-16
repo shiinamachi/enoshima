@@ -1,0 +1,111 @@
+surface_id: command-palette
+status: approved
+asset: docs/assets/concepts/command-palette/command-palette-v2.png
+candidates: docs/assets/concepts/command-palette/command-palette-candidates-v2.png
+selection: >-
+  Direction B remains the approved Tokyo Night Bridge. Revision 2 preserves
+  Vicinae's upstream geometry and the five-row viewport while documenting that
+  three additional package-first performance commands continue below the fold.
+states:
+  - default
+  - search
+  - clipboard-history
+  - emoji-picker
+  - empty-results
+  - long-title
+invariants:
+  - The command palette remains Vicinae's upstream 770x480 surface; Enoshima does not reimplement its launcher, clipboard database, emoji picker, or result model.
+  - Tokyo Night is selected from Vicinae's bundled themes, with Papirus-Dark system icons and Pretendard system typography.
+  - The window is opaque with material and blur disabled; selection uses a filled row plus a visible edge or shape rather than glow alone.
+  - File search and automatic indexing remain disabled during the staged rollout.
+  - Clipboard and emoji actions copy only; the privileged input server and automatic paste are disabled.
+  - A locked or missing keyring is a server-start prerequisite failure, not a fabricated command-palette state.
+behavior:
+  - Super+Shift+Space toggles the staged root palette while Super+Space and Super+R retain CyberLauncher ownership for one qualification release.
+  - Super+Shift+V opens clipboard history and Super+period opens emoji search through supported Vicinae deep links.
+  - Escape, arrow keys, Enter, and the action panel retain upstream Vicinae behavior.
+  - Long primary or secondary labels ellipsize without changing the result-row geometry.
+implementation_constraints:
+  - Use only the repository-pinned stable upstream source build and its packaged vicinae.service.
+  - Configure the bundled tokyo-night theme, Papirus-Dark icon theme, Pretendard font, opacity 1, material none, 12px rounding, 2px client border, and 770x480 size.
+  - Disable telemetry, root file search, file-provider indexing, global shortcuts, favicon fetching, and the input server before first launch.
+  - Keep clipboard monitoring local, erase history at startup, ignore password-shaped entries, and never configure synchronization or upload.
+  - Treat sensitive-data encryption as keyring-dependent local protection, not as end-to-end encryption.
+acceptance:
+  - Korean IME preedit and English search remain legible at 1.0, 1.25, and 2.0 scales.
+  - Clipboard history and emoji search open through their supported provider and entrypoint identifiers.
+  - Empty results and long labels preserve stable geometry and keyboard focus.
+  - The Vicinae input helper has no file capability or set-ID bit after package convergence.
+  - Cold start, idle resources, clipboard privacy, Fcitx5 input, and mixed-DPI focus pass the physical staged-rollout gate before primary shortcut ownership changes.
+generation:
+  tool: built-in-imagegen
+  inspected_references:
+    - https://github.com/vicinaehq/vicinae/blob/v0.25.0/extra/screenshot.png
+    - https://github.com/vicinaehq/vicinae/blob/v0.25.0/.github/assets/clipboard-history-gruvbox.png
+    - docs/assets/concepts/cyberpunk-launcher.png
+  candidate_prompt: |-
+    Use case: ui-mockup
+    Asset type: Enoshima staged command-palette concept candidate board
+    Primary request: Create one high-fidelity 16:9 concept board comparing three feasible integration directions for the existing Vicinae command palette on the Enoshima Hyprland desktop. This is documentation for configuring an external package, not a redesign or new UI implementation.
+    Feasibility boundary: preserve Vicinae's real upstream 770x480 structure from the references: one search field, Favorites/Suggestions list rows, selection row, right-side type labels, footer action hints; clipboard history uses Vicinae's real split list/detail view; emoji search uses its standard list/grid command surface. Do not invent panels, providers, buttons, or custom layouts. Only settings that Vicinae actually exposes may vary: bundled theme choice, Papirus-Dark system icon theme, Pretendard font, opaque material-none window, 12px rounding, 2px client border, 770x480 size.
+    Composition: split the board into three clearly labeled equal sections outside the UI mockups: "A · Upstream Dark", "B · Tokyo Night Bridge", "C · Enoshima Custom Theme Later". Show the same root palette query "성능" in each direction with realistic results: "Resources", "atop 기록", "I/O 확인", "GPU 확인", "Sysprof 캡처". Show a small state strip outside production UI for "기본", "검색", "클립보드", "이모지", "빈 결과", "키링 잠김". Make Direction B the strongest practical choice: bundled Tokyo Night colors, opaque window, Papirus-Dark icons and Pretendard typography, with no custom Vicinae theme file. Direction C must be visibly annotated as higher maintenance and not selected, not presented as already implemented.
+    Enoshima context: dim neon library-at-night wallpaper outside the opaque palette; restrained dense workstation mood. Direction B should naturally echo deep navy, cyan-blue focus, violet accent, pale text without claiming pixel-identical Enoshima tokens.
+    Privacy and staged rollout callouts outside UI: "텔레메트리 끔", "파일 인덱싱 끔", "붙여넣기 권한 끔 · 복사만", "시작 시 클립보드 삭제", "Super+Shift+Space 단계 도입". State selection must use background plus a visible 2px edge or shape, never glow alone.
+    Accessibility: keyboard focus obvious, Korean primary copy with English tool names, readable 1x/1.25x/2x notes, no color-only state, at least 44px rows.
+    Constraints: no web dashboard, no mobile UI, no glassmorphism, no translucent palette, no remote fonts, no custom sidebar, no extra search bar, no fake terminal, no fabricated clipboard contents containing passwords, no file search result, no telemetry status inside production UI, no emoji as decorative controls, no watermark, no tiny pseudo-text. Preserve Vicinae upstream geometry.
+    Output: one polished three-direction candidate board with annotations outside production UI.
+  final_prompt: |-
+    Use case: ui-mockup
+    Asset type: final approved Enoshima staged command-palette concept and implementation redline board
+    Primary request: Develop the selected candidate "B · Tokyo Night Bridge" into one polished 16:9 final concept board for integrating the existing Vicinae package. Preserve upstream Vicinae geometry and controls exactly; this is configuration documentation, not a custom UI redesign.
+    Main production UI frame: one centered opaque 770x480 Vicinae root palette on a dim neon library-at-night wallpaper. Use the bundled Tokyo Night theme, Papirus-Dark system icons, Pretendard system font, material none, opacity 1.0, 12px rounding, 2px client border and no client blur. Preserve the real Vicinae structure: top search input with Korean query "성능"; Favorites/Suggestions result list; left icons; primary and secondary labels; right-side result type; footer action hints. Results, in this order: "Resources" / "시스템 리소스 모니터", "atop 기록" / "시스템 리소스 기록", "I/O 확인" / "디스크 I/O 모니터", "GPU 확인" / "GPU 사용량 모니터", "Sysprof 캡처" / "성능 프로파일링 캡처". One row has keyboard selection shown by filled background plus a visible 2px cyan edge or shape, never glow alone.
+    State strip outside production frame: six accurate Vicinae miniatures labeled "기본", "검색", "클립보드 기록", "이모지", "빈 결과", "키링 잠김". Clipboard uses the real upstream split list/detail layout without private or password contents. Emoji uses standard search/list-grid output. Keyring locked is a restrained security availability state, not a fabricated crash dialog.
+    Implementation redlines outside frame: exact feasible settings "770×480", "불투명 1.0", "material none", "12px radius", "2px border", "Tokyo Night bundled", "Papirus-Dark", "Pretendard", "top layer · on_demand keyboard". Include scale notes 1x, 1.25x, 2x and 44px minimum result rows.
+    Staged ownership panel outside frame: "Super+Shift+Space · Vicinae 단계 도입", "Super+Shift+V · 클립보드", "Super+. · 이모지", and "Super+Space / Super+R · CyberLauncher 유지".
+    Privacy panel outside frame: "텔레메트리 끔", "파일 검색·자동 인덱싱 끔", "입력 서버·자동 붙여넣기 끔 · 복사만", "시작 시 클립보드 삭제", "동기화 없음", "민감 데이터 암호화 · 키링 필요". Add a concise caveat: clipboard history is not guaranteed to be encrypted end-to-end and must not be synchronized.
+    Visual character: Tokyo Night's navy #1A1B26 / #16161E, blue #7AA2F7, cyan #7DCFFF and violet #BB9AF7 naturally bridge to Enoshima; almost no bloom; dense keyboard-first workstation UI.
+    Accessibility: Korean primary annotation, readable English tool names, visible focus independent of color, long labels ellipsize without layout shift, no continuous motion.
+    Constraints: no custom sidebar, no extra search bar, no web dashboard, no mobile UI, no glassmorphism, no translucent palette, no remote font, no new provider UI, no file-search results, no telemetry indicator inside production UI, no decorative emoji controls, no password clipboard item, no fake terminal, no watermark, no meaningless pseudo-text. All annotations must remain outside the production frame.
+    Output: one high-fidelity final concept board with production frame, state strip, redlines, shortcut ownership, privacy notes, and accessibility notes.
+  correction_prompt: |-
+    Edit this final Vicinae concept board while preserving every other layout, production frame, redline, shortcut, privacy and accessibility detail.
+    Required correction: Vicinae has no user-visible "keyring locked" launcher state; when an encrypted database key is unavailable the server cannot start. Remove the rightmost state miniature and label "키링 잠김". Replace it with a feasible upstream state labeled "긴 제목" showing the same standard Vicinae result list with one long Korean/English secondary label cleanly ellipsized without geometry shift. The state strip must now be exactly: "기본", "검색", "클립보드 기록", "이모지", "빈 결과", "긴 제목".
+    Keep the privacy note "민감 데이터 암호화 · 키링 필요" because that is a deployment prerequisite, but do not depict it as a UI state or error dialog. Keep the warning that clipboard history is not guaranteed end-to-end encrypted. Do not change the selected Tokyo Night Bridge design, 770x480 geometry, opaque palette, or upstream Vicinae structure. No watermark or new invented UI.
+  final_text_correction_prompt: |-
+    Conservatively edit the corrected final Vicinae concept board. Preserve all layout, production UI, state miniatures, colors, geometry, icons, shortcuts, and redlines. Set the metadata date to 2026-08-05. Delete the garbled input-server privacy bullet and replace it with "Input server off · copy only". Delete the far-right accessibility item that still mentions a keyring UI state and replace it with "Stable empty and long-title states". Remove every occurrence of "키링 잠김" while retaining "민감 데이터 암호화 · 키링 필요" only as a deployment prerequisite. Keep the six state labels exactly 기본, 검색, 클립보드 기록, 이모지, 빈 결과, 긴 제목. Add no new UI, state, watermark, or annotation.
+  revision_2026_08_11:
+    reason: >-
+      The initial requirements specify eight package-first performance Script
+      Commands. This revision keeps the approved five-row viewport and makes
+      the remaining three rows discoverable by ordinary upstream scrolling.
+    candidate_prompt: |-
+      Use case: ui-mockup. Create a 16:9 revision candidate board for the approved
+      Enoshima Vicinae command palette. Preserve Vicinae's real upstream 770x480
+      geometry, opaque bundled Tokyo Night theme, Papirus-Dark icons, Pretendard,
+      12px rounding, 2px border, and keyboard-first behavior. Compare only feasible
+      package-first ways to expose eight performance Script Commands without
+      inventing a sidebar, provider, or custom results UI. The commands are
+      Resources, atop history, sysstat history, I/O via iotop-c, GPU via nvtop,
+      Sysprof capture, CPU and thermal status via s-tui with turbostat documented,
+      and power analysis via powertop. Direction B should keep five rows visible
+      and the remaining three accessible below the fold through standard Vicinae
+      scrolling. Show the same six approved states: default, search, clipboard
+      history, emoji picker, empty results, and long title. No glassmorphism,
+      remote font, file search, telemetry, automatic paste, invented controls,
+      fake terminal, watermark, or tiny pseudo-text.
+    final_prompt: |-
+      Use case: ui-mockup. Revise the approved Enoshima staged command-palette
+      concept into one polished 16:9 implementation board. Preserve the real
+      opaque 770x480 Vicinae upstream surface, bundled Tokyo Night theme,
+      Papirus-Dark icons, Pretendard typography, 12px radius, 2px border, material
+      none, and the exact six existing state contracts. The root search query is
+      성능. Keep the first five visible rows as Resources, atop 기록, I/O 확인,
+      GPU 확인, Sysprof 캡처. Add an annotation outside the production surface
+      stating that sysstat 기록, CPU·열 상태 (s-tui; turbostat documented), and
+      전력 분석 (powertop) continue below the fold through ordinary upstream
+      scrolling. Do not add a custom scrollbar, provider, sidebar, action, or
+      launcher implementation. Retain staged shortcuts, copy-only clipboard and
+      emoji behavior, privacy constraints, visible non-color-only focus, long-title
+      ellipsis, and 1x/1.25x/2x scale notes. No glassmorphism, translucency, remote
+      fonts, file results, telemetry UI, password content, fake terminal,
+      watermark, or fabricated keyring state.

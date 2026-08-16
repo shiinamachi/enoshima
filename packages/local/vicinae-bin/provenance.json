@@ -1,0 +1,407 @@
+{
+  "schemaVersion": 3,
+  "package": {
+    "name": "vicinae-bin",
+    "version": "0.25.0-10",
+    "recipeSha256": "6a05e0adb04616956cbf38bb8e4ff591e93aa3ff41415d93b294e2895066c221"
+  },
+  "upstream": {
+    "repository": "vicinaehq/vicinae",
+    "tag": "v0.25.0",
+    "tagCommit": "7e13b3f5450e9d91b09be2fec2f05c021c8ebb95",
+    "sourceDateEpoch": 1786353281
+  },
+  "sourceArchive": {
+    "name": "vicinae-7e13b3f5450e9d91b09be2fec2f05c021c8ebb95.tar.gz",
+    "url": "https://github.com/vicinaehq/vicinae/archive/7e13b3f5450e9d91b09be2fec2f05c021c8ebb95.tar.gz",
+    "root": "vicinae-7e13b3f5450e9d91b09be2fec2f05c021c8ebb95",
+    "size": 20531604,
+    "sha256": "31480daaeda83a943c8cf2f96ea3d86580c30fbca225b6d31c021b80f5b56ee2"
+  },
+  "glaze": {
+    "repository": "stephenberry/glaze",
+    "commit": "b518eec7a22e56ffa238b072c07f47efa7cea97f",
+    "archive": {
+      "name": "glaze-b518eec7a22e56ffa238b072c07f47efa7cea97f.tar.gz",
+      "url": "https://github.com/stephenberry/glaze/archive/b518eec7a22e56ffa238b072c07f47efa7cea97f.tar.gz",
+      "root": "glaze-b518eec7a22e56ffa238b072c07f47efa7cea97f",
+      "size": 1534564,
+      "sha256": "0d108903feb443df316fb53eaec2fd6c1c6d96b368562ad830debc5c6c29c304"
+    }
+  },
+  "licenseSource": {
+    "url": "https://raw.githubusercontent.com/vicinaehq/vicinae/v0.25.0/LICENSE",
+    "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "size": 35149,
+    "destination": "/usr/share/licenses/vicinae-bin/LICENSE"
+  },
+  "noticeSources": {
+    "cmark-gfm-COPYING": {
+      "url": "https://raw.githubusercontent.com/github/cmark-gfm/0.29.0.gfm.13/COPYING",
+      "sha256": "c22e885f33b821bddb24cf007145e5540655b6c0f403e49e6c76a93c28e6d9a9",
+      "size": 7567
+    },
+    "kirigami-wheelhandler-COPYING": {
+      "url": "https://invent.kde.org/frameworks/kirigami/-/raw/85ac54062cf9e0b8c1ec9282fc51cca455bd1c1f/LICENSES/LGPL-2.0-or-later.txt",
+      "sha256": "de588a8b1c41fe73ffe1201f9d12c718a988ed8e1302929625a6e7c2bced7461",
+      "size": 24774
+    },
+    "vicinae-server-LICENSE": {
+      "url": "https://raw.githubusercontent.com/vicinaehq/vicinae/v0.25.0/src/server/LICENSE",
+      "sha256": "34d47ed18ab118421ec7cde3f04673a266d4f5f30ba573ab5147dbff57c55ea5",
+      "size": 1463
+    },
+    "glaze-LICENSE": {
+      "url": "https://raw.githubusercontent.com/stephenberry/glaze/v7.2.0/LICENSE",
+      "sha256": "5d49e66411a0807a7c8d6b911b9a26b59e940c71aebe561a3ad8b0b80ac4b7b6",
+      "size": 1080
+    },
+    "react-LICENSE": {
+      "url": "https://raw.githubusercontent.com/facebook/react/v19.1.1/LICENSE",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+      "size": 1088
+    },
+    "pugixml-LICENSE": {
+      "url": "https://raw.githubusercontent.com/zeux/pugixml/v1.15/LICENSE.md",
+      "sha256": "0d0b3772af2fa45628a548a3b34583707ebcc68bb6f83ec48ca273aab4a510f1",
+      "size": 1079
+    },
+    "sqlcipher-LICENSE": {
+      "url": "https://raw.githubusercontent.com/sqlcipher/sqlcipher/v4.16.0/LICENSE.md",
+      "sha256": "2a2826f6acf46fa650730cf42cbb22a642be33a7ef119c9c4f4bf6daf3bef48e",
+      "size": 1463
+    },
+    "tomlplusplus-LICENSE": {
+      "url": "https://raw.githubusercontent.com/marzer/tomlplusplus/v3.4.0/LICENSE",
+      "sha256": "529bc3900a9571e49db285b0df432397e70b881cc3bf48de6667ae74ff4b06d8",
+      "size": 1094
+    },
+    "zip-LICENSE": {
+      "url": "https://raw.githubusercontent.com/kuba--/zip/6a528ebe5933a24d9c8090a8ab2a5ff8ac683e29/LICENSE.txt",
+      "sha256": "6c1643ab0353b42030e903654fdb3845570b741da5ffafcaf9d305e8ec79a4a0",
+      "size": 1064
+    },
+    "miniz-LICENSE": {
+      "url": "https://raw.githubusercontent.com/richgel999/miniz/3.1.0/LICENSE",
+      "sha256": "0115478d567121238cf6cc1c0c361926cf07a49d9e4c9e66da97fac6a01646b3",
+      "size": 1184
+    },
+    "CLI11-LICENSE": {
+      "url": "https://raw.githubusercontent.com/CLIUtils/CLI11/v2.5.0/LICENSE",
+      "sha256": "88cffe4600851e8dad1b8eb1e304d54286a89d2373a1b98f59cb969b9e967b90",
+      "size": 1586
+    },
+    "rang-LICENSE": {
+      "url": "https://raw.githubusercontent.com/agauniyal/rang/v3.2/LICENSE",
+      "sha256": "88d9b4eb60579c191ec391ca04c16130572d7eedc4a86daa58bf28c6e14c9bcd",
+      "size": 1210
+    },
+    "fzf-LICENSE": {
+      "url": "https://raw.githubusercontent.com/junegunn/fzf/b473477c22559ee22cccf6c58df838cf578475c2/LICENSE",
+      "sha256": "c308be1be029070dd6a9c1134e19c398169eb9cfbd5f078fb002659db1e1b7cc",
+      "size": 1085
+    },
+    "emoji-segmenter-LICENSE": {
+      "url": "https://raw.githubusercontent.com/google/emoji-segmenter/1cada87c62550446fca6a42a69743688b4539a4c/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "size": 11358
+    },
+    "unicode-data-LICENSE": {
+      "url": "https://www.unicode.org/license.txt",
+      "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
+      "size": 1995
+    },
+    "geist-mono-OFL": {
+      "url": "https://raw.githubusercontent.com/vercel/geist-font/1.7.0/OFL.txt",
+      "sha256": "1781d2806a07d91c4edf4740b88449fab7d0eadad53f7c351b94cd4d4eb8c00f",
+      "size": 4387
+    },
+    "outfit-OFL": {
+      "url": "https://raw.githubusercontent.com/Outfitio/Outfit-Fonts/1.1/OFL.txt",
+      "sha256": "c676351bf8576b9aba743cd5eaa8c0e7ee0d51f805d720447b4df4ddb6a2e416",
+      "size": 4389
+    },
+    "noto-sans-math-OFL": {
+      "url": "https://raw.githubusercontent.com/notofonts/math/NotoSansMath-v3.000/OFL.txt",
+      "sha256": "c9c63b8ed6cf76b2ce0c58b241acfc1195c2c928334c989c7047cbdac58773d9",
+      "size": 4380
+    },
+    "noto-sans-symbols-OFL": {
+      "url": "https://raw.githubusercontent.com/notofonts/symbols/NotoSansSymbols-v2.003/OFL.txt",
+      "sha256": "b118dd41337806a5d4797052c77caf3bd096aed783e5eb21b4d11154351e1ac0",
+      "size": 4383
+    },
+    "devicon-LICENSE": {
+      "url": "https://raw.githubusercontent.com/devicons/devicon/f67c06187c08efa80fb973cb662260faacb40074/LICENSE",
+      "sha256": "121194741d4a915b9f5890fdd6dd95121f9b1f816517c792358d72d7c838d664",
+      "size": 1072
+    },
+    "wayland-protocols-COPYING": {
+      "url": "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/raw/1.49/COPYING",
+      "sha256": "f1a2b233e8a9a71c40f4aa885be08a0842ac85bb8588703c1dd7e6e6502e3124",
+      "size": 1502
+    }
+  },
+  "build": {
+    "npmLocks": {
+      "src/typescript/api/package-lock.json": "8b87b633cbee1497cd61b54c75d07946e5ee56e14e371c78f4a07ec86778a72f",
+      "src/typescript/extension-manager/package-lock.json": "418d4cf1d74edb0c922f56b08a65387bd0314785d45dbacffe2331b8538d73fe",
+      "src/typescript/raycast-api-compat/package-lock.json": "8209dcfab24ef08d9f4ae24985915656cdffcbd635d899222d73e2d2f2a79053"
+    },
+    "cmakeFlags": [
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_INSTALL_PREFIX=/usr",
+      "-DCMAKE_INSTALL_LIBDIR:STRING=lib",
+      "-DCMAKE_INSTALL_LIBEXECDIR=libexec",
+      "-DCMAKE_INSTALL_DATADIR=share",
+      "-DCMAKE_SKIP_RPATH=ON",
+      "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+      "-DBUILD_TESTS=OFF",
+      "-DLTO=OFF",
+      "-DIGNORE_CCACHE=ON",
+      "-DINSTALL_NODE_MODULES=ON",
+      "-DTYPESCRIPT_EXTENSIONS=ON",
+      "-DVICINAE_NODE_RUNTIME_DOWNLOAD=OFF",
+      "-DQT_QML_NO_CACHEGEN=ON",
+      "-DINSTALL_MODULES_LOAD_CONFIG=OFF",
+      "-DUSE_SYSTEM_CMARK_GFM=OFF",
+      "-DUSE_SYSTEM_GLAZE=OFF",
+      "-DFETCHCONTENT_SOURCE_DIR_GLAZE=<srcdir>/glaze-b518eec7a22e56ffa238b072c07f47efa7cea97f",
+      "-DFETCHCONTENT_FULLY_DISCONNECTED=ON",
+      "-DUSE_SYSTEM_KF6=ON",
+      "-DUSE_SYSTEM_QT_KEYCHAIN=ON",
+      "-DUSE_SYSTEM_LAYER_SHELL=ON",
+      "-DVICINAE_GIT_TAG=v0.25.0",
+      "-DVICINAE_GIT_COMMIT_HASH=7e13b3f54",
+      "-DVICINAE_PROVENANCE=arch_source"
+    ],
+    "buildPackages": [
+      "binutils",
+      "cmake",
+      "gcc",
+      "gcc-libs",
+      "glibc",
+      "layer-shell-qt",
+      "ninja",
+      "nodejs",
+      "npm",
+      "qt6-base",
+      "qt6-declarative",
+      "qt6-shadertools",
+      "qt6-svg",
+      "qt6-tools",
+      "qt6-wayland",
+      "qtkeychain-qt6",
+      "syntax-highlighting",
+      "wayland-protocols"
+    ]
+  },
+  "packaging": {
+    "installPrefix": "/usr",
+    "licenses": [
+      "GPL-3.0-only",
+      "Apache-2.0",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "CC-BY-3.0",
+      "CC0-1.0",
+      "ISC",
+      "LGPL-2.0-or-later",
+      "MIT",
+      "OFL-1.1",
+      "Unicode-3.0",
+      "Unlicense"
+    ],
+    "runtimeDependencies": [
+      "binutils",
+      "gcc-libs",
+      "glibc",
+      "hicolor-icon-theme",
+      "jq",
+      "layer-shell-qt",
+      "libglvnd",
+      "libqalculate",
+      "libsecret",
+      "libxcb",
+      "libxkbcommon",
+      "nodejs",
+      "openssl",
+      "qt6-base",
+      "qt6-declarative",
+      "qt6-svg",
+      "qt6-wayland",
+      "qtkeychain-qt6",
+      "syntax-highlighting",
+      "systemd",
+      "wayland",
+      "xcb-util-keysyms"
+    ],
+    "makeDependencies": [
+      "cmake",
+      "libcap",
+      "ninja",
+      "npm",
+      "python",
+      "qt6-shadertools",
+      "qt6-tools",
+      "wayland-protocols"
+    ],
+    "checkDependencies": [
+      "desktop-file-utils"
+    ],
+    "localSources": {
+      "enoshima-install-paths.patch": "5611def6c23b88f9958eb7ebb4d26ea1dea1bd1823478c1f7904b70451b88dcb",
+      "preserve-clipboard-mime-offers.patch": "53bdbc30cdedf1b0a68240a722248629172ddc158ded1e9b101b6d8e2ad44d5f",
+      "20-enoshima-qt-compatibility.conf": "3017479e5c26b2f1a09243f0ed9bfe4ddfb500ebf7c1acf1f0ea46ec5448afa2",
+      "40-vicinae-qt-pre.hook": "af8a272ebe5d06b699882518e3dbe8b6155a387cabf0b97580f384a349c5f458",
+      "40-vicinae-qt-post.hook": "2132e2f77fac9996537923ed1ba71adae7a9bd560d71c229f1a6f2feb4efce87",
+      "41-vicinae-package-pre.hook": "b0c6f4cb65ca8754eec8dd56d557a7c5f7cb433a7896e8e90431252967da51fd",
+      "vicinae-build-compatible": "a740ea7ab9c9302695c21362637f6e32ff23e5959e074d37da8e4b006cfe8a58",
+      "vicinae-qt-guard": "952bbd60b19af764d06fcc9833169b9b9f0e671c791b1b12d36ca3a27c2504c9",
+      "vicinae.hook": "d82c7f9d4ad08bab23b986b155789f314778d0b41dedb812fcdedf4f10e0356e",
+      "vicinae.desktop": "e67900456fd1c29defcf0f5ca1e78de9aab7241bebb5290c2725efa99dd61079",
+      "vicinae-url-handler.desktop": "e6be7ddb52ccdeb8872a512cbe7b193a1260d8376bd97785d865dc64af578133"
+    },
+    "staticPolicyFiles": {
+      "usr/lib/systemd/user/vicinae.service.d/20-enoshima-qt-compatibility.conf": "3017479e5c26b2f1a09243f0ed9bfe4ddfb500ebf7c1acf1f0ea46ec5448afa2",
+      "usr/share/libalpm/hooks/40-vicinae-qt-pre.hook": "af8a272ebe5d06b699882518e3dbe8b6155a387cabf0b97580f384a349c5f458",
+      "usr/share/libalpm/hooks/40-vicinae-qt-post.hook": "2132e2f77fac9996537923ed1ba71adae7a9bd560d71c229f1a6f2feb4efce87",
+      "usr/share/libalpm/hooks/41-vicinae-package-pre.hook": "b0c6f4cb65ca8754eec8dd56d557a7c5f7cb433a7896e8e90431252967da51fd",
+      "usr/libexec/vicinae/vicinae-build-compatible": "a740ea7ab9c9302695c21362637f6e32ff23e5959e074d37da8e4b006cfe8a58",
+      "usr/libexec/vicinae/vicinae-qt-guard": "952bbd60b19af764d06fcc9833169b9b9f0e671c791b1b12d36ca3a27c2504c9",
+      "usr/share/libalpm/hooks/vicinae.hook": "d82c7f9d4ad08bab23b986b155789f314778d0b41dedb812fcdedf4f10e0356e",
+      "usr/share/applications/vicinae.desktop": "e67900456fd1c29defcf0f5ca1e78de9aab7241bebb5290c2725efa99dd61079",
+      "usr/share/applications/vicinae-url-handler.desktop": "e6be7ddb52ccdeb8872a512cbe7b193a1260d8376bd97785d865dc64af578133"
+    },
+    "sourcePayloadFiles": {
+      "usr/lib/systemd/user/vicinae.service": "6f2e12e55d1dd179d40557a8386fed5ad081b5897fe38508567c1eceaf3bc7d1",
+      "usr/share/icons/hicolor/512x512/apps/vicinae.png": "b6d60bae9182bd997a972a99c872634d96f852343b5b320a1d1fa020e46c8d87",
+      "usr/share/vicinae/themes/ayu-dark.toml": "189fa11da64f212406694f0af5f613f8cf07cf74eef05135825c29af55bcd41a",
+      "usr/share/vicinae/themes/ayu-mirage.toml": "28507a55c7b7af6d304b980ca078a48e317925fb3ee51411577ba0ce6af54cca",
+      "usr/share/vicinae/themes/catppuccin-frappe.toml": "fb3e18eb47db5e482a5e5a20bd61ec724713ad405ae90602e67a069adf8c07e9",
+      "usr/share/vicinae/themes/catppuccin-latte.toml": "b0a8f7ef9c5930dc400c20216060c98dcc2207cf54b5e9ed80c4ec8b276de51c",
+      "usr/share/vicinae/themes/catppuccin-macchiato.toml": "2ff0eaaa003a084610aa199b3cc9e6277aa5429cb37d9d723389469c7f706b8b",
+      "usr/share/vicinae/themes/catppuccin-mocha.toml": "b7250c0684deac706032db3e7db2524f79438d346d0fbd5114ca0a2bb62c387c",
+      "usr/share/vicinae/themes/dracula.toml": "8f34e843051dd65fe86d45789504f5d108f72df4cc444df2ef845f5c44ca9aa5",
+      "usr/share/vicinae/themes/elementary-dark.toml": "b497b73b6fcae12cd9496df28d191b5d7b98da1e0069dc7efe4315c0d91d86c3",
+      "usr/share/vicinae/themes/elementary-light.toml": "0b610c0fd6f905da351cb387490c4c46f240acedf57c01227e4a1256f6e1abc7",
+      "usr/share/vicinae/themes/evergarden-fall.toml": "197128b60f8353127f3ef5ac359658e013b2a96d5100a0c55f809784b3c08f7d",
+      "usr/share/vicinae/themes/evergarden-spring.toml": "982f84b63e80b7ee51cfdd1f365444b57b2941623d6e9b4a95ede0c6e9493801",
+      "usr/share/vicinae/themes/evergarden-summer.toml": "c8eb1ebf72a53e22e528bb27ddb96a96980b57d8bd4d3ef634afd8c0a75e79b6",
+      "usr/share/vicinae/themes/evergarden-winter.toml": "6b3505cd0de154d94ee4a194b36beea77986ef586a2ef75b0cfb1ba75e6a3176",
+      "usr/share/vicinae/themes/gruvbox-dark.toml": "cc2d1745170f51a36cecd2054dafa27c225447d666816721ead7c1b3a69b23d4",
+      "usr/share/vicinae/themes/gruvbox-light.toml": "2faf77afc93ab64d738d703e6e89c78494c86693682382683c5de901acbde17e",
+      "usr/share/vicinae/themes/icons/ayu.png": "c331c6dbbe037b7dcb05a10b1082ee8e8bdb4ada92fb5a27e8576c229d319964",
+      "usr/share/vicinae/themes/icons/catppuccin.png": "fda1619b815c48c4f0166f38f0db850b4f72682604f66c6f64cdc152046803e5",
+      "usr/share/vicinae/themes/icons/dracula.png": "41010ead640fd4b0564d8c04ed803f77479ccc9a68bcc797551a4d6c82d86988",
+      "usr/share/vicinae/themes/icons/elementary@dark.svg": "19229de895169ac23647f2596c1073b899645126f330bcd2a748b8aebd387230",
+      "usr/share/vicinae/themes/icons/elementary@light.svg": "ffc5cbb427b788d09c8838521b3120cf94507e13b145f74ae0a8ba3982db786a",
+      "usr/share/vicinae/themes/icons/evergarden.png": "4c49f590421a027d129b781ec965c2ce36fe44f381841124bf03c68393359e81",
+      "usr/share/vicinae/themes/icons/gruvbox.png": "e2e434e46093ee230ef1c053eebfc44cf7ea720527fdca59ca98a75b671163b6",
+      "usr/share/vicinae/themes/icons/kanagawa.png": "d35b0d3e0612877af488182de9eab8ac55c6285caa5d5c81cdfe6ccb988f24b0",
+      "usr/share/vicinae/themes/icons/libadwaita.svg": "80fbd38c99af8175444614bd492db7db6739524153b5f82d02b1caa091fe4699",
+      "usr/share/vicinae/themes/icons/nord@dark.svg": "e44536e27885be456cc4a6e0086116107324f61becf14f12195751737ce036d2",
+      "usr/share/vicinae/themes/icons/nord@light.svg": "8f1b75998edb27041e514dcde16f3bc0dbeddaafcee98f22f9430df9d06ec833",
+      "usr/share/vicinae/themes/icons/one-dark.png": "1b8a64103835b6c8816153b5e313f97aaa14a739694ec2b3ea4d1e0dda07446c",
+      "usr/share/vicinae/themes/icons/rose-pine.png": "44f9a25bdaea1cb05b2d00e01299309bfc3647a20370ee7411e7e0968daf8d6c",
+      "usr/share/vicinae/themes/icons/solarized.png": "ebd6a758de5e5bb9bc1d40d48c0a6a9885c331798f4b9f8b772d681a566f72b8",
+      "usr/share/vicinae/themes/icons/tokyo-night.png": "4306a4deeac0acca642a996395409cb17e278ed639a16f98b7e579a6c802a60d",
+      "usr/share/vicinae/themes/icons/zenbones.png": "83475e69e4803d059f1e5e1449a34f221b41a585805cf8838d78a631422c30ad",
+      "usr/share/vicinae/themes/kanagawa.toml": "00cfdd68c5da3754da3f5276da30ae93861b795ea6413df07748eb6b0127ca7b",
+      "usr/share/vicinae/themes/libadwaita-dark.toml": "9d777091d7e9c912a820317ebf5abe0c2e2853c05bddd4769b7d092fb987381c",
+      "usr/share/vicinae/themes/libadwaita-light.toml": "d423637d6b709c785f270de1fdf2b98750d3814a426776b22510aedc833d2bf6",
+      "usr/share/vicinae/themes/nord-light.toml": "309d7c5dc68495248a6c49eadd133b98732950cf8ddc7af0f0e1ba38305a0ded",
+      "usr/share/vicinae/themes/nord.toml": "9ecdd430cb8a31f78532834c86d12ddaced5662fcbbcfea0b84332ea43fea247",
+      "usr/share/vicinae/themes/one-dark.toml": "41b23a4834d4003e6507e78da6c4814151fdc48d40ad5d14232948b798e6cc4b",
+      "usr/share/vicinae/themes/rose-pine-dawn.toml": "f182dc21c9cce856a28d3f3fbcebd9a6f578347d9a1b63669ac3747f1eb4677c",
+      "usr/share/vicinae/themes/rose-pine-moon.toml": "7b43bd641862ec9f1fcfeca7d9dcfbe8a62757b3e43c2949972a9f5e00830e2f",
+      "usr/share/vicinae/themes/rose-pine.toml": "93ee046010f26f70533aeeae19204dfa755e20c0e1827eea0344af389302b8ab",
+      "usr/share/vicinae/themes/solarized-dark.toml": "744c25c4958fcfff46eb35c940c92787c0ae7d88ae6fe0c0e17fb33d5a9aac16",
+      "usr/share/vicinae/themes/solarized-light.toml": "38a12edf864d8e69b4cfaeb9553e9bed970fb6651090ef2e44f003dce7ee416f",
+      "usr/share/vicinae/themes/solarized-osaka.toml": "a40b36de486383c96caf0761dc11f1c99697c95bb376d9607dbf464772a2fa27",
+      "usr/share/vicinae/themes/tokyo-night-storm.toml": "d6828f767188e0b0690076dd38fd1180ec776987876a363fb46027240bbd2358",
+      "usr/share/vicinae/themes/tokyo-night.toml": "c7b6e45955a6b9a6314419cf3b1e441939eddeaf5ac3e65a16ed61ef478c31bc",
+      "usr/share/vicinae/themes/zenwritten-dark.toml": "0f931924101eab81a24466faa69a63abb330d398e0f662ed9050392504aadea8",
+      "usr/share/vicinae/themes/zenwritten-light.toml": "582b4f685546561379abd46ee11787eb297ad430873a16c828e0efbde35b43e6"
+    },
+    "packageArchive": {
+      "metadataFiles": [
+        ".BUILDINFO",
+        ".MTREE",
+        ".PKGINFO"
+      ],
+      "buildEnvironmentPath": "usr/share/vicinae/build-environment.json"
+    },
+    "elf": {
+      "interpreter": "/lib64/ld-linux-x86-64.so.2",
+      "identity": {
+        "path": "usr/libexec/vicinae/vicinae-server",
+        "strings": [
+          "v0.25.0",
+          "7e13b3f54",
+          "arch_source"
+        ]
+      },
+      "needed": {
+        "usr/bin/vicinae": [
+          "libc.so.6",
+          "libgcc_s.so.1",
+          "libm.so.6",
+          "libstdc++.so.6"
+        ],
+        "usr/libexec/vicinae/vicinae-browser-link": [
+          "libQt6Core.so.6",
+          "libQt6Network.so.6",
+          "libc.so.6",
+          "libgcc_s.so.1",
+          "libm.so.6",
+          "libstdc++.so.6"
+        ],
+        "usr/libexec/vicinae/vicinae-data-control-server": [
+          "libc.so.6",
+          "libgcc_s.so.1",
+          "libstdc++.so.6",
+          "libwayland-client.so.0"
+        ],
+        "usr/libexec/vicinae/vicinae-file-indexer": [
+          "libQt6Core.so.6",
+          "libc.so.6",
+          "libcrypto.so.3",
+          "libgcc_s.so.1",
+          "libm.so.6",
+          "libstdc++.so.6"
+        ],
+        "usr/libexec/vicinae/vicinae-input-server": [
+          "libc.so.6",
+          "libgcc_s.so.1",
+          "libm.so.6",
+          "libstdc++.so.6",
+          "libudev.so.1",
+          "libxkbcommon.so.0"
+        ],
+        "usr/libexec/vicinae/vicinae-server": [
+          "libKF6SyntaxHighlighting.so.6",
+          "libQt6Core.so.6",
+          "libQt6DBus.so.6",
+          "libQt6Gui.so.6",
+          "libQt6Network.so.6",
+          "libQt6Qml.so.6",
+          "libQt6Quick.so.6",
+          "libQt6QuickControls2.so.6",
+          "libQt6Svg.so.6",
+          "libQt6WaylandClient.so.6",
+          "libc.so.6",
+          "libcrypto.so.3",
+          "libgcc_s.so.1",
+          "libm.so.6",
+          "libqalculate.so.23",
+          "libqt6keychain.so.1",
+          "libstdc++.so.6",
+          "libwayland-client.so.0",
+          "libxcb-keysyms.so.1",
+          "libxcb.so.1"
+        ]
+      }
+    }
+  }
+}

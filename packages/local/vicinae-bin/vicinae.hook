@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = vicinae-bin
+
+[Action]
+Description = Releasing the verified Vicinae Qt transition when compatible...
+When = PostTransaction
+Exec = /usr/bin/timeout --signal=TERM --kill-after=5s 90s /usr/libexec/vicinae/vicinae-qt-guard release-if-compatible

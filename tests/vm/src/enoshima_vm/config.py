@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,102 @@ MAX_VCPUS = 8
 MAX_MEMORY_MIB = 14 * 1024
 MAX_DISK_GIB = 128
 MAX_ACTIVE_DOMAINS = 1
+WATCHDOG_READY_NAME = ".watchdog-ready.json"
+WATCHDOG_READY_TIMEOUT_SECONDS = 10
+WATCHDOG_FINALIZATION_SECONDS = 30 * 60
+WATCHDOG_CLEANUP_RETRY_SECONDS = 5
+WATCHDOG_RUNTIME_GRACE_SECONDS = 30
+
+
+def global_mutation_lock_path() -> Path:
+    """Return the state-root-independent lock for one user libvirt session."""
+    uid = os.getuid()
+    runtime = Path(f"/run/user/{uid}")
+    try:
+        metadata = runtime.stat()
+    except OSError as error:
+        raise VMError(
+            FailureCategory.HOST_INFRA_ERROR,
+            f"canonical desktop runtime is unavailable: {runtime}",
+            {"error": str(error)},
+        ) from error
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or runtime.is_symlink()
+        or metadata.st_uid != uid
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise VMError(
+            FailureCategory.HOST_INFRA_ERROR,
+            f"canonical desktop runtime is unsafe: {runtime}",
+        )
+    lock_root = runtime / "enoshima-vm"
+    try:
+        lock_root.mkdir(mode=0o700, exist_ok=True)
+        lock_metadata = lock_root.lstat()
+    except OSError as error:
+        raise VMError(
+            FailureCategory.HOST_INFRA_ERROR,
+            f"VM mutation lock directory is unavailable: {lock_root}",
+            {"error": str(error)},
+        ) from error
+    if (
+        not stat.S_ISDIR(lock_metadata.st_mode)
+        or stat.S_ISLNK(lock_metadata.st_mode)
+        or lock_metadata.st_uid != uid
+        or stat.S_IMODE(lock_metadata.st_mode) != 0o700
+    ):
+        raise VMError(
+            FailureCategory.HOST_INFRA_ERROR,
+            f"VM mutation lock directory is unsafe: {lock_root}",
+        )
+    return lock_root / "active.lock"
+
+
+def validate_global_mutation_lock_fd(descriptor: int) -> None:
+    """Require a regular, user-owned descriptor for the canonical lock inode."""
+    lock_path = global_mutation_lock_path()
+    try:
+        descriptor_metadata = os.fstat(descriptor)
+        path_metadata = lock_path.stat(follow_symlinks=False)
+    except OSError as error:
+        raise VMError(
+            FailureCategory.HOST_INFRA_ERROR,
+            "VM mutation lock descriptor is unavailable",
+            {"error": str(error)},
+        ) from error
+    if (
+        not stat.S_ISREG(descriptor_metadata.st_mode)
+        or descriptor_metadata.st_uid != os.getuid()
+        or stat.S_IMODE(descriptor_metadata.st_mode) != 0o600
+        or stat.S_ISLNK(path_metadata.st_mode)
+        or not stat.S_ISREG(path_metadata.st_mode)
+        or path_metadata.st_uid != os.getuid()
+        or stat.S_IMODE(path_metadata.st_mode) != 0o600
+        or (descriptor_metadata.st_dev, descriptor_metadata.st_ino)
+        != (path_metadata.st_dev, path_metadata.st_ino)
+    ):
+        raise VMError(
+            FailureCategory.HOST_INFRA_ERROR,
+            "VM mutation lock descriptor is unsafe",
+        )
+
+
+def open_global_mutation_lock() -> int:
+    """Open the canonical mutation lock without following a replacement link."""
+    path = global_mutation_lock_path()
+    flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags, 0o600)
+        os.fchmod(descriptor, 0o600)
+        validate_global_mutation_lock_fd(descriptor)
+    except Exception:
+        if "descriptor" in locals():
+            os.close(descriptor)
+        raise
+    return descriptor
 
 
 def repository_root() -> Path:

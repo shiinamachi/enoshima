@@ -59,6 +59,7 @@ zram_swap_priority: 100
 
 desktop_login_manager: greetd
 desktop_expansion_sddm_theme_enabled: true
+desktop_accessibility_profile_enabled: false
 wwan_route_metric: 700
 
 system_units_started:

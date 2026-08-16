@@ -3,7 +3,7 @@ name: reboot
 base_image: arch-cloud-reproducible
 domain_template: domain-desktop.xml.j2
 profile: enoshima-vm
-timeout_minutes: 180
+timeout_minutes: 195
 resources:
   vcpus: 6
   memory_mib: 12288
@@ -14,11 +14,11 @@ network:
   allow_lan: false
 steps:
   - wait_for_ssh
+  - seed_pacman_cache
   - wait_for_cloud_init
   - wait_for_guest_agent
   - upload_worktree
   - seed_codex_electron_cache
-  - seed_pacman_cache
   - run_validate
   - run_bootstrap:
       report: first
@@ -42,6 +42,7 @@ allowed_skips:
   - fingerprint-device
   - fingerprint-enrollment
   - hibernation
+  - opt-in-orca-screen-reader-package
   - root-luks
   - secure-boot
   - thunderbolt-controller

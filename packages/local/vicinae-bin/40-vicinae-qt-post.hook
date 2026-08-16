@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Path
+Target = usr/lib/libQt6*.so.6
+
+[Action]
+Description = Releasing Vicinae only when its source build matches the upgraded Qt...
+When = PostTransaction
+Exec = /usr/bin/timeout --signal=TERM --kill-after=5s 90s /usr/libexec/vicinae/vicinae-qt-guard release-if-compatible

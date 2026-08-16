@@ -1,0 +1,1759 @@
+#!/usr/bin/env python3
+"""Verify the pinned Vicinae source recipe and its final Arch package."""
+
+from __future__ import annotations
+
+import argparse
+from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import gzip
+import hashlib
+import io
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shlex
+import subprocess
+import sys
+import tarfile
+import tempfile
+from typing import Any
+import urllib.request
+
+
+DIGEST_PATTERN = re.compile(r"[0-9a-f]{64}")
+BUILD_ID_PATTERN = re.compile(r"Build ID: ([0-9a-f]+)")
+NEEDED_PATTERN = re.compile(r"Shared library: \[([^]]+)\]")
+INTERPRETER_PATTERN = re.compile(r"Requesting program interpreter: ([^]]+)\]")
+VERSIONED_DEPENDENCY_PATTERN = re.compile(r"[<>=]")
+
+EXPECTED_LOCAL_SOURCES = (
+    "enoshima-install-paths.patch",
+    "preserve-clipboard-mime-offers.patch",
+    "20-enoshima-qt-compatibility.conf",
+    "40-vicinae-qt-pre.hook",
+    "40-vicinae-qt-post.hook",
+    "41-vicinae-package-pre.hook",
+    "vicinae-build-compatible",
+    "vicinae-qt-guard",
+    "vicinae.hook",
+    "vicinae.desktop",
+    "vicinae-url-handler.desktop",
+)
+EXPECTED_CLIPBOARD_PATCH_PATHS = (
+    "src/server/CMakeLists.txt",
+    "src/server/src/services/clipboard/clipboard-mime.cpp",
+    "src/server/src/services/clipboard/clipboard-mime.hpp",
+    "src/server/src/services/clipboard/clipboard-service.cpp",
+    "src/server/tests/clipboard/mime-data-from-selection.cpp",
+)
+LOCAL_INSTALL_MAP = {
+    "20-enoshima-qt-compatibility.conf": (
+        "usr/lib/systemd/user/vicinae.service.d/20-enoshima-qt-compatibility.conf"
+    ),
+    "40-vicinae-qt-pre.hook": "usr/share/libalpm/hooks/40-vicinae-qt-pre.hook",
+    "40-vicinae-qt-post.hook": "usr/share/libalpm/hooks/40-vicinae-qt-post.hook",
+    "41-vicinae-package-pre.hook": (
+        "usr/share/libalpm/hooks/41-vicinae-package-pre.hook"
+    ),
+    "vicinae-build-compatible": "usr/libexec/vicinae/vicinae-build-compatible",
+    "vicinae-qt-guard": "usr/libexec/vicinae/vicinae-qt-guard",
+    "vicinae.hook": "usr/share/libalpm/hooks/vicinae.hook",
+    "vicinae.desktop": "usr/share/applications/vicinae.desktop",
+    "vicinae-url-handler.desktop": (
+        "usr/share/applications/vicinae-url-handler.desktop"
+    ),
+}
+EXPECTED_NOTICE_NAMES = (
+    "cmark-gfm-COPYING",
+    "kirigami-wheelhandler-COPYING",
+    "vicinae-server-LICENSE",
+    "glaze-LICENSE",
+    "react-LICENSE",
+    "pugixml-LICENSE",
+    "sqlcipher-LICENSE",
+    "tomlplusplus-LICENSE",
+    "zip-LICENSE",
+    "miniz-LICENSE",
+    "CLI11-LICENSE",
+    "rang-LICENSE",
+    "fzf-LICENSE",
+    "emoji-segmenter-LICENSE",
+    "unicode-data-LICENSE",
+    "geist-mono-OFL",
+    "outfit-OFL",
+    "noto-sans-math-OFL",
+    "noto-sans-symbols-OFL",
+    "devicon-LICENSE",
+    "wayland-protocols-COPYING",
+)
+EXPECTED_LICENSES = (
+    "GPL-3.0-only",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC-BY-3.0",
+    "CC0-1.0",
+    "ISC",
+    "LGPL-2.0-or-later",
+    "MIT",
+    "OFL-1.1",
+    "Unicode-3.0",
+    "Unlicense",
+)
+EXPECTED_RUNTIME_DEPENDENCIES = (
+    "binutils",
+    "gcc-libs",
+    "glibc",
+    "hicolor-icon-theme",
+    "jq",
+    "layer-shell-qt",
+    "libglvnd",
+    "libqalculate",
+    "libsecret",
+    "libxcb",
+    "libxkbcommon",
+    "nodejs",
+    "openssl",
+    "qt6-base",
+    "qt6-declarative",
+    "qt6-svg",
+    "qt6-wayland",
+    "qtkeychain-qt6",
+    "syntax-highlighting",
+    "systemd",
+    "wayland",
+    "xcb-util-keysyms",
+)
+EXPECTED_MAKE_DEPENDENCIES = (
+    "cmake",
+    "libcap",
+    "ninja",
+    "npm",
+    "python",
+    "qt6-shadertools",
+    "qt6-tools",
+    "wayland-protocols",
+)
+EXPECTED_CHECK_DEPENDENCIES = ("desktop-file-utils",)
+EXPECTED_BUILD_PACKAGES = (
+    "binutils",
+    "cmake",
+    "gcc",
+    "gcc-libs",
+    "glibc",
+    "layer-shell-qt",
+    "ninja",
+    "nodejs",
+    "npm",
+    "qt6-base",
+    "qt6-declarative",
+    "qt6-shadertools",
+    "qt6-svg",
+    "qt6-tools",
+    "qt6-wayland",
+    "qtkeychain-qt6",
+    "syntax-highlighting",
+    "wayland-protocols",
+)
+EXPECTED_NPM_LOCKS = {
+    "src/typescript/api/package-lock.json": (
+        "8b87b633cbee1497cd61b54c75d07946e5ee56e14e371c78f4a07ec86778a72f"
+    ),
+    "src/typescript/extension-manager/package-lock.json": (
+        "418d4cf1d74edb0c922f56b08a65387bd0314785d45dbacffe2331b8538d73fe"
+    ),
+    "src/typescript/raycast-api-compat/package-lock.json": (
+        "8209dcfab24ef08d9f4ae24985915656cdffcbd635d899222d73e2d2f2a79053"
+    ),
+}
+EXPECTED_CMAKE_FLAGS = (
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_INSTALL_PREFIX=/usr",
+    "-DCMAKE_INSTALL_LIBDIR:STRING=lib",
+    "-DCMAKE_INSTALL_LIBEXECDIR=libexec",
+    "-DCMAKE_INSTALL_DATADIR=share",
+    "-DCMAKE_SKIP_RPATH=ON",
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+    "-DBUILD_TESTS=OFF",
+    "-DLTO=OFF",
+    "-DIGNORE_CCACHE=ON",
+    "-DINSTALL_NODE_MODULES=ON",
+    "-DTYPESCRIPT_EXTENSIONS=ON",
+    "-DVICINAE_NODE_RUNTIME_DOWNLOAD=OFF",
+    "-DQT_QML_NO_CACHEGEN=ON",
+    "-DINSTALL_MODULES_LOAD_CONFIG=OFF",
+    "-DUSE_SYSTEM_CMARK_GFM=OFF",
+    "-DUSE_SYSTEM_GLAZE=OFF",
+    "-DFETCHCONTENT_SOURCE_DIR_GLAZE=<srcdir>/glaze-b518eec7a22e56ffa238b072c07f47efa7cea97f",
+    "-DFETCHCONTENT_FULLY_DISCONNECTED=ON",
+    "-DUSE_SYSTEM_KF6=ON",
+    "-DUSE_SYSTEM_QT_KEYCHAIN=ON",
+    "-DUSE_SYSTEM_LAYER_SHELL=ON",
+    "-DVICINAE_GIT_TAG=v0.25.0",
+    "-DVICINAE_GIT_COMMIT_HASH=7e13b3f54",
+    "-DVICINAE_PROVENANCE=arch_source",
+)
+EXPECTED_THEME_ASSETS = (
+    "ayu-dark.toml",
+    "ayu-mirage.toml",
+    "catppuccin-frappe.toml",
+    "catppuccin-latte.toml",
+    "catppuccin-macchiato.toml",
+    "catppuccin-mocha.toml",
+    "dracula.toml",
+    "elementary-dark.toml",
+    "elementary-light.toml",
+    "evergarden-fall.toml",
+    "evergarden-spring.toml",
+    "evergarden-summer.toml",
+    "evergarden-winter.toml",
+    "gruvbox-dark.toml",
+    "gruvbox-light.toml",
+    "icons/ayu.png",
+    "icons/catppuccin.png",
+    "icons/dracula.png",
+    "icons/elementary@dark.svg",
+    "icons/elementary@light.svg",
+    "icons/evergarden.png",
+    "icons/gruvbox.png",
+    "icons/kanagawa.png",
+    "icons/libadwaita.svg",
+    "icons/nord@dark.svg",
+    "icons/nord@light.svg",
+    "icons/one-dark.png",
+    "icons/rose-pine.png",
+    "icons/solarized.png",
+    "icons/tokyo-night.png",
+    "icons/zenbones.png",
+    "kanagawa.toml",
+    "libadwaita-dark.toml",
+    "libadwaita-light.toml",
+    "nord-light.toml",
+    "nord.toml",
+    "one-dark.toml",
+    "rose-pine-dawn.toml",
+    "rose-pine-moon.toml",
+    "rose-pine.toml",
+    "solarized-dark.toml",
+    "solarized-light.toml",
+    "solarized-osaka.toml",
+    "tokyo-night-storm.toml",
+    "tokyo-night.toml",
+    "zenwritten-dark.toml",
+    "zenwritten-light.toml",
+)
+EXPECTED_ELF_PATHS = (
+    "usr/bin/vicinae",
+    "usr/libexec/vicinae/vicinae-browser-link",
+    "usr/libexec/vicinae/vicinae-data-control-server",
+    "usr/libexec/vicinae/vicinae-file-indexer",
+    "usr/libexec/vicinae/vicinae-input-server",
+    "usr/libexec/vicinae/vicinae-server",
+)
+EXPECTED_EXECUTABLE_POLICY_PATHS = {
+    *EXPECTED_ELF_PATHS,
+    "usr/libexec/vicinae/vicinae-build-compatible",
+    "usr/libexec/vicinae/vicinae-qt-guard",
+}
+
+EXPECTED_COMPATIBILITY_DROPIN = """[Service]
+ExecCondition=/usr/libexec/vicinae/vicinae-build-compatible
+"""
+EXPECTED_PRE_HOOK = """[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Path
+Target = usr/lib/libQt6*.so.6
+
+[Action]
+Description = Stopping Vicinae before its private Qt ABI changes...
+When = PreTransaction
+Exec = /usr/bin/timeout --signal=TERM --kill-after=30s 300s /usr/libexec/vicinae/vicinae-qt-guard hold
+AbortOnFail
+"""
+EXPECTED_POST_HOOK = """[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Path
+Target = usr/lib/libQt6*.so.6
+
+[Action]
+Description = Releasing Vicinae only when its source build matches the upgraded Qt...
+When = PostTransaction
+Exec = /usr/bin/timeout --signal=TERM --kill-after=5s 90s /usr/libexec/vicinae/vicinae-qt-guard release-if-compatible
+"""
+EXPECTED_PACKAGE_PRE_HOOK = """[Trigger]
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = vicinae-bin
+
+[Action]
+Description = Stopping Vicinae before replacing its Qt-private source build...
+When = PreTransaction
+Exec = /usr/bin/timeout --signal=TERM --kill-after=30s 300s /usr/libexec/vicinae/vicinae-qt-guard hold
+AbortOnFail
+"""
+EXPECTED_PACKAGE_HOOK = """[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = vicinae-bin
+
+[Action]
+Description = Releasing the verified Vicinae Qt transition when compatible...
+When = PostTransaction
+Exec = /usr/bin/timeout --signal=TERM --kill-after=5s 90s /usr/libexec/vicinae/vicinae-qt-guard release-if-compatible
+"""
+EXPECTED_DESKTOPS = {
+    "vicinae.desktop": """[Desktop Entry]
+Type=Application
+Name=Vicinae
+GenericName=Vicinae
+Comment=A focused launcher for your desktop
+Exec=vicinae-control toggle
+TryExec=vicinae-control
+Terminal=false
+Icon=vicinae
+Categories=Utility;Accessibility;
+NoDisplay=false
+StartupWMClass=vicinae
+StartupNotify=false
+""",
+    "vicinae-url-handler.desktop": """[Desktop Entry]
+Type=Application
+Name=Vicinae Deeplink Handler
+GenericName=Vicinae Deeplink Handler
+Comment=Open Vicinae Deeplinks through the managed service
+Exec=vicinae-control uri %u
+TryExec=vicinae-control
+Terminal=false
+Icon=vicinae
+Categories=Utility;
+NoDisplay=true
+MimeType=x-scheme-handler/vicinae;x-scheme-handler/raycast;x-scheme-handler/com.raycast;
+""",
+}
+def fail(message: str) -> None:
+    raise SystemExit(f"ERROR: {message}")
+
+
+def require_mapping(value: Any, name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        fail(f"{name} must be a JSON object")
+    return value
+
+
+def require_exact_keys(
+    mapping: dict[str, Any], expected: set[str], name: str
+) -> None:
+    if set(mapping) != expected:
+        fail(
+            f"{name} keys differ from the schema: expected {sorted(expected)}, "
+            f"got {sorted(mapping)}"
+        )
+
+
+def require_string(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value:
+        fail(f"{name} must be a non-empty string")
+    return value
+
+
+def require_digest(value: Any, name: str) -> str:
+    digest = require_string(value, name)
+    if DIGEST_PATTERN.fullmatch(digest) is None:
+        fail(f"{name} must be a lowercase SHA-256 digest")
+    return digest
+
+
+def require_string_list(value: Any, name: str, *, allow_empty: bool = False) -> list[str]:
+    if not isinstance(value, list) or (not value and not allow_empty):
+        fail(f"{name} must be a {'possibly empty ' if allow_empty else 'non-empty '}string list")
+    if not all(isinstance(item, str) and item for item in value):
+        fail(f"{name} must contain only non-empty strings")
+    if len(value) != len(set(value)):
+        fail(f"{name} must not contain duplicates")
+    return value
+
+
+def require_digest_mapping(value: Any, name: str) -> dict[str, str]:
+    mapping = require_mapping(value, name)
+    if not mapping:
+        fail(f"{name} must not be empty")
+    result: dict[str, str] = {}
+    for key, raw_digest in mapping.items():
+        if not isinstance(key, str) or not key:
+            fail(f"{name} contains an empty or non-string key")
+        result[key] = require_digest(raw_digest, f"{name}.{key}")
+    return result
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            fail(f"JSON contains a duplicate object key: {key}")
+        result[key] = value
+    return result
+
+
+def parse_json(data: str | bytes, context: str) -> Any:
+    try:
+        return json.loads(data, object_pairs_hook=unique_json_object)
+    except (UnicodeError, ValueError) as error:
+        fail(f"could not parse {context}: {error}")
+
+
+def parse_key_value_lines(data: bytes, context: str) -> dict[str, list[str]]:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        fail(f"{context} is not UTF-8: {error}")
+    result: dict[str, list[str]] = defaultdict(list)
+    for line_number, raw_line in enumerate(text.splitlines(), 1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if " = " not in line:
+            fail(f"{context}:{line_number} is not a key/value record")
+        key, value = line.split(" = ", 1)
+        if not key or not value:
+            fail(f"{context}:{line_number} contains an empty key or value")
+        result[key].append(value)
+    return dict(result)
+
+
+def parse_srcinfo(text: str) -> dict[str, list[str]]:
+    values: dict[str, list[str]] = defaultdict(list)
+    for line_number, raw_line in enumerate(text.splitlines(), 1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if " = " not in line:
+            fail(f"generated .SRCINFO:{line_number} is not a key/value record")
+        key, value = line.split(" = ", 1)
+        if not key or not value:
+            fail(f"generated .SRCINFO:{line_number} contains an empty key or value")
+        values[key].append(value)
+    return dict(values)
+
+
+def normalize_member_name(name: str) -> str:
+    while name.startswith("./"):
+        name = name[2:]
+    if name in ("", "."):
+        return "."
+    path = PurePosixPath(name)
+    normalized = path.as_posix().rstrip("/")
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or normalized in ("", ".")
+        or normalized.startswith("/")
+    ):
+        fail(f"archive contains an unsafe path: {name}")
+    if name.rstrip("/") != normalized:
+        fail(f"archive contains a non-canonical path: {name}")
+    return normalized
+
+
+def expected_parent_directories(files: set[str]) -> set[str]:
+    directories: set[str] = set()
+    for name in files:
+        parent = PurePosixPath(name).parent
+        while parent.as_posix() != ".":
+            directories.add(parent.as_posix())
+            parent = parent.parent
+    return directories
+
+
+def parse_bash_array_blocks(recipe: str, name: str) -> list[list[str]]:
+    pattern = re.compile(
+        rf"(?ms)^[ \t]*(?:local[ \t]+-a[ \t]+)?{re.escape(name)}=\(\s*\n"
+        rf"(?P<body>.*?)^[ \t]*\)\s*$"
+    )
+    blocks: list[list[str]] = []
+    for match in pattern.finditer(recipe):
+        values: list[str] = []
+        for raw_line in match.group("body").splitlines():
+            try:
+                tokens = shlex.split(raw_line, comments=True, posix=True)
+            except ValueError as error:
+                fail(f"could not parse {name} array: {error}")
+            values.extend(tokens)
+        blocks.append(values)
+    return blocks
+
+
+def extract_bash_function_before(recipe: str, name: str, next_name: str) -> str:
+    start_marker = f"{name}() {{\n"
+    end_marker = f"\n}}\n\n{next_name}() {{"
+    if recipe.count(start_marker) != 1:
+        fail(f"PKGBUILD must define exactly one {name} function")
+    start = recipe.index(start_marker) + len(start_marker)
+    end = recipe.find(end_marker, start)
+    if end < 0:
+        fail(f"PKGBUILD {name} function is not followed by {next_name}")
+    return recipe[start:end]
+
+
+def verify_srcinfo(package_dir: Path, manifest: dict[str, Any]) -> None:
+    package = require_mapping(manifest["package"], "package")
+    upstream = require_mapping(manifest["upstream"], "upstream")
+    source_archive = require_mapping(manifest["sourceArchive"], "sourceArchive")
+    glaze = require_mapping(manifest["glaze"], "glaze")
+    glaze_archive = require_mapping(glaze["archive"], "glaze.archive")
+    license_source = require_mapping(manifest["licenseSource"], "licenseSource")
+    notices = require_mapping(manifest["noticeSources"], "noticeSources")
+    packaging = require_mapping(manifest["packaging"], "packaging")
+    local_sources = require_digest_mapping(packaging["localSources"], "localSources")
+
+    try:
+        completed = subprocess.run(
+            ["makepkg", "--printsrcinfo"],
+            cwd=package_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=20,
+            check=False,
+            env={
+                key: value
+                for key, value in os.environ.items()
+                if key
+                not in {
+                    "BUILDDIR",
+                    "CARCH",
+                    "CHOST",
+                    "LOGDEST",
+                    "MAKEPKG_CONF",
+                    "PACMAN_AUTH",
+                    "PKGDEST",
+                    "PKGEXT",
+                    "SRCDEST",
+                    "SRCPKGDEST",
+                }
+            },
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        fail(f"could not generate .SRCINFO: {error}")
+    if completed.returncode != 0:
+        fail(f"makepkg --printsrcinfo failed: {completed.stderr.strip()[-1000:]}")
+    actual = parse_srcinfo(completed.stdout)
+    if any(value == "SKIP" for values in actual.values() for value in values):
+        fail("generated .SRCINFO contains a forbidden SKIP checksum")
+
+    pkgver, pkgrel = package["version"].rsplit("-", 1)
+    expected_sources = [
+        f"{source_archive['name']}::{source_archive['url']}",
+        f"{glaze_archive['name']}::{glaze_archive['url']}",
+        f"LICENSE::{license_source['url']}",
+        *[
+            f"{name}::{require_mapping(raw, f'noticeSources.{name}')['url']}"
+            for name, raw in notices.items()
+        ],
+        *local_sources,
+    ]
+    expected_sums = [
+        source_archive["sha256"],
+        glaze_archive["sha256"],
+        license_source["sha256"],
+        *[
+            require_mapping(raw, f"noticeSources.{name}")["sha256"]
+            for name, raw in notices.items()
+        ],
+        *local_sources.values(),
+    ]
+    expected = {
+        "pkgbase": ["vicinae-bin"],
+        "pkgname": ["vicinae-bin"],
+        "pkgdesc": [
+            "A focused launcher for the desktop, built from the verified upstream source"
+        ],
+        "pkgver": [pkgver],
+        "pkgrel": [pkgrel],
+        "url": [f"https://github.com/{upstream['repository']}"],
+        "arch": ["x86_64"],
+        "license": list(EXPECTED_LICENSES),
+        "checkdepends": list(EXPECTED_CHECK_DEPENDENCIES),
+        "makedepends": list(EXPECTED_MAKE_DEPENDENCIES),
+        "depends": list(EXPECTED_RUNTIME_DEPENDENCIES),
+        "provides": ["vicinae"],
+        "conflicts": ["vicinae"],
+        "options": ["!debug", "!lto"],
+        "source": expected_sources,
+        "sha256sums": expected_sums,
+    }
+    if actual != expected:
+        fail("generated .SRCINFO differs from the exact source-build contract")
+
+
+def verify_manifest_schema(manifest: dict[str, Any]) -> None:
+    require_exact_keys(
+        manifest,
+        {
+            "schemaVersion",
+            "package",
+            "upstream",
+            "sourceArchive",
+            "glaze",
+            "licenseSource",
+            "noticeSources",
+            "build",
+            "packaging",
+        },
+        "manifest",
+    )
+    if manifest.get("schemaVersion") != 3:
+        fail("unsupported provenance schemaVersion")
+
+    package = require_mapping(manifest["package"], "package")
+    require_exact_keys(package, {"name", "version", "recipeSha256"}, "package")
+    if package.get("name") != "vicinae-bin" or package.get("version") != "0.25.0-10":
+        fail("package identity differs from vicinae-bin 0.25.0-10")
+    require_digest(package.get("recipeSha256"), "package.recipeSha256")
+
+    upstream = require_mapping(manifest["upstream"], "upstream")
+    require_exact_keys(
+        upstream,
+        {"repository", "tag", "tagCommit", "sourceDateEpoch"},
+        "upstream",
+    )
+    expected_upstream = {
+        "repository": "vicinaehq/vicinae",
+        "tag": "v0.25.0",
+        "tagCommit": "7e13b3f5450e9d91b09be2fec2f05c021c8ebb95",
+        "sourceDateEpoch": 1786353281,
+    }
+    if upstream != expected_upstream:
+        fail("upstream source identity differs from the reviewed v0.25.0 commit")
+
+    source_archive = require_mapping(manifest["sourceArchive"], "sourceArchive")
+    require_exact_keys(
+        source_archive, {"name", "url", "root", "size", "sha256"}, "sourceArchive"
+    )
+    commit = upstream["tagCommit"]
+    expected_source = {
+        "name": f"vicinae-{commit}.tar.gz",
+        "url": f"https://github.com/{upstream['repository']}/archive/{commit}.tar.gz",
+        "root": f"vicinae-{commit}",
+    }
+    for key, expected in expected_source.items():
+        if source_archive.get(key) != expected:
+            fail(f"sourceArchive.{key} differs from the pinned commit archive")
+    if not isinstance(source_archive.get("size"), int) or source_archive["size"] <= 0:
+        fail("sourceArchive.size must be a positive integer")
+    require_digest(source_archive.get("sha256"), "sourceArchive.sha256")
+
+    glaze = require_mapping(manifest["glaze"], "glaze")
+    require_exact_keys(glaze, {"repository", "commit", "archive"}, "glaze")
+    if glaze.get("repository") != "stephenberry/glaze" or glaze.get("commit") != (
+        "b518eec7a22e56ffa238b072c07f47efa7cea97f"
+    ):
+        fail("Glaze identity differs from the reviewed commit")
+    glaze_archive = require_mapping(glaze["archive"], "glaze.archive")
+    require_exact_keys(
+        glaze_archive, {"name", "url", "root", "size", "sha256"}, "glaze.archive"
+    )
+    glaze_commit = glaze["commit"]
+    expected_glaze = {
+        "name": f"glaze-{glaze_commit}.tar.gz",
+        "url": f"https://github.com/{glaze['repository']}/archive/{glaze_commit}.tar.gz",
+        "root": f"glaze-{glaze_commit}",
+    }
+    for key, expected in expected_glaze.items():
+        if glaze_archive.get(key) != expected:
+            fail(f"glaze.archive.{key} differs from the pinned commit archive")
+    if not isinstance(glaze_archive.get("size"), int) or glaze_archive["size"] <= 0:
+        fail("glaze.archive.size must be a positive integer")
+    require_digest(glaze_archive.get("sha256"), "glaze.archive.sha256")
+
+    license_source = require_mapping(manifest["licenseSource"], "licenseSource")
+    require_exact_keys(
+        license_source, {"url", "sha256", "size", "destination"}, "licenseSource"
+    )
+    if license_source.get("url") != (
+        "https://raw.githubusercontent.com/vicinaehq/vicinae/v0.25.0/LICENSE"
+    ) or license_source.get("destination") != "/usr/share/licenses/vicinae-bin/LICENSE":
+        fail("licenseSource is not pinned to the reviewed tag and package path")
+    require_digest(license_source.get("sha256"), "licenseSource.sha256")
+    if not isinstance(license_source.get("size"), int) or license_source["size"] <= 0:
+        fail("licenseSource.size must be a positive integer")
+
+    notices = require_mapping(manifest["noticeSources"], "noticeSources")
+    if tuple(notices) != EXPECTED_NOTICE_NAMES:
+        fail("noticeSources names or order differ from the reviewed set")
+    for name, raw_notice in notices.items():
+        notice = require_mapping(raw_notice, f"noticeSources.{name}")
+        require_exact_keys(notice, {"url", "sha256", "size"}, f"noticeSources.{name}")
+        if not require_string(notice["url"], f"noticeSources.{name}.url").startswith(
+            "https://"
+        ):
+            fail(f"noticeSources.{name}.url must use HTTPS")
+        require_digest(notice["sha256"], f"noticeSources.{name}.sha256")
+        if not isinstance(notice.get("size"), int) or notice["size"] <= 0:
+            fail(f"noticeSources.{name}.size must be a positive integer")
+
+    build = require_mapping(manifest["build"], "build")
+    require_exact_keys(build, {"npmLocks", "cmakeFlags", "buildPackages"}, "build")
+    npm_locks = require_digest_mapping(build["npmLocks"], "build.npmLocks")
+    if npm_locks != EXPECTED_NPM_LOCKS:
+        fail("build.npmLocks differs from the pinned upstream lockfiles")
+    cmake_flags = require_string_list(build["cmakeFlags"], "build.cmakeFlags")
+    if tuple(cmake_flags) != EXPECTED_CMAKE_FLAGS:
+        fail("build.cmakeFlags differs from the reviewed source-build configuration")
+    build_packages = require_string_list(build["buildPackages"], "build.buildPackages")
+    if tuple(build_packages) != EXPECTED_BUILD_PACKAGES:
+        fail("build.buildPackages differs from the build-environment capture set")
+
+    packaging = require_mapping(manifest["packaging"], "packaging")
+    require_exact_keys(
+        packaging,
+        {
+            "installPrefix",
+            "licenses",
+            "runtimeDependencies",
+            "makeDependencies",
+            "checkDependencies",
+            "localSources",
+            "staticPolicyFiles",
+            "sourcePayloadFiles",
+            "packageArchive",
+            "elf",
+        },
+        "packaging",
+    )
+    if packaging.get("installPrefix") != "/usr":
+        fail("packaging.installPrefix must be /usr")
+    list_contracts = (
+        ("licenses", EXPECTED_LICENSES),
+        ("runtimeDependencies", EXPECTED_RUNTIME_DEPENDENCIES),
+        ("makeDependencies", EXPECTED_MAKE_DEPENDENCIES),
+        ("checkDependencies", EXPECTED_CHECK_DEPENDENCIES),
+    )
+    for name, expected in list_contracts:
+        actual = require_string_list(packaging[name], f"packaging.{name}")
+        if tuple(actual) != expected:
+            fail(f"packaging.{name} differs from the reviewed unversioned contract")
+        if name.endswith("Dependencies") and any(
+            VERSIONED_DEPENDENCY_PATTERN.search(item) for item in actual
+        ):
+            fail(f"packaging.{name} must remain unversioned")
+
+    local_sources = require_digest_mapping(packaging["localSources"], "localSources")
+    if tuple(local_sources) != EXPECTED_LOCAL_SOURCES:
+        fail("packaging.localSources differs from the exact local source set")
+    static_policy = require_digest_mapping(
+        packaging["staticPolicyFiles"], "staticPolicyFiles"
+    )
+    expected_static_policy = {
+        destination: local_sources[source]
+        for source, destination in LOCAL_INSTALL_MAP.items()
+    }
+    if static_policy != expected_static_policy:
+        fail("staticPolicyFiles does not correspond exactly to installed local sources")
+
+    source_payload = require_digest_mapping(
+        packaging["sourcePayloadFiles"], "sourcePayloadFiles"
+    )
+    expected_source_payload_paths = {
+        "usr/lib/systemd/user/vicinae.service",
+        "usr/share/icons/hicolor/512x512/apps/vicinae.png",
+        *{f"usr/share/vicinae/themes/{name}" for name in EXPECTED_THEME_ASSETS},
+    }
+    if set(source_payload) != expected_source_payload_paths:
+        fail("sourcePayloadFiles differs from the exact upstream static payload")
+
+    archive = require_mapping(packaging["packageArchive"], "packageArchive")
+    require_exact_keys(
+        archive, {"metadataFiles", "buildEnvironmentPath"}, "packageArchive"
+    )
+    if archive.get("metadataFiles") != [".BUILDINFO", ".MTREE", ".PKGINFO"]:
+        fail("packageArchive.metadataFiles differs from the Arch metadata set")
+    if archive.get("buildEnvironmentPath") != (
+        "usr/share/vicinae/build-environment.json"
+    ):
+        fail("packageArchive.buildEnvironmentPath differs from the reviewed path")
+
+    elf = require_mapping(packaging["elf"], "elf")
+    require_exact_keys(elf, {"interpreter", "identity", "needed"}, "elf")
+    if elf.get("interpreter") != "/lib64/ld-linux-x86-64.so.2":
+        fail("elf.interpreter differs from the Arch x86-64 loader")
+    identity = require_mapping(elf["identity"], "elf.identity")
+    require_exact_keys(identity, {"path", "strings"}, "elf.identity")
+    if identity.get("path") != "usr/libexec/vicinae/vicinae-server" or identity.get(
+        "strings"
+    ) != ["v0.25.0", "7e13b3f54", "arch_source"]:
+        fail("elf.identity differs from the source-build identity")
+    needed = require_mapping(elf["needed"], "elf.needed")
+    if tuple(needed) != EXPECTED_ELF_PATHS:
+        fail("elf.needed differs from the exact six-executable set")
+    for path, raw_libraries in needed.items():
+        libraries = require_string_list(raw_libraries, f"elf.needed.{path}")
+        if libraries != sorted(libraries):
+            fail(f"elf.needed.{path} must be sorted")
+
+
+def verify_recipe_and_local_files(root: Path, manifest: dict[str, Any]) -> None:
+    package_dir = root / "packages/local/vicinae-bin"
+    recipe_path = package_dir / "PKGBUILD"
+    package = require_mapping(manifest["package"], "package")
+    packaging = require_mapping(manifest["packaging"], "packaging")
+    local_sources = require_digest_mapping(packaging["localSources"], "localSources")
+
+    if not recipe_path.is_file() or recipe_path.is_symlink():
+        fail(f"PKGBUILD is missing or not a regular file: {recipe_path}")
+    if sha256(recipe_path) != package["recipeSha256"]:
+        fail("PKGBUILD does not match package.recipeSha256")
+    for relative, expected_digest in local_sources.items():
+        path = package_dir / relative
+        if not path.is_file() or path.is_symlink():
+            fail(f"local package source is missing or not regular: {path}")
+        if sha256(path) != expected_digest:
+            fail(f"local package source differs from its provenance hash: {relative}")
+    exact_contents = {
+        "20-enoshima-qt-compatibility.conf": EXPECTED_COMPATIBILITY_DROPIN,
+        "40-vicinae-qt-pre.hook": EXPECTED_PRE_HOOK,
+        "40-vicinae-qt-post.hook": EXPECTED_POST_HOOK,
+        "41-vicinae-package-pre.hook": EXPECTED_PACKAGE_PRE_HOOK,
+        "vicinae.hook": EXPECTED_PACKAGE_HOOK,
+        **EXPECTED_DESKTOPS,
+    }
+    for relative, expected in exact_contents.items():
+        if (package_dir / relative).read_text(encoding="utf-8") != expected:
+            fail(f"local policy file differs from its bounded reviewed action: {relative}")
+
+    patch_text = (package_dir / "enoshima-install-paths.patch").read_text(
+        encoding="utf-8"
+    )
+    for fragment in (
+        "set(INSTALL_SHARE ${CMAKE_INSTALL_DATADIR})",
+        "set(INSTALL_MODULES ${CMAKE_INSTALL_LIBDIR}/modules-load.d)",
+        "set(SYSTEMD_USER_DIR ${CMAKE_INSTALL_LIBDIR}/systemd/user)",
+        "-\tmake_directory(${VICINAE_INSTALL_SHARE})",
+        "-\tfile(REMOVE_RECURSE ${VICINAE_THEME_DIR})",
+    ):
+        if fragment not in patch_text:
+            fail(f"install-path patch is missing its safety contract: {fragment}")
+
+    clipboard_patch = (package_dir / "preserve-clipboard-mime-offers.patch").read_text(
+        encoding="utf-8"
+    )
+    changed_paths = tuple(
+        match.group(1)
+        for match in re.finditer(r"(?m)^diff --git a/(\S+) b/\S+$", clipboard_patch)
+    )
+    if changed_paths != EXPECTED_CLIPBOARD_PATCH_PATHS:
+        fail("clipboard MIME patch changes files outside its reviewed boundary")
+    for fragment in (
+        "offer.mimeType.section(';', 0, 0) == QStringLiteral(\"text/plain\")",
+        "offer.mimeType != Clipboard::URI_LIST && isPlainTextCompatible(offer.mimeType)",
+        "mimeData->setText(QString::fromUtf8(textOffer->data))",
+        "mimeData->setData(offer.mimeType, offer.data)",
+        "vicinae-clipboard-mime-tests",
+        "rich forward",
+        "rich reverse",
+        "text/plain;charset=utf-8",
+        "UTF8_STRING",
+    ):
+        if fragment not in clipboard_patch:
+            fail(f"clipboard MIME patch is missing its round-trip contract: {fragment}")
+
+    helper_fragments = {
+        "vicinae-build-compatible": (
+            "manifest=/usr/share/vicinae/build-environment.json",
+            "(($# == 0)) || exit 255",
+            "/usr/bin/qmake6 -query QT_VERSION",
+            "/usr/bin/readelf -n",
+            "/usr/bin/sha256sum",
+            ".qtLibraries | to_entries[]",
+        ),
+        "vicinae-qt-guard": (
+            "filesystem_root=/",
+            "run_root=/run",
+            "runtime_mask=$user_unit_runtime/vicinae.service",
+            "mask_ownership_record=native-runtime-mask-owned-v1",
+            "compatibility_helper=/usr/libexec/vicinae/vicinae-build-compatible",
+            '"$systemctl_command" --global --runtime mask vicinae.service',
+            "manager_systemctl \"$user\" 20 stop vicinae.service",
+            "[[ $load_state == masked ]]",
+            "no_direct_vicinae_processes",
+            '"$legacy_vicinae_root"/*',
+            '"$temporary_root"/.mount_vicinae*/*',
+            "safe_directory \"$run_root\"",
+            "release-if-compatible",
+        ),
+    }
+    for relative, fragments in helper_fragments.items():
+        text = (package_dir / relative).read_text(encoding="utf-8")
+        for fragment in fragments:
+            if fragment not in text:
+                fail(f"{relative} is missing its fail-closed guard: {fragment}")
+
+    guard_text = (package_dir / "vicinae-qt-guard").read_text(encoding="utf-8")
+    for forbidden in (
+        "/var/lib/enoshima/vicinae",
+        "resume-users",
+        "initial-install-intent",
+        "enable-after-policy",
+        " start vicinae.service",
+        " enable vicinae.service",
+        "vicinae-qt-transition",
+        "10-enoshima-qt-transition.conf",
+        "ConditionPathExists",
+    ):
+        if forbidden in guard_text:
+            fail(f"vicinae-qt-guard contains forbidden lifecycle behavior: {forbidden}")
+
+    recipe = recipe_path.read_text(encoding="utf-8")
+    cmake_blocks = parse_bash_array_blocks(recipe, "cmake_flags")
+    if len(cmake_blocks) != 2:
+        fail("PKGBUILD must define the reviewed CMake flag set twice")
+    normalized_blocks: list[list[str]] = []
+    dynamic_glaze = "-DFETCHCONTENT_SOURCE_DIR_GLAZE=$srcdir/$_glaze_root"
+    for block in cmake_blocks:
+        normalized_blocks.append(
+            [
+                EXPECTED_CMAKE_FLAGS[17] if value == dynamic_glaze else value
+                for value in block
+            ]
+        )
+    expected_build_flags = (
+        *EXPECTED_CMAKE_FLAGS[:17],
+        *EXPECTED_CMAKE_FLAGS[18:],
+    )
+    if tuple(normalized_blocks[0]) != expected_build_flags or tuple(
+        normalized_blocks[1]
+    ) != EXPECTED_CMAKE_FLAGS:
+        fail("PKGBUILD CMake flags differ from the exact offline build contract")
+    raw_cmake_flags = re.findall(
+        r"(?m)(?<!\S)(-D[A-Z0-9_]+(?::[A-Z]+)?=(?:'[^']*'|\"[^\"]*\"|[^\s\\]+))",
+        recipe,
+    )
+    all_cmake_flags: list[str] = []
+    for raw_flag in raw_cmake_flags:
+        parsed = shlex.split(raw_flag, posix=True)
+        if len(parsed) != 1:
+            fail(f"PKGBUILD contains an unparseable CMake definition: {raw_flag}")
+        value = parsed[0]
+        if value == dynamic_glaze:
+            value = EXPECTED_CMAKE_FLAGS[17]
+        all_cmake_flags.append(value)
+    if Counter(all_cmake_flags) != Counter(
+        {flag: 2 for flag in EXPECTED_CMAKE_FLAGS}
+    ):
+        fail("PKGBUILD invokes CMake with an extra or missing definition")
+
+    build_package_blocks = parse_bash_array_blocks(recipe, "build_packages")
+    if len(build_package_blocks) != 2 or any(
+        tuple(block) != EXPECTED_BUILD_PACKAGES for block in build_package_blocks
+    ):
+        fail("PKGBUILD build-environment package capture differs from the contract")
+    npm_workspace_blocks = parse_bash_array_blocks(recipe, "_npm_cache_workspaces")
+    if len(npm_workspace_blocks) != 1 or npm_workspace_blocks[0] != [
+        "src/typescript/api",
+        "src/typescript/extension-manager",
+    ]:
+        fail("PKGBUILD npm cache workspaces differ from the contract")
+    npm_environment_body = extract_bash_function_before(
+        recipe, "configure_npm_environment", "prepare"
+    )
+    if npm_environment_body != (
+        '  export npm_config_cache="$srcdir/npm-cache"\n'
+        "  export npm_config_audit=false\n"
+        "  export npm_config_fund=false\n"
+        "  export npm_config_ignore_scripts=true\n"
+        "  export npm_config_update_notifier=false"
+    ):
+        fail("PKGBUILD npm environment differs from the reviewed cache contract")
+    prepare_body = extract_bash_function_before(recipe, "prepare", "build")
+    build_body = extract_bash_function_before(recipe, "build", "check")
+    prepare_seed = '    npm --prefix "$workspace" ci --ignore-scripts'
+    prepare_cleanup = '    rm -rf -- "$workspace/node_modules"'
+    prepare_sequence = (
+        "  configure_npm_environment",
+        "  local workspace",
+        '  for workspace in "${_npm_cache_workspaces[@]}"; do',
+        prepare_seed,
+        "  done",
+        "  npm cache verify",
+        '  for workspace in "${_npm_cache_workspaces[@]}"; do',
+        prepare_cleanup,
+        "  done",
+    )
+    cursor = -1
+    for fragment in prepare_sequence:
+        cursor = prepare_body.find(fragment, cursor + 1)
+        if cursor < 0:
+            fail("PKGBUILD prepare phase does not seed and clear the reviewed npm cache")
+    if (
+        prepare_body.count(prepare_seed) != 1
+        or prepare_body.count(prepare_cleanup) != 1
+        or prepare_body.count("  npm cache verify") != 1
+        or prepare_body.count("  configure_npm_environment") != 1
+        or "npm_config_offline" in prepare_body
+    ):
+        fail("PKGBUILD prepare phase has an unsafe npm cache policy")
+    build_npm_sequence = (
+        "  configure_npm_environment\n"
+        "  export npm_config_offline=true\n"
+    )
+    if (
+        build_npm_sequence not in build_body
+        or build_body.count("  configure_npm_environment") != 1
+        or build_body.count("  export npm_config_offline=true") != 1
+        or recipe.count("npm_config_offline") != 1
+        or recipe.count("configure_npm_environment") != 3
+    ):
+        fail("PKGBUILD build phase must consume npm dependencies offline")
+    required_recipe_fragments = (
+        "patch --forward --strip=1",
+        "sha256sum --check --status",
+        "https://registry.npmjs.org/",
+        'npm --prefix "$workspace" ci --ignore-scripts',
+        "npm cache verify",
+        'rm -rf -- "$workspace/node_modules"',
+        'export npm_config_cache="$srcdir/npm-cache"',
+        "export npm_config_offline=true",
+        "-DFETCHCONTENT_FULLY_DISCONNECTED=ON",
+        '-DFETCHCONTENT_SOURCE_DIR_GLAZE="$srcdir/$_glaze_root"',
+        'cmake --build "$srcdir/build"',
+        'cmake --build "$srcdir/build" --target vicinae-clipboard-mime-tests',
+        '"$srcdir/build/bin/vicinae-clipboard-mime-tests"',
+        'DESTDIR="$pkgdir" cmake --install "$srcdir/build"',
+        "mapfile -t upstream_payload",
+        'find "$pkgdir" -mindepth 1 ! -type d ! -type f',
+        'find "$pkgdir" -type f -perm /6000',
+        'getcap -r "$pkgdir"',
+        "build-environment.json",
+        "usesQtGuiPrivate: true",
+        "qmlCachegen: false",
+        *EXPECTED_NPM_LOCKS.values(),
+    )
+    for fragment in required_recipe_fragments:
+        if fragment not in recipe:
+            fail(f"PKGBUILD is missing a source provenance guard: {fragment}")
+    if re.search(r"(?m)^\s*install=", recipe) or any(package_dir.glob("*.install")):
+        fail("Vicinae packaging must not use a package install script")
+    if re.search(r"(['\"])SKIP\1", recipe):
+        fail("PKGBUILD must hash every local and remote source; SKIP is forbidden")
+    if "binary_release" in recipe or "releases/download" in recipe:
+        fail("PKGBUILD must build Vicinae from the pinned source commit")
+    verify_srcinfo(package_dir, manifest)
+
+
+def verify_local(root: Path) -> dict[str, Any]:
+    manifest_path = root / "packages/local/vicinae-bin/provenance.json"
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        fail(f"provenance manifest is missing or not regular: {manifest_path}")
+    try:
+        manifest = require_mapping(
+            parse_json(manifest_path.read_text(encoding="utf-8"), str(manifest_path)),
+            "manifest",
+        )
+    except (OSError, UnicodeError, ValueError) as error:
+        fail(f"could not parse {manifest_path}: {error}")
+    verify_manifest_schema(manifest)
+    verify_recipe_and_local_files(root, manifest)
+    return manifest
+
+
+def fetch(url: str) -> bytes:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "enoshima-vicinae-provenance-check",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    token = os.environ.get("GITHUB_TOKEN")
+    if token and url.startswith("https://api.github.com/"):
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            return response.read()
+    except OSError as error:
+        fail(f"could not fetch {url}: {error}")
+
+
+def fetch_json(url: str) -> dict[str, Any]:
+    try:
+        return require_mapping(parse_json(fetch(url), url), url)
+    except (UnicodeError, ValueError) as error:
+        fail(f"could not parse JSON from {url}: {error}")
+
+
+def verify_download(data: bytes, contract: dict[str, Any], name: str) -> None:
+    if len(data) != contract["size"]:
+        fail(f"downloaded {name} size differs from the pin")
+    if sha256_bytes(data) != contract["sha256"]:
+        fail(f"downloaded {name} digest differs from the pin")
+
+
+def source_member_bytes(data: bytes, root: str, paths: set[str], name: str) -> dict[str, bytes]:
+    try:
+        archive = tarfile.open(fileobj=io.BytesIO(data), mode="r:gz")
+    except (OSError, tarfile.TarError) as error:
+        fail(f"could not parse pinned {name} archive: {error}")
+    result: dict[str, bytes] = {}
+    with archive:
+        seen: set[str] = set()
+        prefix = f"{root}/"
+        for member in archive.getmembers():
+            normalized = normalize_member_name(member.name)
+            if normalized in seen:
+                fail(f"{name} archive contains a duplicate path: {normalized}")
+            seen.add(normalized)
+            if normalized != root and not normalized.startswith(prefix):
+                fail(f"{name} archive escaped its pinned root: {normalized}")
+            if member.issym() or member.islnk():
+                target = PurePosixPath(member.linkname)
+                if target.is_absolute() or ".." in target.parts:
+                    fail(f"{name} archive contains an unsafe link: {normalized}")
+            elif not (member.isfile() or member.isdir()):
+                fail(f"{name} archive contains a special file: {normalized}")
+            if member.isfile() and normalized.startswith(prefix):
+                relative = normalized[len(prefix) :]
+                if relative in paths:
+                    extracted = archive.extractfile(member)
+                    if extracted is None:
+                        fail(f"could not read {name} archive member: {relative}")
+                    result[relative] = extracted.read()
+    if set(result) != paths:
+        fail(f"{name} archive is missing pinned members: {sorted(paths - set(result))}")
+    return result
+
+
+def verify_online(manifest: dict[str, Any]) -> None:
+    upstream = require_mapping(manifest["upstream"], "upstream")
+    glaze = require_mapping(manifest["glaze"], "glaze")
+    source_archive = require_mapping(manifest["sourceArchive"], "sourceArchive")
+    glaze_archive = require_mapping(glaze["archive"], "glaze.archive")
+    license_source = require_mapping(manifest["licenseSource"], "licenseSource")
+    notices = require_mapping(manifest["noticeSources"], "noticeSources")
+    build = require_mapping(manifest["build"], "build")
+    packaging = require_mapping(manifest["packaging"], "packaging")
+
+    repository = upstream["repository"]
+    release = fetch_json(
+        f"https://api.github.com/repos/{repository}/releases/tags/{upstream['tag']}"
+    )
+    if (
+        release.get("tag_name") != upstream["tag"]
+        or release.get("draft") is not False
+        or release.get("prerelease") is not False
+    ):
+        fail("the pinned Vicinae tag is not a stable GitHub release")
+    tag = fetch_json(
+        f"https://api.github.com/repos/{repository}/git/ref/tags/{upstream['tag']}"
+    )
+    tag_object = require_mapping(tag.get("object"), "tag.object")
+    while tag_object.get("type") == "tag":
+        annotated = fetch_json(
+            f"https://api.github.com/repos/{repository}/git/tags/{tag_object.get('sha')}"
+        )
+        tag_object = require_mapping(annotated.get("object"), "annotated tag.object")
+    if tag_object != {
+        "sha": upstream["tagCommit"],
+        "type": "commit",
+        "url": (
+            f"https://api.github.com/repos/{repository}/git/commits/{upstream['tagCommit']}"
+        ),
+    }:
+        fail("the pinned Vicinae tag no longer resolves to the reviewed commit")
+    commit = fetch_json(
+        f"https://api.github.com/repos/{repository}/git/commits/{upstream['tagCommit']}"
+    )
+    if commit.get("sha") != upstream["tagCommit"]:
+        fail("GitHub did not return the pinned Vicinae commit")
+    committer = require_mapping(commit.get("committer"), "commit.committer")
+    if committer.get("date") != "2026-08-10T09:14:41Z":
+        fail("upstream sourceDateEpoch no longer corresponds to the pinned commit")
+
+    glaze_commit = fetch_json(
+        f"https://api.github.com/repos/{glaze['repository']}/git/commits/{glaze['commit']}"
+    )
+    if glaze_commit.get("sha") != glaze["commit"]:
+        fail("GitHub did not return the pinned Glaze commit")
+
+    pins: dict[str, tuple[str, dict[str, Any]]] = {
+        "source": (source_archive["url"], source_archive),
+        "Glaze": (glaze_archive["url"], glaze_archive),
+        "license": (license_source["url"], license_source),
+    }
+    for name, raw_notice in notices.items():
+        pins[f"notice:{name}"] = (
+            require_mapping(raw_notice, f"noticeSources.{name}")["url"],
+            raw_notice,
+        )
+    downloaded: dict[str, bytes] = {}
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {
+            executor.submit(fetch, url): (name, contract)
+            for name, (url, contract) in pins.items()
+        }
+        for future in as_completed(futures):
+            name, contract = futures[future]
+            data = future.result()
+            verify_download(data, require_mapping(contract, name), name)
+            downloaded[name] = data
+
+    source_paths = set(require_mapping(build["npmLocks"], "build.npmLocks"))
+    source_paths.update({"LICENSE", "src/server/LICENSE"})
+    for package_path in require_mapping(
+        packaging["sourcePayloadFiles"], "sourcePayloadFiles"
+    ):
+        if package_path == "usr/lib/systemd/user/vicinae.service":
+            source_paths.add("extra/vicinae.service")
+        elif package_path == "usr/share/icons/hicolor/512x512/apps/vicinae.png":
+            source_paths.add("extra/vicinae.png")
+        else:
+            prefix = "usr/share/vicinae/themes/"
+            if not package_path.startswith(prefix):
+                fail(f"cannot map source payload path: {package_path}")
+            source_paths.add(f"extra/themes/{package_path[len(prefix):]}")
+    source_members = source_member_bytes(
+        downloaded["source"], source_archive["root"], source_paths, "Vicinae source"
+    )
+    for path, expected_digest in build["npmLocks"].items():
+        if sha256_bytes(source_members[path]) != expected_digest:
+            fail(f"upstream npm lock differs from the pin: {path}")
+    if sha256_bytes(source_members["LICENSE"]) != license_source["sha256"]:
+        fail("source archive LICENSE differs from the separately pinned license")
+    if sha256_bytes(source_members["src/server/LICENSE"]) != notices[
+        "vicinae-server-LICENSE"
+    ]["sha256"]:
+        fail("source archive server notice differs from its notice pin")
+    for package_path, expected_digest in packaging["sourcePayloadFiles"].items():
+        if package_path == "usr/lib/systemd/user/vicinae.service":
+            source_path = "extra/vicinae.service"
+        elif package_path == "usr/share/icons/hicolor/512x512/apps/vicinae.png":
+            source_path = "extra/vicinae.png"
+        else:
+            source_path = "extra/themes/" + package_path.removeprefix(
+                "usr/share/vicinae/themes/"
+            )
+        if sha256_bytes(source_members[source_path]) != expected_digest:
+            fail(f"upstream static payload differs from the pin: {source_path}")
+
+    glaze_members = source_member_bytes(
+        downloaded["Glaze"], glaze_archive["root"], {"LICENSE"}, "Glaze"
+    )
+    if sha256_bytes(glaze_members["LICENSE"]) != notices["glaze-LICENSE"]["sha256"]:
+        fail("Glaze archive LICENSE differs from its notice pin")
+
+
+def readelf(path: Path, *arguments: str) -> str:
+    try:
+        completed = subprocess.run(
+            ["readelf", *arguments, str(path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env={**os.environ, "LC_ALL": "C"},
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        fail(f"could not inspect {path}: {error}")
+    if completed.returncode != 0:
+        fail(f"readelf failed for {path}: {completed.stderr.strip()[-1000:]}")
+    return completed.stdout
+
+
+def parse_mtree(
+    data: bytes,
+    expected_files: dict[str, bytes],
+    expected_directories: set[str],
+) -> None:
+    try:
+        text = gzip.decompress(data).decode("utf-8")
+    except (OSError, UnicodeError) as error:
+        fail(f".MTREE is not valid gzip-compressed UTF-8: {error}")
+    defaults: dict[str, str] = {}
+    entries: dict[str, dict[str, str]] = {}
+    for line_number, raw_line in enumerate(text.splitlines(), 1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split()
+        if fields[0] == "/set":
+            for field in fields[1:]:
+                if "=" not in field:
+                    fail(f".MTREE:{line_number} contains an invalid default")
+                key, value = field.split("=", 1)
+                defaults[key] = value
+            continue
+        if fields[0] == "/unset":
+            for key in fields[1:]:
+                defaults.pop(key, None)
+            continue
+        name = normalize_member_name(fields[0])
+        if name == "." or "\\" in name or name in entries:
+            fail(f".MTREE contains an unsafe or duplicate path: {fields[0]}")
+        attributes = dict(defaults)
+        for field in fields[1:]:
+            if "=" not in field:
+                fail(f".MTREE:{line_number} contains an invalid attribute")
+            key, value = field.split("=", 1)
+            attributes[key] = value
+        entries[name] = attributes
+
+    expected_names = set(expected_files) | expected_directories
+    if set(entries) != expected_names:
+        fail(".MTREE path set differs from the package payload and metadata")
+    for name in expected_directories:
+        attributes = entries[name]
+        if (
+            attributes.get("type") != "dir"
+            or attributes.get("uid") != "0"
+            or attributes.get("gid") != "0"
+            or attributes.get("mode") != "755"
+        ):
+            fail(f".MTREE directory metadata differs from the archive: {name}")
+    for name, contents in expected_files.items():
+        attributes = entries[name]
+        expected_mode = "755" if name in EXPECTED_EXECUTABLE_POLICY_PATHS else "644"
+        if (
+            attributes.get("type") != "file"
+            or attributes.get("uid") != "0"
+            or attributes.get("gid") != "0"
+            or attributes.get("mode") != expected_mode
+            or attributes.get("size") != str(len(contents))
+            or attributes.get("sha256digest") != sha256_bytes(contents)
+        ):
+            fail(f".MTREE file metadata differs from the archive: {name}")
+
+
+def inspect_elfs(
+    contents: dict[str, bytes], elf_contract: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    needed_contract = require_mapping(elf_contract["needed"], "elf.needed")
+    interpreter_contract = elf_contract["interpreter"]
+    observations: dict[str, dict[str, Any]] = {}
+    build_ids: set[str] = set()
+    with tempfile.TemporaryDirectory(prefix="enoshima-vicinae-elf-") as temporary:
+        temporary_root = Path(temporary)
+        for index, relative in enumerate(EXPECTED_ELF_PATHS):
+            data = contents[relative]
+            if not data.startswith(b"\x7fELF"):
+                fail(f"required executable is not ELF: {relative}")
+            path = temporary_root / f"elf-{index}"
+            path.write_bytes(data)
+            path.chmod(0o700)
+            header = readelf(path, "-h")
+            if "Class:                             ELF64" not in header or (
+                "Machine:                           Advanced Micro Devices X86-64"
+                not in header
+            ):
+                fail(f"ELF architecture differs from x86-64: {relative}")
+            notes = readelf(path, "-n")
+            matches = BUILD_ID_PATTERN.findall(notes)
+            if len(matches) != 1 or re.fullmatch(r"[0-9a-f]{16,}", matches[0]) is None:
+                fail(f"ELF must contain exactly one valid GNU build ID: {relative}")
+            build_id = matches[0]
+            if build_id in build_ids:
+                fail(f"ELF build ID is not unique: {relative}")
+            build_ids.add(build_id)
+            program_headers = readelf(path, "-l")
+            interpreters = INTERPRETER_PATTERN.findall(program_headers)
+            if interpreters != [interpreter_contract]:
+                fail(f"ELF interpreter differs from the contract: {relative}")
+            dynamic = readelf(path, "-d")
+            if re.search(r"\((?:RPATH|RUNPATH)\)", dynamic):
+                fail(f"ELF contains an RPATH or RUNPATH: {relative}")
+            needed = sorted(set(NEEDED_PATTERN.findall(dynamic)))
+            if needed != needed_contract[relative]:
+                fail(
+                    f"ELF DT_NEEDED differs for {relative}: expected "
+                    f"{needed_contract[relative]}, got {needed}"
+                )
+            dynamic_symbols = readelf(path, "--wide", "--dyn-syms")
+            if "@Qt_6_PRIVATE_API" in dynamic_symbols:
+                fail(f"ELF imports the forbidden Qt private runtime ABI: {relative}")
+            observations[relative] = {
+                "buildId": build_id,
+                "interpreter": interpreters[0],
+                "needed": needed,
+            }
+    identity = require_mapping(elf_contract["identity"], "elf.identity")
+    identity_contents = contents[identity["path"]]
+    for value in identity["strings"]:
+        if value.encode("utf-8") not in identity_contents:
+            fail(f"ELF source-build identity is missing: {value}")
+    return observations
+
+
+def verify_build_environment(
+    data: bytes,
+    manifest: dict[str, Any],
+    elf_observations: dict[str, dict[str, Any]],
+    buildinfo: dict[str, list[str]],
+) -> None:
+    try:
+        environment = require_mapping(
+            parse_json(data, "build-environment.json"), "build environment"
+        )
+    except (UnicodeError, ValueError) as error:
+        fail(f"could not parse build-environment.json: {error}")
+    require_exact_keys(
+        environment,
+        {
+            "schemaVersion",
+            "packageVersion",
+            "source",
+            "glaze",
+            "npmLocks",
+            "cmakeFlags",
+            "buildPackages",
+            "qtVersion",
+            "qtLibraries",
+            "qtBuildSnapshotSha256",
+            "executables",
+            "usesQtGuiPrivate",
+            "qmlCachegen",
+        },
+        "build environment",
+    )
+    if environment.get("schemaVersion") != 2:
+        fail("build-environment.json schemaVersion must be 2")
+    package = require_mapping(manifest["package"], "package")
+    upstream = require_mapping(manifest["upstream"], "upstream")
+    source_archive = require_mapping(manifest["sourceArchive"], "sourceArchive")
+    glaze = require_mapping(manifest["glaze"], "glaze")
+    glaze_archive = require_mapping(glaze["archive"], "glaze.archive")
+    build = require_mapping(manifest["build"], "build")
+    if environment.get("packageVersion") != package["version"]:
+        fail("build environment packageVersion differs from .PKGINFO")
+    if environment.get("source") != {
+        "commit": upstream["tagCommit"],
+        "sha256": source_archive["sha256"],
+        "sourceDateEpoch": upstream["sourceDateEpoch"],
+    }:
+        fail("build environment source inputs differ from provenance")
+    if environment.get("glaze") != {
+        "commit": glaze["commit"],
+        "sha256": glaze_archive["sha256"],
+    }:
+        fail("build environment Glaze input differs from provenance")
+    if environment.get("npmLocks") != build["npmLocks"]:
+        fail("build environment npm lock inputs differ from provenance")
+    if environment.get("cmakeFlags") != build["cmakeFlags"]:
+        fail("build environment CMake flags differ from provenance")
+    if environment.get("usesQtGuiPrivate") is not True or environment.get(
+        "qmlCachegen"
+    ) is not False:
+        fail("build environment Qt private-header/cachegen claims differ")
+    require_digest(
+        environment.get("qtBuildSnapshotSha256"), "qtBuildSnapshotSha256"
+    )
+
+    build_packages = require_mapping(environment["buildPackages"], "buildPackages")
+    if tuple(build_packages) != EXPECTED_BUILD_PACKAGES or not all(
+        isinstance(value, str) and value for value in build_packages.values()
+    ):
+        fail("build environment package versions differ from the capture contract")
+    installed = buildinfo.get("installed", [])
+    for name, version in build_packages.items():
+        prefix = f"{name}-{version}-"
+        if sum(item.startswith(prefix) for item in installed) != 1:
+            fail(f"build environment package does not correspond to .BUILDINFO: {name}")
+
+    qt_version = require_string(environment.get("qtVersion"), "qtVersion")
+    if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", qt_version) is None:
+        fail("build environment qtVersion is not a complete Qt version")
+    qt_libraries = require_mapping(environment["qtLibraries"], "qtLibraries")
+    qt_needed = {
+        f"/usr/lib/{library}"
+        for observation in elf_observations.values()
+        for library in observation["needed"]
+        if library.startswith("libQt6") and library.endswith(".so.6")
+    }
+    if set(qt_libraries) != qt_needed or not qt_libraries:
+        fail("build environment Qt library set differs from ELF DT_NEEDED")
+    for library, raw_contract in qt_libraries.items():
+        contract = require_mapping(raw_contract, f"qtLibraries.{library}")
+        require_exact_keys(contract, {"target", "buildId", "sha256"}, library)
+        soname = PurePosixPath(library).name
+        target = require_string(contract["target"], f"{library}.target")
+        if (
+            not library.startswith("/usr/lib/libQt6")
+            or not soname.endswith(".so.6")
+            or "/" in target
+            or not target.startswith(f"{soname}.")
+        ):
+            fail(f"build environment Qt library path is unsafe: {library}")
+        require_digest(contract["sha256"], f"{library}.sha256")
+        build_id = require_string(contract["buildId"], f"{library}.buildId")
+        if re.fullmatch(r"[0-9a-f]{16,}", build_id) is None:
+            fail(f"build environment Qt library build ID is invalid: {library}")
+
+    executables = require_mapping(environment["executables"], "executables")
+    if set(executables) != set(EXPECTED_ELF_PATHS):
+        fail("build environment executable set differs from the package")
+    for path, observation in elf_observations.items():
+        executable = require_mapping(executables[path], f"executables.{path}")
+        require_exact_keys(
+            executable, {"buildId", "interpreter", "needed"}, f"executables.{path}"
+        )
+        if executable != observation:
+            fail(f"build environment executable metadata differs from ELF: {path}")
+
+
+def inspect_package_archive(path: Path, manifest: dict[str, Any]) -> None:
+    if not path.is_file() or path.is_symlink():
+        fail(f"package archive is not a regular file: {path}")
+    package = require_mapping(manifest["package"], "package")
+    upstream = require_mapping(manifest["upstream"], "upstream")
+    license_source = require_mapping(manifest["licenseSource"], "licenseSource")
+    notices = require_mapping(manifest["noticeSources"], "noticeSources")
+    packaging = require_mapping(manifest["packaging"], "packaging")
+    archive_contract = require_mapping(packaging["packageArchive"], "packageArchive")
+    static_policy = require_digest_mapping(
+        packaging["staticPolicyFiles"], "staticPolicyFiles"
+    )
+    source_payload = require_digest_mapping(
+        packaging["sourcePayloadFiles"], "sourcePayloadFiles"
+    )
+    elf_contract = require_mapping(packaging["elf"], "elf")
+    metadata_names = set(archive_contract["metadataFiles"])
+    build_environment_path = archive_contract["buildEnvironmentPath"]
+    expected_files = {
+        *static_policy,
+        *source_payload,
+        *EXPECTED_ELF_PATHS,
+        build_environment_path,
+        license_source["destination"].removeprefix("/"),
+        *{
+            f"usr/share/licenses/vicinae-bin/bundled/{name}" for name in notices
+        },
+    }
+    expected_directories = expected_parent_directories(expected_files)
+    expected_members = expected_files | expected_directories | metadata_names
+
+    try:
+        archive = tarfile.open(path, mode="r:*")
+    except (OSError, tarfile.TarError) as error:
+        fail(f"could not parse package archive: {error}")
+    contents: dict[str, bytes] = {}
+    metadata: dict[str, bytes] = {}
+    directories: set[str] = set()
+    with archive:
+        if archive.pax_headers:
+            fail("package archive contains forbidden global PAX metadata")
+        seen: set[str] = set()
+        total_size = 0
+        for member in archive.getmembers():
+            normalized = normalize_member_name(member.name)
+            if normalized == "." or normalized in seen:
+                fail(f"package archive contains a root or duplicate path: {normalized}")
+            seen.add(normalized)
+            if normalized not in expected_members:
+                fail(f"package archive contains an unexpected path: {normalized}")
+            if (
+                member.uid != 0
+                or member.gid != 0
+                or member.uname != "root"
+                or member.gname != "root"
+            ):
+                fail(f"package archive member is not root-owned: {normalized}")
+            if member.pax_headers or getattr(member, "sparse", None):
+                fail(f"package archive contains forbidden PAX/sparse metadata: {normalized}")
+            if member.isdir():
+                if normalized not in expected_directories or member.mode != 0o755:
+                    fail(f"package archive directory type or mode differs: {normalized}")
+                directories.add(normalized)
+                continue
+            if not member.isfile():
+                fail(f"package archive contains a link or special file: {normalized}")
+            expected_mode = (
+                0o755 if normalized in EXPECTED_EXECUTABLE_POLICY_PATHS else 0o644
+            )
+            if member.mode != expected_mode or member.mode & 0o6000:
+                fail(
+                    f"package archive file mode differs for {normalized}: "
+                    f"expected {expected_mode:o}, got {member.mode:o}"
+                )
+            if member.size > 512 * 1024 * 1024:
+                fail(f"package archive member is unexpectedly large: {normalized}")
+            total_size += member.size
+            if total_size > 2 * 1024 * 1024 * 1024:
+                fail("package archive uncompressed size exceeds the safety bound")
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                fail(f"could not read package archive member: {normalized}")
+            data = extracted.read()
+            if len(data) != member.size:
+                fail(f"package archive member is truncated: {normalized}")
+            if normalized in metadata_names:
+                if member.size > 1024 * 1024:
+                    fail(f"package metadata is unexpectedly large: {normalized}")
+                metadata[normalized] = data
+            else:
+                contents[normalized] = data
+    if (
+        seen != expected_members
+        or set(contents) != expected_files
+        or set(metadata) != metadata_names
+    ):
+        fail("package archive does not match the exact file and metadata allowlist")
+    if directories != expected_directories:
+        fail("package archive directory set differs from the payload parent closure")
+
+    for name, expected_digest in {**static_policy, **source_payload}.items():
+        if sha256_bytes(contents[name]) != expected_digest:
+            fail(f"package archive static payload differs from its hash: {name}")
+    license_path = license_source["destination"].removeprefix("/")
+    if sha256_bytes(contents[license_path]) != license_source["sha256"]:
+        fail("package archive license differs from the pinned source")
+    for name, raw_notice in notices.items():
+        path_name = f"usr/share/licenses/vicinae-bin/bundled/{name}"
+        if sha256_bytes(contents[path_name]) != raw_notice["sha256"]:
+            fail(f"package archive notice differs from the pinned source: {name}")
+
+    pkginfo = parse_key_value_lines(metadata[".PKGINFO"], ".PKGINFO")
+    singleton_contract = {
+        "pkgname": "vicinae-bin",
+        "pkgbase": "vicinae-bin",
+        "xdata": "pkgtype=pkg",
+        "pkgver": package["version"],
+        "pkgdesc": "A focused launcher for the desktop, built from the verified upstream source",
+        "url": f"https://github.com/{upstream['repository']}",
+        "arch": "x86_64",
+    }
+    for key, expected in singleton_contract.items():
+        if pkginfo.get(key) != [expected]:
+            fail(f".PKGINFO {key} differs from the reviewed metadata")
+    if pkginfo.get("license") != list(EXPECTED_LICENSES):
+        fail(".PKGINFO license list differs from provenance")
+    if pkginfo.get("depend") != list(EXPECTED_RUNTIME_DEPENDENCIES):
+        fail(".PKGINFO runtime dependencies differ from provenance")
+    if pkginfo.get("makedepend") != list(EXPECTED_MAKE_DEPENDENCIES) or pkginfo.get(
+        "checkdepend"
+    ) != list(EXPECTED_CHECK_DEPENDENCIES):
+        fail(".PKGINFO build dependencies differ from provenance")
+    if pkginfo.get("conflict") != ["vicinae"] or pkginfo.get("provides") != [
+        "vicinae"
+    ]:
+        fail(".PKGINFO virtual package metadata differs")
+    payload_size = sum(len(data) for data in contents.values())
+    if pkginfo.get("size") != [str(payload_size)]:
+        fail(".PKGINFO installed size differs from the exact payload")
+    for key in ("builddate", "packager"):
+        if len(pkginfo.get(key, [])) != 1 or not pkginfo[key][0]:
+            fail(f".PKGINFO {key} is missing")
+    allowed_pkginfo = {
+        *singleton_contract,
+        "license",
+        "conflict",
+        "provides",
+        "depend",
+        "makedepend",
+        "checkdepend",
+        "size",
+        "builddate",
+        "packager",
+    }
+    if set(pkginfo) != allowed_pkginfo:
+        fail(".PKGINFO contains unexpected metadata keys")
+
+    buildinfo = parse_key_value_lines(metadata[".BUILDINFO"], ".BUILDINFO")
+    buildinfo_contract = {
+        "format": "2",
+        "pkgname": "vicinae-bin",
+        "pkgbase": "vicinae-bin",
+        "pkgver": package["version"],
+        "pkgarch": "x86_64",
+        "pkgbuild_sha256sum": package["recipeSha256"],
+        "packager": pkginfo["packager"][0],
+        "builddate": pkginfo["builddate"][0],
+    }
+    for key, expected in buildinfo_contract.items():
+        if buildinfo.get(key) != [expected]:
+            fail(f".BUILDINFO {key} differs from the package contract")
+    allowed_buildinfo = {
+        *buildinfo_contract,
+        "builddir",
+        "startdir",
+        "buildtool",
+        "buildtoolver",
+        "buildenv",
+        "options",
+        "installed",
+    }
+    if set(buildinfo) - allowed_buildinfo:
+        fail(".BUILDINFO contains unexpected metadata keys")
+    for key in ("builddir", "startdir"):
+        if len(buildinfo.get(key, [])) != 1 or not buildinfo[key][0].startswith(
+            "/"
+        ):
+            fail(f".BUILDINFO {key} is missing or not absolute")
+    if ("buildtool" in buildinfo) != ("buildtoolver" in buildinfo):
+        fail(".BUILDINFO build tool name and version must be recorded together")
+    if not buildinfo.get("installed"):
+        fail(".BUILDINFO does not record installed build inputs")
+
+    mtree_files = {
+        **contents,
+        ".BUILDINFO": metadata[".BUILDINFO"],
+        ".PKGINFO": metadata[".PKGINFO"],
+    }
+    parse_mtree(metadata[".MTREE"], mtree_files, expected_directories)
+    elf_observations = inspect_elfs(contents, elf_contract)
+    verify_build_environment(
+        contents[build_environment_path], manifest, elf_observations, buildinfo
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent,
+        help="repository root (used by focused mutation tests)",
+    )
+    parser.add_argument(
+        "--online",
+        action="store_true",
+        help="download and verify every pinned upstream source",
+    )
+    parser.add_argument(
+        "--package-archive",
+        type=Path,
+        help="inspect a final Arch package archive before installation",
+    )
+    args = parser.parse_args()
+
+    manifest = verify_local(args.root.resolve())
+    if args.online:
+        verify_online(manifest)
+    if args.package_archive:
+        inspect_package_archive(args.package_archive.resolve(), manifest)
+    modes = ["online" if args.online else "offline"]
+    if args.package_archive:
+        modes.append("package-archive")
+    print(f"Vicinae provenance check passed ({', '.join(modes)}).")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)

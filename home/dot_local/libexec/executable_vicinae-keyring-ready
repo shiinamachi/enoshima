@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Exit 1--254 from ExecCondition is a clean "not ready yet" result, while 255
+# is a real unit failure. Keep missing managed dependencies distinguishable
+# from a locked or not-yet-published login keyring.
+for dependency in \
+  /usr/bin/gdbus \
+  /usr/bin/grep \
+  /usr/bin/id \
+  /usr/bin/secret-tool \
+  /usr/bin/sed \
+  /usr/bin/timeout; do
+  [[ -x $dependency ]] || exit 255
+done
+
+reply=$(
+  /usr/bin/timeout --signal=TERM --kill-after=1s 2s \
+    /usr/bin/gdbus call --session \
+    --dest org.freedesktop.secrets \
+    --object-path /org/freedesktop/secrets \
+    --method org.freedesktop.Secret.Service.ReadAlias login
+)
+collection=$(/usr/bin/sed -n "s/.*'\(\/[^']*\)'.*/\1/p" <<<"$reply")
+[[ $collection == /org/freedesktop/secrets/collection/* ]]
+
+locked=$(
+  /usr/bin/timeout --signal=TERM --kill-after=1s 2s \
+    /usr/bin/gdbus call --session \
+    --dest org.freedesktop.secrets \
+    --object-path "$collection" \
+    --method org.freedesktop.DBus.Properties.Get \
+    org.freedesktop.Secret.Collection Locked
+)
+/usr/bin/grep -Fq '<false>' <<<"$locked"
+
+# Reading the collection metadata alone does not prove that the libsecret
+# transaction path used by QtKeychain is ready.  A session can report an
+# unlocked login collection while the first store request is still blocked on
+# Secret Service initialization.  Exercise the same bounded write/read path
+# before Vicinae enters its upstream, unbounded QtKeychain event loop.
+probe_id="$(/usr/bin/id -u)-$$-$RANDOM"
+probe_value=enoshima-vicinae-keyring-ready
+cleanup_probe() {
+  /usr/bin/timeout --signal=TERM --kill-after=1s 3s \
+    /usr/bin/secret-tool clear \
+    enoshima-vicinae readiness probe-id "$probe_id" \
+    >/dev/null 2>&1 || true
+}
+trap cleanup_probe EXIT
+
+printf '%s' "$probe_value" |
+  /usr/bin/timeout --signal=TERM --kill-after=1s 3s \
+    /usr/bin/secret-tool store \
+    --label='Enoshima Vicinae readiness probe' \
+    enoshima-vicinae readiness probe-id "$probe_id" \
+    >/dev/null
+stored=$(
+  /usr/bin/timeout --signal=TERM --kill-after=1s 3s \
+    /usr/bin/secret-tool lookup \
+    enoshima-vicinae readiness probe-id "$probe_id"
+)
+[[ $stored == "$probe_value" ]]
+
+cleanup_probe
+trap - EXIT

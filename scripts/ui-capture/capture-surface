@@ -12,12 +12,14 @@ import shutil
 import struct
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
 def yaml(path: Path) -> dict:
-    result = subprocess.run(["yq", ".", str(path)], check=True, capture_output=True, text=True)
+    result = subprocess.run(
+        ["yq", ".", str(path)], check=True, capture_output=True, text=True
+    )
     return json.loads(result.stdout)
 
 
@@ -40,16 +42,39 @@ def implementation_digest(root: Path, paths: list[str]) -> str:
 def png_size(path: Path) -> tuple[int, int]:
     with path.open("rb") as stream:
         header = stream.read(24)
-    if len(header) != 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+    if (
+        len(header) != 24
+        or header[:8] != b"\x89PNG\r\n\x1a\n"
+        or header[12:16] != b"IHDR"
+    ):
         raise ValueError("source must be a valid PNG image")
     return struct.unpack(">II", header[16:24])
+
+
+def reject_symlink_components(value: Path, label: str) -> Path:
+    candidate = Path(os.path.abspath(value))
+    current = Path(candidate.anchor)
+    for part in candidate.parts[1:]:
+        current /= part
+        if current.is_symlink():
+            raise SystemExit(f"{label} must not traverse a symlink: {current}")
+    return candidate
+
+
+def regular_file_without_symlinks(value: Path, label: str) -> Path:
+    candidate = reject_symlink_components(value, label)
+    if not candidate.is_file():
+        raise SystemExit(f"{label} must be a regular file: {candidate}")
+    return candidate
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--surface", required=True)
     parser.add_argument("--state", required=True)
-    parser.add_argument("--locale", required=True, choices=("en_US.UTF-8", "ko_KR.UTF-8"))
+    parser.add_argument(
+        "--locale", required=True, choices=("en_US.UTF-8", "ko_KR.UTF-8")
+    )
     parser.add_argument("--scale", required=True, type=float)
     parser.add_argument("--logical-size", required=True, help="WIDTHxHEIGHT")
     parser.add_argument("--display", required=True, choices=("internal", "external"))
@@ -67,22 +92,28 @@ def main() -> None:
     required = entry.get("evidence", {})
     if args.state not in required.get("required_states", []):
         raise SystemExit(f"state is not required by the surface contract: {args.state}")
-    if args.scale not in [float(value) for value in required.get("required_scales", [])]:
-        raise SystemExit(f"scale is not required by the surface contract: {args.scale:g}")
+    if args.scale not in [
+        float(value) for value in required.get("required_scales", [])
+    ]:
+        raise SystemExit(
+            f"scale is not required by the surface contract: {args.scale:g}"
+        )
     match = re.fullmatch(r"([1-9][0-9]*)x([1-9][0-9]*)", args.logical_size)
     if not match:
         raise SystemExit("logical size must look like 1920x1200")
     logical_width, logical_height = (int(value) for value in match.groups())
     if args.text_overflow_count < 0:
         raise SystemExit("text overflow count must be zero or greater")
-    source = args.source.resolve()
-    if not source.is_file() or source.is_symlink():
-        raise SystemExit("source screenshot must be a regular non-symlink file")
+    source = regular_file_without_symlinks(args.source, "source screenshot")
     pixel_width, pixel_height = png_size(source)
-    expected_pixels = (round(logical_width * args.scale), round(logical_height * args.scale))
+    expected_pixels = (
+        round(logical_width * args.scale),
+        round(logical_height * args.scale),
+    )
     if (pixel_width, pixel_height) != expected_pixels:
         raise SystemExit(
-            f"PNG is {pixel_width}x{pixel_height}, expected {expected_pixels[0]}x{expected_pixels[1]} for the logical size and scale"
+            f"PNG is {pixel_width}x{pixel_height}, expected "
+            f"{expected_pixels[0]}x{expected_pixels[1]} for the logical size and scale"
         )
 
     concept = entry["concept"]
@@ -94,6 +125,7 @@ def main() -> None:
         raise SystemExit("concept hash does not match the registry")
     current_digest = implementation_digest(root, entry["implementation"])
     evidence_dir = root / "docs/evidence" / args.surface
+    reject_symlink_components(evidence_dir, "evidence output directory")
     evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
     safe_locale = args.locale.replace(".", "-")
     stem = f"{args.state}--{safe_locale}--{args.scale:g}x--{args.display}"
@@ -103,7 +135,9 @@ def main() -> None:
         if target.is_symlink():
             raise SystemExit(f"refusing to replace a symlink: {target}")
 
-    descriptor, temporary_image = tempfile.mkstemp(prefix=".capture-", suffix=".png", dir=evidence_dir)
+    descriptor, temporary_image = tempfile.mkstemp(
+        prefix=".capture-", suffix=".png", dir=evidence_dir
+    )
     os.close(descriptor)
     shutil.copyfile(source, temporary_image)
     os.chmod(temporary_image, 0o644)
@@ -123,10 +157,16 @@ def main() -> None:
         "implementation_digest": current_digest,
         "concept_sha256": concept_hash,
         "concept_spec_sha256": concept_spec_hash,
-        "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "captured_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "text_overflow_count": args.text_overflow_count,
+        "text_overflow_measurement": {
+            "method": "production-component-layout-probe",
+            "source": sidecar_path.name,
+        },
     }
-    descriptor, temporary_sidecar = tempfile.mkstemp(prefix=".capture-", suffix=".json", dir=evidence_dir, text=True)
+    descriptor, temporary_sidecar = tempfile.mkstemp(
+        prefix=".capture-", suffix=".json", dir=evidence_dir, text=True
+    )
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
         json.dump(sidecar, stream, ensure_ascii=False, indent=2)
         stream.write("\n")

@@ -29,11 +29,26 @@ INFRA_CATEGORIES = {
     FailureCategory.HOST_INFRA_ERROR,
 }
 
+REMOTE_TIMEOUT_INFRA_STEPS = {
+    "vm_create",
+    "wait_for_ssh",
+}
 
-def classify_failure(error: BaseException) -> FailureOrigin:
+
+def classify_failure(error: BaseException, *, step: str | None = None) -> FailureOrigin:
     if isinstance(error, (OSError, subprocess.SubprocessError, TimeoutError)):
         return FailureOrigin.INFRA
     if not isinstance(error, VMError):
+        return FailureOrigin.TEST_FIXTURE
+    if (
+        error.category == FailureCategory.SSH_TIMEOUT
+        and isinstance(error.details, dict)
+        and error.details.get("timeout_kind") in {"absolute", "idle"}
+        and step not in REMOTE_TIMEOUT_INFRA_STEPS
+    ):
+        # The SSH client started and remained attached, but a bounded remote
+        # fixture command stopped making progress. Retrying a clean overlay
+        # cannot repair that command contract.
         return FailureOrigin.TEST_FIXTURE
     if error.category in INFRA_CATEGORIES:
         return FailureOrigin.INFRA
@@ -58,6 +73,7 @@ def retryable_infrastructure_failure(record: dict[str, object]) -> bool:
         "signature is required but missing",
         "signing keyring is unavailable",
         "has no checksum source",
+        "returned non-retryable http status",
     )
     return not any(fragment in message for fragment in integrity_failures)
 
@@ -133,7 +149,7 @@ def failure_fields(
         message = str(error)
         details = None
     return {
-        "failure_origin": str(classify_failure(error)),
+        "failure_origin": str(classify_failure(error, step=step)),
         "failure_fingerprint": failure_fingerprint(
             suite=suite,
             step=step,
@@ -149,7 +165,9 @@ def _bounded_excerpt(record: dict[str, Any]) -> str | None:
     details = record.get("details")
     if isinstance(details, dict):
         for key in (
+            "stdout_tail",
             "stderr_tail",
+            "stdout",
             "stderr",
             "message",
             "missing",

@@ -25,6 +25,7 @@ desktop_hibernation_enabled: false
 desktop_hibernation_swap_size_gib: 0
 desktop_login_manager: greetd
 desktop_expansion_sddm_theme_enabled: true
+desktop_accessibility_profile_enabled: false
 
 # The dated Arch archive is intentionally reproducible but can throttle long
 # package transactions. Keep VM downloads serial and allow them to make slow

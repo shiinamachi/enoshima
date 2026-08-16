@@ -11,12 +11,14 @@ import os
 import re
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
 def yaml(path: Path) -> dict:
-    result = subprocess.run(["yq", ".", str(path)], check=True, capture_output=True, text=True)
+    result = subprocess.run(
+        ["yq", ".", str(path)], check=True, capture_output=True, text=True
+    )
     return json.loads(result.stdout)
 
 
@@ -36,18 +38,81 @@ def implementation_digest(root: Path, paths: list[str]) -> str:
     return digest.hexdigest()
 
 
+def reject_symlink_components(value: Path, label: str) -> Path:
+    candidate = Path(os.path.abspath(value))
+    current = Path(candidate.anchor)
+    for part in candidate.parts[1:]:
+        current /= part
+        if current.is_symlink():
+            raise SystemExit(f"{label} must not traverse a symlink: {current}")
+    return candidate
+
+
+def regular_file_without_symlinks(value: Path, label: str) -> Path:
+    candidate = reject_symlink_components(value, label)
+    if not candidate.is_file():
+        raise SystemExit(f"{label} must be a regular file: {candidate}")
+    return candidate
+
+
 def safe_relative(root: Path, value: str, label: str) -> Path:
     path = Path(value)
     if path.is_absolute() or ".." in path.parts:
         raise SystemExit(f"{label} must stay inside the repository: {value}")
-    resolved = (root / path).resolve()
-    if not resolved.is_file() or resolved.is_symlink():
-        raise SystemExit(f"{label} must be a regular file: {value}")
+    candidate = root / path
+    current = root
+    for part in path.parts:
+        current /= part
+        if current.is_symlink():
+            raise SystemExit(f"{label} must not traverse a symlink: {value}")
+    resolved = regular_file_without_symlinks(candidate, label).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as error:
+        raise SystemExit(f"{label} must stay inside the repository: {value}") from error
     return resolved
 
 
+def expected_sidecars(root: Path, surface: str, entry: dict) -> list[str]:
+    aggregate_path = root / "docs/evidence/vm-run.json"
+    if aggregate_path.is_file() and not aggregate_path.is_symlink():
+        aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+        provenance = aggregate.get("surfaces", {}).get(surface, {})
+        captures = provenance.get("captures") if isinstance(provenance, dict) else None
+        if isinstance(captures, list) and captures:
+            return sorted(str(value) for value in captures)
+    evidence = entry.get("evidence", {})
+    captures = evidence.get("captures") if isinstance(evidence, dict) else None
+    if isinstance(captures, list) and captures:
+        return sorted(str(value) for value in captures)
+    evidence_dir = root / "docs/evidence" / surface
+    discovered: list[str] = []
+    for path in evidence_dir.glob("*.json"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            sidecar = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (
+            sidecar.get("schema") == 1
+            and sidecar.get("surface_id") == surface
+            and isinstance(sidecar.get("state"), str)
+            and isinstance(sidecar.get("image"), str)
+        ):
+            discovered.append(path.relative_to(root).as_posix())
+    discovered.sort()
+    if not discovered:
+        raise SystemExit(f"no canonical capture sidecars found for {surface}")
+    return discovered
+
+
 def crop(value: object, label: str) -> tuple[int, int, int, int]:
-    if not isinstance(value, list) or len(value) != 4 or not all(isinstance(item, int) for item in value):
+    if (
+        not isinstance(value, list)
+        or len(value) != 4
+        or not all(isinstance(item, int) for item in value)
+    ):
         raise SystemExit(f"{label} must be [x, y, width, height]")
     x, y, width, height = value
     if x < 0 or y < 0 or width <= 0 or height <= 0:
@@ -73,7 +138,9 @@ def validate_crop(path: Path, value: tuple[int, int, int, int], label: str) -> N
         raise SystemExit(f"{label} exceeds {image_width}x{image_height}: {value}")
 
 
-def normalized_crop(source: Path, value: tuple[int, int, int, int], destination: Path) -> None:
+def normalized_crop(
+    source: Path, value: tuple[int, int, int, int], destination: Path
+) -> None:
     x, y, width, height = value
     subprocess.run(
         [
@@ -102,12 +169,22 @@ def normalized_crop(source: Path, value: tuple[int, int, int, int], destination:
 
 def metric(reference: Path, implementation: Path, name: str) -> float:
     process = subprocess.run(
-        ["magick", "compare", "-metric", name, str(reference), str(implementation), "null:"],
+        [
+            "magick",
+            "compare",
+            "-metric",
+            name,
+            str(reference),
+            str(implementation),
+            "null:",
+        ],
         capture_output=True,
         text=True,
     )
     if process.returncode not in (0, 1):
-        raise SystemExit(f"ImageMagick {name} comparison failed: {process.stderr.strip()}")
+        raise SystemExit(
+            f"ImageMagick {name} comparison failed: {process.stderr.strip()}"
+        )
     output = process.stderr.strip()
     if name in {"RMSE", "SSIM"}:
         match = re.search(r"\(([-+0-9.eE]+)\)\s*$", output)
@@ -125,9 +202,11 @@ def main() -> None:
     args = parser.parse_args()
 
     root = (args.repo_root or Path(__file__).resolve().parents[2]).resolve()
-    mapping_path = args.mapping.resolve()
-    if not mapping_path.is_file() or mapping_path.is_symlink():
-        raise SystemExit("mapping must be a regular JSON file")
+    mapping_path = regular_file_without_symlinks(args.mapping, "mapping")
+    try:
+        mapping_relative = mapping_path.relative_to(root).as_posix()
+    except ValueError as error:
+        raise SystemExit("mapping must stay inside the repository") from error
     mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
     if mapping.get("schema") != 1 or mapping.get("surface_id") != args.surface:
         raise SystemExit("mapping schema/surface mismatch")
@@ -139,6 +218,17 @@ def main() -> None:
     entry = manifest.get("surfaces", {}).get(args.surface)
     if not isinstance(entry, dict):
         raise SystemExit(f"unknown surface: {args.surface}")
+    expected = expected_sidecars(root, args.surface, entry)
+    mapped = [
+        str(value.get("sidecar", ""))
+        for value in comparisons
+        if isinstance(value, dict)
+    ]
+    if len(mapped) != len(set(mapped)) or sorted(mapped) != expected:
+        raise SystemExit(
+            f"mapping must cover every canonical sidecar exactly once: "
+            f"expected={len(expected)} actual={len(mapped)}"
+        )
     concept_path = safe_relative(root, entry["concept"]["asset"], "concept asset")
     concept_spec_path = safe_relative(root, entry["concept"]["spec"], "concept spec")
     concept_hash = sha256(concept_path)
@@ -155,37 +245,73 @@ def main() -> None:
         for index, comparison in enumerate(comparisons):
             if not isinstance(comparison, dict):
                 raise SystemExit(f"comparison {index} must be an object")
-            sidecar_path = safe_relative(root, str(comparison.get("sidecar", "")), f"comparison {index} sidecar")
+            sidecar_path = safe_relative(
+                root, str(comparison.get("sidecar", "")), f"comparison {index} sidecar"
+            )
             sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
             if sidecar.get("surface_id") != args.surface:
-                raise SystemExit(f"comparison {index} sidecar belongs to another surface")
+                raise SystemExit(
+                    f"comparison {index} sidecar belongs to another surface"
+                )
             if (
                 sidecar.get("implementation_digest") != current_digest
                 or sidecar.get("concept_sha256") != concept_hash
                 or sidecar.get("concept_spec_sha256") != concept_spec_hash
             ):
                 raise SystemExit(f"comparison {index} sidecar is stale")
-            implementation_path = safe_relative(root, sidecar["image"], f"comparison {index} image")
+            implementation_path = safe_relative(
+                root, sidecar["image"], f"comparison {index} image"
+            )
             if sidecar.get("image_sha256") != sha256(implementation_path):
                 raise SystemExit(f"comparison {index} image hash is stale")
-            reference_crop = crop(comparison.get("reference_crop"), f"comparison {index} reference_crop")
-            implementation_crop = crop(comparison.get("implementation_crop"), f"comparison {index} implementation_crop")
-            validate_crop(concept_path, reference_crop, f"comparison {index} reference_crop")
-            validate_crop(implementation_path, implementation_crop, f"comparison {index} implementation_crop")
+            reference_crop = crop(
+                comparison.get("reference_crop"), f"comparison {index} reference_crop"
+            )
+            implementation_crop = crop(
+                comparison.get("implementation_crop"),
+                f"comparison {index} implementation_crop",
+            )
+            validate_crop(
+                concept_path, reference_crop, f"comparison {index} reference_crop"
+            )
+            validate_crop(
+                implementation_path,
+                implementation_crop,
+                f"comparison {index} implementation_crop",
+            )
 
             reference_image = temporary_root / f"reference-{index}.png"
             implementation_image = temporary_root / f"implementation-{index}.png"
             normalized_crop(concept_path, reference_crop, reference_image)
-            normalized_crop(implementation_path, implementation_crop, implementation_image)
+            normalized_crop(
+                implementation_path, implementation_crop, implementation_image
+            )
             reference_ratio = reference_crop[2] / reference_crop[3]
             implementation_ratio = implementation_crop[2] / implementation_crop[3]
             ratio_error = abs(math.log(implementation_ratio / reference_ratio))
             geometry_scores.append(max(0.0, 100.0 - ratio_error * 100.0))
-            color_scores.append(max(0.0, 100.0 * (1.0 - metric(reference_image, implementation_image, "RMSE"))))
-            perceptual_scores.append(max(0.0, min(100.0, (1.0 - metric(reference_image, implementation_image, "SSIM")) * 100.0)))
+            color_scores.append(
+                max(
+                    0.0,
+                    100.0
+                    * (1.0 - metric(reference_image, implementation_image, "RMSE")),
+                )
+            )
+            perceptual_scores.append(
+                max(
+                    0.0,
+                    min(
+                        100.0,
+                        (1.0 - metric(reference_image, implementation_image, "SSIM"))
+                        * 100.0,
+                    ),
+                )
+            )
             overflow = sidecar.get("text_overflow_count")
             if not isinstance(overflow, int) or overflow < 0:
-                raise SystemExit(f"comparison {index} sidecar lacks measured text_overflow_count")
+                raise SystemExit(
+                    f"comparison {index} sidecar lacks measured text_overflow_count"
+                )
             if overflow > 0:
                 overflow_failures.append(sidecar_path.relative_to(root).as_posix())
             sources.append(
@@ -204,23 +330,27 @@ def main() -> None:
         "perceptual": round(min(perceptual_scores), 2),
     }
     report = {
-        "schema": 1,
+        "schema": 2,
         "surface_id": args.surface,
         "implementation_digest": current_digest,
         "concept_sha256": concept_hash,
         "concept_spec_sha256": concept_spec_hash,
+        "mapping": mapping_relative,
         "mapping_sha256": sha256(mapping_path),
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "scores": scores,
         "text_overflow_failures": overflow_failures,
         "sources": sources,
     }
     evidence_dir = root / "docs/evidence" / args.surface
+    reject_symlink_components(evidence_dir, "evidence output directory")
     evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
     output = evidence_dir / "automated.json"
     if output.is_symlink():
         raise SystemExit("automated report output must not be a symbolic link")
-    descriptor, temporary = tempfile.mkstemp(prefix=".automated-", suffix=".json", dir=evidence_dir, text=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=".automated-", suffix=".json", dir=evidence_dir, text=True
+    )
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
         json.dump(report, stream, ensure_ascii=False, indent=2)
         stream.write("\n")

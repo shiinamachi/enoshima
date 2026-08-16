@@ -16,6 +16,9 @@ x-scheme-handler/discord=discord.desktop
 x-scheme-handler/notion=notion.desktop
 x-scheme-handler/obsidian=obsidian.desktop
 x-scheme-handler/slack=slack.desktop
+x-scheme-handler/vicinae=vicinae-url-handler.desktop
+x-scheme-handler/raycast=vicinae-url-handler.desktop
+x-scheme-handler/com.raycast=vicinae-url-handler.desktop
 
 [Added Associations]
 application/pdf=google-chrome.desktop;
@@ -30,3 +33,6 @@ x-scheme-handler/http=google-chrome.desktop;
 x-scheme-handler/https=google-chrome.desktop;
 x-scheme-handler/notion=notion.desktop;
 x-scheme-handler/obsidian=obsidian.desktop;
+x-scheme-handler/vicinae=vicinae-url-handler.desktop;
+x-scheme-handler/raycast=vicinae-url-handler.desktop;
+x-scheme-handler/com.raycast=vicinae-url-handler.desktop;

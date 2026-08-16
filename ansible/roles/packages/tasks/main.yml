@@ -21,6 +21,17 @@
         | list
       }}
 
+- name: Read opt-in accessibility package manifest
+  ansible.builtin.set_fact:
+    accessibility_packages: >-
+      {{
+        lookup('ansible.builtin.file', playbook_dir + '/../packages/accessibility.txt').splitlines()
+        | map('regex_replace', '#.*$', '')
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+
 - name: Read VM host package manifest
   ansible.builtin.set_fact:
     vm_host_packages: >-
@@ -61,6 +72,9 @@
       {{
         (native_packages
         + management_packages
+        + (accessibility_packages
+          if desktop_accessibility_profile_enabled | bool
+          else [])
         + (additional_native_packages | default([]))
         + (vm_host_packages | default([])))
         | unique

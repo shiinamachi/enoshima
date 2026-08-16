@@ -11,13 +11,13 @@ max_concurrent_threads_per_session = 3
 
 [mcp_servers.enoshima_vm]
 command = "uv"
-args = ["run", "--locked", "--project", "tests/vm", "enoshima-vm-mcp"]
+args = ["run", "--locked", "--project", "tests/vm", "python", "tests/vm/scripts/mcp_proxy.py"]
 # Do not set cwd here. Codex Desktop resolves an explicit relative cwd from the
 # app-server process, while omitting it uses the active repository session cwd.
 startup_timeout_sec = 30
-# A release can consume 30.5 hours once, and each suite is eligible for one
-# fresh-overlay infrastructure retry. Keep the worst-case 61-hour run plus
-# setup, evidence, and cleanup headroom inside one synchronous MCP call.
+# Durable run tools return immediately and continue outside the MCP process.
+# Retain generous headroom for bounded low-level recovery calls, but do not use
+# this timeout as a substitute for vm_wait_operation snapshots.
 tool_timeout_sec = 259200
 enabled = true
 required = true
@@ -30,6 +30,15 @@ approval_mode = "auto"
 approval_mode = "auto"
 
 [mcp_servers.enoshima_vm.tools.vm_list_runs]
+approval_mode = "auto"
+
+[mcp_servers.enoshima_vm.tools.vm_operation_status]
+approval_mode = "auto"
+
+[mcp_servers.enoshima_vm.tools.vm_list_operations]
+approval_mode = "auto"
+
+[mcp_servers.enoshima_vm.tools.vm_wait_operation]
 approval_mode = "auto"
 
 [mcp_servers.enoshima_vm.tools.verification_plan]

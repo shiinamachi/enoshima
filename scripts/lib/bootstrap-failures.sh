@@ -118,10 +118,22 @@ bootstrap_run_step() {
     set -e
   fi
 
-  bootstrap_record_step "$label" "$status" "$duration" "$log_path"
-
   # shellcheck disable=SC2034
   bootstrap_last_step_status=$status
+  if ((status == 70)); then
+    # Reporting is secondary to the security stop. A full disk, a revoked
+    # report directory, or a broken stderr must never downgrade exit 70 and
+    # let the parent bootstrap continue with another mutation.
+    bootstrap_record_step "$label" "$status" "$duration" "$log_path" || true
+    bootstrap_record_failure "$label" "$status" || true
+    printf \
+      'FATAL: %s left a security-sensitive state whose safety could not be established.\n' \
+      "$label" >&2 || true
+    exit 70
+  fi
+
+  bootstrap_record_step "$label" "$status" "$duration" "$log_path"
+
   if ((status == 0)); then
     printf 'SUCCESS: %s\n' "$label"
   else

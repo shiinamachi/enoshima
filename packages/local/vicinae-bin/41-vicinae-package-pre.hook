@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = vicinae-bin
+
+[Action]
+Description = Stopping Vicinae before replacing its Qt-private source build...
+When = PreTransaction
+Exec = /usr/bin/timeout --signal=TERM --kill-after=30s 300s /usr/libexec/vicinae/vicinae-qt-guard hold
+AbortOnFail

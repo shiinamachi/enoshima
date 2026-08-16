@@ -1,0 +1,37 @@
+// Managed by Enoshima. Keep Hyprshell scoped to the all-workspaces overview;
+// CyberLauncher and native Alt+Tab retain launcher and fast-switch ownership.
+(
+    version: 4,
+    windows: (
+        scale: 11.6,
+        items_per_row: 3,
+        overview: (
+            // The Enoshima source patch lets the mapped overview own keyboard
+            // input when this launcher is controller-only. No launcher layer
+            // is created, so the visible overview is also the input surface.
+            launcher: (
+                default_terminal: None,
+                launch_modifier: "ctrl",
+                width: 1,
+                max_items: 1,
+                show_when_empty: false,
+                plugins: (
+                    applications: None,
+                    terminal: None,
+                    shell: None,
+                    websearch: None,
+                    calc: None,
+                    path: None,
+                    actions: None,
+                ),
+            ),
+            key: "Tab",
+            top_offset: 48,
+            modifier: "super",
+            filter_by: [],
+            exclude_workspaces: "special:.*",
+        ),
+        switch: None,
+        switch_2: None,
+    ),
+)

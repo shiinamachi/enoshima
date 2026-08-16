@@ -1,0 +1,40 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 24ac326..91ffcc7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -372,7 +372,7 @@ add_subdirectory(src/data-control-server)
+ endif()
+ 
+-set(INSTALL_SHARE ${CMAKE_INSTALL_PREFIX}/share)
+-set(INSTALL_MODULES ${CMAKE_INSTALL_PREFIX}/lib/modules-load.d)
++set(INSTALL_SHARE ${CMAKE_INSTALL_DATADIR})
++set(INSTALL_MODULES ${CMAKE_INSTALL_LIBDIR}/modules-load.d)
+ set(VICINAE_INSTALL_SHARE ${INSTALL_SHARE}/vicinae)
+ set(VICINAE_THEME_DIR ${VICINAE_INSTALL_SHARE}/themes)
+ 
+@@ -381,8 +381,6 @@ if(WIN32)
+ 	set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
+ 	include(InstallRequiredSystemLibraries)
+ elseif(NOT APPLE)
+-	make_directory(${VICINAE_INSTALL_SHARE})
+-	file(REMOVE_RECURSE ${VICINAE_THEME_DIR})
+ 	install(DIRECTORY ./extra/themes DESTINATION ${VICINAE_INSTALL_SHARE})
+ endif()
+ 
+@@ -392,15 +390,12 @@ if (UNIX AND NOT APPLE)
+ 	endif()
+ 
+ 	set(APP_DIR ${INSTALL_SHARE}/applications)
+-	make_directory(${APP_DIR})
+ 	install(FILES ./extra/vicinae.desktop DESTINATION ${APP_DIR})
+ 	install(FILES ./extra/vicinae-url-handler.desktop DESTINATION ${APP_DIR})
+ 
+ 	set(ICON_DIR ${INSTALL_SHARE}/icons/hicolor/512x512/apps)
+-	make_directory(${ICON_DIR})
+ 	install(FILES ./extra/vicinae.png DESTINATION ${ICON_DIR})
+ 
+-	set(SYSTEMD_USER_DIR ${CMAKE_INSTALL_PREFIX}/lib/systemd/user)
+-	make_directory(${SYSTEMD_USER_DIR})
++	set(SYSTEMD_USER_DIR ${CMAKE_INSTALL_LIBDIR}/systemd/user)
+ 	install(FILES ./extra/vicinae.service DESTINATION ${SYSTEMD_USER_DIR})
+ endif()

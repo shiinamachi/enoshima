@@ -33,6 +33,7 @@ def test_repository_suites_obey_resource_and_network_boundaries() -> None:
         assert suite.resources.disk_gib <= MAX_DISK_GIB
         assert suite.network.mode == "isolated-user"
         assert suite.network.allow_lan is False
+        assert "opt-in-orca-screen-reader-package" in suite.allowed_skips
 
 
 @pytest.mark.parametrize(

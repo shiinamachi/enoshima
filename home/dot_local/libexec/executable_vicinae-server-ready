@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# The upstream server waits indefinitely when QtKeychain never emits its
+# completion signal. ExecStartPost uses an absolute monotonic deadline so a
+# fast connection refusal does not collapse the intended cold-start window.
+readonly startup_window_seconds=35
+deadline=$((SECONDS + startup_window_seconds))
+while ((SECONDS < deadline)); do
+  if timeout --signal=TERM --kill-after=1s 0.25s \
+    /usr/bin/vicinae ping >/dev/null 2>&1; then
+    exit 0
+  fi
+  sleep 0.1
+done
+
+printf '%s\n' \
+  'Vicinae server did not become IPC-ready within the bounded startup window.' \
+  >&2
+exit 1

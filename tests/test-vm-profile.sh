@@ -79,6 +79,13 @@ done
 grep -Fq 'until: flatpak_remote_result is succeeded' \
   "$repo_root/ansible/roles/user_tools/tasks/main.yml" ||
   fail 'Flatpak remote convergence does not retry transient downloads'
+flatpak_task=$(yq \
+  '.[] | select(.name == "Install user-scoped Flatpak applications")' \
+  "$repo_root/ansible/roles/user_tools/tasks/main.yml")
+jq -e \
+  '.async == 1800 and .poll == 30 and .async < 1920' \
+  <<<"$flatpak_task" >/dev/null ||
+  fail 'Flatpak application convergence exceeds the bounded bootstrap idle budget'
 grep -Fxq '  - electron39' "$repo_root/ansible/inventory/host_vars/enoshima-vm.yml" ||
   fail 'VM profile omits the pinned Electron qualification runtime'
 if grep -Fxq electron39 "$repo_root/packages/native.txt"; then
@@ -87,6 +94,11 @@ fi
 grep -Fq '+ (additional_native_packages | default([]))' \
   "$repo_root/ansible/roles/packages/tasks/main.yml" ||
   fail 'package convergence ignores profile-scoped native packages'
+grep -Fq 'if desktop_accessibility_profile_enabled | bool' \
+  "$repo_root/ansible/roles/packages/tasks/main.yml" ||
+  fail 'package convergence ignores the accessibility opt-in profile'
+jq -e '.desktop_accessibility_profile_enabled == false' <<<"$inventory_json" >/dev/null ||
+  fail 'VM accessibility profile is not boolean false by default'
 
 for option in --inventory --report-dir --report-format; do
   "$repo_root/bootstrap.sh" --help | grep -Fq -- "$option" ||

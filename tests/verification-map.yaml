@@ -90,8 +90,82 @@ rules:
     retry_suites: []
     smallest_real_suite_required: true
 
+  - id: aur-provenance
+    paths:
+      - packages/aur-provenance.json
+      - scripts/install-aur.sh
+      - scripts/lib/aur-provenance
+      - tests/test-aur-allowlist.sh
+      - tests/test-aur-provenance.sh
+    focused_checks:
+      - tests/test-aur-provenance.sh
+      - tests/test-aur-allowlist.sh
+    checkpoint_suites:
+      - converge
+    retry_suites: *canonical_suites
+
+  - id: vicinae-qt-guard
+    paths:
+      - bootstrap.sh
+      - "packages/local/vicinae-bin/**"
+      - scripts/install-local-packages.sh
+      - scripts/postflight.sh
+      - scripts/check-vicinae-provenance
+      - scripts/lib/vicinae-service-policy.sh
+      - home/run_after_30-enable-custom-user-services.sh.tmpl
+      - tests/test-vicinae-lifecycle.sh
+      - tests/test-bootstrap-noninteractive.sh
+      - tests/test-desktop-essentials.sh
+      - tests/test-vicinae-provenance.sh
+    focused_checks:
+      - tests/test-vicinae-lifecycle.sh
+      - tests/test-vicinae-provenance.sh
+      - tests/test-bootstrap-noninteractive.sh
+      - tests/test-desktop-essentials.sh
+    checkpoint_suites:
+      - converge
+    retry_suites: *canonical_suites
+
+  - id: hyprshell-provenance
+    paths:
+      - "packages/local/hyprshell-bin/**"
+      - scripts/check-hyprshell-provenance
+      - scripts/install-local-packages.sh
+      - tests/test-hyprshell-provenance.sh
+    focused_checks:
+      - tests/test-hyprshell-provenance.sh
+      - tests/test-bootstrap-noninteractive.sh
+      - tests/test-desktop-essentials.sh
+    checkpoint_suites:
+      - converge
+      - desktop
+      - ui-review
+    retry_suites: *canonical_suites
+
+  - id: verified-local-package-security
+    paths:
+      - bootstrap.sh
+      - scripts/install-local-packages.sh
+      - scripts/lib/verified-local-attestation
+      - tests/test-bootstrap-noninteractive.sh
+    focused_checks:
+      - tests/test-bootstrap-noninteractive.sh
+      - tests/test-bootstrap-failure-continuation.sh
+      - tests/test-hyprshell-provenance.sh
+      - tests/test-vicinae-lifecycle.sh
+      - tests/test-vicinae-provenance.sh
+    checkpoint_suites:
+      - converge
+      - desktop
+      - ui-review
+    retry_suites: *canonical_suites
+
   - id: ui-contract
     paths:
+      - .agents/skills/enoshima-concept-art/scripts/validate-concept-manifest
+      - "docs/concepts/**"
+      - "docs/assets/concepts/**"
+      - "docs/evidence/**"
       - docs/ui-surfaces.yaml
       - scripts/check-ui-concept-coverage
       - scripts/check-ui-visual-evidence
@@ -139,6 +213,7 @@ rules:
       - scripts/validate.sh
       - scripts/postflight.sh
       - scripts/lib/inventory-capabilities.sh
+      - scripts/lib/vicinae-service-policy.sh
     focused_checks:
       - make validate
     checkpoint_suites:
@@ -148,12 +223,15 @@ rules:
   - id: desktop-runtime
     paths:
       - "home/dot_config/hypr/**"
+      - "home/dot_config/hyprshell/**"
       - "home/dot_config/quickshell/**"
       - "home/dot_config/waybar/**"
       - "home/dot_config/swaync/**"
+      - "home/dot_config/systemd/user/vicinae.service.d/**"
       - "home/dot_config/gtk-3.0/**"
       - "home/dot_config/gtk-4.0/**"
       - "home/dot_config/uwsm/**"
+      - "home/dot_config/vicinae/**"
       - "home/dot_config/xdg-desktop-portal/**"
       - home/dot_config/chrome-flags.conf
       - home/dot_config/notion-flags.conf
@@ -169,8 +247,12 @@ rules:
       - "home/dot_local/bin/executable_kakaotalk*"
       - home/dot_local/bin/executable_rhwp-enable-defaults
       - "home/dot_local/bin/executable_swaync-*"
+      - home/dot_local/bin/executable_vicinae-control
       - "home/dot_local/bin/executable_waybar-*"
       - "home/dot_local/bin/executable_workspace-*"
+      - home/dot_local/libexec/executable_vicinae-keyring-ready
+      - home/dot_local/libexec/executable_vicinae-server-ready
+      - "home/dot_local/share/vicinae/**"
       - "native/enoshima-decoration/**"
     focused_checks:
       - make validate
@@ -182,6 +264,62 @@ rules:
       - desktop
       - login
       - ui-review
+
+  - id: desktop-capture-recording-physical
+    paths:
+      - home/dot_config/hypr/hyprland.lua
+      - home/dot_config/swappy/config
+      - home/dot_config/xdg-desktop-portal/hyprland-portals.conf
+      - packages/native.txt
+      - docs/DESKTOP-EXPANSION-OPERATIONS.md
+    physical_gates:
+      - desktop-capture-recording
+
+  - id: command-palette-physical
+    paths:
+      - "packages/local/vicinae-bin/**"
+      - scripts/check-vicinae-provenance
+      - home/dot_config/hypr/hyprland.lua
+      - "home/dot_config/systemd/user/vicinae.service.d/**"
+      - "home/dot_config/vicinae/**"
+      - home/dot_local/bin/executable_vicinae-control
+      - home/dot_local/libexec/executable_vicinae-keyring-ready
+      - home/dot_local/libexec/executable_vicinae-server-ready
+      - "home/dot_local/share/vicinae/**"
+      - home/run_after_30-enable-custom-user-services.sh.tmpl
+      - ansible/roles/desktop_expansion/tasks/main.yml
+      - ansible/roles/desktop_expansion/tasks/vicinae.yml
+      - bootstrap.sh
+      - home/dot_config/mimeapps.list
+      - scripts/install-local-packages.sh
+      - scripts/lib/vicinae-service-policy.sh
+      - docs/DESKTOP-EXPANSION-OPERATIONS.md
+    physical_gates:
+      - command-palette-staged-rollout
+
+  - id: overview-physical
+    paths:
+      - "packages/local/hyprshell-bin/**"
+      - scripts/check-hyprshell-provenance
+      - scripts/install-local-packages.sh
+      - bootstrap.sh
+      - home/dot_config/hypr/hyprland.lua
+      - "home/dot_config/hyprshell/**"
+      - "home/dot_config/systemd/user/hyprshell.service.d/**"
+      - home/run_after_30-enable-custom-user-services.sh.tmpl
+      - docs/DESKTOP-EXPANSION-OPERATIONS.md
+    physical_gates:
+      - overview-keyboard-mixed-dpi
+
+  - id: performance-observability-physical
+    paths:
+      - ansible/roles/system/tasks/main.yml
+      - ansible/roles/system/tasks/observability.yml
+      - ansible/roles/system/handlers/main.yml
+      - packages/native.txt
+      - docs/PERFORMANCE-DIAGNOSTICS.md
+    physical_gates:
+      - performance-observability-history-overhead
 
   - id: user-convergence
     paths:
@@ -216,6 +354,30 @@ rules:
       - converge
     retry_suites:
       - converge
+
+  - id: accessibility-profile
+    paths:
+      - packages/accessibility.txt
+      - ansible/inventory/group_vars/all.yml
+      - ansible/inventory/host_vars/enoshima-vm.yml
+      - ansible/inventory/host_vars/tpx1c13.yml
+      - ansible/roles/packages/tasks/main.yml
+      - ansible/site.yml
+      - home/dot_config/quickshell/cyberdock/shell.qml
+      - home/dot_local/bin/executable_desktop-appearance
+      - home/dot_local/share/vicinae/scripts/executable_accessibility-appearance.sh
+      - home/dot_local/share/vicinae/scripts/executable_accessibility-default.sh
+      - tests/test-desktop-appearance.sh
+    focused_checks:
+      - tests/test-desktop-appearance.sh
+    checkpoint_suites:
+      - converge
+      - desktop
+    retry_suites:
+      - converge
+      - desktop
+    physical_gates:
+      - accessibility-screen-reader
 
   - id: graphical-login
     paths:
@@ -367,6 +529,10 @@ rules:
       - internal-oled-edid-refresh-rate
       - external-display-dock
       - internal-external-display-review
+      - desktop-capture-recording
+      - command-palette-staged-rollout
+      - overview-keyboard-mixed-dpi
+      - performance-observability-history-overhead
       - fingerprint-enrollment-authentication
       - secure-boot-enrollment
       - tpm-unlock-recovery

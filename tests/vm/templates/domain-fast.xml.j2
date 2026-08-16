@@ -1,5 +1,6 @@
 <domain type="kvm" xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0">
   <name>{{ domain }}</name>
+  <uuid>{{ domain_uuid }}</uuid>
   <memory unit="MiB">{{ memory_mib }}</memory>
   <currentMemory unit="MiB">{{ memory_mib }}</currentMemory>
   <vcpu placement="static">{{ vcpus }}</vcpu>

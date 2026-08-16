@@ -84,6 +84,9 @@ ShellRoot {
     readonly property string pinsPath:
         configHome + "/enoshima/user/cyberdock-pins.json"
     readonly property string appearanceMode: {
+        if (uiFixtureEnabled && uiFixtureState.surface === "desktop-shell"
+                && uiFixtureState.state === "accessible")
+            return "accessible";
         const candidate = appearanceModeFile.text().trim();
         if (["default", "reduced-motion", "reduced-transparency", "accessible"]
                 .includes(candidate))
@@ -94,6 +97,7 @@ ShellRoot {
         || appearanceMode === "accessible"
     readonly property bool reducedTransparency: appearanceMode === "reduced-transparency"
         || appearanceMode === "accessible"
+    readonly property bool highContrast: appearanceMode === "accessible"
 
     // Semantic colors mirror the shared GTK palette while keeping QML free
     // from a runtime palette parser. Launcher and OSD receive this same object
@@ -120,11 +124,15 @@ ShellRoot {
             ? "#66161151" : "#33161151"
         readonly property color colorRaisedSoft: root.reducedTransparency
             ? "#dd161151" : "#88161151"
-        readonly property color colorDivider: "#556d8cff"
-        readonly property color colorQuietBorder: "#886d8cff"
-        readonly property color colorInfoBorder: "#996d8cff"
+        readonly property color colorDivider: root.highContrast
+            ? "#ff9fb4ff" : "#556d8cff"
+        readonly property color colorQuietBorder: root.highContrast
+            ? "#ff9fb4ff" : "#886d8cff"
+        readonly property color colorInfoBorder: root.highContrast
+            ? "#ffb6c5ff" : "#996d8cff"
         readonly property color colorFocus: "#62d8ff"
-        readonly property color colorFocusBorder: "#cc62d8ff"
+        readonly property color colorFocusBorder: root.highContrast
+            ? "#ff62d8ff" : "#cc62d8ff"
         readonly property color colorFocusHover: "#4462d8ff"
         readonly property color colorFocusSelected: "#3362d8ff"
         readonly property color colorSelection: "#9a5cff"
@@ -134,8 +142,10 @@ ShellRoot {
         readonly property color colorSelectionStrong: "#6541b8"
         readonly property color colorAccent: "#e56bff"
         readonly property color colorText: "#f2ecff"
-        readonly property color colorTextMuted: "#c9bfe8"
-        readonly property color colorTextSubtle: "#b3c9bfe8"
+        readonly property color colorTextMuted: root.highContrast
+            ? "#f2ecff" : "#c9bfe8"
+        readonly property color colorTextSubtle: root.highContrast
+            ? "#fff2ecff" : "#b3c9bfe8"
         readonly property color colorOnSelection: "#f2ecff"
         readonly property color colorInfo: "#6d8cff"
         readonly property color colorCritical: "#ff5d8f"

@@ -11,6 +11,9 @@ source_dir=${CODEX_DESKTOP_SOURCE_DIR:-$cache_home/enoshima/codex-desktop-linux/
 state_dir=${CODEX_DESKTOP_STATE_DIR:-$state_home/enoshima/codex-desktop-linux}
 dmg_cache=${CODEX_DESKTOP_DMG_CACHE:-$cache_home/codex-desktop/Codex.dmg}
 revision_marker=$state_dir/installed-source-revision
+build_tmp_parent=$cache_home/enoshima/codex-desktop-linux/build-tmp
+build_tmp_dir=
+clone_root=
 max_build_threads=${CODEX_DESKTOP_MAX_BUILD_THREADS:-0}
 build_timeout_seconds=${CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS:-1800}
 build_attempts=${CODEX_DESKTOP_BUILD_ATTEMPTS:-3}
@@ -23,6 +26,50 @@ die() {
   printf 'Codex Desktop install failed: %s\n' "$*" >&2
   exit 1
 }
+
+prepare_build_tmp_parent() {
+  [[ ! -L $build_tmp_parent ]] ||
+    die "managed build temporary parent is a symlink: $build_tmp_parent"
+  install -d -m 0700 -- "$build_tmp_parent"
+  [[ -d $build_tmp_parent && ! -L $build_tmp_parent ]] ||
+    die "managed build temporary parent is missing or unsafe: $build_tmp_parent"
+  [[ $(stat -c '%u:%a' -- "$build_tmp_parent") == "$EUID:700" ]] ||
+    die "managed build temporary parent has unsafe ownership or mode: $build_tmp_parent"
+}
+
+cleanup_build_tmp_dir() {
+  local root=${build_tmp_dir:-}
+
+  [[ -n $root ]] || return 0
+  if [[ ${root%/*} != "$build_tmp_parent" ||
+    ${root##*/} != attempt.* ||
+    ! -d $root || -L $root ]]; then
+    printf 'Codex Desktop install failed: refusing to clean unsafe build temporary directory: %s\n' \
+      "$root" >&2
+    return 1
+  fi
+  rm -rf -- "$root"
+  build_tmp_dir=
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT
+  cleanup_build_tmp_dir || status=1
+  if [[ -n ${clone_root:-} ]]; then
+    if [[ ${clone_root%/*} != "$(dirname -- "$source_dir")" ||
+    ${clone_root##*/} != .codex-desktop-clone.* ||
+    ! -d $clone_root || -L $clone_root ]]; then
+      printf 'Codex Desktop install failed: refusing to clean unsafe clone directory: %s\n' \
+        "$clone_root" >&2
+      status=1
+    else
+      rm -rf -- "$clone_root"
+    fi
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
 
 if [[ $EUID -eq 0 ]]; then
   die 'build the application as the target desktop user, not root'
@@ -110,10 +157,6 @@ if [[ -d $source_dir/.git ]]; then
   fi
 else
   clone_root=$(mktemp -d "$(dirname -- "$source_dir")/.codex-desktop-clone.XXXXXX")
-  cleanup_clone() {
-    rm -rf -- "$clone_root"
-  }
-  trap cleanup_clone EXIT
   if [[ $ref =~ ^[0-9a-f]{40}$ ]]; then
     echo "==> Cloning pinned ilysenko/codex-desktop-linux revision ($ref)"
     git -C "$clone_root" init --quiet source
@@ -130,7 +173,7 @@ else
   fi
   mv -- "$clone_root/source" "$source_dir"
   rmdir -- "$clone_root"
-  trap - EXIT
+  clone_root=
 fi
 
 revision=$(git -C "$source_dir" rev-parse HEAD)
@@ -145,6 +188,8 @@ if [[ $installed_revision == "$revision" ]] &&
   exit 0
 fi
 
+prepare_build_tmp_parent
+
 commit_epoch=$(git -C "$source_dir" show -s --format=%ct HEAD)
 commit_short=$(git -C "$source_dir" rev-parse --short=12 HEAD)
 package_version=$(date -u --date="@$commit_epoch" +%Y.%m.%d.%H%M%S)+$commit_short
@@ -158,9 +203,13 @@ if [[ -f $dmg_cache ]]; then
 fi
 build_succeeded=false
 for ((attempt = 1; attempt <= build_attempts; attempt++)); do
+  build_tmp_dir=$(mktemp -d "$build_tmp_parent/attempt.XXXXXXXX")
+  [[ -d $build_tmp_dir && ! -L $build_tmp_dir &&
+    $(stat -c '%u:%a' -- "$build_tmp_dir") == "$EUID:700" ]] ||
+    die "managed build temporary directory is unsafe: $build_tmp_dir"
   printf '==> Codex Desktop build attempt %d/%d (timeout: %ss)\n' \
     "$attempt" "$build_attempts" "$build_timeout_seconds"
-  if MISE_CONFIG_FILE="$mise_config" timeout \
+  if TMPDIR="$build_tmp_dir" MISE_CONFIG_FILE="$mise_config" timeout \
     --signal=TERM \
     --kill-after=30s \
     "${build_timeout_seconds}s" \
@@ -170,11 +219,13 @@ for ((attempt = 1; attempt <= build_attempts; attempt++)); do
     'PACKAGE_WITH_UPDATER=1' \
     "MAX_BUILD_THREADS=$max_build_threads" \
     "${dmg_make_arg[@]}"; then
+    cleanup_build_tmp_dir
     build_succeeded=true
     break
   else
     status=$?
   fi
+  cleanup_build_tmp_dir
 
   if ((attempt == build_attempts)); then
     if ((status == 124 || status == 137)); then

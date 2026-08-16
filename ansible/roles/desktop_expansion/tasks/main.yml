@@ -10,3 +10,6 @@
 
 - name: Configure Cloudflare One client integration
   ansible.builtin.import_tasks: cloudflare.yml
+
+- name: Harden staged Vicinae integration after package convergence
+  ansible.builtin.import_tasks: vicinae.yml

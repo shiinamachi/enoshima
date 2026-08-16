@@ -1,0 +1,12 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Path
+Target = usr/lib/libQt6*.so.6
+
+[Action]
+Description = Stopping Vicinae before its private Qt ABI changes...
+When = PreTransaction
+Exec = /usr/bin/timeout --signal=TERM --kill-after=30s 300s /usr/libexec/vicinae/vicinae-qt-guard hold
+AbortOnFail

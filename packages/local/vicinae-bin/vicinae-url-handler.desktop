@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Vicinae Deeplink Handler
+GenericName=Vicinae Deeplink Handler
+Comment=Open Vicinae Deeplinks through the managed service
+Exec=vicinae-control uri %u
+TryExec=vicinae-control
+Terminal=false
+Icon=vicinae
+Categories=Utility;
+NoDisplay=true
+MimeType=x-scheme-handler/vicinae;x-scheme-handler/raycast;x-scheme-handler/com.raycast;

@@ -52,12 +52,20 @@ export SNAP_DISPATCH_LOG=$tmp/dispatch.log
 
 "$daemon" &
 daemon_pid=$!
-for _ in {1..50}; do
-  [[ -S $tmp/runtime/enoshima/windowd.sock ]] && break
+socket_path=$tmp/runtime/enoshima/windowd.sock
+for _ in {1..500}; do
+  [[ -S $socket_path ]] && break
+  if ! kill -0 "$daemon_pid" 2>/dev/null; then
+    printf 'Enoshima window broker exited before creating its socket.\n' >&2
+    exit 1
+  fi
   sleep 0.02
 done
-[[ -S $tmp/runtime/enoshima/windowd.sock ]]
-[[ $(stat -c %a "$tmp/runtime/enoshima/windowd.sock") == 600 ]]
+if [[ ! -S $socket_path ]]; then
+  printf 'Enoshima window broker did not create its socket within 10 seconds.\n' >&2
+  exit 1
+fi
+[[ $(stat -c %a "$socket_path") == 600 ]]
 
 session_a=11111111111111111111111111111111
 session_b=22222222222222222222222222222222

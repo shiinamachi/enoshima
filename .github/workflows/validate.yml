@@ -17,7 +17,7 @@ jobs:
       - name: Install validation dependencies
         run: >-
           pacman -Syu --needed --noconfirm
-          actionlint ansible-core chezmoi git gtk3 gtk4 hyprland imagemagick jq
+          7zip actionlint ansible-core chezmoi desktop-file-utils git gtk3 gtk4 hyprland imagemagick jq
           json-glib librsvg lua python python-gobject python-yaml ripgrep shellcheck
           shfmt uv yq
           && useradd --create-home --shell /bin/bash ci
@@ -28,7 +28,8 @@ jobs:
       - name: Prepare unprivileged validation user
         run: |
           chown -R ci:ci "$GITHUB_WORKSPACE"
-          install -d -m 0700 -o ci -g ci /tmp/enoshima-ci-runtime
+          ci_uid=$(id -u ci)
+          install -d -m 0700 -o ci -g ci "/run/user/$ci_uid"
 
       - name: Install pinned Ansible collection
         run: >-
@@ -38,7 +39,35 @@ jobs:
       - name: Validate desired state
         run: >-
           runuser --user ci -- env HOME=/home/ci
-          XDG_RUNTIME_DIR=/tmp/enoshima-ci-runtime ./scripts/validate.sh
+          XDG_RUNTIME_DIR=/run/user/$(id -u ci) ./scripts/validate.sh
+
+      - name: Verify protected AUR provenance online
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          runuser --user ci -- env HOME=/home/ci
+          GITHUB_TOKEN="$GITHUB_TOKEN"
+          ./scripts/lib/aur-provenance validate
+          --lock packages/aur-provenance.json
+          --manifest packages/aur.txt
+          --require-manifest-membership
+          --online
+
+      - name: Verify pinned Vicinae release provenance online
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          runuser --user ci -- env HOME=/home/ci
+          GITHUB_TOKEN="$GITHUB_TOKEN"
+          ./scripts/check-vicinae-provenance --online
+
+      - name: Verify pinned Hyprshell source provenance online
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          runuser --user ci -- env HOME=/home/ci
+          GITHUB_TOKEN="$GITHUB_TOKEN"
+          ./scripts/check-hyprshell-provenance --online
 
       - name: Verify locked VM runner independently
         run: |

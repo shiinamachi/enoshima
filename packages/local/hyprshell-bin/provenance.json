@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "hyprshell-bin",
+    "version": "4.10.8-3",
+    "architecture": "x86_64",
+    "recipeSha256": "3dd8ac5adcc3e7e2178790badb6a7fdc5390548ed952082643211947af8a8073"
+  },
+  "upstream": {
+    "repository": "H3rmt/hyprshell",
+    "tag": "v4.10.8",
+    "tagCommit": "61ddaa30563c1f091ca5fbe5d7203c19f42b519c",
+    "sourceDateEpoch": 1781132855
+  },
+  "sourceArchive": {
+    "name": "hyprshell-61ddaa30563c1f091ca5fbe5d7203c19f42b519c.tar.gz",
+    "url": "https://github.com/H3rmt/hyprshell/archive/61ddaa30563c1f091ca5fbe5d7203c19f42b519c.tar.gz",
+    "root": "hyprshell-61ddaa30563c1f091ca5fbe5d7203c19f42b519c",
+    "size": 7656602,
+    "sha256": "6f32a195a92bd7f7efd5470de48882a071bcc4732ad9a7d6533c5050e0ccf265"
+  },
+  "upstreamFiles": {
+    "Cargo.lock": {
+      "size": 130038,
+      "sha256": "026e688dbf4a7c95c6c5a1a5d8a17880dce5aa1dfa3a30d40cbabb3200d858a9"
+    },
+    "packaging/usr-share.tar": {
+      "size": 4771840,
+      "sha256": "f7d41c55d1b10c73ee044badf52561f15b126d452196c73e976674e6e2df1df5"
+    }
+  },
+  "localSources": {
+    "overview-direct-input.patch": {
+      "size": 13846,
+      "sha256": "a85b4c46c03a31f0b1cf73b60cba623b8b2f06a3532d4ade3becf0f4d4b39079"
+    }
+  },
+  "build": {
+    "minimumRustVersion": "1.92.0",
+    "rustToolchain": {
+      "version": "1.97.0",
+      "rustcCommit": "2d8144b7880597b6e6d3dfd63a9a9efae3f533d3",
+      "cargoCommit": "c980f4866141969fab6254a680546a277789d6f0"
+    },
+    "features": [
+      "slim"
+    ],
+    "jobs": 1,
+    "release": {
+      "lto": false,
+      "debug": 0,
+      "optLevel": 2,
+      "codegenUnits": 64,
+      "incremental": false
+    },
+    "test": {
+      "debug": 0,
+      "optLevel": 1,
+      "codegenUnits": 64,
+      "incremental": false
+    },
+    "testPackage": "hyprshell-windows-lib",
+    "testFilter": "overview"
+  },
+  "packaging": {
+    "installPrefix": "/usr",
+    "licenses": [
+      "MIT"
+    ],
+    "runtimeDependencies": [
+      "hyprland",
+      "gtk4-layer-shell",
+      "gtk4",
+      "libadwaita",
+      "zstd"
+    ],
+    "makeDependencies": [
+      "rustup"
+    ],
+    "checkDependencies": [
+      "desktop-file-utils"
+    ],
+    "optionalDependencies": [
+      "org.freedesktop.secrets: Store clipboard encryption in the keyring"
+    ],
+    "provides": [
+      "hyprshell=4.10.8"
+    ],
+    "conflicts": [
+      "hyprshell"
+    ],
+    "options": [
+      "!debug",
+      "!lto"
+    ],
+    "metadataFiles": [
+      ".BUILDINFO",
+      ".MTREE",
+      ".PKGINFO"
+    ],
+    "sourcePayloadTreeSha256": "f713a6856c4fd912d1655120249896af9f071965ef4520e770d307f82ffd3b98"
+  }
+}

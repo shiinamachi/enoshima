@@ -36,6 +36,7 @@ cat >"$work/upstream/Makefile" <<'MAKEFILE'
 .PHONY: install-native
 install-native:
 	@printf '%s\n' '$(PACKAGE_VERSION)|$(PACKAGE_WITH_UPDATER)|$(MAX_BUILD_THREADS)|$(DMG)' >>'$(TEST_BUILD_LOG)'
+	@printf '%s\n' '$(TMPDIR)' >>'$(TEST_TMP_LOG)'
 	@touch '$(TEST_INSTALLED)'
 MAKEFILE
 
@@ -49,6 +50,7 @@ GIT_AUTHOR_DATE=2026-07-17T00:00:00Z \
 
 export PATH="$work/bin:$PATH"
 export TEST_BUILD_LOG=$work/build.log
+export TEST_TMP_LOG=$work/build-tmp.log
 export TEST_INSTALLED=$work/installed
 export XDG_CACHE_HOME=$work/cache
 export XDG_STATE_HOME=$work/state
@@ -60,6 +62,18 @@ export CODEX_DESKTOP_MAX_BUILD_THREADS=3
 [[ $(wc -l <"$TEST_BUILD_LOG") -eq 1 ]] || fail 'first convergence did not build exactly once'
 grep -Eq '^2026\.07\.17\.000000\+[0-9a-f]{12}\|1\|3\|$' "$TEST_BUILD_LOG" ||
   fail 'build did not receive deterministic version, updater, and thread settings'
+
+assert_managed_tmp_dirs_cleaned() {
+  local path
+
+  while IFS= read -r path; do
+    [[ $path == "$XDG_CACHE_HOME/enoshima/codex-desktop-linux/build-tmp/attempt."* ]] ||
+      fail "build did not use the managed temporary parent: $path"
+    [[ ! -e $path && ! -L $path ]] ||
+      fail "build temporary directory leaked after installer exit: $path"
+  done <"$TEST_TMP_LOG"
+}
+assert_managed_tmp_dirs_cleaned
 
 source_checkout=$XDG_CACHE_HOME/enoshima/codex-desktop-linux/source
 revision_marker=$XDG_STATE_HOME/enoshima/codex-desktop-linux/installed-source-revision
@@ -107,6 +121,7 @@ CODEX_DESKTOP_DMG_SHA256=${CODEX_DESKTOP_DMG_SHA256%% *}
 tail -n 1 "$TEST_BUILD_LOG" |
   grep -Eq "^2026\\.07\\.17\\.000100\\+[0-9a-f]{12}\\|1\\|3\\|$XDG_CACHE_HOME/codex-desktop/Codex\\.dmg$" ||
   fail 'updated build did not receive its source-derived version'
+assert_managed_tmp_dirs_cleaned
 [[ $(<"$revision_marker") == $(git -C "$work/upstream" rev-parse HEAD) ]] ||
   fail 'updated source revision was not recorded'
 
@@ -123,6 +138,7 @@ export TEST_ATTEMPT_FILE=$work/build-attempted
 cat >"$work/upstream/Makefile" <<'MAKEFILE'
 .PHONY: install-native
 install-native:
+	@printf '%s\n' '$(TMPDIR)' >>'$(TEST_TMP_LOG)'
 	@if [ -f '$(TEST_ATTEMPT_FILE)' ]; then \
 		touch '$(TEST_INSTALLED)'; \
 	else \
@@ -142,6 +158,7 @@ CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS=1 \
 grep -Fq 'Codex Desktop build attempt 1/2 failed with status 124; retrying in 0s.' \
   "$retry_log" ||
   fail 'a timed-out upstream build was not retried'
+assert_managed_tmp_dirs_cleaned
 [[ $(<"$revision_marker") == $(git -C "$work/upstream" rev-parse HEAD) ]] ||
   fail 'a recovered retry did not advance the installed revision marker'
 
@@ -150,6 +167,7 @@ export TEST_FAILURE_ATTEMPT_FILE=$work/failed-build-attempts
 cat >"$work/upstream/Makefile" <<'MAKEFILE'
 .PHONY: install-native
 install-native:
+	@printf '%s\n' '$(TMPDIR)' >>'$(TEST_TMP_LOG)'
 	@count=0; \
 	if [ -f '$(TEST_FAILURE_ATTEMPT_FILE)' ]; then \
 		read -r count <'$(TEST_FAILURE_ATTEMPT_FILE)'; \
@@ -171,6 +189,7 @@ CODEX_DESKTOP_BUILD_ATTEMPTS=2 \
 grep -Fq 'Codex Desktop build attempt 1/2 failed with status 2; retrying in 0s.' \
   "$failure_retry_log" ||
   fail 'a non-timeout transient upstream failure was not retried'
+assert_managed_tmp_dirs_cleaned
 [[ $(<"$revision_marker") == $(git -C "$work/upstream" rev-parse HEAD) ]] ||
   fail 'a recovered non-timeout retry did not advance the installed revision marker'
 
@@ -178,6 +197,7 @@ previous_revision=$(<"$revision_marker")
 cat >"$work/upstream/Makefile" <<'MAKEFILE'
 .PHONY: install-native
 install-native:
+	@printf '%s\n' '$(TMPDIR)' >>'$(TEST_TMP_LOG)'
 	@sleep 5
 MAKEFILE
 git -C "$work/upstream" add Makefile
@@ -195,6 +215,27 @@ grep -Fq 'the upstream build exceeded 1s on all attempts' "$timeout_log" ||
   fail 'a timed-out upstream build was not reported clearly'
 [[ $(<"$revision_marker") == "$previous_revision" ]] ||
   fail 'a timed-out build advanced the installed revision marker'
+assert_managed_tmp_dirs_cleaned
+
+symlink_cache=$work/symlink-cache
+symlink_state=$work/symlink-state
+symlink_target=$work/symlink-target
+mkdir -p \
+  "$symlink_cache/enoshima/codex-desktop-linux" \
+  "$symlink_state" \
+  "$symlink_target"
+ln -s -- "$symlink_target" \
+  "$symlink_cache/enoshima/codex-desktop-linux/build-tmp"
+symlink_log=$work/symlink.log
+if XDG_CACHE_HOME=$symlink_cache \
+  XDG_STATE_HOME=$symlink_state \
+  "$installer" >"$symlink_log" 2>&1; then
+  fail 'a symlinked managed build temporary parent was accepted'
+fi
+grep -Fq 'managed build temporary parent is a symlink' "$symlink_log" ||
+  fail 'a rejected temporary-parent symlink was not reported clearly'
+[[ -z $(find "$symlink_target" -mindepth 1 -print -quit) ]] ||
+  fail 'a rejected temporary-parent symlink was followed'
 
 grep -Fxq chatgpt-desktop-bin "$repo_root/packages/absent.txt" ||
   fail 'retired AUR package is not declared absent'

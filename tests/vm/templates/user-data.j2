@@ -90,6 +90,22 @@ write_files:
       cloud_bootstrap_timeout_seconds=1080
       pacman_download_timeout_seconds=300
       cloud_bootstrap_deadline=$((SECONDS + cloud_bootstrap_timeout_seconds))
+      pacman_seed_ready=/run/enoshima-pacman-cache-seed-ready
+      pacman_seeded=/run/enoshima-pacman-cache-seeded
+      # The runner can reach SSH before cloud-final completes. Give it a
+      # bounded window to install the snapshot-scoped, checksum-verified host
+      # cache. Never let pacman and a late cache extraction mutate its package
+      # directory concurrently.
+      while [[ ! -e $pacman_seed_ready ]]; do
+        if (( SECONDS >= cloud_bootstrap_deadline )); then
+          printf >&2 'runner pacman cache decision missed the cloud deadline\n'
+          exit 1
+        fi
+        sleep 1
+      done
+      if [[ -e $pacman_seeded ]]; then
+        printf 'using the verified runner pacman cache before cloud bootstrap\n'
+      fi
       downloads_ready=false
       attempt=1
       while (( SECONDS < cloud_bootstrap_deadline )); do

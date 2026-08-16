@@ -219,10 +219,16 @@ cancel_events=$work/cancel-events.jsonl
 DESKTOP_POWER_CLOSE_TIMEOUT_SECONDS=5 run_power reboot >"$cancel_events" &
 transition_pid=$!
 for _ in {1..100}; do
-  [[ -f $pending ]] && break
+  if [[ -f $pending ]] &&
+    jq -e '.phase == "closing_apps"' "$pending" >/dev/null 2>&1; then
+    break
+  fi
   sleep 0.01
 done
-[[ -f $pending ]] || fail 'cancellable transition did not create a checkpoint'
+if [[ ! -f $pending ]] ||
+  ! jq -e '.phase == "closing_apps"' "$pending" >/dev/null 2>&1; then
+  fail 'cancellable transition did not enter the application-close phase'
+fi
 cancel_request=$(jq -r '.request_id' "$pending")
 jq -e '.accepted == true' < <(run_power cancel --request-id "$cancel_request") >/dev/null ||
   fail 'power cancellation was not accepted'

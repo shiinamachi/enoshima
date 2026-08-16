@@ -18,13 +18,15 @@
         that:
           - enoshima_environment in ['physical', 'vm']
           - enoshima_capabilities is mapping
+          - desktop_accessibility_profile_enabled is boolean
           - >-
             (enoshima_required_capabilities
             | difference(enoshima_capabilities.keys() | list)
             | length) == 0
         fail_msg: >-
           Every inventory host must declare the complete Enoshima capability
-          map instead of relying on DMI or hardware-name detection.
+          map and a boolean accessibility profile instead of relying on DMI,
+          hardware-name detection, or truthy strings.
       tags:
         - always
 

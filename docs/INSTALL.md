@@ -31,6 +31,21 @@ repartitioning. Update the host variables after creating a new filesystem.
 7. Update `ansible/inventory/host_vars/<host>.yml` with the new LUKS, Btrfs and
    ESP identifiers.
 
+Orca is deliberately excluded from the default package set. To opt this host
+into screen-reader support, set the host inventory variable below before the
+normal bootstrap; Ansible then installs only the packages listed in
+`packages/accessibility.txt` as part of the supported full-upgrade workflow.
+
+```yaml
+desktop_accessibility_profile_enabled: true
+```
+
+After convergence, launch **Orca Screen Reader** from Vicinae's upstream
+Applications provider. The repository's Vicinae **접근성 표시 모드** and **기본 표시
+모드** Script Commands independently switch motion, blur, high-contrast tokens,
+and the 48px/24px pointer; they do not pretend to stop or uninstall the
+long-running screen reader.
+
 The inventory `target_user_home` must be the user's real, canonical home path,
 not a symlink to another directory.
 
@@ -95,9 +110,25 @@ recorded source revision and installed package still match;
 lock requires a fresh VM convergence run that records an accepted upstream DMG
 verdict.
 
-Local packages are built only when the declared version differs from the
-installed version and are installed before Ansible so their systemd units
-exist. AUR applications follow Ansible after multilib and native prerequisites
+Managed mise runtime installation is also bounded: normal workstation
+bootstrap permits four ten-minute attempts with ten-second delays. VM evidence
+narrows that policy to two ten-minute attempts so one transient download can
+recover while the enclosing cold-bootstrap deadline remains deterministic.
+
+Local packages are built when their declared version differs from the installed
+version. Vicinae is also rebuilt whenever its recorded Qt manifest no longer
+matches the live libraries. Before the initial full upgrade, bootstrap stages
+the reviewed root-owned `vicinae-qt-guard`, publishes systemd's native global
+runtime mask under `/run`,
+reloads every validated login or lingering user manager, and verifies that both
+managed and directly launched Vicinae processes have stopped. Local replacement
+keeps that hold across package-changing work. After chezmoi deploys the current
+user policy, bootstrap validates the files, effective unit, and pure Qt ABI
+check before it removes the gate, unmasks and enables the unit, and starts it
+only in an active graphical session. No resume list, install intent, phase, or
+other Vicinae lifecycle state is stored under `/var/lib`; reboot clears the
+ephemeral gate while the static ABI `ExecCondition` still blocks an incompatible
+binary. AUR applications follow Ansible after multilib and native prerequisites
 are present.
 
 Validation, chezmoi hooks, service refreshes, and postflight checks are part of

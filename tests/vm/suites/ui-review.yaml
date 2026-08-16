@@ -14,11 +14,11 @@ network:
   allow_lan: false
 steps:
   - wait_for_ssh
+  - seed_pacman_cache
   - wait_for_cloud_init
   - wait_for_guest_agent
   - upload_worktree
   - seed_codex_electron_cache
-  - seed_pacman_cache
   - run_validate
   - run_bootstrap:
       report: first
@@ -28,9 +28,11 @@ steps:
   - run_ui_review:
       surfaces:
         - auth
+        - command-palette
         - desktop-shell
         - launcher
         - notification-center
+        - overview
         - power-menu
         - osd
         - display-mode
@@ -51,6 +53,7 @@ allowed_skips:
   - fingerprint-device
   - fingerprint-enrollment
   - hibernation
+  - opt-in-orca-screen-reader-package
   - root-luks
   - secure-boot
   - thunderbolt-controller

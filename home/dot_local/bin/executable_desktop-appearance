@@ -10,10 +10,10 @@ usage() {
 Usage: desktop-appearance MODE
 
 Modes:
-  default                Restore the configured motion and transparency.
+  default                Restore motion, transparency, 24px pointer, and contrast.
   reduced-motion         Disable compositor and focus-cue animation.
   reduced-transparency   Disable compositor blur.
-  accessible             Disable animation, focus motion, and blur.
+  accessible             Reduce motion/blur; use a 48px pointer and high contrast.
   apply                  Reapply the stored mode to the current session.
   status                 Print the stored mode.
 EOF
@@ -78,8 +78,25 @@ hyprfocus_schema() {
 
 apply_mode() {
   local mode=$1
+  local cursor_size=24
+  local high_contrast=false
   command -v hyprctl >/dev/null 2>&1 || die 'hyprctl is not installed'
   hyprctl monitors -j >/dev/null 2>&1 || die 'no active Hyprland session'
+
+  if [[ $mode == accessible ]]; then
+    cursor_size=48
+    high_contrast=true
+  fi
+  hyprctl setcursor capitaine-cursors "$cursor_size" >/dev/null
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user set-environment \
+      "XCURSOR_SIZE=$cursor_size" "HYPRCURSOR_SIZE=$cursor_size" \
+      >/dev/null 2>&1 || true
+  fi
+  if command -v gsettings >/dev/null 2>&1; then
+    gsettings set org.gnome.desktop.interface cursor-size "$cursor_size"
+    gsettings set org.gnome.desktop.a11y.interface high-contrast "$high_contrast"
+  fi
 
   # This workstation uses Hyprland's Lua configuration parser, which rejects
   # the legacy `hyprctl keyword` path. Apply partial Lua config tables instead.

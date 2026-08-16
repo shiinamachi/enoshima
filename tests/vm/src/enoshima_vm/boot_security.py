@@ -96,10 +96,10 @@ def boot_with_recovery(
             ["cat", "/proc/sys/kernel/random/boot_id"], check=False
         ).stdout.strip()
         serial_offset = service.backend.serial_log_size(record["domain"])
-        service.backend.reboot(record["domain"])
+        service.backend.reboot(record["domain"], record["domain_uuid"])
     else:
         serial_offset = 0
-        service.backend.start(record["domain"])
+        service.backend.start(record["domain"], record["domain_uuid"])
 
     recovery_value = Path(record["recovery_key"]).read_text(encoding="utf-8").strip()
     deadline = time.monotonic() + timeout_seconds
@@ -139,7 +139,9 @@ def boot_with_recovery(
             if prompt_count > submitted_prompt_count:
                 submitted_prompt_count = prompt_count
                 prompt_input_attempts = 0
-                service.backend.type_serial_text(record["domain"], recovery_value)
+                service.backend.type_serial_text(
+                    record["domain"], record["domain_uuid"], recovery_value
+                )
                 prompt_input_attempts = 1
                 prompt_input_serial_size = serial_size
                 prompt_input_retry_at = now + 3
@@ -154,7 +156,9 @@ def boot_with_recovery(
                         "the serial console did not consume recovery input",
                         {"prompt_input_attempts": prompt_input_attempts},
                     )
-                service.backend.type_serial_text(record["domain"], recovery_value)
+                service.backend.type_serial_text(
+                    record["domain"], record["domain_uuid"], recovery_value
+                )
                 prompt_input_attempts += 1
                 prompt_input_serial_size = serial_size
                 prompt_input_retry_at = now + 3
@@ -167,7 +171,9 @@ def boot_with_recovery(
                 ["cat", "/proc/sys/kernel/random/boot_id"], check=False
             ).stdout.strip()
             if not before or (after and after != before):
-                service.backend.wait_guest_agent(record["domain"], 180)
+                service.backend.wait_guest_agent(
+                    record["domain"], record["domain_uuid"], 180
+                )
                 return
         time.sleep(2)
     raise VMError(
@@ -443,7 +449,7 @@ def test_unsigned_rejection(service: VMService, record: dict[str, Any]) -> None:
         FailureCategory.SECURE_BOOT_FAILED,
     )
     before = guest.exec(["cat", "/proc/sys/kernel/random/boot_id"]).stdout.strip()
-    service.backend.reboot(record["domain"])
+    service.backend.reboot(record["domain"], record["domain_uuid"])
     deadline = time.monotonic() + 60
     observed_down = False
     while time.monotonic() < deadline:
@@ -476,9 +482,9 @@ def test_unsigned_rejection(service: VMService, record: dict[str, Any]) -> None:
     # Firmware is allowed to stop at its boot manager after rejecting the
     # one-shot unsigned entry. Reset the disposable guest so systemd-boot
     # consumes its persistent signed default without relying on menu timing.
-    service.backend.reset(record["domain"])
+    service.backend.reset(record["domain"], record["domain_uuid"])
     guest.wait_ssh(240)
-    service.backend.wait_guest_agent(record["domain"], 180)
+    service.backend.wait_guest_agent(record["domain"], record["domain_uuid"], 180)
     cmdline = guest.exec(["cat", "/proc/cmdline"]).stdout
     if "enoshima.unsigned_test=1" in cmdline:
         raise VMError(

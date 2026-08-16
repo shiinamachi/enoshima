@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Vicinae
+GenericName=Vicinae
+Comment=A focused launcher for your desktop
+Exec=vicinae-control toggle
+TryExec=vicinae-control
+Terminal=false
+Icon=vicinae
+Categories=Utility;Accessibility;
+NoDisplay=false
+StartupWMClass=vicinae
+StartupNotify=false

@@ -19,6 +19,7 @@ def test_domain_templates_render_as_xml_without_host_mounts(tmp_path: Path) -> N
     )
     context = {
         "domain": "enoshima-test-run-012345abcdef",
+        "domain_uuid": "12345678-1234-5678-1234-567812345678",
         "memory_mib": 8192,
         "vcpus": 4,
         "overlay": tmp_path / "root.qcow2",
@@ -35,6 +36,7 @@ def test_domain_templates_render_as_xml_without_host_mounts(tmp_path: Path) -> N
         rendered = environment.get_template(name).render(**context)
         root = ET.fromstring(rendered)
         assert root.findtext("name") == context["domain"]
+        assert root.findtext("uuid") == context["domain_uuid"]
         assert root.findall(".//filesystem") == []
         if root.findall(".//devices//boot"):
             assert root.findall(".//os/boot") == []
@@ -86,6 +88,11 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert "DisableDownloadTimeout" in reproducible
     assert "cloud_bootstrap_timeout_seconds=1080" in reproducible
     assert "pacman_download_timeout_seconds=300" in reproducible
+    assert "pacman_seed_ready=/run/enoshima-pacman-cache-seed-ready" in reproducible
+    assert "pacman_seeded=/run/enoshima-pacman-cache-seeded" in reproducible
+    assert "while [[ ! -e $pacman_seed_ready ]]; do" in reproducible
+    assert "runner pacman cache decision missed the cloud deadline" in reproducible
+    assert "pacman_download_mode" not in reproducible
     assert (
         "[systemctl, mask, --runtime, --now, systemd-time-wait-sync.service]"
         in reproducible
@@ -107,7 +114,11 @@ def test_reproducible_cloud_init_pins_the_complete_archive_snapshot() -> None:
     assert transaction in reproducible
     assert reproducible.index("timeout --signal=TERM") < reproducible.index(transaction)
     enable_firewall = "systemctl enable --now nftables.service"
-    assert reproducible.index(enable_firewall) < reproducible.index("pacman -Syu")
+    download = 'pacman -Syuw --needed --noconfirm "${packages[@]}"'
+    assert reproducible.index(enable_firewall) < reproducible.index(download)
+    assert reproducible.index("while [[ ! -e $pacman_seed_ready ]]") < (
+        reproducible.index(download)
+    )
     assert "ip daddr 10.0.2.3 udp dport 53 accept" in reproducible
     assert "ip daddr 10.0.2.3 tcp dport 53 accept" in reproducible
     assert "systemctl is-enabled --quiet nftables.service" in reproducible
@@ -262,11 +273,13 @@ def test_ui_review_suite_uses_the_production_login_and_matrix_runner() -> None:
     )
     assert set(matrix_step["surfaces"]) == {
         "auth",
+        "command-palette",
         "cyberdock-window-state",
         "desktop-shell",
         "display-mode",
         "launcher",
         "notification-center",
+        "overview",
         "osd",
         "power-menu",
         "snap-assist",

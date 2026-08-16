@@ -12,7 +12,7 @@ fail() {
 }
 
 bash -n "$builder"
-pacstrap_block=$(sed -n '/^pacstrap -K /,/^$/p' "$builder")
+package_block=$(sed -n '/^boot_target_packages=(/,/^)/p' "$builder")
 # Match literal safeguards in the builder source.
 # shellcheck disable=SC2016
 grep -Fq '[[ $disk == /dev/vdb ]]' "$builder" ||
@@ -22,8 +22,20 @@ grep -Fq 'wipefs --all --force "$disk"' "$builder" ||
   fail 'disk preparation is not explicit'
 grep -Eq '^  parted \\$' "$builder" ||
   fail 'disk builder does not install the package that provides partprobe'
-grep -Eq '^  chezmoi \\$' <<<"$pacstrap_block" ||
+grep -Eq '^  chezmoi$' <<<"$package_block" ||
   fail 'boot target lacks the dotfile client required by bootstrap'
+grep -Fq 'BOOT_SECURITY_PACKAGE_DOWNLOAD_MAX_ATTEMPTS:-4' "$builder" ||
+  fail 'boot target package download has no bounded retry budget'
+grep -Fq 'BOOT_SECURITY_PACKAGE_DOWNLOAD_RETRY_DELAY_SECONDS:-10' "$builder" ||
+  fail 'boot target package download has no bounded retry delay'
+grep -Fq 'boot-security package download exhausted' "$builder" ||
+  fail 'boot target package download does not report exhausted retries'
+# shellcheck disable=SC2016
+grep -Fq 'pacstrap -c -K "$target" --downloadonly "${boot_target_packages[@]}"' \
+  "$builder" || fail 'boot target dependency closure has no download-only retry phase'
+# shellcheck disable=SC2016
+grep -Fq 'pacstrap -c -K "$target" "${boot_target_packages[@]}"' "$builder" ||
+  fail 'boot target installation does not reuse the verified host cache'
 grep -Fq 'recovery key must contain exactly 64 bytes without a newline' "$builder" ||
   fail 'interactive recovery key format is not enforced'
 grep -Fq 'console=tty0 console=ttyS0,115200n8' "$builder" ||
@@ -42,8 +54,49 @@ grep -Fq 'sbctl enroll-keys -m' "$builder" ||
 # shellcheck disable=SC2016
 grep -Fq '"$target/etc/pacman.d/mirrorlist"' "$builder" ||
   fail 'boot target does not retain the reproducible repository snapshot'
+grep -Fq 'DNS=1.1.1.1 9.9.9.9' "$builder" ||
+  fail 'boot target does not retain the isolated public resolver policy'
+grep -Fq 'FallbackDNS=' "$builder" ||
+  fail 'boot target resolver policy permits an inherited fallback'
+grep -Fq 'Domains=~.' "$builder" ||
+  fail 'boot target resolver policy does not own the default route'
+# shellcheck disable=SC2016
+grep -Fq 'ln -sfn ../run/systemd/resolve/stub-resolv.conf "$target/etc/resolv.conf"' \
+  "$builder" || fail 'boot target does not use the systemd-resolved stub'
+grep -Eq '^  systemd-resolved\.service \\$' "$builder" ||
+  fail 'boot target does not enable systemd-resolved before bootstrap'
+grep -Fq 'ip daddr 10.0.2.3 udp dport 53 accept' "$builder" ||
+  fail 'boot target firewall does not permit slirp UDP DNS'
+grep -Fq 'ip daddr 10.0.2.3 tcp dport 53 accept' "$builder" ||
+  fail 'boot target firewall does not permit slirp TCP DNS'
 grep -Fq 'arch-linux-unsigned.efi' "$builder" ||
   fail 'negative unsigned-UKI fixture is missing'
+
+package_download_retry_impl=$(
+  sed -n '/^download_boot_target_packages_with_bounded_retries()/,/^}/p' "$builder"
+)
+retry_work=$(mktemp -d)
+trap 'rm -rf -- "$retry_work"' EXIT
+(
+  eval "$package_download_retry_impl"
+  # shellcheck disable=SC2034 # Consumed by the production helpers loaded via eval.
+  target=$retry_work/target boot_target_packages=(fixture) package_download_max_attempts=3 package_download_retry_delay_seconds=0
+  export BOOT_SECURITY_PACKAGE_DOWNLOAD_ATTEMPT_FILE=$retry_work/attempts
+  # shellcheck disable=SC2329 # Invoked by the production helper loaded via eval.
+  clear_stale_pacman_lock() { :; }
+  # shellcheck disable=SC2329 # Invoked by the production helper loaded via eval.
+  pacstrap() {
+    local count=0
+    [[ ! -f $BOOT_SECURITY_PACKAGE_DOWNLOAD_ATTEMPT_FILE ]] ||
+      read -r count <"$BOOT_SECURITY_PACKAGE_DOWNLOAD_ATTEMPT_FILE"
+    count=$((count + 1))
+    printf '%s\n' "$count" >"$BOOT_SECURITY_PACKAGE_DOWNLOAD_ATTEMPT_FILE"
+    ((count >= 3))
+  }
+  download_boot_target_packages_with_bounded_retries >/dev/null 2>&1
+) || fail 'boot target package download did not recover within its retry budget'
+[[ $(<"$retry_work/attempts") == 3 ]] ||
+  fail 'boot target package download did not exercise the expected retries'
 
 grep -Fq '<feature enabled="yes" name="secure-boot"/>' "$domain_template" ||
   fail 'secure firmware is not requested'

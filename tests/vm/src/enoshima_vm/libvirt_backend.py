@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import pty
+import pwd
 import select
 import shutil
 import socket
@@ -11,6 +12,7 @@ import subprocess
 import termios
 import time
 import tty
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +28,7 @@ from .security import confined_path, require_domain
 class DomainSpec:
     run_id: str
     domain: str
+    domain_uuid: str
     overlay: Path
     seed: Path
     ssh_host_port: int
@@ -50,6 +53,50 @@ class LibvirtBackend:
             keep_trailing_newline=True,
         )
 
+    def session_identity(self) -> dict[str, object]:
+        uid = os.getuid()
+        home = Path(pwd.getpwuid(uid).pw_dir)
+        runtime = Path(f"/run/user/{uid}")
+        try:
+            runtime_stat = runtime.stat()
+        except OSError as error:
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                f"canonical desktop runtime is unavailable: {runtime}",
+                {"error": str(error)},
+            ) from error
+        if not runtime.is_dir() or runtime.is_symlink() or runtime_stat.st_uid != uid:
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                f"canonical desktop runtime is unsafe: {runtime}",
+            )
+        if stat.S_IMODE(runtime_stat.st_mode) != 0o700:
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                f"canonical desktop runtime has unsafe permissions: {runtime}",
+            )
+        return {
+            "uri": self.uri,
+            "uid": uid,
+            "runtimeDir": str(runtime),
+            "socketPath": str(runtime / "libvirt" / "virtqemud-sock"),
+            "configHome": str(home / ".config"),
+            "cacheHome": str(home / ".cache"),
+        }
+
+    def _session_environment(self) -> dict[str, str]:
+        identity = self.session_identity()
+        environment = dict(os.environ)
+        environment.update(
+            {
+                "HOME": str(Path(str(identity["configHome"])).parent),
+                "XDG_RUNTIME_DIR": str(identity["runtimeDir"]),
+                "XDG_CONFIG_HOME": str(identity["configHome"]),
+                "XDG_CACHE_HOME": str(identity["cacheHome"]),
+            }
+        )
+        return environment
+
     def virsh(
         self,
         args: list[str | Path],
@@ -61,6 +108,7 @@ class LibvirtBackend:
             ["virsh", "--connect", self.uri, *args],
             timeout=timeout,
             check=check,
+            env=self._session_environment(),
         )
 
     def active_managed_domains(self) -> list[str]:
@@ -120,6 +168,7 @@ class LibvirtBackend:
         self,
         run_dir: Path,
         run_id: str,
+        domain_uuid: str,
         suite: Suite,
         base_image: Path,
         seed: Path,
@@ -132,6 +181,7 @@ class LibvirtBackend:
                 {"active": active, "maximum": MAX_ACTIVE_DOMAINS},
             )
         domain = require_domain(f"{DOMAIN_PREFIX}{run_id}")
+        domain_uuid = str(uuid.UUID(domain_uuid))
         overlay = run_dir / "root.qcow2"
         boot_disk: Path | None = None
         overlay_gib = (
@@ -184,6 +234,7 @@ class LibvirtBackend:
         xml_path.write_text(
             template.render(
                 domain=domain,
+                domain_uuid=domain_uuid,
                 memory_mib=suite.resources.memory_mib,
                 vcpus=suite.resources.vcpus,
                 overlay=overlay,
@@ -196,13 +247,20 @@ class LibvirtBackend:
         )
         xml_path.chmod(0o600)
         return DomainSpec(
-            run_id, domain, overlay, seed, ssh_host_port, xml_path, boot_disk
+            run_id,
+            domain,
+            domain_uuid,
+            overlay,
+            seed,
+            ssh_host_port,
+            xml_path,
+            boot_disk,
         )
 
     def define_and_start(self, spec: DomainSpec) -> None:
         try:
             self.virsh(["define", spec.xml])
-            self.virsh(["start", spec.domain], timeout=60)
+            self.virsh(["start", spec.domain_uuid], timeout=60)
         except Exception as error:
             details: dict[str, object] = {"error": str(error)}
             if isinstance(error, subprocess.CalledProcessError):
@@ -222,17 +280,134 @@ class LibvirtBackend:
 
     def state(self, domain: str) -> str:
         require_domain(domain)
-        result = self.virsh(["domstate", domain], check=False)
-        if result.returncode:
+        domains = {
+            name
+            for name in self.virsh(
+                ["list", "--all", "--name"], timeout=30
+            ).stdout.splitlines()
+            if name
+        }
+        if domain not in domains:
             return "undefined"
-        return result.stdout.strip().lower()
+        result = self.virsh(["domstate", domain], timeout=30, check=False)
+        state = result.stdout.strip().lower()
+        if result.returncode == 0 and state:
+            return state
+        remaining = {
+            name
+            for name in self.virsh(
+                ["list", "--all", "--name"], timeout=30
+            ).stdout.splitlines()
+            if name
+        }
+        if domain not in remaining:
+            return "undefined"
+        raise VMError(
+            FailureCategory.HOST_INFRA_ERROR,
+            f"cannot query managed domain state: {domain}",
+            {
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            },
+        )
 
-    def wait_guest_agent(self, domain: str, timeout_seconds: int = 300) -> None:
+    def owned_state(self, domain: str, domain_uuid: str) -> str:
         require_domain(domain)
+        expected_uuid = str(uuid.UUID(domain_uuid))
+        owned_state = self._uuid_state(expected_uuid)
+        resolved = self.virsh(["domuuid", domain], timeout=30, check=False)
+        if resolved.returncode == 0:
+            actual_uuid = resolved.stdout.strip().lower()
+            if actual_uuid != expected_uuid:
+                raise VMError(
+                    FailureCategory.HOST_INFRA_ERROR,
+                    "managed domain UUID does not match the recorded run owner; "
+                    "preserving the domain and ephemeral storage",
+                    {
+                        "domain": domain,
+                        "recordedUuid": expected_uuid,
+                        "actualUuid": actual_uuid,
+                    },
+                )
+            if owned_state == "undefined":
+                raise VMError(
+                    FailureCategory.HOST_INFRA_ERROR,
+                    "managed domain name resolved to the recorded UUID but the "
+                    "UUID inventory was inconsistent; preserving ephemeral storage",
+                    {"domain": domain, "recordedUuid": expected_uuid},
+                )
+            return owned_state
+        if owned_state != "undefined":
+            return owned_state
+        if self.state(domain) == "undefined":
+            return "undefined"
+        raise VMError(
+            FailureCategory.HOST_INFRA_ERROR,
+            f"cannot resolve managed domain UUID: {domain}",
+            {
+                "returncode": resolved.returncode,
+                "stdout": resolved.stdout,
+                "stderr": resolved.stderr,
+            },
+        )
+
+    def _uuid_state(self, domain_uuid: str) -> str:
+        target = str(uuid.UUID(domain_uuid))
+        domains = {
+            value
+            for value in self.virsh(
+                ["list", "--all", "--uuid"], timeout=30
+            ).stdout.splitlines()
+            if value
+        }
+        if target not in domains:
+            return "undefined"
+        result = self.virsh(["domstate", target], timeout=30, check=False)
+        state = result.stdout.strip().lower()
+        if result.returncode == 0 and state:
+            return state
+        remaining = {
+            value
+            for value in self.virsh(
+                ["list", "--all", "--uuid"], timeout=30
+            ).stdout.splitlines()
+            if value
+        }
+        if target not in remaining:
+            return "undefined"
+        raise VMError(
+            FailureCategory.HOST_INFRA_ERROR,
+            f"cannot query managed domain UUID state: {target}",
+            {
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            },
+        )
+
+    def _owned_target(self, domain: str, domain_uuid: str) -> str:
+        state = self.owned_state(domain, domain_uuid)
+        target = str(uuid.UUID(domain_uuid))
+        if state == "undefined":
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                f"recorded managed domain is undefined: {domain}",
+                {"domain": domain, "recordedUuid": target},
+            )
+        return target
+
+    def wait_guest_agent(
+        self,
+        domain: str,
+        domain_uuid: str,
+        timeout_seconds: int = 300,
+    ) -> None:
+        target = self._owned_target(domain, domain_uuid)
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
             result = self.virsh(
-                ["qemu-agent-command", domain, '{"execute":"guest-ping"}'],
+                ["qemu-agent-command", target, '{"execute":"guest-ping"}'],
                 timeout=10,
                 check=False,
             )
@@ -244,27 +419,32 @@ class LibvirtBackend:
             f"guest agent did not become ready for {domain}",
         )
 
-    def reboot(self, domain: str) -> None:
-        require_domain(domain)
-        self.virsh(["reboot", domain, "--mode", "agent"], timeout=30)
+    def reboot(self, domain: str, domain_uuid: str) -> None:
+        target = self._owned_target(domain, domain_uuid)
+        self.virsh(["reboot", target, "--mode", "agent"], timeout=30)
 
-    def reset(self, domain: str) -> None:
+    def reset(self, domain: str, domain_uuid: str) -> None:
         """Hard-reset a disposable guest that cannot service an agent reboot."""
-        require_domain(domain)
-        self.virsh(["reset", domain], timeout=30)
+        target = self._owned_target(domain, domain_uuid)
+        self.virsh(["reset", target], timeout=30)
 
-    def poweroff(self, domain: str) -> None:
-        require_domain(domain)
-        self.virsh(["shutdown", domain, "--mode", "agent"], timeout=30, check=False)
+    def poweroff(self, domain: str, domain_uuid: str) -> None:
+        target = self._owned_target(domain, domain_uuid)
+        self.virsh(["shutdown", target, "--mode", "agent"], timeout=30, check=False)
 
     def send_keys(
-        self, domain: str, keys: list[str], *, hold_milliseconds: int = 100
+        self,
+        domain: str,
+        domain_uuid: str,
+        keys: list[str],
+        *,
+        hold_milliseconds: int = 100,
     ) -> None:
-        require_domain(domain)
+        target = self._owned_target(domain, domain_uuid)
         self.virsh(
             [
                 "send-key",
-                domain,
+                target,
                 "--holdtime",
                 str(hold_milliseconds),
                 *keys,
@@ -272,8 +452,14 @@ class LibvirtBackend:
             timeout=30,
         )
 
-    def pointer_move_absolute(self, domain: str, x: int, y: int) -> None:
-        require_domain(domain)
+    def pointer_move_absolute(
+        self,
+        domain: str,
+        domain_uuid: str,
+        x: int,
+        y: int,
+    ) -> None:
+        target = self._owned_target(domain, domain_uuid)
         if not 0 <= x <= 32767 or not 0 <= y <= 32767:
             raise ValueError("absolute pointer coordinates must be between 0 and 32767")
         command = {
@@ -288,14 +474,20 @@ class LibvirtBackend:
         self.virsh(
             [
                 "qemu-monitor-command",
-                domain,
+                target,
                 json.dumps(command, separators=(",", ":")),
             ],
             timeout=30,
         )
 
-    def pointer_button(self, domain: str, button: str, down: bool) -> None:
-        require_domain(domain)
+    def pointer_button(
+        self,
+        domain: str,
+        domain_uuid: str,
+        button: str,
+        down: bool,
+    ) -> None:
+        target = self._owned_target(domain, domain_uuid)
         if button not in {"left", "middle", "right", "wheel-up", "wheel-down"}:
             raise ValueError("unsupported pointer button")
         command = {
@@ -312,51 +504,168 @@ class LibvirtBackend:
         self.virsh(
             [
                 "qemu-monitor-command",
-                domain,
+                target,
                 json.dumps(command, separators=(",", ":")),
             ],
             timeout=30,
         )
 
-    def screenshot(self, domain: str, destination: Path) -> None:
-        require_domain(domain)
+    def screenshot(self, domain: str, domain_uuid: str, destination: Path) -> None:
+        target = self._owned_target(domain, domain_uuid)
         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.virsh(["screenshot", domain, destination], timeout=30)
+        self.virsh(["screenshot", target, destination], timeout=30)
 
-    def destroy(self, domain: str) -> None:
+    def destroy(self, domain: str, domain_uuid: str) -> None:
         require_domain(domain)
-        if self.state(domain) not in {"undefined", "shut off", "shutoff"}:
-            self.virsh(["destroy", domain], timeout=30, check=False)
-        result = self.virsh(
-            ["undefine", domain, "--nvram", "--tpm"], timeout=30, check=False
-        )
-        if result.returncode:
-            self.virsh(["undefine", domain, "--nvram"], timeout=30, check=False)
+        try:
+            expected_uuid = str(uuid.UUID(domain_uuid))
+        except ValueError as error:
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                "destructive cleanup requires a valid recorded domain UUID",
+                {"domain": domain, "recordedUuid": domain_uuid},
+            ) from error
+        state = self.owned_state(domain, expected_uuid)
+        target = expected_uuid
+        if state == "undefined":
+            return
+        if state not in {"shut off", "shutoff"}:
+            stop_timeout: subprocess.TimeoutExpired | None = None
+            try:
+                result = self.virsh(["destroy", target], timeout=30, check=False)
+            except subprocess.TimeoutExpired as error:
+                # A timed-out virsh client does not prove that libvirt failed to
+                # apply the mutation. Reconcile only against the recorded UUID
+                # before deciding whether cleanup may continue.
+                stop_timeout = error
+                result = None
+            state = self._uuid_state(target)
+            if state not in {"undefined", "shut off", "shutoff"}:
+                details: dict[str, object] = {"state": state}
+                if result is not None:
+                    details.update(
+                        {
+                            "returncode": result.returncode,
+                            "stdout": result.stdout,
+                            "stderr": result.stderr,
+                        }
+                    )
+                if stop_timeout is not None:
+                    details["timeout"] = str(stop_timeout)
+                raise VMError(
+                    FailureCategory.HOST_INFRA_ERROR,
+                    "cannot stop managed domain before cleanup; recorded UUID "
+                    f"remained active: {domain}",
+                    details,
+                )
+        if state != "undefined":
+            undefine_timeout: subprocess.TimeoutExpired | None = None
+            try:
+                result = self.virsh(
+                    ["undefine", target, "--nvram", "--tpm"],
+                    timeout=30,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as error:
+                undefine_timeout = error
+                result = None
+            final_state = self._uuid_state(target)
+            if final_state != "undefined" and (
+                undefine_timeout is not None
+                or (result is not None and result.returncode)
+            ):
+                fallback_timeout: subprocess.TimeoutExpired | None = None
+                try:
+                    fallback = self.virsh(
+                        ["undefine", target, "--nvram"],
+                        timeout=30,
+                        check=False,
+                    )
+                except subprocess.TimeoutExpired as error:
+                    fallback_timeout = error
+                    fallback = None
+                final_state = self._uuid_state(target)
+                if final_state != "undefined" and (
+                    fallback_timeout is not None
+                    or (fallback is not None and fallback.returncode)
+                ):
+                    details = {"state": final_state}
+                    if fallback is not None:
+                        details.update(
+                            {
+                                "returncode": fallback.returncode,
+                                "stdout": fallback.stdout,
+                                "stderr": fallback.stderr,
+                            }
+                        )
+                    if fallback_timeout is not None:
+                        details["timeout"] = str(fallback_timeout)
+                    if result is not None:
+                        details["firstAttemptStderr"] = result.stderr
+                    if undefine_timeout is not None:
+                        details["firstAttemptTimeout"] = str(undefine_timeout)
+                    raise VMError(
+                        FailureCategory.HOST_INFRA_ERROR,
+                        f"cannot undefine managed domain: {domain}",
+                        details,
+                    )
+        else:
+            final_state = "undefined"
+        if final_state != "undefined":
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                f"managed domain still exists after cleanup: {domain}",
+                {"state": final_state},
+            )
+        replacement_state = self.state(domain)
+        if replacement_state != "undefined":
+            replacement = self.virsh(["domuuid", domain], timeout=30, check=False)
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                "managed domain name was reused during cleanup; preserving "
+                "ephemeral storage",
+                {
+                    "domain": domain,
+                    "recordedUuid": expected_uuid,
+                    "replacementUuid": (
+                        replacement.stdout.strip().lower()
+                        if replacement.returncode == 0
+                        else "unavailable"
+                    ),
+                    "replacementState": replacement_state,
+                },
+            )
 
-    def force_stop(self, domain: str) -> None:
-        require_domain(domain)
-        self.virsh(["destroy", domain], timeout=30, check=False)
+    def force_stop(self, domain: str, domain_uuid: str) -> None:
+        target = self._owned_target(domain, domain_uuid)
+        self.virsh(["destroy", target], timeout=30, check=False)
 
-    def start(self, domain: str) -> None:
-        require_domain(domain)
-        self.virsh(["start", domain], timeout=60)
+    def start(self, domain: str, domain_uuid: str) -> None:
+        target = self._owned_target(domain, domain_uuid)
+        self.virsh(["start", target], timeout=60)
 
-    def detach_disk(self, domain: str, target: str) -> None:
-        require_domain(domain)
-        if target not in {"vda", "vdb"}:
-            raise ValueError(f"refusing unexpected disk target: {target}")
-        self.virsh(["detach-disk", domain, target, "--config"], timeout=60)
+    def detach_disk(self, domain: str, domain_uuid: str, disk_target: str) -> None:
+        target = self._owned_target(domain, domain_uuid)
+        if disk_target not in {"vda", "vdb"}:
+            raise ValueError(f"refusing unexpected disk target: {disk_target}")
+        self.virsh(["detach-disk", target, disk_target, "--config"], timeout=60)
 
-    def attach_disk(self, domain: str, disk: Path, target: str) -> None:
-        require_domain(domain)
-        if target not in {"vda", "vdb"}:
-            raise ValueError(f"refusing unexpected disk target: {target}")
+    def attach_disk(
+        self,
+        domain: str,
+        domain_uuid: str,
+        disk: Path,
+        disk_target: str,
+    ) -> None:
+        target = self._owned_target(domain, domain_uuid)
+        if disk_target not in {"vda", "vdb"}:
+            raise ValueError(f"refusing unexpected disk target: {disk_target}")
         self.virsh(
             [
                 "attach-disk",
-                domain,
-                disk,
                 target,
+                disk,
+                disk_target,
                 "--driver",
                 "qemu",
                 "--subdriver",
@@ -368,30 +677,45 @@ class LibvirtBackend:
             timeout=60,
         )
 
-    def type_text(self, domain: str, value: str, *, submit: bool = True) -> None:
-        require_domain(domain)
+    def type_text(
+        self,
+        domain: str,
+        domain_uuid: str,
+        value: str,
+        *,
+        submit: bool = True,
+    ) -> None:
         for character in value:
             if "a" <= character <= "z":
                 key = f"KEY_{character.upper()}"
             elif "0" <= character <= "9":
                 key = f"KEY_{character}"
+            elif character == " ":
+                key = "KEY_SPACE"
             else:
                 raise ValueError("recovery input contains an unsupported character")
-            self.send_keys(domain, [key], hold_milliseconds=80)
+            self.send_keys(domain, domain_uuid, [key], hold_milliseconds=80)
             # virsh returns before QEMU releases the key. Leave enough time for
             # the accelerated guest to observe release before the next press.
             time.sleep(0.12)
         if submit:
-            self.send_keys(domain, ["KEY_ENTER"])
+            self.send_keys(domain, domain_uuid, ["KEY_ENTER"])
 
-    def type_serial_text(self, domain: str, value: str, *, submit: bool = True) -> None:
-        managed_domain = require_domain(domain)
+    def type_serial_text(
+        self,
+        domain: str,
+        domain_uuid: str,
+        value: str,
+        *,
+        submit: bool = True,
+    ) -> None:
+        target = self._owned_target(domain, domain_uuid)
         try:
             payload = value.encode("ascii") + (b"\r" if submit else b"")
         except UnicodeEncodeError as error:
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
-                f"serial recovery input for {managed_domain} is not ASCII",
+                f"serial recovery input for {domain} is not ASCII",
             ) from error
 
         master, slave = pty.openpty()
@@ -404,13 +728,14 @@ class LibvirtBackend:
                     "--connect",
                     self.uri,
                     "console",
-                    managed_domain,
+                    target,
                     "--safe",
                 ],
                 stdin=slave,
                 stdout=slave,
                 stderr=slave,
                 close_fds=True,
+                env=self._session_environment(),
             )
             os.close(slave)
             slave = -1
@@ -454,7 +779,7 @@ class LibvirtBackend:
         except (OSError, subprocess.TimeoutExpired) as error:
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
-                f"could not write recovery input to {managed_domain}",
+                f"could not write recovery input to {domain}",
                 {"error": str(error)},
             ) from error
         finally:

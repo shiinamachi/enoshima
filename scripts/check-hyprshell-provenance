@@ -1,0 +1,980 @@
+#!/usr/bin/env python3
+"""Verify the pinned Hyprshell source recipe and its final Arch package."""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import hashlib
+import io
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import subprocess
+import tarfile
+import tempfile
+from typing import Any
+import urllib.request
+
+
+DIGEST_RE = re.compile(r"[0-9a-f]{64}")
+EXPECTED_PATCH_PATHS = (
+    "crates/windows-lib/src/overview/root.rs",
+    "crates/windows-lib/src/overview/window.rs",
+    "src/wm.rs",
+)
+EXPECTED_THEMES = (
+    "00_default",
+    "01_modern",
+    "02_dracula",
+    "03_solarized_dark",
+    "04_tokyo_night_storm",
+    "05_gruvbox_dark",
+    "50_liquid_glas",
+    "99_test",
+)
+EXPECTED_STATIC_FILES = {
+    "usr/lib/systemd/user/hyprshell.service",
+    "usr/share/applications/hyprshell-settings.desktop",
+    "usr/share/doc/hyprshell/CONFIGURE.md",
+    "usr/share/doc/hyprshell/DEBUG.md",
+    "usr/share/doc/hyprshell/README.md",
+    "usr/share/hyprshell/setup_preview/00_overview.png",
+    "usr/share/hyprshell/setup_preview/04_switch.png",
+    *{
+        f"usr/share/hyprshell/themes/{theme}/{name}"
+        for theme in EXPECTED_THEMES
+        for name in ("data.ini", "image.png", "style.css")
+    },
+    "usr/share/licenses/hyprshell-bin/LICENSE",
+    "usr/share/pixmaps/hyprshell.png",
+}
+EXPECTED_GENERATED_FILES = {
+    "usr/bin/hyprshell",
+    "usr/share/bash-completion/completions/hyprshell.bash",
+    "usr/share/fish/vendor_completions.d/hyprshell.fish",
+    "usr/share/zsh/site-functions/_hyprshell",
+}
+SOURCE_STATIC_MAP = {
+    "LICENSE": "usr/share/licenses/hyprshell-bin/LICENSE",
+    "README.md": "usr/share/doc/hyprshell/README.md",
+    "docs/CONFIGURE.md": "usr/share/doc/hyprshell/CONFIGURE.md",
+    "docs/DEBUG.md": "usr/share/doc/hyprshell/DEBUG.md",
+    "packaging/hyprshell.service": "usr/lib/systemd/user/hyprshell.service",
+    "packaging/hyprshell-settings.png": "usr/share/pixmaps/hyprshell.png",
+    "packaging/hyprshell-settings.desktop": (
+        "usr/share/applications/hyprshell-settings.desktop"
+    ),
+}
+EXPECTED_RUNTIME_DEPENDENCIES = (
+    "hyprland",
+    "gtk4-layer-shell",
+    "gtk4",
+    "libadwaita",
+    "zstd",
+)
+EXPECTED_OPTIONAL_DEPENDENCIES = (
+    "org.freedesktop.secrets: Store clipboard encryption in the keyring",
+)
+MAX_SOURCE_BYTES = 16 * 1024 * 1024
+MAX_PACKAGE_MEMBER_BYTES = 128 * 1024 * 1024
+MAX_PACKAGE_BYTES = 512 * 1024 * 1024
+
+
+def fail(message: str) -> None:
+    raise SystemExit(f"ERROR: {message}")
+
+
+def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            fail(f"JSON contains a duplicate key: {key}")
+        result[key] = value
+    return result
+
+
+def mapping(value: Any, name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        fail(f"{name} must be an object")
+    return value
+
+
+def exact_keys(value: dict[str, Any], expected: set[str], name: str) -> None:
+    if set(value) != expected:
+        fail(f"{name} keys differ from the reviewed schema")
+
+
+def digest(value: Any, name: str) -> str:
+    if not isinstance(value, str) or DIGEST_RE.fullmatch(value) is None:
+        fail(f"{name} must be a lowercase SHA-256 digest")
+    return value
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            value.update(block)
+    return value.hexdigest()
+
+
+def regular_file(path: Path, name: str) -> None:
+    if not path.is_file() or path.is_symlink():
+        fail(f"{name} is missing or is not a regular file: {path}")
+
+
+def normalize_member(name: str) -> str:
+    while name.startswith("./"):
+        name = name[2:]
+    normalized = PurePosixPath(name).as_posix().rstrip("/")
+    path = PurePosixPath(normalized)
+    if (
+        not normalized
+        or normalized == "."
+        or path.is_absolute()
+        or ".." in path.parts
+        or name.rstrip("/") != normalized
+    ):
+        fail(f"archive contains an unsafe path: {name}")
+    return normalized
+
+
+def parent_directories(files: set[str]) -> set[str]:
+    result: set[str] = set()
+    for value in files:
+        parent = PurePosixPath(value).parent
+        while parent.as_posix() != ".":
+            result.add(parent.as_posix())
+            parent = parent.parent
+    return result
+
+
+def payload_tree_digest(files: dict[str, bytes]) -> str:
+    value = hashlib.sha256()
+    for name in sorted(files):
+        value.update(name.encode() + b"\0")
+        value.update(sha256_bytes(files[name]).encode() + b"\n")
+    return value.hexdigest()
+
+
+def load_manifest(root: Path) -> dict[str, Any]:
+    path = root / "packages/local/hyprshell-bin/provenance.json"
+    regular_file(path, "Hyprshell provenance manifest")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+    except (OSError, UnicodeError, ValueError) as error:
+        fail(f"could not parse {path}: {error}")
+    return mapping(value, "manifest")
+
+
+def verify_manifest(manifest: dict[str, Any]) -> None:
+    exact_keys(
+        manifest,
+        {
+            "schemaVersion",
+            "package",
+            "upstream",
+            "sourceArchive",
+            "upstreamFiles",
+            "localSources",
+            "build",
+            "packaging",
+        },
+        "manifest",
+    )
+    if manifest.get("schemaVersion") != 1:
+        fail("unsupported Hyprshell provenance schema")
+
+    package = mapping(manifest["package"], "package")
+    exact_keys(package, {"name", "version", "architecture", "recipeSha256"}, "package")
+    if package != {
+        "name": "hyprshell-bin",
+        "version": "4.10.8-3",
+        "architecture": "x86_64",
+        "recipeSha256": "3dd8ac5adcc3e7e2178790badb6a7fdc5390548ed952082643211947af8a8073",
+    }:
+        fail("package identity differs from hyprshell-bin 4.10.8-3 x86_64")
+    digest(package.get("recipeSha256"), "package.recipeSha256")
+
+    upstream = mapping(manifest["upstream"], "upstream")
+    exact_keys(upstream, {"repository", "tag", "tagCommit", "sourceDateEpoch"}, "upstream")
+    if upstream != {
+        "repository": "H3rmt/hyprshell",
+        "tag": "v4.10.8",
+        "tagCommit": "61ddaa30563c1f091ca5fbe5d7203c19f42b519c",
+        "sourceDateEpoch": 1781132855,
+    }:
+        fail("upstream identity differs from the reviewed v4.10.8 commit")
+
+    source = mapping(manifest["sourceArchive"], "sourceArchive")
+    exact_keys(source, {"name", "url", "root", "size", "sha256"}, "sourceArchive")
+    commit = upstream["tagCommit"]
+    if source != {
+        "name": f"hyprshell-{commit}.tar.gz",
+        "url": f"https://github.com/H3rmt/hyprshell/archive/{commit}.tar.gz",
+        "root": f"hyprshell-{commit}",
+        "size": 7656602,
+        "sha256": "6f32a195a92bd7f7efd5470de48882a071bcc4732ad9a7d6533c5050e0ccf265",
+    }:
+        fail("source archive contract differs from the pinned commit")
+
+    upstream_files = mapping(manifest["upstreamFiles"], "upstreamFiles")
+    expected_upstream_files = {
+        "Cargo.lock": (130038, "026e688dbf4a7c95c6c5a1a5d8a17880dce5aa1dfa3a30d40cbabb3200d858a9"),
+        "packaging/usr-share.tar": (4771840, "f7d41c55d1b10c73ee044badf52561f15b126d452196c73e976674e6e2df1df5"),
+    }
+    if set(upstream_files) != set(expected_upstream_files):
+        fail("upstreamFiles differs from the reviewed lock and payload set")
+    for name, (size, expected_digest) in expected_upstream_files.items():
+        contract = mapping(upstream_files[name], f"upstreamFiles.{name}")
+        exact_keys(contract, {"size", "sha256"}, f"upstreamFiles.{name}")
+        if contract != {"size": size, "sha256": expected_digest}:
+            fail(f"upstream file pin differs: {name}")
+
+    local_sources = mapping(manifest["localSources"], "localSources")
+    if set(local_sources) != {"overview-direct-input.patch"}:
+        fail("localSources differs from the single reviewed patch")
+    local_patch = mapping(local_sources["overview-direct-input.patch"], "local patch")
+    exact_keys(local_patch, {"size", "sha256"}, "local patch")
+    if local_patch != {
+        "size": 13846,
+        "sha256": "a85b4c46c03a31f0b1cf73b60cba623b8b2f06a3532d4ade3becf0f4d4b39079",
+    }:
+        fail("local overview patch pin differs")
+
+    build = mapping(manifest["build"], "build")
+    exact_keys(
+        build,
+        {
+            "minimumRustVersion",
+            "rustToolchain",
+            "features",
+            "jobs",
+            "release",
+            "test",
+            "testPackage",
+            "testFilter",
+        },
+        "build",
+    )
+    release = mapping(build["release"], "build.release")
+    exact_keys(release, {"lto", "debug", "optLevel", "codegenUnits", "incremental"}, "build.release")
+    test = mapping(build["test"], "build.test")
+    exact_keys(test, {"debug", "optLevel", "codegenUnits", "incremental"}, "build.test")
+    rust_toolchain = mapping(build["rustToolchain"], "build.rustToolchain")
+    exact_keys(
+        rust_toolchain,
+        {"version", "rustcCommit", "cargoCommit"},
+        "build.rustToolchain",
+    )
+    if build != {
+        "minimumRustVersion": "1.92.0",
+        "rustToolchain": {
+            "version": "1.97.0",
+            "rustcCommit": "2d8144b7880597b6e6d3dfd63a9a9efae3f533d3",
+            "cargoCommit": "c980f4866141969fab6254a680546a277789d6f0",
+        },
+        "features": ["slim"],
+        "jobs": 1,
+        "release": {
+            "lto": False,
+            "debug": 0,
+            "optLevel": 2,
+            "codegenUnits": 64,
+            "incremental": False,
+        },
+        "test": {
+            "debug": 0,
+            "optLevel": 1,
+            "codegenUnits": 64,
+            "incremental": False,
+        },
+        "testPackage": "hyprshell-windows-lib",
+        "testFilter": "overview",
+    }:
+        fail("build contract differs from the reviewed bounded Cargo profile")
+
+    packaging = mapping(manifest["packaging"], "packaging")
+    exact_keys(
+        packaging,
+        {
+            "installPrefix",
+            "licenses",
+            "runtimeDependencies",
+            "makeDependencies",
+            "checkDependencies",
+            "optionalDependencies",
+            "provides",
+            "conflicts",
+            "options",
+            "metadataFiles",
+            "sourcePayloadTreeSha256",
+        },
+        "packaging",
+    )
+    expected_packaging = {
+        "installPrefix": "/usr",
+        "licenses": ["MIT"],
+        "runtimeDependencies": list(EXPECTED_RUNTIME_DEPENDENCIES),
+        "makeDependencies": ["rustup"],
+        "checkDependencies": ["desktop-file-utils"],
+        "optionalDependencies": list(EXPECTED_OPTIONAL_DEPENDENCIES),
+        "provides": ["hyprshell=4.10.8"],
+        "conflicts": ["hyprshell"],
+        "options": ["!debug", "!lto"],
+        "metadataFiles": [".BUILDINFO", ".MTREE", ".PKGINFO"],
+        "sourcePayloadTreeSha256": "f713a6856c4fd912d1655120249896af9f071965ef4520e770d307f82ffd3b98",
+    }
+    if packaging != expected_packaging:
+        fail("packaging contract differs from the reviewed payload")
+
+
+def parse_srcinfo(text: str) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line:
+            continue
+        if " = " not in line:
+            fail(f"generated .SRCINFO:{number} is malformed")
+        key, value = line.split(" = ", 1)
+        result.setdefault(key, []).append(value)
+    return result
+
+
+def verify_srcinfo(package_dir: Path, manifest: dict[str, Any]) -> None:
+    try:
+        completed = subprocess.run(
+            ["makepkg", "--printsrcinfo"],
+            cwd=package_dir,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        fail(f"could not generate .SRCINFO: {error}")
+    if completed.returncode:
+        fail(f"makepkg --printsrcinfo failed: {completed.stderr[-1000:]}")
+    actual = parse_srcinfo(completed.stdout)
+    if any(value == "SKIP" for values in actual.values() for value in values):
+        fail("generated .SRCINFO contains a forbidden SKIP checksum")
+    source = manifest["sourceArchive"]
+    local = manifest["localSources"]["overview-direct-input.patch"]
+    expected = {
+        "pkgbase": ["hyprshell-bin"],
+        "pkgname": ["hyprshell-bin"],
+        "pkgdesc": ["A pinned Hyprland overview with Enoshima direct-keyboard input support"],
+        "pkgver": ["4.10.8"],
+        "pkgrel": ["3"],
+        "url": ["https://github.com/H3rmt/hyprshell"],
+        "arch": ["x86_64"],
+        "license": ["MIT"],
+        "checkdepends": ["desktop-file-utils"],
+        "makedepends": ["rustup"],
+        "depends": list(EXPECTED_RUNTIME_DEPENDENCIES),
+        "optdepends": list(EXPECTED_OPTIONAL_DEPENDENCIES),
+        "provides": ["hyprshell=4.10.8"],
+        "conflicts": ["hyprshell"],
+        "options": ["!debug", "!lto"],
+        "source": [
+            f"{source['name']}::{source['url']}",
+            "overview-direct-input.patch",
+        ],
+        "sha256sums": [source["sha256"], local["sha256"]],
+    }
+    if actual != expected:
+        fail("generated .SRCINFO differs from the exact source-build contract")
+
+
+def verify_patch(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    changed = tuple(re.findall(r"(?m)^diff --git a/(\S+) b/\S+$", text))
+    if changed != EXPECTED_PATCH_PATHS:
+        fail("overview patch changes files outside its reviewed three-file boundary")
+    for forbidden in ("GIT binary patch", "new file mode", "deleted file mode", "rename from", "rename to"):
+        if forbidden in text:
+            fail(f"overview patch contains a forbidden operation: {forbidden}")
+    required = (
+        "uses_direct_overview_input",
+        "EventControllerKey",
+        "PropagationPhase::Capture",
+        "OverviewWindowOutput::Switch",
+        "OverviewWindowOutput::Close",
+        "direct_input_action",
+        "overview_direct_input_preserves_launcher_navigation_contract",
+        "direct_input_requires_a_nonvisual_controller_only_launcher",
+        "!overview.launcher.show_when_empty",
+        "plugins.applications.is_none()",
+        "plugins.terminal.is_none()",
+        "plugins.shell.is_none()",
+        "plugins.websearch.is_none()",
+        "plugins.calc.is_none()",
+        "plugins.path.is_none()",
+        "plugins.actions.is_none()",
+        "self.controller = Some(controller)",
+        "HYPRSHELL_NO_LISTENERS",
+        "skipping initial hyprland config reload while listeners are disabled",
+    )
+    for fragment in required:
+        if fragment not in text:
+            fail(f"overview patch is missing its direct-input contract: {fragment}")
+
+
+def verify_recipe(root: Path, manifest: dict[str, Any]) -> None:
+    package_dir = root / "packages/local/hyprshell-bin"
+    recipe = package_dir / "PKGBUILD"
+    patch = package_dir / "overview-direct-input.patch"
+    regular_file(recipe, "Hyprshell PKGBUILD")
+    regular_file(patch, "Hyprshell overview patch")
+    package = manifest["package"]
+    local = manifest["localSources"]["overview-direct-input.patch"]
+    if sha256_file(recipe) != package["recipeSha256"]:
+        fail("PKGBUILD differs from package.recipeSha256")
+    if patch.stat().st_size != local["size"] or sha256_file(patch) != local["sha256"]:
+        fail("overview patch differs from its provenance pin")
+    verify_patch(patch)
+
+    text = recipe.read_text(encoding="utf-8")
+    required = (
+        "_commit=61ddaa30563c1f091ca5fbe5d7203c19f42b519c",
+        "_source_date_epoch=1781132855",
+        "_cargo_lock_sha256=026e688dbf4a7c95c6c5a1a5d8a17880dce5aa1dfa3a30d40cbabb3200d858a9",
+        '[[ $(sha256sum Cargo.lock | cut -d \' \' -f 1) == "$_cargo_lock_sha256" ]]',
+        "cargo fetch --locked",
+        'export CARGO_HOME="$srcdir/cargo-home"',
+        'export CARGO_TARGET_DIR="$srcdir/target"',
+        "export CARGO_BUILD_JOBS=1",
+        "export CARGO_PROFILE_RELEASE_LTO=false",
+        "export CARGO_PROFILE_RELEASE_DEBUG=0",
+        "export CARGO_PROFILE_RELEASE_OPT_LEVEL=2",
+        "export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=64",
+        "export CARGO_PROFILE_RELEASE_INCREMENTAL=false",
+        "export CARGO_PROFILE_TEST_DEBUG=0",
+        "export CARGO_PROFILE_TEST_OPT_LEVEL=1",
+        "export CARGO_PROFILE_TEST_CODEGEN_UNITS=64",
+        "export CARGO_PROFILE_TEST_INCREMENTAL=false",
+        "--frozen",
+        "--release",
+        "--jobs 1",
+        "--no-default-features",
+        "--features slim",
+        "--bin hyprshell",
+        "-p hyprshell-windows-lib",
+        "overview",
+        "desktop-file-validate",
+        "readelf -d",
+        "ldd -r",
+        "bsdtar --no-same-owner -xf packaging/usr-share.tar",
+    )
+    for fragment in required:
+        if fragment not in text:
+            fail(f"PKGBUILD is missing a source/build guard: {fragment}")
+    for forbidden in (
+        "cargo update",
+        "cargo install",
+        "git clone",
+        "curl ",
+        "wget ",
+        "pkgver()",
+        "releases/download",
+        "SKIP",
+    ):
+        if forbidden in text:
+            fail(f"PKGBUILD contains a forbidden mutable build path: {forbidden}")
+    if re.search(r"(?m)^\s*(install|changelog)=", text) or any(package_dir.glob("*.install")):
+        fail("Hyprshell packaging must not use an install script")
+    if text.count('export CARGO_HOME="$srcdir/cargo-home"') != 3 or text.count(
+        'export CARGO_TARGET_DIR="$srcdir/target"'
+    ) != 3:
+        fail("prepare/build/check must share one isolated Cargo cache and target")
+    verify_srcinfo(package_dir, manifest)
+
+
+def safe_source_members(data: bytes, manifest: dict[str, Any]) -> dict[str, bytes]:
+    source = manifest["sourceArchive"]
+    if len(data) != source["size"] or sha256_bytes(data) != source["sha256"]:
+        fail("source archive bytes differ from the pinned size or digest")
+    try:
+        archive = tarfile.open(fileobj=io.BytesIO(data), mode="r:gz")
+    except (OSError, tarfile.TarError) as error:
+        fail(f"could not parse the source archive: {error}")
+    required = {
+        "Cargo.lock",
+        "Cargo.toml",
+        "packaging/usr-share.tar",
+        *SOURCE_STATIC_MAP,
+        *EXPECTED_PATCH_PATHS,
+    }
+    result: dict[str, bytes] = {}
+    root = source["root"]
+    prefix = f"{root}/"
+    expected_pax = {"comment": manifest["upstream"]["tagCommit"]}
+    with archive:
+        if archive.pax_headers != expected_pax:
+            fail("source archive global PAX metadata differs from the pinned commit")
+        seen: set[str] = set()
+        for member in archive.getmembers():
+            name = normalize_member(member.name)
+            if name in seen:
+                fail(f"source archive contains a duplicate path: {name}")
+            seen.add(name)
+            if name != root and not name.startswith(prefix):
+                fail(f"source archive escaped its pinned root: {name}")
+            if member.pax_headers != expected_pax:
+                fail(f"source archive member PAX metadata differs from the pin: {name}")
+            if not (member.isdir() or member.isfile()):
+                fail(f"source archive contains a link or special file: {name}")
+            if member.isfile() and name.startswith(prefix):
+                relative = name[len(prefix) :]
+                if relative in required:
+                    stream = archive.extractfile(member)
+                    if stream is None:
+                        fail(f"could not read source member: {relative}")
+                    result[relative] = stream.read()
+    if set(result) != required:
+        fail(f"source archive is missing reviewed files: {sorted(required - set(result))}")
+    return result
+
+
+def parse_static_payload(data: bytes) -> dict[str, bytes]:
+    try:
+        archive = tarfile.open(fileobj=io.BytesIO(data), mode="r:*")
+    except (OSError, tarfile.TarError) as error:
+        fail(f"could not parse upstream usr-share.tar: {error}")
+    expected = EXPECTED_STATIC_FILES - set(SOURCE_STATIC_MAP.values())
+    result: dict[str, bytes] = {}
+    seen: set[str] = set()
+    with archive:
+        if archive.pax_headers:
+            fail("upstream usr-share.tar contains global PAX metadata")
+        for member in archive.getmembers():
+            relative = normalize_member(member.name)
+            if relative in seen:
+                fail(f"usr-share.tar contains a duplicate path: {relative}")
+            seen.add(relative)
+            target = f"usr/share/hyprshell/{relative}"
+            if member.isdir():
+                continue
+            if not member.isfile() or target not in expected:
+                fail(f"usr-share.tar contains an unexpected path or type: {relative}")
+            stream = archive.extractfile(member)
+            if stream is None:
+                fail(f"could not read usr-share.tar member: {relative}")
+            result[target] = stream.read()
+    if set(result) != expected:
+        fail("usr-share.tar file set differs from the exact theme/preview payload")
+    return result
+
+
+def verify_source_archive(data: bytes, root: Path, manifest: dict[str, Any]) -> None:
+    members = safe_source_members(data, manifest)
+    upstream_files = manifest["upstreamFiles"]
+    for name in ("Cargo.lock", "packaging/usr-share.tar"):
+        contract = upstream_files[name]
+        if len(members[name]) != contract["size"] or sha256_bytes(members[name]) != contract["sha256"]:
+            fail(f"source archive upstream file differs from its pin: {name}")
+    cargo_toml = members["Cargo.toml"].decode("utf-8")
+    if 'version = "4.10.8"' not in cargo_toml or 'rust-version = "1.92.0"' not in cargo_toml:
+        fail("source Cargo.toml differs from the reviewed version/toolchain floor")
+    static = {
+        destination: members[source]
+        for source, destination in SOURCE_STATIC_MAP.items()
+    }
+    static.update(parse_static_payload(members["packaging/usr-share.tar"]))
+    if set(static) != EXPECTED_STATIC_FILES:
+        fail("source static payload file set differs from the package contract")
+    if payload_tree_digest(static) != manifest["packaging"]["sourcePayloadTreeSha256"]:
+        fail("source static payload aggregate digest differs from provenance")
+
+    patch_path = root / "packages/local/hyprshell-bin/overview-direct-input.patch"
+    with tempfile.TemporaryDirectory(prefix="enoshima-hyprshell-patch-") as temporary:
+        temporary_root = Path(temporary)
+        for name in EXPECTED_PATCH_PATHS:
+            target = temporary_root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(members[name])
+        try:
+            applied = subprocess.run(
+                ["patch", "--dry-run", "--batch", "--forward", "-p1", "-i", str(patch_path)],
+                cwd=temporary_root,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            fail(f"could not dry-run the overview patch: {error}")
+        if applied.returncode:
+            fail(f"overview patch no longer applies to the pinned source: {applied.stderr[-1000:]}")
+
+
+def fetch_bounded(url: str, expected_size: int) -> bytes:
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "enoshima-hyprshell-provenance-check"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            data = response.read(expected_size + 1)
+    except OSError as error:
+        fail(f"could not fetch {url}: {error}")
+    if len(data) != expected_size:
+        fail("downloaded source archive size differs from its pin")
+    return data
+
+
+def fetch_json(url: str) -> dict[str, Any]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "enoshima-hyprshell-provenance-check",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        with urllib.request.urlopen(
+            urllib.request.Request(url, headers=headers), timeout=90
+        ) as response:
+            value = json.loads(response.read(), object_pairs_hook=unique_object)
+    except (OSError, UnicodeError, ValueError) as error:
+        fail(f"could not fetch or parse {url}: {error}")
+    return mapping(value, url)
+
+
+def verify_github_identity(manifest: dict[str, Any]) -> None:
+    upstream = manifest["upstream"]
+    repository = upstream["repository"]
+    tag_name = upstream["tag"]
+    commit_sha = upstream["tagCommit"]
+    release = fetch_json(
+        f"https://api.github.com/repos/{repository}/releases/tags/{tag_name}"
+    )
+    if (
+        release.get("tag_name") != tag_name
+        or release.get("draft") is not False
+        or release.get("prerelease") is not False
+    ):
+        fail("the pinned Hyprshell tag is not a stable GitHub release")
+    reference = fetch_json(
+        f"https://api.github.com/repos/{repository}/git/ref/tags/{tag_name}"
+    )
+    tag_object = mapping(reference.get("object"), "tag.object")
+    while tag_object.get("type") == "tag":
+        annotated = fetch_json(
+            f"https://api.github.com/repos/{repository}/git/tags/{tag_object.get('sha')}"
+        )
+        tag_object = mapping(annotated.get("object"), "annotated tag.object")
+    if tag_object != {
+        "sha": commit_sha,
+        "type": "commit",
+        "url": f"https://api.github.com/repos/{repository}/git/commits/{commit_sha}",
+    }:
+        fail("the pinned Hyprshell tag no longer resolves to the reviewed commit")
+    commit = fetch_json(
+        f"https://api.github.com/repos/{repository}/git/commits/{commit_sha}"
+    )
+    committer = mapping(commit.get("committer"), "commit.committer")
+    if commit.get("sha") != commit_sha or committer.get("date") != "2026-06-10T23:07:35Z":
+        fail("Hyprshell sourceDateEpoch no longer matches the pinned commit")
+
+
+def parse_key_values(data: bytes, name: str) -> dict[str, list[str]]:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeError as error:
+        fail(f"{name} is not UTF-8: {error}")
+    result: dict[str, list[str]] = {}
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if " = " not in line:
+            fail(f"{name}:{number} is not a key/value record")
+        key, value = line.split(" = ", 1)
+        result.setdefault(key, []).append(value)
+    return result
+
+
+def verify_mtree(
+    data: bytes, files: dict[str, bytes], directories: set[str]
+) -> None:
+    try:
+        text = gzip.decompress(data).decode("utf-8")
+    except (OSError, UnicodeError) as error:
+        fail(f".MTREE is not valid gzip-compressed UTF-8: {error}")
+    defaults: dict[str, str] = {}
+    entries: dict[str, dict[str, str]] = {}
+    for number, raw in enumerate(text.splitlines(), 1):
+        fields = raw.strip().split()
+        if not fields or fields[0].startswith("#"):
+            continue
+        if fields[0] == "/set":
+            for field in fields[1:]:
+                if "=" not in field:
+                    fail(f".MTREE:{number} contains an invalid default")
+                key, value = field.split("=", 1)
+                defaults[key] = value
+            continue
+        if fields[0] == "/unset":
+            for key in fields[1:]:
+                defaults.pop(key, None)
+            continue
+        name = normalize_member(fields[0])
+        if name in entries or "\\" in name:
+            fail(f".MTREE contains an unsafe or duplicate path: {fields[0]}")
+        attributes = dict(defaults)
+        for field in fields[1:]:
+            if "=" not in field:
+                fail(f".MTREE:{number} contains an invalid attribute")
+            key, value = field.split("=", 1)
+            attributes[key] = value
+        entries[name] = attributes
+    if set(entries) != set(files) | directories:
+        fail(".MTREE path set differs from the exact package payload")
+    for name in directories:
+        attributes = entries[name]
+        if any(
+            attributes.get(key) != expected
+            for key, expected in {
+                "type": "dir",
+                "uid": "0",
+                "gid": "0",
+                "mode": "755",
+            }.items()
+        ):
+            fail(f".MTREE directory metadata differs from the archive: {name}")
+    for name, contents in files.items():
+        expected_mode = "755" if name == "usr/bin/hyprshell" else "644"
+        expected = {
+            "type": "file",
+            "uid": "0",
+            "gid": "0",
+            "mode": expected_mode,
+            "size": str(len(contents)),
+            "sha256digest": sha256_bytes(contents),
+        }
+        if any(entries[name].get(key) != value for key, value in expected.items()):
+            fail(f".MTREE file metadata differs from the archive: {name}")
+
+
+def inspect_elf(data: bytes) -> None:
+    if len(data) < 20 or data[:6] != b"\x7fELF\x02\x01" or int.from_bytes(data[18:20], "little") != 62:
+        fail("usr/bin/hyprshell is not an ELF64 little-endian x86-64 executable")
+    with tempfile.TemporaryDirectory(prefix="enoshima-hyprshell-elf-") as temporary:
+        path = Path(temporary) / "hyprshell"
+        path.write_bytes(data)
+        path.chmod(0o700)
+        try:
+            headers = subprocess.run(
+                ["readelf", "-l", str(path)],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+            dynamic = subprocess.run(
+                ["readelf", "-d", str(path)],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            fail(f"could not inspect Hyprshell ELF: {error}")
+        if headers.returncode or dynamic.returncode:
+            fail("readelf rejected the packaged Hyprshell executable")
+        if "Requesting program interpreter: /lib64/ld-linux-x86-64.so.2" not in headers.stdout:
+            fail("Hyprshell ELF uses an unexpected program interpreter")
+        if re.search(r"\((?:RPATH|RUNPATH)\)", dynamic.stdout):
+            fail("Hyprshell ELF contains an RPATH or RUNPATH")
+
+
+def inspect_package_archive(path: Path, manifest: dict[str, Any]) -> None:
+    regular_file(path, "Hyprshell package archive")
+    metadata_names = set(manifest["packaging"]["metadataFiles"])
+    expected_files = EXPECTED_STATIC_FILES | EXPECTED_GENERATED_FILES
+    expected_dirs = parent_directories(expected_files)
+    expected_members = expected_files | expected_dirs | metadata_names
+    try:
+        archive = tarfile.open(path, mode="r:*")
+    except (OSError, tarfile.TarError) as error:
+        fail(f"could not parse Hyprshell package archive: {error}")
+    files: dict[str, bytes] = {}
+    metadata: dict[str, bytes] = {}
+    directories: set[str] = set()
+    seen: set[str] = set()
+    total_size = 0
+    with archive:
+        if archive.pax_headers:
+            fail("package archive contains forbidden global PAX metadata")
+        for member in archive.getmembers():
+            name = normalize_member(member.name)
+            if name in seen or name not in expected_members:
+                fail(f"package archive contains a duplicate or unexpected path: {name}")
+            seen.add(name)
+            if member.uid != 0 or member.gid != 0 or member.uname != "root" or member.gname != "root":
+                fail(f"package archive member is not root-owned: {name}")
+            if member.pax_headers or getattr(member, "sparse", None):
+                fail(f"package archive contains PAX/sparse metadata: {name}")
+            if member.isdir():
+                if name not in expected_dirs or member.mode != 0o755:
+                    fail(f"package directory type or mode differs: {name}")
+                directories.add(name)
+                continue
+            if not member.isfile():
+                fail(f"package archive contains a link or special file: {name}")
+            expected_mode = 0o755 if name == "usr/bin/hyprshell" else 0o644
+            if member.mode != expected_mode or member.mode & 0o6000:
+                fail(f"package file mode differs for {name}")
+            if member.size > MAX_PACKAGE_MEMBER_BYTES:
+                fail(f"package member exceeds its size limit: {name}")
+            total_size += member.size
+            if total_size > MAX_PACKAGE_BYTES:
+                fail("package uncompressed size exceeds its safety limit")
+            stream = archive.extractfile(member)
+            if stream is None:
+                fail(f"could not read package archive member: {name}")
+            data = stream.read()
+            if name in metadata_names:
+                metadata[name] = data
+            else:
+                files[name] = data
+    if seen != expected_members or set(files) != expected_files or set(metadata) != metadata_names:
+        fail("package archive differs from the exact payload and metadata allowlist")
+    if directories != expected_dirs:
+        fail("package directory closure differs from the reviewed payload")
+    static = {name: files[name] for name in EXPECTED_STATIC_FILES}
+    if payload_tree_digest(static) != manifest["packaging"]["sourcePayloadTreeSha256"]:
+        fail("package static payload aggregate digest differs from provenance")
+
+    inspect_elf(files["usr/bin/hyprshell"])
+    completion_markers = {
+        "usr/share/bash-completion/completions/hyprshell.bash": "hyprshell",
+        "usr/share/fish/vendor_completions.d/hyprshell.fish": "hyprshell",
+        "usr/share/zsh/site-functions/_hyprshell": "#compdef hyprshell",
+    }
+    for name, marker in completion_markers.items():
+        data = files[name]
+        if len(data) > 1024 * 1024 or b"\0" in data:
+            fail(f"completion file is unsafe or oversized: {name}")
+        try:
+            text = data.decode("utf-8")
+        except UnicodeError as error:
+            fail(f"completion file is not UTF-8: {name}: {error}")
+        if marker not in text:
+            fail(f"completion file lacks its Hyprshell identity: {name}")
+
+    pkginfo = parse_key_values(metadata[".PKGINFO"], ".PKGINFO")
+    payload_size = sum(len(data) for data in files.values())
+    expected_selected = {
+        "pkgname": ["hyprshell-bin"],
+        "pkgbase": ["hyprshell-bin"],
+        "xdata": ["pkgtype=pkg"],
+        "pkgver": ["4.10.8-3"],
+        "pkgdesc": ["A pinned Hyprland overview with Enoshima direct-keyboard input support"],
+        "url": ["https://github.com/H3rmt/hyprshell"],
+        "builddate": [str(manifest["upstream"]["sourceDateEpoch"])],
+        "packager": pkginfo.get("packager"),
+        "size": [str(payload_size)],
+        "arch": ["x86_64"],
+        "license": ["MIT"],
+        "depend": list(EXPECTED_RUNTIME_DEPENDENCIES),
+        "optdepend": list(EXPECTED_OPTIONAL_DEPENDENCIES),
+        "provides": ["hyprshell=4.10.8"],
+        "conflict": ["hyprshell"],
+        "makedepend": ["rustup"],
+        "checkdepend": ["desktop-file-utils"],
+    }
+    for key in ("packager",):
+        values = pkginfo.get(key)
+        if not isinstance(values, list) or len(values) != 1 or not values[0]:
+            fail(f".PKGINFO lacks one valid {key}")
+    if pkginfo != expected_selected:
+        fail(".PKGINFO differs from the exact package metadata contract")
+
+    buildinfo = parse_key_values(metadata[".BUILDINFO"], ".BUILDINFO")
+    selected_buildinfo = {
+        "format": buildinfo.get("format"),
+        "pkgname": buildinfo.get("pkgname"),
+        "pkgbase": buildinfo.get("pkgbase"),
+        "pkgver": buildinfo.get("pkgver"),
+        "pkgarch": buildinfo.get("pkgarch"),
+        "pkgbuild_sha256sum": buildinfo.get("pkgbuild_sha256sum"),
+        "packager": buildinfo.get("packager"),
+        "builddate": buildinfo.get("builddate"),
+    }
+    if selected_buildinfo != {
+        "format": ["2"],
+        "pkgname": ["hyprshell-bin"],
+        "pkgbase": ["hyprshell-bin"],
+        "pkgver": ["4.10.8-3"],
+        "pkgarch": ["x86_64"],
+        "pkgbuild_sha256sum": [manifest["package"]["recipeSha256"]],
+        "packager": pkginfo["packager"],
+        "builddate": pkginfo["builddate"],
+    }:
+        fail(".BUILDINFO identity or PKGBUILD digest differs from provenance")
+    allowed_buildinfo = {
+        *selected_buildinfo,
+        "builddir",
+        "startdir",
+        "buildtool",
+        "buildtoolver",
+        "buildenv",
+        "options",
+        "installed",
+    }
+    if set(buildinfo) - allowed_buildinfo:
+        fail(".BUILDINFO contains unexpected metadata keys")
+    for key in ("builddir", "startdir"):
+        values = buildinfo.get(key, [])
+        if len(values) != 1 or not values[0].startswith("/"):
+            fail(f".BUILDINFO {key} is missing or not absolute")
+    if ("buildtool" in buildinfo) != ("buildtoolver" in buildinfo):
+        fail(".BUILDINFO build tool name and version must be recorded together")
+    if not buildinfo.get("installed"):
+        fail(".BUILDINFO does not record installed build inputs")
+    verify_mtree(
+        metadata[".MTREE"],
+        {**files, ".BUILDINFO": metadata[".BUILDINFO"], ".PKGINFO": metadata[".PKGINFO"]},
+        directories,
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--online", action="store_true")
+    parser.add_argument("--source-archive", type=Path)
+    parser.add_argument("--package-archive", type=Path)
+    args = parser.parse_args()
+    root = args.root.resolve()
+    manifest = load_manifest(root)
+    verify_manifest(manifest)
+    verify_recipe(root, manifest)
+    if args.online and args.source_archive:
+        fail("--online and --source-archive are mutually exclusive")
+    if args.online:
+        source = manifest["sourceArchive"]
+        verify_github_identity(manifest)
+        verify_source_archive(fetch_bounded(source["url"], source["size"]), root, manifest)
+    elif args.source_archive:
+        regular_file(args.source_archive, "source archive")
+        verify_source_archive(args.source_archive.read_bytes(), root, manifest)
+    if args.package_archive:
+        inspect_package_archive(args.package_archive.resolve(), manifest)
+    print("Hyprshell source provenance validated successfully.")
+
+
+if __name__ == "__main__":
+    main()

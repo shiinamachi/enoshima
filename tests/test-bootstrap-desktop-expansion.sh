@@ -40,8 +40,8 @@ if [[ $(grep -Fc 'ANSIBLE_WORKER_SESSION_ISOLATION=false' "$bootstrap") -ne 2 ]]
   printf 'Every Ansible convergence must retain the bootstrap TTY session.\n' >&2
   exit 1
 fi
-if [[ $(grep -Fc 'refresh_sudo_credentials' "$bootstrap") -ne 5 ]]; then
-  printf 'Every privileged convergence phase must refresh sudo first.\n' >&2
+if [[ $(grep -Fc 'refresh_sudo_credentials' "$bootstrap") -ne 9 ]]; then
+  printf 'Every privileged convergence and Vicinae lifecycle phase must refresh sudo first.\n' >&2
   exit 1
 fi
 grep -Fq "hyprpm add \"\$official_repo\"" "$bootstrap"

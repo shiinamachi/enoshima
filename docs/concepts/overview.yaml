@@ -1,0 +1,131 @@
+surface_id: overview
+status: approved
+asset: docs/assets/concepts/overview/overview-v2.png
+candidates: docs/assets/concepts/overview/overview-candidates-v1.png
+selection: >-
+  Direction B, Quiet Grid, maps directly to Hyprshell's three-items-per-row
+  FlowBox and directional grid navigation. The v2 correction uses the package's
+  real workspace and Papirus application-icon cards rather than invented live
+  thumbnails, and keeps the incomplete second row left-aligned like upstream.
+states:
+  - all-workspaces
+  - selected-window
+  - selected-workspace
+  - multi-monitor
+  - no-windows
+  - reduced-motion
+  - reduced-transparency
+invariants:
+  - The overview is an all-workspaces window map, never a launcher, search surface, or Dock clone.
+  - Inactive empty workspaces are omitted; the current active workspace remains visible without clients and receives no synthetic client or message.
+  - A selected window uses a cyan 2px edge plus a shape marker; a selected workspace uses a violet 2px edge plus an inset marker.
+  - Super+Tab opens the overview while native Alt+Tab and Alt+Shift+Tab remain available as the fast current-workspace fallback.
+  - The 3+2 grid follows Hyprshell's items_per_row value of 3, keeps the second row left-aligned, and preserves upstream icon-card placement within each workspace.
+  - No CSS transitions, continuous animation, blur, or transparency-dependent state is introduced.
+behavior:
+  - Arrow keys move through the grid, Enter activates the selected window or workspace, and Escape closes without changing focus.
+  - Pointer activation and keyboard activation target the same Hyprland client or workspace.
+  - Long application titles ellipsize without changing workspace or client geometry.
+  - Multiple monitors render independent monitor groups while preserving the same focus hierarchy and icon-card structure.
+implementation_constraints:
+  - Enable only Hyprshell windows.overview; disable standalone launcher UI and all launcher plugins while retaining its required nonvisual keyboard controller, and omit switch and switch_2.
+  - Keep filter_by_current_workspace, filter_by_current_monitor, and filter_by_same_class disabled.
+  - Use solid Enoshima surfaces so the default rendering also satisfies the reduced-transparency contract.
+  - Keep the packaged user service and configuration check as the external component boundary.
+  - Use Papirus-resolved application icons and the managed local font stack; introduce no icon or font dependency.
+  - Keep upstream workspace and application icon cards; do not simulate live window thumbnails or spatial miniatures that Hyprshell does not render.
+acceptance:
+  - Workspaces 1 through 5 with live clients appear as legible workspace and application-icon cards in a predictable left-aligned 3+2 reading order on internal and external displays.
+  - Korean and English window titles remain readable or ellipsize at 1.0, 1.25, and 2.0 scale.
+  - Window and workspace selection remain distinguishable without relying on color alone.
+  - The no-windows state shows only the current empty workspace container, without fabricated clients or an empty-state message.
+  - Reduced-motion and reduced-transparency profiles require no alternate animation or blur path.
+generation:
+  tool: built-in-imagegen
+  inspected_references:
+    - docs/assets/concepts/cyberpunk-desktop-shell.png
+    - docs/assets/concepts/cyberpunk-launcher.png
+    - docs/assets/concepts/snap-assist/snap-assist-v1.png
+    - https://github.com/H3rmt/hyprshell/blob/main/.github/imgs/img.png
+  candidate_prompt: |-
+    Use case: ui-mockup
+    Asset type: Enoshima desktop concept candidate board
+    Primary request: Create one high-fidelity 16:9 concept board comparing three feasible visual directions for a Hyprshell-based all-workspaces window overview on the Enoshima Linux desktop.
+    Scene/backdrop: a plausible 1920x1080 logical desktop with the existing neon-library-at-night wallpaper dimmed behind the overview; this is a concept board, not a website.
+    Required composition:
+    - One board split into three clearly labeled equal sections: "A · Workspace Atlas", "B · Quiet Grid", and "C · Focus Rail".
+    - Every direction must use only capabilities feasible in Hyprshell: five numbered purpose-led workspace containers labeled "1 DEV", "2 WEB", "3 DOCS", "4 REMOTE", "5 MISC"; real window thumbnail cards inside those containers; one selected window; one empty-workspace treatment; no search box, no launcher, no dock clone, no invented settings.
+    - Show Korean as primary UI copy where labels are needed: "모든 작업공간", "창 선택", "빈 작업공간"; include a few realistic English window titles such as "app.tsx", "Documentation", and "Remote Desktop" to expose overflow.
+    - A: horizontal five-workspace atlas with restrained clear borders and compact window thumbnails.
+    - B: balanced 3+2 grid with maximum thumbnail legibility and simple hierarchy.
+    - C: one large selected workspace plus a narrow rail of the other four, but still clearly an all-workspaces overview and feasible as a CSS-only variation.
+    - Annotate keyboard focus using a cyan 2px edge plus a small key legend "Super+Tab · 방향키 · Enter · Esc".
+    Enoshima contract:
+    - deep navy #050623 canvas, #0a0c3e and #161151 surfaces
+    - cyan #62d8ff focus, violet #9a5cff selection, sparse magenta #e56bff accent
+    - #f2ecff primary text and #c9bfe8 secondary text
+    - Pretendard-like Korean typography and Papirus-style symbolic app icons
+    - 14px panels, 12px controls, calm dense workstation character, restrained bloom
+    Accessibility:
+    - selected state is communicated by border, shape and label, not color alone
+    - 44px preferred targets and visible keyboard focus
+    - include tiny callouts for "감소 모션" and "감소 투명도" showing instant transitions and opaque surfaces
+    - exact compact annotations must remain legible
+    Constraints: no mobile UI, no web dashboard, no glassmorphism, no emoji controls, no remote fonts, no decorative pseudo-code, no fake terminal, no neon spectacle, no launcher or search field, no extra workspace numbers beyond 1-5, no watermark.
+    Output: a single polished three-direction candidate board with annotations outside the production UI areas.
+  final_prompt: |-
+    Use case: ui-mockup
+    Asset type: final approved Enoshima overview concept and implementation redline board
+    Primary request: Develop the selected "Direction B · Quiet Grid" into one polished 16:9 final concept board for a Hyprshell-based all-workspaces overview.
+    Scene/backdrop: plausible 1920x1080 logical Enoshima Linux desktop with the neon-library-at-night wallpaper visibly dimmed behind one centered overview surface.
+    Main production UI frame:
+    - A centered, calm 3+2 FlowBox layout containing exactly five equal workspace previews labeled only "1", "2", "3", "4", "5", matching what Hyprshell can render.
+    - Workspaces 1-3 on the first row, 4-5 on the second row; no sixth placeholder.
+    - Each non-empty workspace preserves the actual spatial positions of its window thumbnail cards. Use realistic English window titles "app.tsx", "Documentation", "Remote Desktop", "Meeting Notes", and one Korean title "성능 기록".
+    - Do not show a header, search box, dock, launcher controls, workspace names, or any custom controls inside the production UI frame.
+    - One selected window uses a cyan 2px edge plus a small visible shape marker. One selected workspace uses a violet 2px edge plus a distinct inset marker. Do not use glow alone.
+    - Large enough client and workspace hit regions; ellipsize a long title without moving any other geometry.
+    State and annotation composition outside the production UI frame:
+    - A compact state strip with seven labeled miniatures: "기본", "창 선택", "작업공간 선택", "다중 모니터", "창 없음", "감소 모션", "감소 투명도".
+    - "창 없음" is a dimmed blank overview without a fabricated empty tile or message because upstream omits empty workspaces.
+    - "감소 모션" says state changes are instant. "감소 투명도" shows opaque #0a0c3e surfaces and stronger borders.
+    - A redline panel with exact feasible values: desktop margin 48px minimum, 3 items per row, 14px outer radius, 12px workspace/client radius, 8px gaps, 2px focus/selection border, minimum 44px pointer target.
+    - An interaction panel outside the frame: "Super+Tab 열기 · 방향키 이동 · Enter 선택 · Esc 닫기"; preserve native "Alt+Tab" as fallback.
+    - A purpose mapping annotation outside the frame: "1 DEV · 2 WEB · 3 DOCS · 4 REMOTE · 5 MISC".
+    Enoshima contract:
+    - deep navy #050623 canvas, #0a0c3e and #161151 surfaces
+    - cyan #62d8ff focus, violet #9a5cff selection, sparse magenta #e56bff accent
+    - #f2ecff primary and #c9bfe8 secondary text
+    - Pretendard-like Korean typography, Papirus-style symbolic app icons
+    - calm dense workstation character, nearly opaque surfaces, restrained bloom
+    Accessibility:
+    - states use border, shape and label in addition to color
+    - keyboard focus is unmistakable
+    - Korean primary annotations with a few English titles to demonstrate overflow
+    - no continuous animation
+    Constraints: no mobile UI, no web dashboard, no glassmorphism, no emoji controls, no remote fonts, no fake code, no fake terminal, no extra workspaces, no empty sixth cell, no invented error dialog, no search field, no launcher, no watermark, no decorative pseudo-text.
+    Output: one high-fidelity final concept board with the main production frame, state strip, interaction notes, and implementation redlines; annotations stay outside the production frame.
+  correction_prompt: |-
+    Edit this approved Enoshima Hyprshell overview concept board while preserving the selected Quiet Grid design, 3+2 main layout, colors, focus and selection styling, interactions, redlines, typography and every other state.
+    Required upstream correction: Hyprshell 4.10.8 renders the active workspace even when there are zero clients. In the state strip, replace the existing completely blank "창 없음" miniature with a quiet overview containing exactly one normal current-workspace container labeled "1" and no client cards inside it. Do not add an empty message, placeholder client, icon, sixth cell, or custom text inside the production state. An annotation outside the state may say "현재 빈 작업공간 1개 · 클라이언트 없음".
+    If any annotation claims that all empty workspaces are omitted or the no-windows state is fully blank, correct it to: inactive empty workspaces are omitted; the current active workspace remains visible even without clients. Do not otherwise alter the board. No watermark or invented UI.
+  capability_correction_references:
+    - docs/assets/concepts/overview/overview-v1.png
+    - /home/kentakang/.local/state/enoshima-vm/runs/run-90d24a39868f/artifacts/screenshots/overview--all-workspaces--en-us-utf-8--1x.png
+  capability_correction_prompt: |-
+    Edit and replace the approved Enoshima Hyprshell overview concept board using the two references: the existing concept board for the Enoshima visual language and the actual VM screenshot as the authoritative upstream capability reference.
+
+    Create one polished 1920x1080 final concept and implementation-redline board. The production UI must be faithful to Hyprshell 4.10.8 as packaged: workspace cards contain a centered workspace number/title and large Papirus-resolved application icon cards with window titles; do NOT invent live window thumbnails or spatial miniature windows. Keep exactly five workspaces in a 3+2 FlowBox, with workspaces 4 and 5 left-aligned on the second row and no sixth placeholder. Center the overall grid on the 1920x1080 desktop. Target production grid size approximately 1184x578 logical pixels, minimum 48px desktop margins, 8px gaps, 14px outer radius, 12px workspace/client radius, and 2px focus/selection edges. Show realistic client titles app.tsx, Documentation — Enoshima workstation integration reference, Remote Desktop, Meeting Notes, and 성능 기록. Upstream active empty workspace behavior: inactive empty workspaces are omitted, but current workspace 1 remains as one empty workspace card with no fake client and no empty-state message.
+
+    Show one selected window with cyan #62d8ff 2px edge plus a small shape marker, and one selected workspace with violet #9a5cff 2px edge plus a distinct inset marker. Do not rely on glow alone.
+
+    Outside the production frame include a compact Korean state strip for 기본, 창 선택, 작업공간 선택, 다중 모니터, 창 없음, 감소 모션, 감소 투명도. Multi-monitor means independent groups with the same icon-card structure. Reduced motion is instant; reduced transparency uses opaque surfaces. Include interaction note: Super+Tab 열기 · 방향키 이동 · Enter 선택 · Esc 닫기; Alt+Tab 빠른 전환 유지. Include purpose annotation: 1 DEV · 2 WEB · 3 DOCS · 4 REMOTE · 5 MISC.
+
+    Enoshima palette: #050623 canvas, #0a0c3e and #161151 surfaces, #62d8ff cyan, #9a5cff violet, sparse #e56bff, #f2ecff primary text, #c9bfe8 secondary text. Pretendard-like Korean typography, calm dense workstation character, nearly opaque surfaces, restrained bloom. Use border, shape, and labels for states. No search, launcher, dock, workspace names inside production UI, mobile UI, web dashboard, glassmorphism, emoji controls, remote fonts, fake terminal/code, extra workspaces, pseudo-text, invented dialogs, watermark, or live window thumbnails. Exact Korean annotations should be legible.
+  alignment_correction_references:
+    - /home/kentakang/.codex/generated_images/019fef42-0691-7e01-94ae-128d4bae79a9/exec-1cc38fe8-90f0-4633-9541-cca009c03825.png
+    - /home/kentakang/.local/state/enoshima-vm/runs/run-90d24a39868f/artifacts/screenshots/overview--all-workspaces--en-us-utf-8--1x.png
+  alignment_correction_prompt: |-
+    Make one surgical correction to the first reference concept board, using the actual Hyprshell screenshot as the authoritative geometry reference. Preserve the board's 1920x1080 composition, all Korean text, palette, icon-card rendering, state strip, redlines, interaction notes, titles, focus markers, and every other detail.
+
+    Required correction: in the large main production UI frame, the second FlowBox row containing workspace cards 4 and 5 must be left-aligned exactly under workspace cards 1 and 2, with the same column x positions and 8px grid gap. Do not center the incomplete second row and do not add a sixth placeholder. This left-aligned 3+2 layout must match the actual upstream screenshot. Keep the overall five-workspace group centered on the desktop by its 3-column outer bounding box. No other changes, no watermark.

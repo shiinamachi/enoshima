@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+manifest=/usr/share/vicinae/build-environment.json
+
+(($# == 0)) || exit 255
+
+# Exit 1--254 from ExecCondition cleanly skips startup. Missing tools or an
+# unreadable package-owned manifest indicate a broken installation instead.
+for dependency in \
+  /usr/bin/head \
+  /usr/bin/jq \
+  /usr/bin/qmake6 \
+  /usr/bin/readlink \
+  /usr/bin/readelf \
+  /usr/bin/sed \
+  /usr/bin/sha256sum; do
+  [[ -x $dependency ]] || exit 255
+done
+[[ -f $manifest && ! -L $manifest ]] || exit 255
+
+qt_version=$(/usr/bin/jq -er '.qtVersion | strings | select(length > 0)' "$manifest") ||
+  exit 255
+[[ $qt_version == "$(/usr/bin/qmake6 -query QT_VERSION)" ]] || exit 1
+
+library_count=$(/usr/bin/jq -er '.qtLibraries | length' "$manifest") || exit 255
+[[ $library_count =~ ^[1-9][0-9]*$ ]] || exit 255
+
+library_rows=$(/usr/bin/jq -er '
+  .qtLibraries | to_entries[] |
+  [.key, .value.target, .value.sha256, .value.buildId] | @tsv
+' "$manifest") || exit 255
+seen=0
+while IFS=$'\t' read -r library expected_target expected_hash expected_build_id; do
+  [[ $library == /usr/lib/libQt6*.so.6 &&
+    $expected_target == libQt6*.so.6.* &&
+    $expected_target != */* &&
+    $expected_hash =~ ^[0-9a-f]{64}$ &&
+    $expected_build_id =~ ^[0-9a-f]+$ ]] ||
+    exit 255
+  resolved=$(/usr/bin/readlink -f -- "$library") || exit 1
+  [[ $resolved == "/usr/lib/$expected_target" && -f $resolved && ! -L $resolved ]] ||
+    exit 1
+  actual_hash=$(/usr/bin/sha256sum -- "$resolved") || exit 1
+  [[ ${actual_hash%% *} == "$expected_hash" ]] || exit 1
+  actual_build_id=$(
+    /usr/bin/readelf -n -- "$resolved" |
+      /usr/bin/sed -n 's/^[[:space:]]*Build ID: //p' |
+      /usr/bin/head -n 1
+  ) || exit 1
+  [[ -n $actual_build_id && $actual_build_id == "$expected_build_id" ]] || exit 1
+  ((seen += 1))
+done <<<"$library_rows"
+((seen == library_count)) || exit 255

@@ -39,7 +39,7 @@ bootstrap 순서는 다음과 같다.
 1. `pacman -Syu` 방식의 Arch 전체 업그레이드와 bootstrap 의존성 설치
 2. 검토·고정된 로컬 PKGBUILD 설치
 3. Ansible 시스템 상태 적용
-4. `packages/aur.txt`에 승인된 최신 AUR package base 설치
+4. 승인된 current-revision AUR package base 설치
 5. `ilysenko/codex-desktop-linux`에서 Codex Desktop native package 빌드·설치
 6. AUR 패키지에 의존하는 Ansible 역할 재수렴
 7. chezmoi 사용자 구성 적용
@@ -51,9 +51,13 @@ bootstrap 순서는 다음과 같다.
 postflight를 포함한 실행 가능한 후속 단계는 계속한다. 마지막 요약에 실패가
 하나라도 남으면 전체 종료 코드는 non-zero이며 성공 문구를 출력하지 않는다.
 
-`packages/aur.txt` 자체가 AUR package base 승인 목록이다. 목록에 있는 package는
-현재 upstream revision을 별도 commit/hash 승인 없이 설치한다. 한 package 설치가
-실패하면 `FAILURE`로 기록하고 다음 승인 package 설치를 계속한다.
+`packages/aur.txt` 자체가 AUR package base 승인 목록이다. 일반 항목은 현재 AUR
+revision을 설치한다. `packages/aur-provenance.json`은 검토한 AUR
+commit·전체 tree hash·stable upstream release·source checksum·package archive
+표면이 모두 일치해야 하는 향후 보호 항목의 schema를 유지하며 현재 목록은 비어 있다.
+보호 항목은 `paru --skipreview`로 우회하지 않는다.
+한 legacy package 설치가 실패하면 `FAILURE`로 기록하고 다음 항목을 계속하지만,
+보호 항목의 provenance 또는 최종 권한 검사가 실패하면 그 package는 설치하지 않는다.
 
 Codex Desktop은 `chatgpt-desktop-bin` AUR package를 사용하지 않는다.
 `scripts/install-codex-desktop.sh`가
@@ -153,6 +157,15 @@ desktop-appearance reduced-transparency
 desktop-appearance accessible
 desktop-appearance default
 ```
+
+화면 읽기는 기본 package set에 포함하지 않는다. 사용자가 host inventory의
+`desktop_accessibility_profile_enabled`를 명시적으로 `true`로 선택하고 정상
+bootstrap을 실행한 경우에만 `packages/accessibility.txt`의 Orca가 설치된다.
+설치 후 Vicinae Applications에서 **Orca Screen Reader**를 실행한다. 위 appearance
+helper와 Vicinae의 **접근성 표시 모드** Script Command는 모션·블러 감소, 48px
+pointer, 불투명 surface와 강화된 semantic 대비를 함께 적용하고 **기본 표시 모드**는
+24px pointer와 기본 대비를 복원한다. 두 명령은 Orca의 독립 프로세스 수명주기를
+임의의 대칭 toggle로 가장하지 않는다.
 
 ## 디스플레이 프로젝션 모드
 
@@ -670,6 +683,219 @@ gimp
 
 일반 GIMP profile은 PhotoGIMP profile과 분리되어 있어야 한다.
 
+## 외부 패키지 기반 데스크톱 기본 기능
+
+bootstrap은 기능을 새로 구현하지 않고 저장소에서 provenance로 고정한
+`hyprshell-bin` v4.10.8 source recipe, 공식 v0.25.0 source recipe인
+`vicinae-bin`, Arch
+패키지인 `hyprshot`, `hyprpicker`, `swappy`, `kooha`를 구성한다. 기본 선택 순서는
+공식 Arch package, 검증된 stable source, 검증된 stable upstream binary이다. 8 GiB
+이전 검증 VM source build는 Hyprshell `rustc`가 약 6.6--6.9 GiB RSS로 반복 OOM됐다.
+현재 recipe는 단일 job, bounded codegen, LTO/debug 비활성화, slim feature와 격리된
+mise Rust toolchain으로 그 원인을 제거한다. OOM 진단 원본은 각 VM run의 저장소 외부
+artifact에 보존하며, 특정 사용자 로컬 경로를 영구 문서 증거로 간주하지 않는다.
+Vicinae에서 선택했던 AppImage는 번들 Qt가 GLib
+event dispatcher를 포함하지 않아 QtKeychain의 비동기 libsecret callback이 완료되지
+않고 암호화 database 시작이 멈추는 문제가 확인됐다. 공식 native archive도 exact Qt
+private ABI에 결합된 QML AOT symbol 때문에 제외했다. 저장소 source build는
+`qmlcachegen`을 끄고 현재 Arch Qt에 맞춰 빌드하며, 소스·Glaze·npm lock·compiler
+입력과 Qt library hash/build ID를 기록한다. Hyprshell source build는 stable tag/commit,
+Cargo.lock, direct-input patch, final archive/MTREE/ELF를 고정한다. UI 검증은 가상 출력
+토폴로지를 먼저 확정한 뒤 테스트 전용 no-listeners 모드로 Hyprshell을 시작해 upstream의
+초기 전체 compositor reload가 고정 모니터 규칙을 덮어쓰지 못하게 한다. 이 환경은 해당
+서비스 프로세스에만 상속되고 사용자 manager 환경에서는 즉시 복원된다.
+패키지의 사용자 단위와 설정이 정상인지 먼저 확인한다.
+
+Swappy 저장 버튼은 chezmoi의 `~/.config/swappy/config`에 따라
+`~/Pictures/Screenshots/Screenshot_YYYY-MM-DD_HH-MM-SS.png` 형식으로 기록한다.
+별도 filename generator나 저장 wrapper는 두지 않는다.
+
+```bash
+systemctl --user status hyprshell.service vicinae.service --no-pager
+hyprshell -c ~/.config/hyprshell/config.ron config check
+pacman -Q hyprshell-bin vicinae-bin
+vicinae version
+vicinae ping
+getcap -n /usr/libexec/vicinae/vicinae-input-server
+```
+
+`vicinae version`은 v0.25.0, commit `7e13b3f54`, provenance
+`arch_source`를
+출력해야 하며 마지막 명령은 아무 capability도 출력하지 않아야 한다. 로컬 recipe는
+upstream `.install`과 `modules-load.d/vicinae.conf`를 패키징하지 않는다. 공개 helper는
+`/usr/libexec/vicinae`의 root 소유 regular ELF이며 `RPATH`/`RUNPATH` 없이 Arch의
+시스템 library에 연결한다. user service는
+`VICINAE_NODE_BIN=/usr/bin/node`를 고정해 첫 실행 때 별도 Node runtime을 내려받지
+않고 loader/Qt plugin/QML path override와 `QT_NO_GLIB`을 제거해 QtKeychain
+callback에 필요한 검토된 system GLib dispatcher를 유지한다.
+애플리케이션 메뉴와 `vicinae://`, `raycast://`, `com.raycast://` URI도
+관리형 `vicinae-control` adapter를 통과하므로 service/keyring 정책을 우회하지
+않는다. `xdg-mime query default x-scheme-handler/{vicinae,raycast,com.raycast}`는
+각각 `vicinae-url-handler.desktop`을 반환해야 한다. 태그에 고정한 upstream GPL
+license는 `/usr/share/licenses/vicinae-bin/LICENSE`에, 검토된 bundled notice는
+`/usr/share/licenses/vicinae-bin/bundled`에 설치한다. 패키징된 `vicinae-server`가
+embed하는 Raycast 파생 icon의 source/binary 재배포 권한은 upstream 기록에서
+확인되지 않는다. 따라서 이 recipe는 로컬 source build로 한정하고, 권한이나 자유
+license replacement가 고정되기 전에는 package archive를 재배포하거나 완전한
+third-party provenance라고 주장하지 않으며 임의 MIT 고지로 덮지 않는다. 빌드 환경의
+`wayland-protocols`를 포함한
+입력 package version은 build manifest에 기록한다.
+Qt 또는 `vicinae-bin` transaction의 pre hook은 root 전용
+`vicinae-qt-guard hold`를 실행한다. guard는 systemd의 native global runtime mask
+`/run/systemd/user/vicinae.service -> /dev/null`을 게시하고, 검증된 login/linger 사용자
+manager 전체가 실제로 `LoadState=masked`를 관측한 뒤 서비스를 멈추고 inactive 상태와
+직접 실행된 `/usr/bin/vicinae`/`vicinae-server`, legacy `/opt/vicinae`, AppImage mount
+프로세스의 부재를 확인한다. reload·mask 관측·stop·검증 중 하나라도 실패하면
+transaction을 중단하고 mask를 남긴다. root 전용 guard lock에는 guard가 직접 만든
+mask의 symlink identity만 기록해 관리자가 미리 둔 같은 mask를 post hook이 해제하지
+않는다. 이 소유권 메타데이터와 mask는 모두 `/run`에 있고 재부팅 때 함께 사라지며,
+별도 lifecycle phase나 resume 목록을 만들지 않는다. post hook의
+`release-if-compatible`은 package-owned build manifest와 현재 Qt version/library
+hash/build ID가 모두 일치하고 mask가 guard 소유일 때만 이를 지우며 service를 enable
+하거나 start하지 않는다. 불일치하면 동일 version source build가 필요하다.
+
+bootstrap은 첫 full upgrade 전에 검토된 guard bytes를 root 소유 `/run` 경로에 stage해
+hold하고, local-package 단계에는 `VICINAE_KEEP_HELD=true`를 전달한다. package 변경이
+끝난 뒤 현재 사용자 unit을 systemd의 persistent user mask로 막은 상태에서 chezmoi
+policy를 적용한다. 배포
+파일·privacy 설정·순수 ABI 검사 후에만 hold를 release하고 unmask하며, effective unit
+policy를 다시 확인한 다음 선언적으로 enable하고 graphical session이 active일 때만
+start한다. `/var/lib/enoshima/vicinae`의 marker, resume 목록, install intent, phase는 더
+이상 사용하지 않는다. 중단되면 bootstrap을 다시 실행한다. 재부팅으로 `/run` mask가
+사라져도 static `vicinae-build-compatible` ExecCondition이 호환되지 않는 binary의
+시작을 막는다. guard가 보장하는 범위는 관리형 service/launcher와 hold 시점에 발견한
+직접 프로세스이며, 검증 직후 별도 shell에서 새 binary를 직접 실행하는 행위까지
+직렬화하지는 않는다.
+Vicinae는 입력 서버와
+자동 붙여넣기를 끄고 복사 동작만 사용한다. `encrypt_sensitive_data`는 Secret
+Service가 제공하는 로컬 보호이며 clipboard 전체가 종단간 암호화됨을 뜻하지
+않는다. 이력은 시작 때 지우고 동기화하지 않는다. 지문 로그인 등으로 login
+keyring이 잠겨 있으면 `ExecCondition`이 clean skip하므로 restart limit을 소비하지
+않고 대기한다. keyring을 해제한
+뒤 다음 shortcut을 누르면 bounded adapter가 서비스를 시작한다. 상태를 직접
+확인하려면 `~/.local/libexec/vicinae-keyring-ready`와
+`systemctl --user status vicinae.service`를 사용한다. keyring helper는 collection의
+unlock 속성뿐 아니라 bounded libsecret 저장·조회·삭제 왕복을 확인한다. 이후
+Vicinae가 QtKeychain 응답을 기다리며 멈추더라도 `vicinae-server-ready`의 bounded
+IPC probe와 40초 start timeout이 해당 프로세스를 종료하고 관리형 restart/start
+limit을 적용한다.
+
+### `desktop-capture-recording` T5 실기기 절차
+
+이 계약은 저장소가 shortcut과 패키지 가용성을 소유하고 업스트림 도구가 선택
+overlay, 편집기, 색상 picker, 녹화 UI와 PipeWire lifecycle을 소유한다. 따라서 VM
+화면이나 concept evidence로 승인하지 않는다. 실제 내부 OLED와 외부 출력 각각에서
+아래 여섯 shortcut을 모두 실행하고, 저장 파일·clipboard·편집 결과·영상과 선택
+overlay가 해당 출력에 맞는지 확인한다. 어느 한 출력이나 기능이라도 실패하면
+`desktop-capture-recording` T5 gate를 미완료로 유지한다.
+
+| Shortcut | 기대 동작 |
+| --- | --- |
+| `Print` | Hyprshot이 현재 출력을 `~/Pictures/Screenshots`에 저장 |
+| `Super+Print` | 창 선택 후 해당 창 캡처 |
+| `Super+Shift+S` | 화면을 고정하고 영역 캡처 |
+| `Super+Shift+E` | 영역을 선택한 뒤 Swappy에서 주석·블러·도형 편집 |
+| `Super+Shift+C` | Hyprpicker가 화면 색을 clipboard에 복사 |
+| `Super+Shift+R` | Kooha를 열어 PipeWire 화면과 microphone/system audio 녹화 |
+
+아래 staged desktop shortcut은 같은 실기기 세션에서 각각의 별도 T5 gate로
+검증한다. 이 네 항목의 실패는 위 여섯 capture shortcut 결과와 섞지 않는다.
+
+| Shortcut | 별도 gate | 기대 동작 |
+| --- | --- | --- |
+| `Super+Tab` | `overview-keyboard-mixed-dpi` | Hyprshell이 모든 작업공간 Overview를 열고 방향키/Enter/Escape 처리 |
+| `Super+Shift+Space` | `command-palette-staged-rollout` | staged Vicinae command palette 열기 |
+| `Super+Shift+V` | `command-palette-staged-rollout` | Vicinae clipboard history 열기 |
+| `Super+period` | `command-palette-staged-rollout` | Vicinae emoji/symbol 검색 열기 |
+
+Vicinae는 한 release 동안 staged shortcut만 소유한다. 다음 항목이
+`tpx1c13`에서 모두 통과하기 전에는 `Super+Space`와 `Super+R`을 CyberLauncher에서
+옮기거나 기존 `cliphist` 경로를 제거하지 않는다.
+
+- Fcitx5 한글 preedit와 영문 검색이 1.0, 1.25, 2.0 scale에서 정상이다.
+- 내부/외부 출력 사이를 이동해도 keyboard focus와 선택 행이 유지된다.
+- clipboard password-shaped 항목 제외, 시작 시 삭제, copy-only 동작을 확인한다.
+- cold start와 10분 idle 동안 지속적인 CPU wakeup이나 메모리 증가가 없다.
+- 여덟 Performance Script Command가 Resources, atop, sysstat, iotop-c, nvtop,
+  Sysprof, s-tui 기반 CPU·열 상태, powertop 전력 분석을 올바르게 연다.
+- `turbostat`은 CPU·열 상태 행의 상세 진단 도구로 문서화되어 있으며
+  `PERFORMANCE-DIAGNOSTICS.md`의 명령으로 직접 실행된다.
+
+`command-palette-staged-rollout`을 완료할 때는 일반 문자열 결과만 보지 말고
+Vicinae의 upstream provider 계약을 아래 순서로 확인한다.
+
+1. Applications에서 `Ghostty`를 검색해 실행하고 새 Hyprland client가 생기는지
+   확인한다.
+2. Ghostty와 Files를 서로 다른 workspace에 열고 Windows provider에서 각각을
+   검색해 선택했을 때 해당 창과 workspace로 focus가 이동하는지 확인한다.
+3. Calculator에 `2+2`와 `12.5% of 80`을 입력해 각각 `4`, `10`이 표시되고,
+   Enter로 복사한 결과를 `wl-paste`가 그대로 반환하는지 확인한다.
+4. Emoji에서 한 항목을 복사해 UTF-8 텍스트 paste가 보존되는지 확인한다.
+5. Thunar에서 실제 파일을 복사한 뒤 clipboard history에서 다시 선택한다.
+   `wl-paste --list-types`가 `text/uri-list`와 텍스트 fallback을 함께 제공하고
+   Files/Thunar에 paste했을 때 같은 파일이 복사되는지 확인한다.
+6. Chromium에서 이미지와 HTML이 함께 제공되는 실제 rich clipboard 항목을
+   복사하고 history에서 다시 선택한다. `wl-paste --list-types`의 `image/png`,
+   `text/html`, `text/plain` 중 원본이 제공한 복합 MIME 집합이 유지되며 이미지
+   편집기와 텍스트 편집기 양쪽 paste가 정상인지 확인한다. MIME이 하나로
+   축소되면 gate를 통과시키지 않는다.
+
+`desktop-capture-recording`은 resume 경계까지 포함한다. Kooha에서 monitor와
+region selector를 한 번씩 열어 올바른 PipeWire stream이 생성되는지 확인한 뒤
+세션을 잠그고 suspend한다. resume·unlock 후 같은 두 selector를 다시 열어 overlay,
+출력 선택, 녹화 시작/정지가 모두 동작하고 stale portal dialog나 black stream이
+남지 않는지 확인한다. 이 결합 확인은 별도 `suspend-resume` 성공만으로 대체하지
+않는다.
+
+### `accessibility-screen-reader` T5 실기기 절차
+
+Orca profile은 opt-in 설치만 허용하며 자동 시작을 의미하지 않는다. 다음 절차는
+VM의 `pacman -Q`, `orca --version`, concept evidence로 대체할 수 없다.
+
+1. 대상 host inventory가 boolean `true`인지 확인한다.
+
+   ```bash
+   ansible-inventory -i ansible/inventory/hosts.yml --host HOST |
+     jq -e '.desktop_accessibility_profile_enabled == true'
+   ```
+
+2. 전체 bootstrap 뒤 `pacman -Q orca`를 확인하고, `pacman -Ql orca`에서 찾은
+   `/usr/share/applications/*.desktop`을 `desktop-file-validate`로 검사한다.
+3. 깨끗한 로그인 직후 Orca가 자동 시작되지 않았는지 확인한다. 설치 opt-in은
+   사용자 동의 없는 음성 출력을 허용하지 않는다.
+4. `Super+Shift+Space`로 Vicinae Applications를 열어 desktop entry의 표시명인
+   **Orca Screen Reader**를 검색·실행한다. 터미널 우회가 필요하면 실패다.
+5. palette가 닫히고 Orca 음성 출력이 시작되는지 확인한다. Thunar 같은 GTK 3
+   앱과 Resources 같은 GTK 4 앱에서 창 제목, toolbar/button role과 label,
+   sidebar/file row focus 이동, 한·영 label, Tab/Shift+Tab/방향키/Escape의
+   시각 순서 일치와 focus trap 부재를 keyboard만으로 확인한다.
+6. Orca가 실행 중인 채 Vicinae **접근성 표시 모드**를 실행한다. pointer 48px,
+   opaque surface, 강화된 text/divider/focus edge, motion/blur 감소가 적용되고
+   Orca process와 음성이 계속 유지되어야 한다.
+7. 이어 **기본 표시 모드**를 실행해 pointer 24px와 기본 token/motion이
+   복원되며 Orca가 종료·재시작되지 않는지 확인한다.
+8. Orca 자체의 문서화된 Quit 동작으로 종료한 뒤 음성과 process가 사라지고,
+   Applications에서 다시 실행 가능한지 확인한다. 존재하지 않는 대칭 CLI를
+   가정하지 않는다.
+
+Applications 결과 없음, 음성 없음, role/label/focus 순서 오류, appearance 전환의
+Orca lifecycle 간섭, 기본 false profile에서의 자동 설치·시작, 재실행 실패 중
+하나라도 있으면 `accessibility-screen-reader` gate를 미완료로 유지한다.
+
+Hyprshell은 다섯 실제 workspace, 빈 active workspace, 긴 한·영 제목, 두 출력에서
+창·workspace 선택을 확인한다. native `Alt+Tab`과 `Alt+Shift+Tab`은 Overview와
+무관하게 계속 동작해야 한다. 문제가 있으면 primary launcher와 switcher는 이미
+그대로 남아 있으므로 다음과 같이 두 staged service만 끌 수 있다.
+
+```bash
+systemctl --user disable --now vicinae.service hyprshell.service
+```
+
+성능 저하 사건의 상시 기록, 보존 기간, 사건 중·사후 조사 명령은
+[`PERFORMANCE-DIAGNOSTICS.md`](PERFORMANCE-DIAGNOSTICS.md)를 따른다. 임의의 TLP,
+kernel, scheduler tuning은 동일 timestamp의 atop, sysstat, journal 증거가 반복되는
+bottleneck을 가리킬 때까지 적용하지 않는다.
+
 ## 최종 수동 acceptance
 
 자동 검증을 먼저 다시 실행한다.
@@ -703,6 +929,9 @@ gimp
   crash recovery가 모두 동작한다.
 - CyberLauncher가 두 출력에서 bar와 Dock을 포함한 전체 scrim을 소유하고,
   화면 비율에 맞는 크기와 네 개 quick-app label을 유지한다.
+- 위 외부 패키지 표의 캡처·주석·색상 선택·PipeWire 녹화 shortcut을 모두 실행하고,
+  Hyprshell Overview와 staged Vicinae가 내부/외부 혼합 DPI 및 Fcitx5 조건을
+  통과한다. 이 gate를 통과하기 전에는 primary launcher shortcut을 전환하지 않는다.
 - SwayNC의 40픽셀 notification close target이 timestamp를 가리지 않고, panel이
   Waybar 아래 약 8픽셀 간격에서 시작한다.
 - `desktop-appearance reduced-motion`, `reduced-transparency`, `accessible`을 각각

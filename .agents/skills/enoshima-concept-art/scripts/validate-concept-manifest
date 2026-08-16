@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 VISIBLE_PATTERNS = (
     "home/dot_config/quickshell/cyberdock/*.qml",
     "home/dot_config/waybar/config.jsonc",
@@ -37,10 +36,15 @@ REVIEW_WEIGHTS = {
     "accessibility_localization": 0.10,
 }
 AUTOMATED_CATEGORIES = {"geometry", "color_tokens", "text_overflow", "perceptual"}
+AUXILIARY_OUTPUT = re.compile(r"HEADLESS-[A-Z]+")
+SEMANTIC_MIN_UNIQUE_GRAY_VALUES = 8
+SEMANTIC_MIN_NORMALIZED_STDDEV = 0.01
 
 
 def load_yaml(path: Path) -> object:
-    completed = subprocess.run(["yq", ".", str(path)], check=True, capture_output=True, text=True)
+    completed = subprocess.run(
+        ["yq", ".", str(path)], check=True, capture_output=True, text=True
+    )
     return json.loads(completed.stdout)
 
 
@@ -50,6 +54,62 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def semantic_metrics(path: Path, surface: str, scale: float) -> dict[str, object]:
+    identify = subprocess.run(
+        ["magick", "identify", "-format", "%w %h", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    width, height = (int(value) for value in identify.stdout.split())
+    if surface == "command-palette":
+        crop_width = min(width, round(790 * scale))
+        palette_height = min(height, round(500 * scale))
+        search_height = min(palette_height - 1, round(68 * scale))
+        x = max(0, (width - crop_width) // 2)
+        y = max(0, (height - palette_height) // 2) + search_height
+        crop_height = palette_height - search_height
+    elif surface == "overview":
+        x = 0
+        y = min(height - 1, round(52 * scale))
+        crop_width = width
+        crop_height = height - y
+    else:
+        x = 0
+        y = 0
+        crop_width = width
+        crop_height = height
+    pixels = subprocess.run(
+        [
+            "magick",
+            str(path),
+            "-crop",
+            f"{crop_width}x{crop_height}+{x}+{y}",
+            "+repage",
+            "-colorspace",
+            "Gray",
+            "-resize",
+            "25%",
+            "-depth",
+            "8",
+            "gray:-",
+        ],
+        check=True,
+        capture_output=True,
+    ).stdout
+    if not pixels:
+        raise ValueError("semantic region is empty")
+    mean = sum(pixels) / len(pixels)
+    normalized_stddev = (
+        sum((value - mean) ** 2 for value in pixels) / len(pixels)
+    ) ** 0.5 / 255
+    return {
+        "sha256": hashlib.sha256(pixels).hexdigest(),
+        "unique_gray_values": len(set(pixels)),
+        "normalized_standard_deviation": round(normalized_stddev, 8),
+    }
 
 
 def implementation_digest(root: Path, implementations: list[str]) -> str:
@@ -67,7 +127,9 @@ def fail(errors: list[str], message: str) -> None:
     errors.append(message)
 
 
-def relative_path(root: Path, value: object, errors: list[str], label: str) -> Path | None:
+def relative_path(
+    root: Path, value: object, errors: list[str], label: str
+) -> Path | None:
     if not isinstance(value, str) or not value:
         fail(errors, f"{label}: expected a non-empty repository-relative path")
         return None
@@ -76,16 +138,119 @@ def relative_path(root: Path, value: object, errors: list[str], label: str) -> P
         fail(errors, f"{label}: path must stay inside the repository: {value}")
         return None
     candidate = root / path
+    current = root
+    for part in path.parts:
+        current /= part
+        if current.is_symlink():
+            fail(errors, f"{label}: symbolic links are not accepted: {value}")
+            return None
     resolved = candidate.resolve()
     try:
         resolved.relative_to(root)
     except ValueError:
         fail(errors, f"{label}: resolved path escapes the repository: {value}")
         return None
-    if candidate.is_symlink():
-        fail(errors, f"{label}: symbolic links are not accepted: {value}")
-        return None
     return resolved
+
+
+def validate_automated_coverage(
+    root: Path,
+    surface_id: str,
+    automated: dict[str, Any],
+    captures: list[str],
+    errors: list[str],
+    label: str,
+) -> None:
+    mapping_path = relative_path(
+        root,
+        automated.get("mapping"),
+        errors,
+        f"{label}.review.automated_report.mapping",
+    )
+    mapping: dict[str, Any] = {}
+    if mapping_path is None or not mapping_path.is_file():
+        fail(errors, f"{label}.review.automated_report.mapping: file does not exist")
+    else:
+        try:
+            mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            fail(
+                errors,
+                f"{label}.review.automated_report.mapping: cannot read JSON: {error}",
+            )
+        if automated.get("mapping_sha256") != sha256(mapping_path):
+            fail(errors, f"{label}.review.automated_report.mapping: hash mismatch")
+    comparisons = mapping.get("comparisons")
+    if (
+        mapping.get("schema") != 1
+        or mapping.get("surface_id") != surface_id
+        or not isinstance(comparisons, list)
+        or not all(isinstance(value, dict) for value in comparisons)
+    ):
+        fail(
+            errors,
+            f"{label}.review.automated_report.mapping: schema/surface mismatch",
+        )
+        comparisons = []
+    expected_captures = sorted(captures)
+    mapped_captures = [str(value.get("sidecar", "")) for value in comparisons]
+    if (
+        len(mapped_captures) != len(set(mapped_captures))
+        or sorted(mapped_captures) != expected_captures
+    ):
+        fail(
+            errors,
+            f"{label}.review.automated_report.mapping: must cover every "
+            "capture exactly once",
+        )
+    sources = automated.get("sources")
+    if not isinstance(sources, list) or not all(
+        isinstance(value, dict) for value in sources
+    ):
+        fail(errors, f"{label}.review.automated_report.sources: expected a list")
+        sources = []
+    source_captures = [str(value.get("sidecar", "")) for value in sources]
+    if (
+        len(source_captures) != len(set(source_captures))
+        or sorted(source_captures) != expected_captures
+    ):
+        fail(
+            errors,
+            f"{label}.review.automated_report.sources: must cover every "
+            "capture exactly once",
+        )
+    comparison_by_sidecar = {
+        str(value.get("sidecar", "")): value for value in comparisons
+    }
+    for source in sources:
+        source_value = str(source.get("sidecar", ""))
+        source_path = relative_path(
+            root,
+            source_value,
+            errors,
+            f"{label}.review.automated_report.sources.sidecar",
+        )
+        if source_path is None or not source_path.is_file():
+            fail(
+                errors,
+                f"{label}.review.automated_report.sources: sidecar does not "
+                f"exist: {source_value}",
+            )
+        elif source.get("sidecar_sha256") != sha256(source_path):
+            fail(
+                errors,
+                f"{label}.review.automated_report.sources: sidecar hash "
+                f"mismatch: {source_value}",
+            )
+        comparison = comparison_by_sidecar.get(source_value, {})
+        if source.get("reference_crop") != comparison.get(
+            "reference_crop"
+        ) or source.get("implementation_crop") != comparison.get("implementation_crop"):
+            fail(
+                errors,
+                f"{label}.review.automated_report.sources: crop mismatch: "
+                f"{source_value}",
+            )
 
 
 def validate_review(
@@ -95,6 +260,8 @@ def validate_review(
     current_digest: str,
     concept_hash: str,
     concept_spec_hash: str,
+    captures: list[str],
+    strict_evidence: bool,
     errors: list[str],
 ) -> None:
     label = f"surfaces.{surface_id}.evidence"
@@ -107,8 +274,14 @@ def validate_review(
     except (OSError, json.JSONDecodeError) as error:
         fail(errors, f"{label}.review: cannot read JSON: {error}")
         return
-    if review.get("schema") != 2 or review.get("surface_id") != surface_id:
+    expected_review_schema = 3 if strict_evidence else 2
+    if (
+        review.get("schema") != expected_review_schema
+        or review.get("surface_id") != surface_id
+    ):
         fail(errors, f"{label}.review: schema/surface_id mismatch")
+    if not isinstance(review.get("reviewer"), str) or not review["reviewer"].strip():
+        fail(errors, f"{label}.review.reviewer: expected a non-empty reviewer")
     if (
         review.get("implementation_digest") != current_digest
         or review.get("concept_sha256") != concept_hash
@@ -119,7 +292,9 @@ def validate_review(
     if not isinstance(scores, dict):
         fail(errors, f"{label}.review.scores: expected a mapping")
         return
-    automated_path = relative_path(root, review.get("automated_report"), errors, f"{label}.review.automated_report")
+    automated_path = relative_path(
+        root, review.get("automated_report"), errors, f"{label}.review.automated_report"
+    )
     automated_scores: dict[str, Any] = {}
     if automated_path is None or not automated_path.is_file():
         fail(errors, f"{label}.review.automated_report: report does not exist")
@@ -132,7 +307,7 @@ def validate_review(
         if review.get("automated_report_sha256") != sha256(automated_path):
             fail(errors, f"{label}.review.automated_report: report hash mismatch")
         if (
-            automated.get("schema") != 1
+            automated.get("schema") != (2 if strict_evidence else 1)
             or automated.get("surface_id") != surface_id
             or automated.get("implementation_digest") != current_digest
             or automated.get("concept_sha256") != concept_hash
@@ -140,7 +315,14 @@ def validate_review(
         ):
             fail(errors, f"{label}.review.automated_report: stale schema or digest")
         if automated.get("text_overflow_failures"):
-            fail(errors, f"{label}.review.automated_report: text overflow failures remain")
+            fail(
+                errors,
+                f"{label}.review.automated_report: text overflow failures remain",
+            )
+        if strict_evidence:
+            validate_automated_coverage(
+                root, surface_id, automated, captures, errors, label
+            )
         value = automated.get("scores", {})
         if isinstance(value, dict):
             automated_scores = value
@@ -152,9 +334,16 @@ def validate_review(
             fail(errors, f"{label}.review.scores.{category}: expected 0..100")
             continue
         if score < 85:
-            fail(errors, f"{label}.review.scores.{category}: {score} is below the 85 category floor")
+            fail(
+                errors,
+                f"{label}.review.scores.{category}: {score} is below the 85 "
+                "category floor",
+            )
         if category in AUTOMATED_CATEGORIES and automated_scores.get(category) != score:
-            fail(errors, f"{label}.review.scores.{category}: must equal the automated report")
+            fail(
+                errors,
+                f"{label}.review.scores.{category}: must equal the automated report",
+            )
         weighted += float(score) * weight
     if round(weighted, 2) < 90:
         fail(errors, f"{label}.review: weighted score {weighted:.2f} is below 90")
@@ -178,6 +367,11 @@ def validate_evidence(
     if not isinstance(evidence, dict):
         fail(errors, f"{label}: schema 2 requires an evidence mapping")
         return
+    evidence_schema = evidence.get("schema", 1)
+    if evidence_schema not in {1, 2}:
+        fail(errors, f"{label}.schema: expected 1 or 2")
+        return
+    strict_evidence = evidence_schema == 2
     status = evidence.get("status")
     if status not in ("pending", "approved"):
         fail(errors, f"{label}.status: expected pending or approved")
@@ -185,12 +379,44 @@ def validate_evidence(
     required_states = evidence.get("required_states")
     required_locales = evidence.get("required_locales")
     required_scales = evidence.get("required_scales")
-    if not isinstance(required_states, list) or set(required_states) != set(spec_states):
-        fail(errors, f"{label}.required_states: must exactly match the concept spec states")
-    if not isinstance(required_locales, list) or not {"en_US.UTF-8", "ko_KR.UTF-8"}.issubset(set(required_locales)):
+    required_auxiliary = evidence.get("required_auxiliary_outputs", {})
+    if not isinstance(required_states, list) or set(required_states) != set(
+        spec_states
+    ):
+        fail(
+            errors,
+            f"{label}.required_states: must exactly match the concept spec states",
+        )
+    if not isinstance(required_locales, list) or not {
+        "en_US.UTF-8",
+        "ko_KR.UTF-8",
+    }.issubset(set(required_locales)):
         fail(errors, f"{label}.required_locales: English and Korean are required")
-    if not isinstance(required_scales, list) or not {1.0, 1.25, 2.0}.issubset({float(value) for value in required_scales}):
+    if not isinstance(required_scales, list) or not {1.0, 1.25, 2.0}.issubset(
+        {float(value) for value in required_scales}
+    ):
         fail(errors, f"{label}.required_scales: 1.0, 1.25, and 2.0 are required")
+    if not isinstance(required_auxiliary, dict):
+        fail(errors, f"{label}.required_auxiliary_outputs: expected a mapping")
+        required_auxiliary = {}
+    else:
+        for state, outputs in required_auxiliary.items():
+            if state not in required_states:
+                fail(
+                    errors, f"{label}.required_auxiliary_outputs: unknown state {state}"
+                )
+            if (
+                not isinstance(outputs, list)
+                or len(outputs) != len(set(outputs))
+                or not all(
+                    isinstance(output, str) and AUXILIARY_OUTPUT.fullmatch(output)
+                    for output in outputs
+                )
+            ):
+                fail(
+                    errors,
+                    f"{label}.required_auxiliary_outputs.{state}: invalid outputs",
+                )
 
     implementations = entry.get("implementation", [])
     try:
@@ -201,20 +427,35 @@ def validate_evidence(
 
     if status == "pending":
         pending.append(surface_id)
-        if evidence.get("captures") or evidence.get("review") or evidence.get("implementation_digest"):
-            fail(errors, f"{label}: pending evidence must not carry partial approval artifacts")
+        if (
+            evidence.get("captures")
+            or evidence.get("review")
+            or evidence.get("implementation_digest")
+        ):
+            fail(
+                errors,
+                f"{label}: pending evidence must not carry partial approval artifacts",
+            )
         if require_evidence:
             fail(errors, f"{label}.status: visual release requires approved evidence")
         return
 
     if evidence.get("implementation_digest") != current_digest:
-        fail(errors, f"{label}.implementation_digest: stale or incorrect; expected {current_digest}")
+        fail(
+            errors,
+            f"{label}.implementation_digest: stale or incorrect; expected "
+            f"{current_digest}",
+        )
     captures = evidence.get("captures")
     if not isinstance(captures, list) or not captures:
         fail(errors, f"{label}.captures: approved evidence requires capture sidecars")
         return
 
     matrix: set[tuple[str, str, float]] = set()
+    manual_measurements: list[dict[str, Any]] = []
+    manual_expected_coverage: list[dict[str, Any]] = []
+    capture_parents: set[Path] = set()
+    capture_run_ids: set[str] = set()
     for value in captures:
         sidecar_path = relative_path(root, value, errors, f"{label}.captures")
         if sidecar_path is None or not sidecar_path.is_file():
@@ -225,6 +466,18 @@ def validate_evidence(
         except (OSError, json.JSONDecodeError) as error:
             fail(errors, f"{label}.captures: invalid sidecar {value}: {error}")
             continue
+        capture_parents.add(sidecar_path.parent)
+        run_id = sidecar.get("run_id")
+        if isinstance(run_id, str) and run_id:
+            capture_run_ids.add(run_id)
+        source_sidecar_hash = sidecar.get("source_sidecar_sha256")
+        if source_sidecar_hash is None:
+            source_sidecar_hash = sha256(sidecar_path)
+        elif not isinstance(source_sidecar_hash, str) or not HASH.fullmatch(
+            source_sidecar_hash
+        ):
+            fail(errors, f"{label}.captures: invalid source sidecar hash in {value}")
+            source_sidecar_hash = sha256(sidecar_path)
         if sidecar.get("schema") != 1 or sidecar.get("surface_id") != surface_id:
             fail(errors, f"{label}.captures: schema/surface mismatch in {value}")
         if (
@@ -233,24 +486,377 @@ def validate_evidence(
             or sidecar.get("concept_spec_sha256") != concept_spec_hash
         ):
             fail(errors, f"{label}.captures: stale digest in {value}")
-        image_path = relative_path(root, sidecar.get("image"), errors, f"{label}.captures.image")
+        image_path = relative_path(
+            root, sidecar.get("image"), errors, f"{label}.captures.image"
+        )
         if image_path is None or not image_path.is_file():
             fail(errors, f"{label}.captures: screenshot does not exist for {value}")
         elif sidecar.get("image_sha256") != sha256(image_path):
             fail(errors, f"{label}.captures: screenshot hash mismatch in {value}")
+        source_image_hash = sidecar.get("source_image_sha256")
+        if source_image_hash is None:
+            source_image_hash = sidecar.get("image_sha256")
+        elif not isinstance(source_image_hash, str) or not HASH.fullmatch(
+            source_image_hash
+        ):
+            fail(errors, f"{label}.captures: invalid source image hash in {value}")
+            source_image_hash = sidecar.get("image_sha256")
+        coverage_images: list[dict[str, str]] = [
+            {
+                "output": str(sidecar.get("output", "HEADLESS-UI")),
+                "image_sha256": str(source_image_hash),
+            }
+        ]
+        overflow_count = sidecar.get("text_overflow_count")
+        overflow_measurement = sidecar.get("text_overflow_measurement")
+        if (
+            not isinstance(overflow_count, int)
+            or overflow_count != 0
+            or not isinstance(overflow_measurement, dict)
+        ):
+            fail(errors, f"{label}.captures: invalid overflow evidence in {value}")
+        else:
+            overflow_method = overflow_measurement.get("method")
+            if overflow_method == "production-component-layout-probe":
+                if overflow_measurement.get("source") != sidecar_path.name:
+                    fail(
+                        errors,
+                        f"{label}.captures: invalid overflow probe source in {value}",
+                    )
+            elif overflow_method == "manual-contact-sheet-review":
+                manual_measurements.append(overflow_measurement)
+                review_artifact = relative_path(
+                    root,
+                    overflow_measurement.get("review_artifact"),
+                    errors,
+                    f"{label}.captures.text_overflow_measurement.review_artifact",
+                )
+                review_artifact_hash = overflow_measurement.get(
+                    "review_artifact_sha256"
+                )
+                if (
+                    not isinstance(overflow_measurement.get("reviewer"), str)
+                    or not overflow_measurement["reviewer"].strip()
+                    or review_artifact is None
+                    or not review_artifact.is_file()
+                    or review_artifact.parent != sidecar_path.parent
+                    or not isinstance(review_artifact_hash, str)
+                    or not HASH.fullmatch(review_artifact_hash)
+                    or review_artifact_hash != sha256(review_artifact)
+                    or not isinstance(
+                        overflow_measurement.get("source_review_artifact_sha256"),
+                        str,
+                    )
+                    or not HASH.fullmatch(
+                        overflow_measurement["source_review_artifact_sha256"]
+                    )
+                    or not isinstance(overflow_measurement.get("report_sha256"), str)
+                    or not HASH.fullmatch(overflow_measurement["report_sha256"])
+                ):
+                    fail(
+                        errors,
+                        f"{label}.captures: invalid manual overflow evidence in "
+                        f"{value}",
+                    )
+            else:
+                fail(
+                    errors,
+                    f"{label}.captures: unknown overflow evidence method in {value}",
+                )
+        auxiliary_outputs = sidecar.get("auxiliary_outputs", [])
+        if not isinstance(auxiliary_outputs, list):
+            fail(errors, f"{label}.captures: invalid auxiliary outputs in {value}")
+            auxiliary_outputs = []
+        observed_auxiliary: set[str] = set()
+        observed_auxiliary_images: set[Path] = set()
+        observed_auxiliary_hashes: set[str] = set()
+        if image_path is not None:
+            observed_auxiliary_images.add(image_path)
+        primary_hash = sidecar.get("image_sha256")
+        if isinstance(primary_hash, str):
+            observed_auxiliary_hashes.add(primary_hash)
+        state = str(sidecar.get("state", ""))
+        semantic_outputs = sidecar.get("semantic_outputs")
+        for index, auxiliary in enumerate(auxiliary_outputs):
+            auxiliary_label = f"{label}.captures.auxiliary_outputs[{index}]"
+            if not isinstance(auxiliary, dict):
+                fail(errors, f"{auxiliary_label}: expected a mapping in {value}")
+                continue
+            output = auxiliary.get("output")
+            if not isinstance(output, str) or not AUXILIARY_OUTPUT.fullmatch(output):
+                fail(errors, f"{auxiliary_label}.output: invalid output in {value}")
+            elif output in observed_auxiliary:
+                fail(errors, f"{auxiliary_label}.output: duplicate output in {value}")
+            else:
+                observed_auxiliary.add(output)
+            auxiliary_image = relative_path(
+                root,
+                auxiliary.get("image"),
+                errors,
+                f"{auxiliary_label}.image",
+            )
+            if auxiliary_image is None or not auxiliary_image.is_file():
+                fail(errors, f"{auxiliary_label}: screenshot does not exist in {value}")
+                continue
+            auxiliary_hash = auxiliary.get("image_sha256")
+            if auxiliary_hash != sha256(auxiliary_image):
+                fail(errors, f"{auxiliary_label}: screenshot hash mismatch in {value}")
+            if auxiliary_image in observed_auxiliary_images:
+                fail(errors, f"{auxiliary_label}: screenshot path is reused in {value}")
+            if auxiliary_hash in observed_auxiliary_hashes:
+                fail(
+                    errors,
+                    f"{auxiliary_label}: screenshot pixels are reused in {value}",
+                )
+            observed_auxiliary_images.add(auxiliary_image)
+            if isinstance(auxiliary_hash, str):
+                observed_auxiliary_hashes.add(auxiliary_hash)
+            source_auxiliary_hash = auxiliary.get("source_image_sha256")
+            if source_auxiliary_hash is None:
+                source_auxiliary_hash = auxiliary_hash
+            elif not isinstance(source_auxiliary_hash, str) or not HASH.fullmatch(
+                source_auxiliary_hash
+            ):
+                fail(
+                    errors,
+                    f"{auxiliary_label}: invalid source image hash in {value}",
+                )
+                source_auxiliary_hash = auxiliary_hash
+            coverage_images.append(
+                {
+                    "output": str(output),
+                    "image_sha256": str(source_auxiliary_hash),
+                }
+            )
+            proof_required = (
+                surface_id == "overview"
+                and state == "multi-monitor"
+                and output == "HEADLESS-AUX"
+            )
+            proof_fields = {"expected_workspaces", "semantic_content"}
+            mixed_dpi_fields = {"logical_size", "scale"}
+            present_proof_fields = proof_fields.intersection(auxiliary)
+            present_mixed_dpi_fields = mixed_dpi_fields.intersection(auxiliary)
+            mixed_dpi = proof_required or bool(present_mixed_dpi_fields)
+            if proof_required or present_proof_fields:
+                expected_workspaces = auxiliary.get("expected_workspaces")
+                content = auxiliary.get("semantic_content")
+                semantic_hash = (
+                    content.get("sha256") if isinstance(content, dict) else None
+                )
+                try:
+                    measured_content = semantic_metrics(
+                        auxiliary_image,
+                        surface_id,
+                        float(
+                            auxiliary.get("scale", sidecar.get("scale", 0))
+                            if mixed_dpi
+                            else sidecar.get("scale", 0)
+                        ),
+                    )
+                except (OSError, ValueError, subprocess.SubprocessError) as error:
+                    measured_content = None
+                    fail(
+                        errors,
+                        f"{auxiliary_label}: cannot measure semantic content in "
+                        f"{value}: {error}",
+                    )
+                if (
+                    present_proof_fields != proof_fields
+                    or (mixed_dpi and present_mixed_dpi_fields != mixed_dpi_fields)
+                    or (
+                        mixed_dpi
+                        and (
+                            not isinstance(auxiliary.get("scale"), (int, float))
+                            or float(auxiliary["scale"])
+                            == float(sidecar.get("scale", 0))
+                            or not isinstance(auxiliary.get("logical_size"), list)
+                            or len(auxiliary["logical_size"]) != 2
+                            or not all(
+                                isinstance(workspace, (int, float)) and workspace > 0
+                                for workspace in auxiliary["logical_size"]
+                            )
+                            or auxiliary.get("pixel_size")
+                            != [
+                                round(workspace * float(auxiliary["scale"]))
+                                for workspace in auxiliary["logical_size"]
+                            ]
+                        )
+                    )
+                    or (
+                        proof_required
+                        and (
+                            float(auxiliary.get("scale", 0)) not in {1.0, 1.25, 2.0}
+                            or auxiliary.get("logical_size") != [1280, 800]
+                        )
+                    )
+                    or not isinstance(expected_workspaces, list)
+                    or not expected_workspaces
+                    or not all(
+                        isinstance(workspace, int) and workspace > 0
+                        for workspace in expected_workspaces
+                    )
+                    or len(expected_workspaces) != len(set(expected_workspaces))
+                    or (proof_required and expected_workspaces != [1, 2, 4])
+                    or not isinstance(content, dict)
+                    or set(content)
+                    != {
+                        "sha256",
+                        "unique_gray_values",
+                        "normalized_standard_deviation",
+                    }
+                    or not isinstance(semantic_hash, str)
+                    or not HASH.fullmatch(semantic_hash)
+                    or not isinstance(content.get("unique_gray_values"), int)
+                    or content["unique_gray_values"] < SEMANTIC_MIN_UNIQUE_GRAY_VALUES
+                    or not isinstance(
+                        content.get("normalized_standard_deviation"),
+                        (int, float),
+                    )
+                    or float(content["normalized_standard_deviation"])
+                    < SEMANTIC_MIN_NORMALIZED_STDDEV
+                    or not isinstance(semantic_outputs, dict)
+                    or semantic_outputs.get(output) != semantic_hash
+                    or content != measured_content
+                ):
+                    fail(
+                        errors,
+                        f"{auxiliary_label}: invalid workspace-content proof in "
+                        f"{value}",
+                    )
+        expected_auxiliary = {
+            str(output) for output in required_auxiliary.get(state, [])
+        }
+        if observed_auxiliary != expected_auxiliary:
+            fail(
+                errors,
+                f"{label}.captures: auxiliary output mismatch in {value}; "
+                f"expected={sorted(expected_auxiliary)} "
+                f"actual={sorted(observed_auxiliary)}",
+            )
+        manual_expected_coverage.append(
+            {
+                "sidecar": sidecar_path.name,
+                "sidecar_sha256": source_sidecar_hash,
+                "images": coverage_images,
+            }
+        )
         logical_size = sidecar.get("logical_size")
-        if not isinstance(logical_size, list) or len(logical_size) != 2 or not all(isinstance(item, int) and item > 0 for item in logical_size):
+        if (
+            not isinstance(logical_size, list)
+            or len(logical_size) != 2
+            or not all(isinstance(item, int) and item > 0 for item in logical_size)
+        ):
             fail(errors, f"{label}.captures: invalid logical_size in {value}")
         try:
-            matrix.add((str(sidecar["state"]), str(sidecar["locale"]), float(sidecar["scale"])))
+            matrix_entry = (
+                str(sidecar["state"]),
+                str(sidecar["locale"]),
+                float(sidecar["scale"]),
+            )
+            if matrix_entry in matrix:
+                fail(errors, f"{label}.captures: duplicate matrix entry in {value}")
+            matrix.add(matrix_entry)
         except (KeyError, TypeError, ValueError):
             fail(errors, f"{label}.captures: state/locale/scale missing in {value}")
 
-    expected = set(itertools.product(required_states, required_locales, (float(value) for value in required_scales)))
+    expected = set(
+        itertools.product(
+            required_states,
+            required_locales,
+            (float(value) for value in required_scales),
+        )
+    )
     missing = expected - matrix
     if missing:
-        preview = ", ".join(f"{state}/{locale}/{scale:g}" for state, locale, scale in sorted(missing)[:5])
-        fail(errors, f"{label}.captures: missing {len(missing)} matrix entries (for example {preview})")
+        preview = ", ".join(
+            f"{state}/{locale}/{scale:g}"
+            for state, locale, scale in sorted(missing)[:5]
+        )
+        fail(
+            errors,
+            f"{label}.captures: missing {len(missing)} matrix entries "
+            f"(for example {preview})",
+        )
+    extra = matrix - expected
+    if extra:
+        preview = ", ".join(
+            f"{state}/{locale}/{scale:g}" for state, locale, scale in sorted(extra)[:5]
+        )
+        fail(
+            errors,
+            f"{label}.captures: found {len(extra)} unexpected matrix entries "
+            f"(for example {preview})",
+        )
+    if strict_evidence and manual_measurements:
+        serialized_measurements = {
+            json.dumps(value, sort_keys=True, separators=(",", ":"))
+            for value in manual_measurements
+        }
+        if len(serialized_measurements) != 1:
+            fail(errors, f"{label}.captures: manual overflow measurements disagree")
+        measurement = manual_measurements[0]
+        coverage_path = relative_path(
+            root,
+            measurement.get("coverage"),
+            errors,
+            f"{label}.captures.text_overflow_measurement.coverage",
+        )
+        coverage: dict[str, Any] = {}
+        if coverage_path is None or not coverage_path.is_file():
+            fail(errors, f"{label}.captures: manual overflow coverage does not exist")
+        else:
+            try:
+                coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as error:
+                fail(
+                    errors,
+                    f"{label}.captures: invalid manual overflow coverage: {error}",
+                )
+            if coverage_path.parent not in capture_parents:
+                fail(
+                    errors,
+                    f"{label}.captures: manual overflow coverage must stay beside "
+                    "captures",
+                )
+            if measurement.get("coverage_sha256") != sha256(coverage_path):
+                fail(
+                    errors, f"{label}.captures: manual overflow coverage hash mismatch"
+                )
+        expected_coverage = sorted(
+            manual_expected_coverage, key=lambda value: str(value["sidecar"])
+        )
+        observed_coverage = coverage.get("reviewed_captures")
+        if isinstance(observed_coverage, list):
+            observed_coverage = sorted(
+                observed_coverage, key=lambda value: str(value.get("sidecar", ""))
+            )
+        if (
+            coverage.get("schema") != 1
+            or coverage.get("surface_id") != surface_id
+            or not isinstance(observed_coverage, list)
+            or observed_coverage != expected_coverage
+        ):
+            fail(
+                errors,
+                f"{label}.captures: manual overflow coverage must include every "
+                "capture and image exactly once",
+            )
+        if len(capture_run_ids) > 1:
+            fail(
+                errors,
+                f"{label}.captures: manual overflow coverage spans multiple runs",
+            )
+        elif capture_run_ids and coverage.get("run_id") != next(iter(capture_run_ids)):
+            fail(errors, f"{label}.captures: manual overflow coverage run mismatch")
+        expected_image_count = sum(
+            len(value["images"]) for value in manual_expected_coverage
+        )
+        if (
+            measurement.get("reviewed_capture_count") != len(manual_expected_coverage)
+            or measurement.get("reviewed_image_count") != expected_image_count
+        ):
+            fail(errors, f"{label}.captures: manual overflow coverage counts mismatch")
     validate_review(
         root,
         surface_id,
@@ -258,8 +864,145 @@ def validate_evidence(
         current_digest,
         concept_hash,
         concept_spec_hash,
+        captures,
+        strict_evidence,
         errors,
     )
+
+
+def validate_external_surfaces(
+    root: Path,
+    external_surfaces: dict[object, object],
+    concept_surface_ids: set[object],
+    registered: set[str],
+    errors: list[str],
+) -> None:
+    if not external_surfaces:
+        return
+    verification_map_path = root / "tests" / "verification-map.yaml"
+    try:
+        verification_map = load_yaml(verification_map_path)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+        fail(
+            errors,
+            f"external_surfaces: cannot read tests/verification-map.yaml: {exc}",
+        )
+        verification_rules: list[object] = []
+    else:
+        rules = (
+            verification_map.get("rules")
+            if isinstance(verification_map, dict)
+            else None
+        )
+        if not isinstance(rules, list):
+            fail(errors, "external_surfaces: verification map has no rules list")
+            verification_rules = []
+        else:
+            verification_rules = rules
+
+    for surface_id, entry in external_surfaces.items():
+        label = f"external_surfaces.{surface_id}"
+        if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", str(surface_id)):
+            fail(errors, f"{label}: invalid surface id")
+        if surface_id in concept_surface_ids:
+            fail(errors, f"{label}: id collides with a concept/evidence surface")
+        if not isinstance(entry, dict):
+            fail(errors, f"{label}: expected a mapping")
+            continue
+        for forbidden in ("concept", "evidence", "token_mode", "planned"):
+            if forbidden in entry:
+                fail(
+                    errors,
+                    f"{label}.{forbidden}: external T5 contracts must not claim "
+                    "repository-owned concept or evidence",
+                )
+
+        implementations = entry.get("implementation")
+        implementation_values: list[str] = []
+        if not isinstance(implementations, list) or not implementations:
+            fail(errors, f"{label}.implementation: expected a non-empty list")
+        else:
+            for value in implementations:
+                path = relative_path(root, value, errors, f"{label}.implementation")
+                if path is None:
+                    continue
+                relative = path.relative_to(root).as_posix()
+                implementation_values.append(relative)
+                registered.add(relative)
+                if not path.is_file():
+                    fail(errors, f"{label}: implementation does not exist: {value}")
+
+        if entry.get("render_owner") != "upstream":
+            fail(errors, f"{label}.render_owner: must be upstream")
+        tools = entry.get("tools")
+        if (
+            not isinstance(tools, list)
+            or not tools
+            or not all(
+                isinstance(tool, str) and re.fullmatch(r"[a-z0-9][a-z0-9._+-]*", tool)
+                for tool in tools
+            )
+            or len(tools) != len(set(tools))
+        ):
+            fail(errors, f"{label}.tools: expected unique executable names")
+        rationale = entry.get("rationale")
+        if not isinstance(rationale, str) or len(rationale.strip()) < 24:
+            fail(errors, f"{label}.rationale: explain the upstream render boundary")
+
+        verification = entry.get("verification")
+        if not isinstance(verification, dict):
+            fail(errors, f"{label}.verification: expected a mapping")
+            continue
+        if verification.get("mode") != "t5-physical":
+            fail(errors, f"{label}.verification.mode: must be t5-physical")
+        gate = verification.get("gate")
+        if not isinstance(gate, str) or not re.fullmatch(
+            r"[a-z0-9]+(?:-[a-z0-9]+)*", gate
+        ):
+            fail(errors, f"{label}.verification.gate: expected a T5 gate id")
+            gate = ""
+        procedure = relative_path(
+            root,
+            verification.get("procedure"),
+            errors,
+            f"{label}.verification.procedure",
+        )
+        if procedure is not None and not procedure.is_file():
+            fail(errors, f"{label}.verification.procedure: file does not exist")
+        displays = verification.get("required_displays")
+        if (
+            not isinstance(displays, list)
+            or len(displays) != 2
+            or not all(isinstance(display, str) for display in displays)
+            or set(displays) != {"internal", "external"}
+        ):
+            fail(
+                errors,
+                f"{label}.verification.required_displays: must contain internal "
+                "and external exactly once",
+            )
+
+        for implementation in implementation_values:
+            matched = False
+            for rule in verification_rules:
+                if not isinstance(rule, dict):
+                    continue
+                paths = rule.get("paths")
+                physical_gates = rule.get("physical_gates")
+                if (
+                    isinstance(paths, list)
+                    and implementation in paths
+                    and isinstance(physical_gates, list)
+                    and gate in physical_gates
+                ):
+                    matched = True
+                    break
+            if not matched:
+                fail(
+                    errors,
+                    f"{label}.verification: tests/verification-map.yaml must map "
+                    f"{implementation} to physical gate {gate}",
+                )
 
 
 def main() -> int:
@@ -282,12 +1025,19 @@ def main() -> int:
         print("concept manifest: schema must be 2", file=sys.stderr)
         return 1
     surfaces = data.get("surfaces")
+    external_surfaces = data.get("external_surfaces", {})
     exemptions = data.get("exemptions", {})
     if not isinstance(surfaces, dict) or not surfaces:
         print("concept manifest: surfaces must be a non-empty mapping", file=sys.stderr)
         return 1
     if not isinstance(exemptions, dict):
         print("concept manifest: exemptions must be a mapping", file=sys.stderr)
+        return 1
+    if not isinstance(external_surfaces, dict):
+        print(
+            "concept manifest: external_surfaces must be a mapping",
+            file=sys.stderr,
+        )
         return 1
 
     registered: set[str] = set()
@@ -315,12 +1065,20 @@ def main() -> int:
         if not isinstance(concept, dict) or concept.get("status") != "approved":
             fail(errors, f"{label}.concept.status: must be approved")
             continue
-        asset_path = relative_path(root, concept.get("asset"), errors, f"{label}.concept.asset")
-        spec_path = relative_path(root, concept.get("spec"), errors, f"{label}.concept.spec")
+        asset_path = relative_path(
+            root, concept.get("asset"), errors, f"{label}.concept.asset"
+        )
+        spec_path = relative_path(
+            root, concept.get("spec"), errors, f"{label}.concept.spec"
+        )
         concept_hash = str(concept.get("sha256", ""))
         if not HASH.fullmatch(concept_hash):
             fail(errors, f"{label}.concept.sha256: expected a SHA-256 digest")
-        elif asset_path is not None and asset_path.is_file() and sha256(asset_path) != concept_hash:
+        elif (
+            asset_path is not None
+            and asset_path.is_file()
+            and sha256(asset_path) != concept_hash
+        ):
             fail(errors, f"{label}.concept.sha256: concept asset has changed")
         if asset_path is not None and not asset_path.is_file():
             fail(errors, f"{label}.concept.asset: file does not exist")
@@ -333,13 +1091,25 @@ def main() -> int:
             concept_spec_hash = sha256(spec_path)
             try:
                 spec = load_yaml(spec_path)
-            except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+            except (
+                OSError,
+                subprocess.CalledProcessError,
+                json.JSONDecodeError,
+            ) as exc:
                 fail(errors, f"{label}.concept.spec: cannot read: {exc}")
                 spec = None
             if not isinstance(spec, dict) or spec.get("surface_id") != surface_id:
-                fail(errors, f"{label}.concept.spec: surface_id must equal {surface_id}")
-            elif not isinstance(spec.get("states"), list) or not spec.get("states") or not spec.get("acceptance"):
-                fail(errors, f"{label}.concept.spec: states and acceptance are required")
+                fail(
+                    errors, f"{label}.concept.spec: surface_id must equal {surface_id}"
+                )
+            elif (
+                not isinstance(spec.get("states"), list)
+                or not spec.get("states")
+                or not spec.get("acceptance")
+            ):
+                fail(
+                    errors, f"{label}.concept.spec: states and acceptance are required"
+                )
             else:
                 spec_states = [str(value) for value in spec["states"]]
 
@@ -359,9 +1129,26 @@ def main() -> int:
             for value in implementations:
                 path = root / value
                 if path.suffix == ".qml" and path.is_file():
-                    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                        if DIRECT_COLOR.search(line) and 'color: "transparent"' not in line:
-                            fail(errors, f"{value}:{number}: token consumer contains a direct color literal")
+                    for number, line in enumerate(
+                        path.read_text(encoding="utf-8").splitlines(), 1
+                    ):
+                        if (
+                            DIRECT_COLOR.search(line)
+                            and 'color: "transparent"' not in line
+                        ):
+                            fail(
+                                errors,
+                                f"{value}:{number}: token consumer contains a "
+                                "direct color literal",
+                            )
+
+    validate_external_surfaces(
+        root,
+        external_surfaces,
+        set(surfaces),
+        registered,
+        errors,
+    )
 
     for pattern in VISIBLE_PATTERNS:
         for path in root.glob(pattern):
@@ -383,8 +1170,20 @@ def main() -> int:
         for error in errors:
             print(f"concept manifest: {error}", file=sys.stderr)
         return 1
-    suffix = f"; {len(pending)} visual evidence sets pending" if pending else "; all visual evidence approved and current"
-    print(f"concept manifest: {len(surfaces)} surfaces approved and registered{suffix}")
+    suffix = (
+        f"; {len(pending)} visual evidence sets pending"
+        if pending
+        else "; all visual evidence approved and current"
+    )
+    external_suffix = (
+        f"; {len(external_surfaces)} external T5 contracts registered"
+        if external_surfaces
+        else ""
+    )
+    print(
+        f"concept manifest: {len(surfaces)} surfaces approved and registered"
+        f"{external_suffix}{suffix}"
+    )
     return 0
 
 

@@ -1,5 +1,5 @@
 schema: 2
-reviewed: '2026-07-22'
+reviewed: '2026-08-13'
 surfaces:
   desktop-shell:
     implementation:
@@ -9,17 +9,19 @@ surfaces:
     token_mode: source
     concept:
       status: approved
-      asset: docs/assets/concepts/cyberpunk-desktop-shell.png
+      asset: docs/assets/concepts/desktop-shell/desktop-shell-accessible-v1.png
       spec: docs/concepts/desktop-shell.yaml
-      sha256: c7821061e1f80f5ae525e25bffd43f2b2e25580efba854eb5710234d662615ee
+      sha256: 730866f47d759bf66de23bf19db6fc1caf0a6272ec131a5debcf79e4458b6767
     evidence:
-      status: approved
+      schema: 2
+      status: pending
       required_states:
         - default
         - active-window
         - inactive-window
         - internal-display
         - external-display
+        - accessible
       required_locales:
         - en_US.UTF-8
         - ko_KR.UTF-8
@@ -27,39 +29,6 @@ surfaces:
         - 1.0
         - 1.25
         - 2.0
-      implementation_digest: 23e3d0b66c82ba39363bb42bfefd161c07ad83713d9363f247cbb58db523d601
-      captures:
-        - docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--2x.json
-        - docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--2x.json
-        - docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--2x.json
-        - docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--2x.json
-        - docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--2x.json
-        - docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--2x.json
-        - docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--2x.json
-        - docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--2x.json
-        - docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--2x.json
-        - docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--1x.json
-        - docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--1-25x.json
-        - docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--2x.json
-      review: docs/evidence/desktop-shell/review.json
   launcher:
     implementation:
       - home/dot_config/quickshell/cyberdock/CyberLauncher.qml
@@ -420,7 +389,8 @@ surfaces:
       spec: docs/concepts/cyberdock-window-state.yaml
       sha256: a35f5066f228bb79e5c3f0782400f2edfa1af9a90cf2e04a8b62ddd2b482cc4d
     evidence:
-      status: approved
+      schema: 2
+      status: pending
       required_states:
         - pinned
         - running
@@ -438,63 +408,6 @@ surfaces:
         - 1.0
         - 1.25
         - 2.0
-      implementation_digest: e6289a0ca320146a1faaa2319aa2b8071e3d96f4593de8a3c1245a1dfc62f2f5
-      captures:
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--2x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--1x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--1-25x.json
-        - docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--2x.json
-      review: docs/evidence/cyberdock-window-state/review.json
   system-titlebar:
     implementation:
       - native/enoshima-decoration/src/main.cpp
@@ -748,6 +661,152 @@ surfaces:
         - docs/evidence/auth/auth--success--ko-kr-utf-8--1-25x.json
         - docs/evidence/auth/auth--success--ko-kr-utf-8--2x.json
       review: docs/evidence/auth/review.json
+  command-palette:
+    implementation:
+      - ansible/roles/desktop_expansion/tasks/vicinae.yml
+      - packages/local/vicinae-bin/PKGBUILD
+      - packages/local/vicinae-bin/20-enoshima-qt-compatibility.conf
+      - packages/local/vicinae-bin/40-vicinae-qt-pre.hook
+      - packages/local/vicinae-bin/40-vicinae-qt-post.hook
+      - packages/local/vicinae-bin/41-vicinae-package-pre.hook
+      - packages/local/vicinae-bin/vicinae-build-compatible
+      - scripts/lib/vicinae-service-policy.sh
+      - packages/local/vicinae-bin/vicinae-qt-guard
+      - packages/local/vicinae-bin/vicinae.hook
+      - packages/local/vicinae-bin/provenance.json
+      - packages/local/vicinae-bin/vicinae.desktop
+      - packages/local/vicinae-bin/vicinae-url-handler.desktop
+      - home/dot_config/hypr/hyprland.lua
+      - home/dot_config/mimeapps.list
+      - home/dot_config/systemd/user/vicinae.service.d/60-enoshima-keyring.conf
+      - home/dot_config/vicinae/settings.json
+      - home/dot_local/bin/executable_vicinae-control
+      - home/dot_local/libexec/executable_vicinae-keyring-ready
+      - home/dot_local/libexec/executable_vicinae-server-ready
+      - home/dot_local/share/vicinae/scripts/executable_performance-resources.sh
+      - home/dot_local/share/vicinae/scripts/executable_performance-atop-history.sh
+      - home/dot_local/share/vicinae/scripts/executable_performance-io.sh
+      - home/dot_local/share/vicinae/scripts/executable_performance-gpu.sh
+      - home/dot_local/share/vicinae/scripts/executable_performance-sysprof.sh
+      - home/dot_local/share/vicinae/scripts/executable_performance-sysstat-history.sh
+      - home/dot_local/share/vicinae/scripts/executable_performance-cpu-thermal.sh
+      - home/dot_local/share/vicinae/scripts/executable_performance-power.sh
+      - home/dot_local/share/vicinae/scripts/executable_accessibility-appearance.sh
+      - home/dot_local/share/vicinae/scripts/executable_accessibility-default.sh
+      - home/run_after_30-enable-custom-user-services.sh.tmpl
+    token_mode: external
+    concept:
+      status: approved
+      asset: docs/assets/concepts/command-palette/command-palette-v2.png
+      spec: docs/concepts/command-palette.yaml
+      sha256: 69a36a0574d5580c4a6c0774b59a3bb6a45e17a24f0d7a70001f4dcba80a83f7
+    evidence:
+      schema: 2
+      status: pending
+      required_states:
+        - default
+        - search
+        - clipboard-history
+        - emoji-picker
+        - empty-results
+        - long-title
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+  overview:
+    implementation:
+      - packages/local/hyprshell-bin/PKGBUILD
+      - packages/local/hyprshell-bin/provenance.json
+      - packages/local/hyprshell-bin/overview-direct-input.patch
+      - home/dot_config/hypr/hyprland.lua
+      - home/dot_config/hyprshell/config.ron
+      - home/dot_config/hyprshell/styles.css
+      - home/dot_config/systemd/user/hyprshell.service.d/60-enoshima-stable.conf
+      - home/run_after_30-enable-custom-user-services.sh.tmpl
+    token_mode: external
+    concept:
+      status: approved
+      asset: docs/assets/concepts/overview/overview-v2.png
+      spec: docs/concepts/overview.yaml
+      sha256: 7d7cf771bfe7a48e00e45ba8238d878f49f86bfa7e5581a85e532d5f147ef7b0
+    evidence:
+      schema: 2
+      status: pending
+      required_states:
+        - all-workspaces
+        - selected-window
+        - selected-workspace
+        - multi-monitor
+        - no-windows
+        - reduced-motion
+        - reduced-transparency
+      required_locales:
+        - en_US.UTF-8
+        - ko_KR.UTF-8
+      required_scales:
+        - 1.0
+        - 1.25
+        - 2.0
+      required_auxiliary_outputs:
+        multi-monitor:
+          - HEADLESS-AUX
+external_surfaces:
+  accessibility-screen-reader:
+    implementation:
+      - packages/accessibility.txt
+      - ansible/inventory/group_vars/all.yml
+      - ansible/inventory/host_vars/tpx1c13.yml
+      - ansible/roles/packages/tasks/main.yml
+      - home/dot_config/quickshell/cyberdock/shell.qml
+      - home/dot_local/bin/executable_desktop-appearance
+      - home/dot_local/share/vicinae/scripts/executable_accessibility-appearance.sh
+      - home/dot_local/share/vicinae/scripts/executable_accessibility-default.sh
+    render_owner: upstream
+    tools:
+      - orca
+      - vicinae
+      - gtk3
+      - gtk4
+    verification:
+      mode: t5-physical
+      gate: accessibility-screen-reader
+      procedure: docs/DESKTOP-EXPANSION-OPERATIONS.md
+      required_displays:
+        - internal
+        - external
+    rationale: >-
+      The repository owns opt-in installation and appearance commands while
+      upstream Orca and representative applications own speech, role, label,
+      focus traversal, and screen-reader lifecycle.
+  desktop-capture-recording:
+    implementation:
+      - home/dot_config/hypr/hyprland.lua
+      - home/dot_config/swappy/config
+      - home/dot_config/xdg-desktop-portal/hyprland-portals.conf
+    render_owner: upstream
+    tools:
+      - hyprshot
+      - slurp
+      - grim
+      - swappy
+      - hyprpicker
+      - kooha
+      - xdg-desktop-portal-hyprland
+    verification:
+      mode: t5-physical
+      gate: desktop-capture-recording
+      procedure: docs/DESKTOP-EXPANSION-OPERATIONS.md
+      required_displays:
+        - internal
+        - external
+    rationale: >-
+      The repository owns shortcut dispatch and package availability, while
+      upstream tools own rendered pixels and the capture, annotation, and
+      recording lifecycle.
 exemptions:
   home/dot_config/quickshell/cyberdock/FocusSentinel.qml: Transparent 2x2 input-focus
     handoff mechanism with no rendered user interface.

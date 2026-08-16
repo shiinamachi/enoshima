@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -7,7 +10,7 @@ import anyio
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
-from enoshima_vm import mcp_server
+from enoshima_vm import mcp_server, proxy_entrypoint
 
 
 class FakeService:
@@ -83,13 +86,21 @@ def test_mcp_run_list_returns_bounded_page_envelope(monkeypatch) -> None:
     }
 
 
-def test_project_codex_mcp_config_handshakes_from_session_cwd() -> None:
+def test_project_codex_mcp_proxy_calls_selector_from_session_cwd() -> None:
     root = Path(__file__).resolve().parents[3]
     config_path = root / ".codex" / "config.toml"
     with config_path.open("rb") as handle:
         vm_mcp = tomllib.load(handle)["mcp_servers"]["enoshima_vm"]
 
     assert "cwd" not in vm_mcp
+    assert vm_mcp["args"] == [
+        "run",
+        "--locked",
+        "--project",
+        "tests/vm",
+        "python",
+        "tests/vm/scripts/mcp_proxy.py",
+    ]
 
     async def initialize() -> None:
         parameters = StdioServerParameters(
@@ -102,12 +113,109 @@ def test_project_codex_mcp_config_handshakes_from_session_cwd() -> None:
                 with anyio.fail_after(vm_mcp["startup_timeout_sec"]):
                     result = await session.initialize()
                     tools = await session.list_tools()
+                    selection = await session.call_tool(
+                        "verification_plan",
+                        {"base_ref": "HEAD", "mode": "dev"},
+                    )
 
         assert result.serverInfo.name == "enoshima-vm"
         assert {tool.name for tool in tools.tools} >= {
             "verification_plan",
             "vm_run_affected",
             "vm_run_plan",
+            "vm_operation_status",
+            "vm_wait_operation",
         }
+        assert selection.isError is False
+        assert selection.structuredContent is not None
+        assert selection.structuredContent["mode"] == "dev"
 
     anyio.run(initialize)
+
+
+def test_source_mcp_entrypoint_prefers_the_checkout_proxy(monkeypatch) -> None:
+    executed: list[tuple[str, list[str]]] = []
+
+    def execv(executable: str, argv: list[str]) -> None:
+        executed.append((executable, argv))
+
+    monkeypatch.setattr(proxy_entrypoint.os, "execv", execv)
+
+    proxy_entrypoint.main()
+
+    assert len(executed) == 1
+    executable, argv = executed[0]
+    assert argv == [
+        executable,
+        str(Path(__file__).resolve().parents[1] / "scripts" / "mcp_proxy.py"),
+    ]
+
+
+def test_wheel_only_entrypoint_falls_back_to_the_packaged_proxy(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    package = tmp_path / "lib" / "python" / "site-packages" / "enoshima_vm"
+    package.mkdir(parents=True)
+    entrypoint = package / "proxy_entrypoint.py"
+    packaged_proxy = package / "mcp_proxy.py"
+    entrypoint.write_text("", encoding="utf-8")
+    packaged_proxy.write_text("", encoding="utf-8")
+    executed: list[tuple[str, list[str]]] = []
+
+    monkeypatch.setattr(proxy_entrypoint, "__file__", str(entrypoint))
+    monkeypatch.setattr(
+        proxy_entrypoint.os,
+        "execv",
+        lambda executable, argv: executed.append((executable, argv)),
+    )
+
+    proxy_entrypoint.main()
+
+    assert executed == [
+        (
+            proxy_entrypoint.sys.executable,
+            [proxy_entrypoint.sys.executable, str(packaged_proxy)],
+        )
+    ]
+
+
+def test_packaged_entrypoint_is_stdlib_only_before_exec() -> None:
+    project = Path(__file__).resolve().parents[1]
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(project / "src")
+    script = """
+import builtins
+import runpy
+
+original = builtins.__import__
+def guarded(name, *args, **kwargs):
+    if name.startswith(('mcp', 'enoshima_vm.mcp_server', 'enoshima_vm.service')):
+        raise RuntimeError(f'mutable import before proxy exec: {name}')
+    return original(name, *args, **kwargs)
+builtins.__import__ = guarded
+runpy.run_module('enoshima_vm.proxy_entrypoint', run_name='__main__')
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", script],
+        cwd=project,
+        env=environment,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        assert process.stdin is not None
+        process.stdin.write(
+            b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":'
+            b'{"protocolVersion":"2025-06-18","capabilities":{},'
+            b'"clientInfo":{"name":"cold-test","version":"1"}}}\n'
+        )
+        process.stdin.flush()
+        assert process.stdout is not None
+        response = process.stdout.readline().decode()
+        assert '"id":1' in response
+        assert '"name":"enoshima-vm"' in response
+    finally:
+        process.terminate()
+        process.wait(timeout=5)

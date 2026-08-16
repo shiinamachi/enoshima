@@ -4,20 +4,146 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import itertools
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+
+HASH = re.compile(r"[0-9a-f]{64}")
+RUN_ID = re.compile(r"run-[a-z0-9-]+")
+SURFACE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+WORKTREE_HASH = re.compile(r"sha256:[0-9a-f]{64}")
+SEMANTIC_MIN_UNIQUE_GRAY_VALUES = 8
+SEMANTIC_MIN_NORMALIZED_STDDEV = 0.01
 
 
 def fail(message: str) -> None:
     raise SystemExit(message)
+
+
+def path_without_symlink_components(value: Path, label: str) -> Path:
+    candidate = Path(os.path.abspath(value))
+    current = Path(candidate.anchor)
+    for part in candidate.parts[1:]:
+        current /= part
+        if current.is_symlink():
+            fail(f"{label} must not traverse a symlink: {current}")
+    return candidate
+
+
+def validate_auxiliary_content_proof(
+    auxiliary: dict,
+    *,
+    image: Path,
+    surface_id: str,
+    state: str,
+    scale: float,
+    output: str,
+    semantic_outputs: object,
+    label: str,
+) -> dict[str, object] | None:
+    proof_fields = {"expected_workspaces", "semantic_content"}
+    present_fields = proof_fields.intersection(auxiliary)
+    required = (
+        surface_id == "overview"
+        and state == "multi-monitor"
+        and output == "HEADLESS-AUX"
+    )
+    if not present_fields:
+        if required:
+            fail(f"missing auxiliary workspace-content proof: {label}")
+        return None
+    if present_fields != proof_fields:
+        fail(f"incomplete auxiliary workspace-content proof: {label}")
+
+    expected_workspaces = auxiliary.get("expected_workspaces")
+    auxiliary_scale = auxiliary.get("scale")
+    auxiliary_logical_size = auxiliary.get("logical_size")
+    mixed_dpi_fields = {"logical_size", "scale"}
+    present_mixed_dpi_fields = mixed_dpi_fields.intersection(auxiliary)
+    mixed_dpi = required or bool(present_mixed_dpi_fields)
+    if (
+        not isinstance(expected_workspaces, list)
+        or not expected_workspaces
+        or not all(
+            isinstance(value, int) and value > 0 for value in expected_workspaces
+        )
+        or len(expected_workspaces) != len(set(expected_workspaces))
+    ):
+        fail(f"invalid auxiliary expected workspaces: {label}")
+    if required and expected_workspaces != [1, 2, 4]:
+        fail(f"unexpected overview auxiliary workspaces: {label}")
+    if mixed_dpi and (
+        present_mixed_dpi_fields != mixed_dpi_fields
+        or not isinstance(auxiliary_scale, (int, float))
+        or float(auxiliary_scale) == float(scale)
+        or not isinstance(auxiliary_logical_size, list)
+        or len(auxiliary_logical_size) != 2
+        or not all(
+            isinstance(value, (int, float)) and value > 0
+            for value in auxiliary_logical_size
+        )
+        or auxiliary.get("pixel_size")
+        != [round(value * float(auxiliary_scale)) for value in auxiliary_logical_size]
+    ):
+        fail(f"invalid auxiliary mixed-DPI metadata: {label}")
+    if required and (
+        float(auxiliary_scale) not in {1.0, 1.25, 2.0}
+        or auxiliary_logical_size != [1280, 800]
+    ):
+        fail(f"overview auxiliary output is not mixed-DPI: {label}")
+
+    content = auxiliary.get("semantic_content")
+    if not isinstance(content, dict) or set(content) != {
+        "sha256",
+        "unique_gray_values",
+        "normalized_standard_deviation",
+    }:
+        fail(f"invalid auxiliary semantic content proof: {label}")
+    semantic_hash = content.get("sha256")
+    unique_values = content.get("unique_gray_values")
+    normalized_stddev = content.get("normalized_standard_deviation")
+    if (
+        not isinstance(semantic_hash, str)
+        or not HASH.fullmatch(semantic_hash)
+        or not isinstance(unique_values, int)
+        or unique_values < SEMANTIC_MIN_UNIQUE_GRAY_VALUES
+        or not isinstance(normalized_stddev, (int, float))
+        or float(normalized_stddev) < SEMANTIC_MIN_NORMALIZED_STDDEV
+    ):
+        fail(f"blank or invalid auxiliary semantic content: {label}")
+    measured_content = semantic_metrics(
+        image,
+        surface_id,
+        float(auxiliary_scale) if mixed_dpi else scale,
+    )
+    if content != measured_content:
+        fail(f"auxiliary semantic content/image mismatch: {label}")
+    if (
+        not isinstance(semantic_outputs, dict)
+        or semantic_outputs.get(output) != semantic_hash
+    ):
+        fail(f"auxiliary semantic hash/proof mismatch: {label}")
+    return {
+        "expected_workspaces": list(expected_workspaces),
+        "semantic_content": dict(content),
+        **(
+            {
+                "logical_size": list(auxiliary_logical_size),
+                "scale": float(auxiliary_scale),
+            }
+            if mixed_dpi
+            else {}
+        ),
+    }
 
 
 def load_json(path: Path, label: str) -> dict:
@@ -73,6 +199,72 @@ def png_size(path: Path) -> tuple[int, int]:
     return struct.unpack(">II", header[16:24])
 
 
+def image_size(path: Path) -> tuple[int, int]:
+    result = subprocess.run(
+        ["magick", "identify", "-format", "%w %h", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    try:
+        width, height = (int(value) for value in result.stdout.split())
+    except ValueError:
+        fail(f"cannot determine image dimensions: {path}")
+    if width <= 0 or height <= 0:
+        fail(f"image has invalid dimensions: {path}")
+    return width, height
+
+
+def semantic_metrics(path: Path, surface: str, scale: float) -> dict[str, object]:
+    width, height = image_size(path)
+    if surface == "command-palette":
+        crop_width = min(width, round(790 * scale))
+        palette_height = min(height, round(500 * scale))
+        search_height = min(palette_height - 1, round(68 * scale))
+        x = max(0, (width - crop_width) // 2)
+        y = max(0, (height - palette_height) // 2) + search_height
+        crop_height = palette_height - search_height
+    elif surface == "overview":
+        x = 0
+        y = min(height - 1, round(52 * scale))
+        crop_width = width
+        crop_height = height - y
+    else:
+        x = 0
+        y = 0
+        crop_width = width
+        crop_height = height
+    pixels = subprocess.run(
+        [
+            "magick",
+            str(path),
+            "-crop",
+            f"{crop_width}x{crop_height}+{x}+{y}",
+            "+repage",
+            "-colorspace",
+            "Gray",
+            "-resize",
+            "25%",
+            "-depth",
+            "8",
+            "gray:-",
+        ],
+        check=True,
+        capture_output=True,
+    ).stdout
+    if not pixels:
+        fail(f"image semantic region is empty: {path}")
+    mean = sum(pixels) / len(pixels)
+    normalized_stddev = (
+        sum((value - mean) ** 2 for value in pixels) / len(pixels)
+    ) ** 0.5 / 255
+    return {
+        "sha256": hashlib.sha256(pixels).hexdigest(),
+        "unique_gray_values": len(set(pixels)),
+        "normalized_standard_deviation": round(normalized_stddev, 8),
+    }
+
+
 def git_file_sha256(root: Path, commit: str, relative: str) -> str:
     if Path(relative).is_absolute() or ".." in Path(relative).parts:
         fail(f"repository path escapes the source tree: {relative}")
@@ -88,12 +280,20 @@ def git_file_sha256(root: Path, commit: str, relative: str) -> str:
 def safe_artifact(root: Path, value: object, label: str) -> Path:
     if not isinstance(value, str) or not value:
         fail(f"{label} must be a non-empty path")
-    path = Path(value).resolve()
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        fail(f"{label} must be an absolute path: {candidate}")
+    path = Path(os.path.abspath(candidate))
     try:
-        path.relative_to(root)
+        relative = path.relative_to(root)
     except ValueError:
         fail(f"{label} escapes the VM artifact directory: {path}")
-    if not path.is_file() or path.is_symlink():
+    current = root
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            fail(f"{label} must not traverse a symlink: {current}")
+    if not path.is_file():
         fail(f"{label} must be a regular file: {path}")
     return path
 
@@ -109,10 +309,276 @@ def matrix_key(sidecar: dict) -> tuple[str, str, float]:
         fail(f"invalid state/locale/scale in VM sidecar: {error}")
 
 
+def capture_stem(surface_id: str, key: tuple[str, str, float]) -> str:
+    state, locale, scale = key
+    safe_locale = locale.replace(".", "-")
+    return (
+        f"{surface_id}--{state}--{safe_locale}--{scale:g}x".lower()
+        .replace("_", "-")
+        .replace(".", "-")
+    )
+
+
+def safe_repository_file(root: Path, value: object, label: str) -> Path:
+    if not isinstance(value, str) or not value:
+        fail(f"{label} must be a non-empty repository path")
+    relative = Path(value)
+    if relative.is_absolute() or ".." in relative.parts:
+        fail(f"{label} escapes the repository: {value}")
+    path = root / relative
+    current = root
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            fail(f"{label} must not traverse a symlink: {current}")
+    if not path.is_file():
+        fail(f"{label} does not exist: {value}")
+    return path
+
+
+def validate_previous_manifest(
+    root: Path,
+    document: dict,
+    registry: dict,
+) -> tuple[dict[str, dict], list[dict]]:
+    if not document:
+        return {}, []
+    schema = document.get("schema")
+    if schema not in {1, 2}:
+        fail(f"unsupported existing VM import schema: {schema}")
+    previous_surfaces = document.get("surfaces")
+    if not isinstance(previous_surfaces, dict) or not previous_surfaces:
+        fail("existing VM import manifest requires a surfaces mapping")
+
+    surface_capture_counts: dict[str, int] = {}
+    surface_capture_provenance: dict[str, set[tuple[str, str, str]]] = {}
+    validated_surfaces: dict[str, dict] = {}
+    for surface_id, provenance in previous_surfaces.items():
+        if not isinstance(surface_id, str) or not SURFACE_ID.fullmatch(surface_id):
+            fail(f"invalid existing evidence surface id: {surface_id}")
+        registry_entry = registry.get(surface_id)
+        if not isinstance(registry_entry, dict):
+            fail(f"existing evidence surface is no longer registered: {surface_id}")
+        if not isinstance(provenance, dict):
+            fail(f"invalid existing surface provenance: {surface_id}")
+        evidence = registry_entry.get("evidence")
+        concept = registry_entry.get("concept")
+        if not isinstance(evidence, dict) or not isinstance(concept, dict):
+            fail(f"registered surface lacks evidence metadata: {surface_id}")
+        expected_matrix = set(
+            itertools.product(
+                [str(value) for value in evidence.get("required_states", [])],
+                [str(value) for value in evidence.get("required_locales", [])],
+                [float(value) for value in evidence.get("required_scales", [])],
+            )
+        )
+        required_auxiliary = evidence.get("required_auxiliary_outputs", {})
+        if not isinstance(required_auxiliary, dict):
+            fail(f"invalid existing auxiliary output contract: {surface_id}")
+        captures = provenance.get("captures")
+        if (
+            not isinstance(captures, list)
+            or not captures
+            or len(captures) != len(set(captures))
+        ):
+            fail(f"invalid existing capture list: {surface_id}")
+        current_implementation = implementation_digest(
+            root, registry_entry.get("implementation", [])
+        )
+        current_concept = sha256(root / str(concept.get("asset", "")))
+        current_spec = sha256(root / str(concept.get("spec", "")))
+        for field, current in (
+            ("implementation_digest", current_implementation),
+            ("concept_sha256", current_concept),
+            ("concept_spec_sha256", current_spec),
+        ):
+            if provenance.get(field) != current:
+                fail(f"stale existing {field}: {surface_id}")
+        observed_matrix: set[tuple[str, str, float]] = set()
+        observed_provenance: set[tuple[str, str, str]] = set()
+        for capture in captures:
+            capture_path = safe_repository_file(
+                root, capture, f"existing capture for {surface_id}"
+            )
+            expected_parent = root / "docs" / "evidence" / surface_id
+            if capture_path.parent != expected_parent:
+                fail(f"existing capture belongs to the wrong directory: {capture}")
+            sidecar = load_json(capture_path, "existing capture sidecar")
+            if sidecar.get("schema") != 1 or sidecar.get("surface_id") != surface_id:
+                fail(f"existing capture schema/surface mismatch: {capture}")
+            if any(
+                sidecar.get(field) != current
+                for field, current in (
+                    ("implementation_digest", current_implementation),
+                    ("concept_sha256", current_concept),
+                    ("concept_spec_sha256", current_spec),
+                )
+            ):
+                fail(f"existing capture digest mismatch: {capture}")
+            capture_run_id = sidecar.get("run_id")
+            capture_source_commit = sidecar.get("source_commit")
+            capture_worktree_hash = sidecar.get("worktree_hash")
+            if (
+                not isinstance(capture_run_id, str)
+                or not RUN_ID.fullmatch(capture_run_id)
+                or not isinstance(capture_source_commit, str)
+                or not re.fullmatch(r"[0-9a-f]{40}", capture_source_commit)
+                or not isinstance(capture_worktree_hash, str)
+                or not WORKTREE_HASH.fullmatch(capture_worktree_hash)
+            ):
+                fail(f"invalid existing capture provenance: {capture}")
+            observed_provenance.add(
+                (capture_run_id, capture_source_commit, capture_worktree_hash)
+            )
+            key = matrix_key(sidecar)
+            if capture_path.stem != capture_stem(surface_id, key):
+                fail(f"existing capture filename/matrix mismatch: {capture}")
+            if key in observed_matrix:
+                fail(f"duplicate existing capture matrix key: {surface_id}/{key}")
+            observed_matrix.add(key)
+            image_path = safe_repository_file(
+                root, sidecar.get("image"), f"existing screenshot for {surface_id}"
+            )
+            image_hash = sidecar.get("image_sha256")
+            if not isinstance(image_hash, str) or image_hash != sha256(image_path):
+                fail(f"existing screenshot hash mismatch: {capture}")
+            auxiliary_outputs = sidecar.get("auxiliary_outputs", [])
+            if not isinstance(auxiliary_outputs, list):
+                fail(f"invalid existing auxiliary outputs: {capture}")
+            observed_outputs: set[str] = set()
+            observed_paths = {image_path}
+            observed_hashes = {image_hash}
+            for auxiliary in auxiliary_outputs:
+                if not isinstance(auxiliary, dict):
+                    fail(f"invalid existing auxiliary output: {capture}")
+                output = auxiliary.get("output")
+                if (
+                    not isinstance(output, str)
+                    or not re.fullmatch(r"HEADLESS-[A-Z]+", output)
+                    or output in observed_outputs
+                ):
+                    fail(f"invalid existing auxiliary output name: {capture}")
+                observed_outputs.add(output)
+                auxiliary_path = safe_repository_file(
+                    root,
+                    auxiliary.get("image"),
+                    f"existing auxiliary screenshot for {surface_id}",
+                )
+                auxiliary_hash = auxiliary.get("image_sha256")
+                if (
+                    not isinstance(auxiliary_hash, str)
+                    or auxiliary_hash != sha256(auxiliary_path)
+                    or auxiliary_path in observed_paths
+                    or auxiliary_hash in observed_hashes
+                ):
+                    fail(f"invalid existing auxiliary screenshot: {capture}")
+                validate_auxiliary_content_proof(
+                    auxiliary,
+                    image=auxiliary_path,
+                    surface_id=surface_id,
+                    state=key[0],
+                    scale=key[2],
+                    output=output,
+                    semantic_outputs=sidecar.get("semantic_outputs"),
+                    label=capture,
+                )
+                observed_paths.add(auxiliary_path)
+                observed_hashes.add(auxiliary_hash)
+            expected_outputs = {
+                str(value) for value in required_auxiliary.get(key[0], [])
+            }
+            if observed_outputs != expected_outputs:
+                fail(f"existing auxiliary output matrix is incomplete: {capture}")
+        if observed_matrix != expected_matrix:
+            fail(f"existing capture matrix is incomplete: {surface_id}")
+        surface_capture_counts[surface_id] = len(captures)
+        surface_capture_provenance[surface_id] = observed_provenance
+        validated_surfaces[surface_id] = dict(provenance)
+
+    total_captures = sum(surface_capture_counts.values())
+    if (
+        document.get("expected_captures") != total_captures
+        or document.get("actual_captures") != total_captures
+    ):
+        fail("existing VM import capture counts are inconsistent")
+
+    if schema == 1:
+        runs: list[dict] = [
+            {
+                "run_id": document.get("run_id"),
+                "source_commit": document.get("source_commit"),
+                "worktree_hash": document.get("worktree_hash"),
+                "surfaces": sorted(validated_surfaces),
+                "captures": total_captures,
+                "junit_sha256": document.get("junit_sha256"),
+                "imported_at": document.get("imported_at"),
+            }
+        ]
+    else:
+        if document.get("surface_count") != len(validated_surfaces):
+            fail("schema 2 VM import surface count is inconsistent")
+        stored_runs = document.get("runs")
+        if not isinstance(stored_runs, list) or not stored_runs:
+            fail("schema 2 VM import manifest requires a runs list")
+        runs = [dict(value) if isinstance(value, dict) else {} for value in stored_runs]
+
+    owned_surfaces: list[str] = []
+    seen_run_ids: set[str] = set()
+    for run in runs:
+        run_id = run.get("run_id")
+        run_surfaces = run.get("surfaces")
+        if not isinstance(run_id, str) or not RUN_ID.fullmatch(run_id):
+            fail(f"invalid existing run id: {run_id}")
+        if run_id in seen_run_ids:
+            fail(f"duplicate existing run id: {run_id}")
+        seen_run_ids.add(run_id)
+        if (
+            not isinstance(run.get("source_commit"), str)
+            or not re.fullmatch(r"[0-9a-f]{40}", run["source_commit"])
+            or not isinstance(run.get("worktree_hash"), str)
+            or not WORKTREE_HASH.fullmatch(run["worktree_hash"])
+            or not isinstance(run.get("junit_sha256"), str)
+            or not HASH.fullmatch(run["junit_sha256"])
+            or not isinstance(run.get("imported_at"), str)
+        ):
+            fail(f"invalid existing run provenance: {run_id}")
+        ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", run["source_commit"], "HEAD"],
+            cwd=root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if ancestor.returncode != 0:
+            fail(f"existing run source is not an ancestor of HEAD: {run_id}")
+        if (
+            not isinstance(run_surfaces, list)
+            or not run_surfaces
+            or len(run_surfaces) != len(set(run_surfaces))
+            or not set(run_surfaces).issubset(validated_surfaces)
+        ):
+            fail(f"invalid existing run surface ownership: {run_id}")
+        run_capture_count = sum(surface_capture_counts[value] for value in run_surfaces)
+        if run.get("captures") != run_capture_count:
+            fail(f"invalid existing run capture count: {run_id}")
+        expected_provenance = {
+            (run_id, str(run["source_commit"]), str(run["worktree_hash"]))
+        }
+        for surface_id in run_surfaces:
+            if surface_capture_provenance[surface_id] != expected_provenance:
+                fail(
+                    "existing capture provenance does not match run ownership: "
+                    f"{surface_id}/{run_id}"
+                )
+        owned_surfaces.extend(run_surfaces)
+    if sorted(owned_surfaces) != sorted(validated_surfaces):
+        fail("existing run provenance must own every surface exactly once")
+    return validated_surfaces, runs
+
+
 def load_manual_overflow(path: Path | None, run_id: str) -> dict[str, dict]:
     if path is None:
         return {}
-    report = load_json(path.resolve(), "manual overflow report")
+    report = load_json(path, "manual overflow report")
     if report.get("schema") != 1 or report.get("run_id") != run_id:
         fail("manual overflow report schema/run_id mismatch")
     surfaces = report.get("surfaces")
@@ -125,29 +591,130 @@ def load_manual_overflow(path: Path | None, run_id: str) -> dict[str, dict]:
             or not isinstance(value.get("reviewer"), str)
             or not value["reviewer"].strip()
             or not isinstance(value.get("text_overflow_count"), int)
-            or value["text_overflow_count"] < 0
+            or value["text_overflow_count"] != 0
             or not isinstance(value.get("review_artifact"), str)
             or not value["review_artifact"].strip()
+            or not isinstance(value.get("reviewed_captures"), list)
+            or not value["reviewed_captures"]
         ):
             fail(f"manual overflow verification is incomplete for {surface}")
     return surfaces
 
 
+def expected_manual_coverage(
+    cases: dict[tuple[str, str, float], tuple[Path, dict]],
+    artifact_root: Path,
+) -> list[dict[str, object]]:
+    coverage: list[dict[str, object]] = []
+    for key in sorted(cases):
+        sidecar_path, sidecar = cases[key]
+        primary = safe_artifact(
+            artifact_root, sidecar.get("image"), "manual review primary image"
+        )
+        primary_hash = sha256(primary)
+        if primary_hash != sidecar.get("image_sha256"):
+            fail(f"manual review primary image hash mismatch: {sidecar_path}")
+        images: list[dict[str, str]] = [
+            {
+                "output": str(sidecar.get("output", "HEADLESS-UI")),
+                "image_sha256": primary_hash,
+            }
+        ]
+        auxiliary_outputs = sidecar.get("auxiliary_outputs", [])
+        if not isinstance(auxiliary_outputs, list):
+            fail(f"invalid manual review auxiliary outputs: {sidecar_path}")
+        for auxiliary in auxiliary_outputs:
+            if not isinstance(auxiliary, dict):
+                fail(f"invalid manual review auxiliary output: {sidecar_path}")
+            image = safe_artifact(
+                artifact_root,
+                auxiliary.get("image"),
+                "manual review auxiliary image",
+            )
+            image_hash = sha256(image)
+            if image_hash != auxiliary.get("image_sha256"):
+                fail(f"manual review auxiliary image hash mismatch: {sidecar_path}")
+            images.append(
+                {
+                    "output": str(auxiliary.get("output", "")),
+                    "image_sha256": image_hash,
+                }
+            )
+        coverage.append(
+            {
+                "sidecar": sidecar_path.name,
+                "sidecar_sha256": sha256(sidecar_path),
+                "images": images,
+            }
+        )
+    return coverage
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-dir", required=True, type=Path)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--run-dir", type=Path)
+    source.add_argument(
+        "--validate-existing",
+        action="store_true",
+        help="Validate canonical aggregate provenance without importing a run.",
+    )
     parser.add_argument("--repo-root", type=Path)
     parser.add_argument("--manual-overflow-report", type=Path)
+    parser.add_argument(
+        "--surface",
+        action="append",
+        default=[],
+        help="Import one captured surface; repeat for an affected-run subset.",
+    )
     parser.add_argument("--webp-quality", type=int, default=92)
     args = parser.parse_args()
 
     root = (args.repo_root or Path(__file__).resolve().parents[2]).resolve()
-    run_dir = args.run_dir.resolve()
+    if args.validate_existing:
+        if args.surface or args.manual_overflow_report is not None:
+            fail("--validate-existing does not accept import inputs")
+        registry_document = load_yaml(root / "docs/ui-surfaces.yaml")
+        registry = registry_document.get("surfaces")
+        if not isinstance(registry, dict) or not registry:
+            fail("UI surface registry is empty")
+        manifest = load_json(
+            root / "docs/evidence/vm-run.json",
+            "existing VM import manifest",
+        )
+        validated_surfaces, runs = validate_previous_manifest(
+            root,
+            manifest,
+            registry,
+        )
+        print(
+            json.dumps(
+                {
+                    "schema": int(manifest["schema"]),
+                    "surfaces": len(validated_surfaces),
+                    "runs": len(runs),
+                    "captures": sum(
+                        len(value.get("captures", []))
+                        for value in validated_surfaces.values()
+                    ),
+                }
+            )
+        )
+        return
+    assert args.run_dir is not None
+    run_dir = path_without_symlink_components(args.run_dir, "VM run directory")
+    if not run_dir.is_dir():
+        fail(f"VM run directory does not exist: {run_dir}")
     record = load_json(run_dir / "run.json", "VM run record")
     run_id = str(record.get("run_id", ""))
-    if run_dir.name != run_id or record.get("suite") != "ui-review":
+    if (
+        record.get("schema") != 1
+        or run_dir.name != run_id
+        or not RUN_ID.fullmatch(run_id)
+        or record.get("suite") != "ui-review"
+    ):
         fail("run directory does not contain a ui-review run")
-    if record.get("status") != "completed":
+    if record.get("status") != "completed" or record.get("result") != "passed":
         fail(f"VM run is not complete and passing: {record.get('status')}")
     steps = record.get("steps")
     if not isinstance(steps, list) or not steps:
@@ -166,8 +733,11 @@ def main() -> None:
     if source.get("untracked_files"):
         fail("VM source snapshot contains untracked files")
     source_commit = str(source.get("source_commit", ""))
-    if len(source_commit) != 40:
+    if not re.fullmatch(r"[0-9a-f]{40}", source_commit):
         fail("VM run lacks a full source commit")
+    worktree_hash = source.get("worktree_hash")
+    if not isinstance(worktree_hash, str) or not WORKTREE_HASH.fullmatch(worktree_hash):
+        fail("VM run lacks a valid worktree hash")
     ancestor = subprocess.run(
         ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"], cwd=root
     )
@@ -180,22 +750,77 @@ def main() -> None:
     surfaces = manifest.get("surfaces")
     if not isinstance(surfaces, dict) or not surfaces:
         fail("UI surface registry is empty")
+    invalid_surface_ids = [
+        str(value)
+        for value in surfaces
+        if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", str(value))
+    ]
+    if invalid_surface_ids:
+        fail("invalid registry surface ids: " + ", ".join(invalid_surface_ids))
+    requested_surfaces = [str(value) for value in args.surface]
+    if len(requested_surfaces) != len(set(requested_surfaces)):
+        fail("--surface values must be unique")
+    unknown_surfaces = set(requested_surfaces) - surfaces.keys()
+    if unknown_surfaces:
+        fail("unknown requested surfaces: " + ", ".join(sorted(unknown_surfaces)))
+    selected_surfaces = (
+        {surface_id: surfaces[surface_id] for surface_id in requested_surfaces}
+        if requested_surfaces
+        else surfaces
+    )
 
-    artifact_root = Path(str(record.get("artifact_dir", ""))).resolve()
-    if artifact_root != (run_dir / "artifacts").resolve():
+    artifact_root = path_without_symlink_components(
+        Path(str(record.get("artifact_dir", ""))), "VM artifact directory"
+    )
+    expected_artifact_root = path_without_symlink_components(
+        run_dir / "artifacts", "VM artifact directory"
+    )
+    if artifact_root != expected_artifact_root or not artifact_root.is_dir():
         fail("VM artifact path does not belong to the selected run")
     review_root = artifact_root / "ui-review"
+    path_without_symlink_components(review_root, "UI review artifact directory")
+    if not review_root.is_dir():
+        fail("UI review artifact directory does not exist")
     summary = load_json(review_root / "summary.json", "UI review summary")
-    manual = load_manual_overflow(args.manual_overflow_report, run_id)
+    if summary.get("schema") != 1 or summary.get("matrix_mode") not in {
+        "affected-full",
+        "full",
+    }:
+        fail("UI review summary lacks a canonical full-matrix schema")
+    for field in (
+        "text_overflow_failures",
+        "identical_state_failures",
+        "identical_pair_failures",
+    ):
+        failures = summary.get(field)
+        if not isinstance(failures, list):
+            fail(f"UI review summary lacks the {field} capability")
+        if failures:
+            fail(f"VM summary contains {field.replace('_', ' ')}")
+    manual_report_path = (
+        path_without_symlink_components(
+            args.manual_overflow_report, "manual overflow report"
+        )
+        if args.manual_overflow_report is not None
+        else None
+    )
+    manual = load_manual_overflow(manual_report_path, run_id)
 
     expected_total = 0
     staged: dict[str, Path] = {}
     imported: dict[str, dict] = {}
     evidence_root = root / "docs/evidence"
+    path_without_symlink_components(evidence_root, "canonical evidence directory")
     evidence_root.mkdir(parents=True, exist_ok=True, mode=0o755)
+    lock_fd = os.open(evidence_root, os.O_RDONLY | os.O_DIRECTORY)
+    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    for surface_id in selected_surfaces:
+        target = evidence_root / surface_id
+        if target.exists():
+            fail(f"canonical evidence already exists; refusing to replace: {target}")
     staging_root = Path(tempfile.mkdtemp(prefix=".vm-import-", dir=evidence_root))
     try:
-        for surface_id, entry in surfaces.items():
+        for surface_id, entry in selected_surfaces.items():
             if not isinstance(entry, dict):
                 fail(f"invalid registry entry: {surface_id}")
             evidence = entry.get("evidence")
@@ -205,6 +830,21 @@ def main() -> None:
             states = [str(value) for value in evidence.get("required_states", [])]
             locales = [str(value) for value in evidence.get("required_locales", [])]
             scales = [float(value) for value in evidence.get("required_scales", [])]
+            required_auxiliary = evidence.get("required_auxiliary_outputs", {})
+            if not isinstance(required_auxiliary, dict):
+                fail(f"invalid required auxiliary output mapping: {surface_id}")
+            for state, outputs in required_auxiliary.items():
+                if (
+                    state not in states
+                    or not isinstance(outputs, list)
+                    or len(outputs) != len(set(outputs))
+                    or not all(
+                        isinstance(output, str)
+                        and re.fullmatch(r"HEADLESS-[A-Z]+", output)
+                        for output in outputs
+                    )
+                ):
+                    fail(f"invalid required auxiliary outputs: {surface_id}/{state}")
             expected = set(itertools.product(states, locales, scales))
             expected_total += len(expected)
             digest = implementation_digest(root, entry.get("implementation", []))
@@ -222,9 +862,14 @@ def main() -> None:
             cases: dict[tuple[str, str, float], tuple[Path, dict]] = {}
             for sidecar_path in sidecars:
                 sidecar = load_json(sidecar_path, "VM capture sidecar")
-                if sidecar.get("schema") != 1 or sidecar.get("surface_id") != surface_id:
+                if (
+                    sidecar.get("schema") != 1
+                    or sidecar.get("surface_id") != surface_id
+                ):
                     fail(f"VM sidecar schema/surface mismatch: {sidecar_path}")
                 key = matrix_key(sidecar)
+                if sidecar_path.stem != capture_stem(surface_id, key):
+                    fail(f"VM sidecar filename/matrix mismatch: {sidecar_path}")
                 if key in cases:
                     fail(f"duplicate VM capture matrix key: {surface_id}/{key}")
                 cases[key] = (sidecar_path, sidecar)
@@ -251,12 +896,20 @@ def main() -> None:
                         f"{surface_id} lacks an instrumented overflow count; "
                         "provide --manual-overflow-report"
                     )
+                reviewed_captures = expected_manual_coverage(cases, artifact_root)
+                if manual_verification["reviewed_captures"] != reviewed_captures:
+                    fail(
+                        f"manual overflow review does not cover the complete "
+                        f"{surface_id} capture matrix"
+                    )
                 source_review_artifact = safe_artifact(
                     artifact_root,
                     manual_verification["review_artifact"],
                     "manual overflow review artifact",
                 )
-                destination_review_artifact = destination / "manual-overflow-review.webp"
+                destination_review_artifact = (
+                    destination / "manual-overflow-review.webp"
+                )
                 subprocess.run(
                     [
                         "magick",
@@ -268,6 +921,17 @@ def main() -> None:
                     check=True,
                     capture_output=True,
                 )
+                coverage_document = {
+                    "schema": 1,
+                    "surface_id": surface_id,
+                    "run_id": run_id,
+                    "reviewed_captures": reviewed_captures,
+                }
+                destination_coverage = destination / "manual-overflow-coverage.json"
+                destination_coverage.write_text(
+                    json.dumps(coverage_document, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
                 manual_review = {
                     "method": "manual-contact-sheet-review",
                     "reviewer": manual_verification["reviewer"],
@@ -278,7 +942,15 @@ def main() -> None:
                     ).as_posix(),
                     "review_artifact_sha256": sha256(destination_review_artifact),
                     "source_review_artifact_sha256": sha256(source_review_artifact),
-                    "report_sha256": sha256(args.manual_overflow_report.resolve()),
+                    "report_sha256": sha256(manual_report_path),
+                    "coverage": (
+                        Path("docs/evidence") / surface_id / destination_coverage.name
+                    ).as_posix(),
+                    "coverage_sha256": sha256(destination_coverage),
+                    "reviewed_capture_count": len(reviewed_captures),
+                    "reviewed_image_count": sum(
+                        len(value["images"]) for value in reviewed_captures
+                    ),
                 }
             canonical_sidecars: list[str] = []
             environment_hashes: dict[tuple[str, float], set[str]] = {}
@@ -301,9 +973,7 @@ def main() -> None:
                 pixel_size = png_size(source_image)
                 if list(pixel_size) != sidecar.get("pixel_size"):
                     fail(f"VM image dimensions mismatch: {source_image}")
-                environment_hashes.setdefault((key[1], key[2]), set()).add(
-                    source_hash
-                )
+                environment_hashes.setdefault((key[1], key[2]), set()).add(source_hash)
 
                 overflow = sidecar.get("text_overflow_count")
                 overflow_measurement: dict[str, object]
@@ -314,7 +984,9 @@ def main() -> None:
                     }
                 else:
                     if manual_verification is None or manual_review is None:
-                        fail(f"manual overflow review was not prepared for {surface_id}")
+                        fail(
+                            f"manual overflow review was not prepared for {surface_id}"
+                        )
                     overflow = manual_verification["text_overflow_count"]
                     overflow_measurement = manual_review
 
@@ -334,6 +1006,158 @@ def main() -> None:
                 relative_image = (
                     Path("docs/evidence") / surface_id / destination_image.name
                 ).as_posix()
+                primary_output = str(sidecar.get("output", "HEADLESS-UI"))
+                canonical_primary_semantic = semantic_metrics(
+                    destination_image,
+                    surface_id,
+                    key[2],
+                )
+                canonical_semantic_outputs = {
+                    primary_output: str(canonical_primary_semantic["sha256"])
+                }
+                canonical_auxiliary: list[dict[str, object]] = []
+                auxiliary_outputs = sidecar.get("auxiliary_outputs", [])
+                if not isinstance(auxiliary_outputs, list):
+                    fail(f"invalid auxiliary output list: {source_sidecar_path}")
+                seen_auxiliary_outputs: set[str] = set()
+                seen_auxiliary_paths = {source_image}
+                seen_auxiliary_hashes = {source_hash}
+                for index, auxiliary in enumerate(auxiliary_outputs):
+                    if not isinstance(auxiliary, dict):
+                        fail(f"invalid auxiliary output: {source_sidecar_path}")
+                    expected_auxiliary_fields = {
+                        "output",
+                        "image",
+                        "image_sha256",
+                        "pixel_size",
+                        "stability_changed_pixel_ratio",
+                    }
+                    extended_auxiliary_fields = expected_auxiliary_fields | {
+                        "expected_workspaces",
+                        "semantic_content",
+                        "logical_size",
+                        "scale",
+                    }
+                    if frozenset(auxiliary) not in {
+                        frozenset(expected_auxiliary_fields),
+                        frozenset(extended_auxiliary_fields),
+                    }:
+                        fail(f"invalid auxiliary output schema: {source_sidecar_path}")
+                    auxiliary_output = str(auxiliary.get("output", ""))
+                    if not re.fullmatch(r"HEADLESS-[A-Z]+", auxiliary_output):
+                        fail(f"invalid auxiliary output name: {auxiliary_output}")
+                    if auxiliary_output == sidecar.get("output"):
+                        fail(
+                            "auxiliary output duplicates the primary: "
+                            f"{auxiliary_output}"
+                        )
+                    if auxiliary_output in seen_auxiliary_outputs:
+                        fail(f"duplicate auxiliary output: {auxiliary_output}")
+                    seen_auxiliary_outputs.add(auxiliary_output)
+                    auxiliary_image = safe_artifact(
+                        artifact_root,
+                        auxiliary.get("image"),
+                        "VM auxiliary capture image",
+                    )
+                    if auxiliary_image in seen_auxiliary_paths:
+                        fail(f"reused auxiliary image path: {auxiliary_image}")
+                    seen_auxiliary_paths.add(auxiliary_image)
+                    auxiliary_hash = sha256(auxiliary_image)
+                    if auxiliary_hash != auxiliary.get("image_sha256"):
+                        fail(f"VM auxiliary image hash mismatch: {auxiliary_image}")
+                    if auxiliary_hash in seen_auxiliary_hashes:
+                        fail(
+                            f"auxiliary output rendered identically: {auxiliary_output}"
+                        )
+                    seen_auxiliary_hashes.add(auxiliary_hash)
+                    auxiliary_size = png_size(auxiliary_image)
+                    if list(auxiliary_size) != auxiliary.get("pixel_size"):
+                        fail(
+                            f"VM auxiliary image dimensions mismatch: {auxiliary_image}"
+                        )
+                    content_proof = validate_auxiliary_content_proof(
+                        auxiliary,
+                        image=auxiliary_image,
+                        surface_id=surface_id,
+                        state=key[0],
+                        scale=key[2],
+                        output=auxiliary_output,
+                        semantic_outputs=sidecar.get("semantic_outputs"),
+                        label=str(source_sidecar_path),
+                    )
+                    auxiliary_destination = destination / (
+                        f"{stem}--aux-{index + 1}-{auxiliary_output.lower()}.webp"
+                    )
+                    subprocess.run(
+                        [
+                            "magick",
+                            str(auxiliary_image),
+                            "-quality",
+                            str(args.webp_quality),
+                            str(auxiliary_destination),
+                        ],
+                        check=True,
+                        capture_output=True,
+                    )
+                    canonical_auxiliary_semantic = semantic_metrics(
+                        auxiliary_destination,
+                        surface_id,
+                        float(auxiliary.get("scale", key[2])),
+                    )
+                    canonical_semantic_outputs[auxiliary_output] = str(
+                        canonical_auxiliary_semantic["sha256"]
+                    )
+                    canonical_content_proof = (
+                        {
+                            "expected_workspaces": content_proof["expected_workspaces"],
+                            "semantic_content": canonical_auxiliary_semantic,
+                            **(
+                                {
+                                    "logical_size": content_proof["logical_size"],
+                                    "scale": content_proof["scale"],
+                                }
+                                if "scale" in content_proof
+                                else {}
+                            ),
+                        }
+                        if content_proof is not None
+                        else {}
+                    )
+                    canonical_auxiliary.append(
+                        {
+                            "output": auxiliary_output,
+                            "image": (
+                                Path("docs/evidence")
+                                / surface_id
+                                / auxiliary_destination.name
+                            ).as_posix(),
+                            "image_sha256": sha256(auxiliary_destination),
+                            "source_image_sha256": auxiliary_hash,
+                            "pixel_size": list(auxiliary_size),
+                            "stability_changed_pixel_ratio": auxiliary[
+                                "stability_changed_pixel_ratio"
+                            ],
+                            **canonical_content_proof,
+                            "encoding": {
+                                "format": "webp",
+                                "quality": args.webp_quality,
+                                "source_format": "png",
+                            },
+                        }
+                    )
+                expected_auxiliary_outputs = {
+                    str(value) for value in required_auxiliary.get(key[0], [])
+                }
+                if seen_auxiliary_outputs != expected_auxiliary_outputs:
+                    fail(
+                        f"auxiliary output mismatch for {surface_id}/{key[0]}: "
+                        f"expected={sorted(expected_auxiliary_outputs)} "
+                        f"actual={sorted(seen_auxiliary_outputs)}"
+                    )
+                semantic_parts = [
+                    f"{output_name}:{output_hash}"
+                    for output_name, output_hash in canonical_semantic_outputs.items()
+                ]
                 canonical = {
                     **sidecar,
                     "image": relative_image,
@@ -348,9 +1172,12 @@ def main() -> None:
                     "text_overflow_count": overflow,
                     "text_overflow_measurement": overflow_measurement,
                     "concept_spec_sha256": concept_spec_hash,
-                    "imported_at": datetime.now(timezone.utc).isoformat(
-                        timespec="seconds"
-                    ),
+                    "semantic_outputs": canonical_semantic_outputs,
+                    "semantic_sha256": hashlib.sha256(
+                        "\0".join(semantic_parts).encode()
+                    ).hexdigest(),
+                    "auxiliary_outputs": canonical_auxiliary,
+                    "imported_at": datetime.now(UTC).isoformat(timespec="seconds"),
                 }
                 destination_sidecar = destination / source_sidecar_path.name
                 destination_sidecar.write_text(
@@ -358,7 +1185,9 @@ def main() -> None:
                     encoding="utf-8",
                 )
                 canonical_sidecars.append(
-                    (Path("docs/evidence") / surface_id / destination_sidecar.name).as_posix()
+                    (
+                        Path("docs/evidence") / surface_id / destination_sidecar.name
+                    ).as_posix()
                 )
             if len(states) > 1:
                 identical = [
@@ -379,41 +1208,108 @@ def main() -> None:
             }
             staged[surface_id] = destination
 
-        if summary.get("expected") != expected_total or summary.get("actual") != expected_total:
+        summary_expected = summary.get("expected")
+        summary_actual = summary.get("actual")
+        summary_surfaces = summary.get("surfaces")
+        if (
+            not isinstance(summary_expected, int)
+            or summary_expected != summary_actual
+            or summary_expected < expected_total
+        ):
             fail(
-                "VM summary count does not match the current registry: "
-                f"expected={expected_total} summary={summary.get('expected')}/"
-                f"{summary.get('actual')}"
+                "VM summary count does not cover the selected registry surfaces: "
+                f"selected={expected_total} summary={summary_expected}/{summary_actual}"
             )
-        if summary.get("text_overflow_failures"):
-            fail("VM summary contains measured text overflow failures")
-
-        import_manifest = {
-            "schema": 1,
+        if not isinstance(summary_surfaces, list) or not set(
+            selected_surfaces
+        ).issubset({str(value) for value in summary_surfaces}):
+            fail("VM summary does not include every selected surface")
+        manifest_path = evidence_root / "vm-run.json"
+        previous_manifest = (
+            load_json(manifest_path, "existing VM import manifest")
+            if manifest_path.is_file()
+            else {}
+        )
+        previous_surfaces, runs = validate_previous_manifest(
+            root, previous_manifest, surfaces
+        )
+        duplicate_provenance = set(previous_surfaces) & imported.keys()
+        if duplicate_provenance:
+            fail(
+                "existing VM import manifest already owns selected surfaces: "
+                + ", ".join(sorted(duplicate_provenance))
+            )
+        merged_surfaces = {**previous_surfaces, **imported}
+        imported_at = datetime.now(UTC).isoformat(timespec="seconds")
+        current_junit_sha = sha256(artifact_root / "junit.xml")
+        current_run = {
             "run_id": run_id,
             "source_commit": source_commit,
             "worktree_hash": source.get("worktree_hash"),
-            "expected_captures": expected_total,
-            "actual_captures": sum(
-                len(value["captures"]) for value in imported.values()
+            "surfaces": sorted(imported),
+            "captures": expected_total,
+            "junit_sha256": current_junit_sha,
+            "imported_at": imported_at,
+        }
+        matching_run = next(
+            (
+                value
+                for value in runs
+                if isinstance(value, dict) and value.get("run_id") == run_id
             ),
-            "surfaces": imported,
-            "junit_sha256": sha256(artifact_root / "junit.xml"),
-            "imported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            None,
+        )
+        if matching_run is None:
+            runs.append(current_run)
+        else:
+            for field in ("source_commit", "worktree_hash", "junit_sha256"):
+                if matching_run.get(field) != current_run[field]:
+                    fail(f"conflicting provenance for existing run {run_id}: {field}")
+            prior_run_surfaces = matching_run.get("surfaces")
+            prior_run_captures = matching_run.get("captures")
+            if not isinstance(prior_run_surfaces, list) or not isinstance(
+                prior_run_captures, int
+            ):
+                fail(f"invalid existing run provenance: {run_id}")
+            matching_run["surfaces"] = sorted(
+                {str(value) for value in prior_run_surfaces} | imported.keys()
+            )
+            matching_run["captures"] = prior_run_captures + expected_total
+            matching_run["imported_at"] = imported_at
+        merged_capture_count = sum(
+            len(value.get("captures", []))
+            for value in merged_surfaces.values()
+            if isinstance(value, dict)
+        )
+        import_manifest = {
+            "schema": 2,
+            "expected_captures": merged_capture_count,
+            "actual_captures": merged_capture_count,
+            "surface_count": len(merged_surfaces),
+            "surfaces": merged_surfaces,
+            "runs": runs,
+            "updated_at": imported_at,
         }
         (staging_root / "vm-run.json").write_text(
             json.dumps(import_manifest, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
 
-        for surface_id, source_dir in staged.items():
-            target = evidence_root / surface_id
-            if target.exists():
-                fail(f"canonical evidence already exists; refusing to replace: {target}")
-            os.replace(source_dir, target)
-        os.replace(staging_root / "vm-run.json", evidence_root / "vm-run.json")
+        published: list[Path] = []
+        try:
+            for surface_id, source_dir in staged.items():
+                target = evidence_root / surface_id
+                os.replace(source_dir, target)
+                published.append(target)
+            os.replace(staging_root / "vm-run.json", evidence_root / "vm-run.json")
+        except BaseException:
+            for target in reversed(published):
+                shutil.rmtree(target, ignore_errors=True)
+            raise
     finally:
         shutil.rmtree(staging_root, ignore_errors=True)
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
     print(
         json.dumps(

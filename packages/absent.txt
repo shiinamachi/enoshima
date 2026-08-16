@@ -6,3 +6,5 @@ hyprlauncher
 kitty
 power-profiles-daemon
 slack-electron
+vicinae-bin-debug
+hyprshell-bin-debug

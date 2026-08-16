@@ -319,8 +319,16 @@ assert_contains "$dock" 'watchChanges: true'
 assert_contains "$dock" 'onFileChanged: reload()'
 assert_contains "$dock" 'readonly property bool reducedMotion:'
 assert_contains "$dock" 'readonly property bool reducedTransparency:'
+assert_contains "$dock" 'readonly property bool highContrast: appearanceMode === "accessible"'
+assert_contains "$dock" 'uiFixtureState.state === "accessible"'
 assert_contains "$dock" 'colorCanvasOverlay: root.reducedTransparency'
 assert_contains "$dock" 'colorLauncherSurface: root.reducedTransparency'
+assert_contains "$dock" 'colorDivider: root.highContrast'
+assert_contains "$dock" 'colorQuietBorder: root.highContrast'
+assert_contains "$dock" 'colorInfoBorder: root.highContrast'
+assert_contains "$dock" 'colorFocusBorder: root.highContrast'
+assert_contains "$dock" 'colorTextMuted: root.highContrast'
+assert_contains "$dock" 'colorTextSubtle: root.highContrast'
 assert_count 9 "$dock" 'enabled: !root.reducedMotion'
 assert_count 6 "$dock" 'theme: root.theme'
 assert_count 6 "$dock" 'reducedMotion: root.reducedMotion'
@@ -445,6 +453,11 @@ colors = dict(re.findall(
     r'readonly property color (\w+): "(#[0-9a-fA-F]{6,8})"',
     text,
 ))
+colors.update(dict(re.findall(
+    r'readonly property color (\w+): root\.highContrast\s*\n'
+    r'\s*\? "#[0-9a-fA-F]{6,8}" : "(#[0-9a-fA-F]{6,8})"',
+    text,
+)))
 
 def parse(value):
     value = value.removeprefix("#")

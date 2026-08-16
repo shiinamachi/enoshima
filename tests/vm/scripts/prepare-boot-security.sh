@@ -6,6 +6,29 @@ recovery_key=${2:-}
 authorized_key=${3:-}
 target=/mnt/enoshima-vm-target
 mapper=enoshima-vm-cryptroot
+package_download_max_attempts=${BOOT_SECURITY_PACKAGE_DOWNLOAD_MAX_ATTEMPTS:-4}
+package_download_retry_delay_seconds=${BOOT_SECURITY_PACKAGE_DOWNLOAD_RETRY_DELAY_SECONDS:-10}
+boot_target_packages=(
+  ansible-core
+  base
+  btrfs-progs
+  chezmoi
+  cryptsetup
+  git
+  jq
+  linux
+  linux-firmware
+  linux-lts
+  networkmanager
+  nftables
+  openssh
+  qemu-guest-agent
+  sbctl
+  sbsigntools
+  sudo
+  tpm2-tools
+  zsh
+)
 
 die() {
   printf 'prepare-boot-security: %s\n' "$*" >&2
@@ -22,6 +45,10 @@ die() {
   die 'recovery key must contain exactly 64 bytes without a newline'
 LC_ALL=C grep -Eq '^[0-9a-f]{64}$' "$recovery_key" ||
   die 'recovery key must be lowercase hexadecimal'
+[[ $package_download_max_attempts =~ ^[1-9][0-9]*$ ]] ||
+  die 'BOOT_SECURITY_PACKAGE_DOWNLOAD_MAX_ATTEMPTS must be a positive integer'
+[[ $package_download_retry_delay_seconds =~ ^[0-9]+$ ]] ||
+  die 'BOOT_SECURITY_PACKAGE_DOWNLOAD_RETRY_DELAY_SECONDS must be zero or a positive integer'
 
 cleanup() {
   set +e
@@ -29,6 +56,47 @@ cleanup() {
   cryptsetup close "$mapper" 2>/dev/null
 }
 trap cleanup EXIT
+
+clear_stale_pacman_lock() {
+  local pacman_running=false process_state
+
+  while IFS= read -r process_state; do
+    if [[ ${process_state:0:1} != Z ]]; then
+      pacman_running=true
+      break
+    fi
+  done < <(ps -C pacman -o stat=)
+  if [[ -e $target/var/lib/pacman/db.lck && $pacman_running == false ]]; then
+    rm -f "$target/var/lib/pacman/db.lck"
+    printf 'Removed stale pacman database lock after failed boot-target download.\n' >&2
+  fi
+}
+
+download_boot_target_packages_with_bounded_retries() {
+  local attempt status
+
+  for ((attempt = 1; attempt <= package_download_max_attempts; attempt++)); do
+    if pacstrap -c -K "$target" --downloadonly "${boot_target_packages[@]}"; then
+      return 0
+    else
+      status=$?
+    fi
+
+    clear_stale_pacman_lock
+    if ((attempt == package_download_max_attempts)); then
+      printf \
+        'ERROR: boot-security package download exhausted %d attempts (last status: %d).\n' \
+        "$package_download_max_attempts" "$status" >&2
+      return "$status"
+    fi
+
+    printf \
+      'WARNING: boot-security package download attempt %d/%d failed with status %d; retrying the same pinned package set in %ss.\n' \
+      "$attempt" "$package_download_max_attempts" "$status" \
+      "$package_download_retry_delay_seconds" >&2
+    sleep "$package_download_retry_delay_seconds"
+  done
+}
 
 pacman -Syu --needed --noconfirm \
   arch-install-scripts \
@@ -71,26 +139,12 @@ mount -o subvol=@var_log,compress=zstd,noatime "/dev/mapper/$mapper" "$target/va
 mount -o subvol=@swap,noatime "/dev/mapper/$mapper" "$target/swap"
 mount "${disk}1" "$target/efi"
 
-pacstrap -K "$target" \
-  ansible-core \
-  base \
-  btrfs-progs \
-  chezmoi \
-  cryptsetup \
-  git \
-  jq \
-  linux \
-  linux-firmware \
-  linux-lts \
-  networkmanager \
-  nftables \
-  openssh \
-  qemu-guest-agent \
-  sbctl \
-  sbsigntools \
-  sudo \
-  tpm2-tools \
-  zsh
+# The runner has already installed a checksum-verified snapshot cache into the
+# guest host. Resolve the clean target's complete dependency closure and finish
+# any missing downloads with bounded retries, then perform the package
+# transaction exactly once so a failed hook or install is never replayed.
+download_boot_target_packages_with_bounded_retries
+pacstrap -c -K "$target" "${boot_target_packages[@]}"
 
 # pacstrap can leave the target pacman keyring's gpg-agent alive with files
 # open below the chroot. Stop that scoped agent before the final recursive
@@ -101,6 +155,19 @@ gpgconf --homedir "$target/etc/pacman.d/gnupg" --kill all || true
 # installed target. This prevents its later bootstrap from becoming a partial
 # or moving-release package transaction.
 install -m 0644 /etc/pacman.d/mirrorlist "$target/etc/pacman.d/mirrorlist"
+
+# The prepared target replaces the NoCloud image, so it must carry the same
+# resolver isolation policy itself. NetworkManager selects systemd-resolved
+# when resolv.conf points at its stub; enable that service before the target's
+# first bootstrap so the pinned Archive mirror remains resolvable after reboot.
+install -d -m 0755 "$target/etc/systemd/resolved.conf.d"
+cat >"$target/etc/systemd/resolved.conf.d/20-enoshima-vm.conf" <<'EOF'
+[Resolve]
+DNS=1.1.1.1 9.9.9.9
+FallbackDNS=
+Domains=~.
+EOF
+ln -sfn ../run/systemd/resolve/stub-resolv.conf "$target/etc/resolv.conf"
 
 root_luks_uuid=$(cryptsetup luksUUID "${disk}2")
 root_btrfs_uuid=$(btrfs filesystem show "/dev/mapper/$mapper" | sed -n 's/.*uuid: //p' | head -n1)
@@ -159,6 +226,7 @@ table inet enoshima_vm {
     type filter hook output priority 0; policy accept;
     ct state established,related accept
     ip daddr 10.0.2.3 udp dport 53 accept
+    ip daddr 10.0.2.3 tcp dport 53 accept
     ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } reject
   }
 }
@@ -167,6 +235,7 @@ arch-chroot "$target" systemctl enable \
   NetworkManager.service \
   nftables.service \
   qemu-guest-agent.service \
+  systemd-resolved.service \
   sshd.service
 install -d -m 0755 "$target/var/lib/systemd/linger"
 touch "$target/var/lib/systemd/linger/kentakang"

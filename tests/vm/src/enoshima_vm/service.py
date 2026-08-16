@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import ctypes
+import fcntl
 import json
 import os
+import pwd
 import re
 import secrets
 import shlex
 import shutil
+import signal
+import stat
 import struct
 import subprocess
 import sys
@@ -16,9 +21,11 @@ import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import wraps
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -37,13 +44,20 @@ from .boot_security import (
 from .cloud_init import CloudInitBuilder
 from .config import (
     DOMAIN_PREFIX,
+    MAX_ACTIVE_DOMAINS,
+    WATCHDOG_FINALIZATION_SECONDS,
+    WATCHDOG_READY_NAME,
+    WATCHDOG_READY_TIMEOUT_SECONDS,
+    WATCHDOG_RUNTIME_GRACE_SECONDS,
     RuntimePaths,
     Suite,
     load_images,
     load_suite,
+    open_global_mutation_lock,
+    validate_global_mutation_lock_fd,
 )
 from .errors import FailureCategory, VMError
-from .guest import Guest, parse_json_result, source_identity_json
+from .guest import Guest, GuestCommandTimeout, parse_json_result, source_identity_json
 from .image import ImageCache, file_sha256
 from .impact import (
     VerificationSelection,
@@ -56,6 +70,7 @@ from .results import (
     MAX_SUMMARY_BYTES,
     FailureOrigin,
     failure_fields,
+    failure_fingerprint,
     retryable_infrastructure_failure,
     summarize_exec_result,
     summarize_run_record,
@@ -67,10 +82,14 @@ from .security import (
     redact_argv,
     require_domain,
     require_run_id,
+    run_cleanup_complete,
+    run_record_lock,
+    terminal_run_state_preserved,
 )
 from .ui_review import (
     load_ui_review_identities,
     load_ui_review_matrix,
+    overview_auxiliary_scale,
     physical_mode,
     select_ui_review_cases,
 )
@@ -91,19 +110,186 @@ REMOTE_PACMAN_CACHE_SEED = REMOTE_PACMAN_CACHE_ROOT / "pacman-seed.tar"
 REMOTE_PACMAN_CACHE_DELTA = REMOTE_PACMAN_CACHE_ROOT / "pacman-delta.tar"
 REMOTE_PACMAN_CACHE_FILES = REMOTE_PACMAN_CACHE_ROOT / "pacman-files"
 REMOTE_SYSTEM_PACMAN_CACHE = PurePosixPath("/var/cache/pacman/pkg")
+REMOTE_PACMAN_CACHE_SEED_READY = PurePosixPath("/run/enoshima-pacman-cache-seed-ready")
+REMOTE_PACMAN_CACHE_SEEDED = PurePosixPath("/run/enoshima-pacman-cache-seeded")
 REMOTE_LOGIN_PASSWORD = REMOTE_ROOT / "secrets" / "login-password"
 REMOTE_LOGIN_CREDENTIAL = REMOTE_ROOT / "secrets" / "chpasswd-input"
-
+WATCHDOG_UNIT_PREFIX = "enoshima-vm-watchdog-"
 UI_STABILITY_MAX_CHANGED_PIXEL_RATIO = 0.0025
 UI_STABILITY_MAX_NORMALIZED_RMSE = 0.004
 UI_STABILITY_MAX_SSIM_ERROR = 0.005
 UI_STABILITY_TIMEOUT_SECONDS = 20
 UI_STABILITY_MINIMUM_FRAME_COUNT = 3
+UI_SEMANTIC_MIN_UNIQUE_GRAY_VALUES = 8
+UI_SEMANTIC_MIN_NORMALIZED_STDDEV = 0.01
 PACMAN_PACKAGE_PATTERN = re.compile(
     r"^[A-Za-z0-9@._+:~-]+\.pkg\.tar\.(?:zst|xz|gz|bz2|lrz|lzo|Z)(?:\.sig)?$"
 )
 PACMAN_CACHE_MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024
 PACMAN_CACHE_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024
+BOOTSTRAP_TIMEOUT_SECONDS = 155 * 60
+BOOTSTRAP_IDLE_TIMEOUT_SECONDS = 32 * 60
+REPEAT_BOOTSTRAP_TIMEOUT_SECONDS = 30 * 60
+REPEAT_BOOTSTRAP_IDLE_TIMEOUT_SECONDS = 10 * 60
+VM_MISE_INSTALL_MAX_ATTEMPTS = 2
+VM_MISE_INSTALL_TIMEOUT_SECONDS = 10 * 60
+VM_MISE_INSTALL_RETRY_DELAY_SECONDS = 10
+VM_CODEX_DESKTOP_BUILD_ATTEMPTS = 2
+VM_CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS = 30 * 60
+VM_CODEX_DESKTOP_BUILD_RETRY_DELAY_SECONDS = 15
+_ACTIVE_DOMAIN_CAPACITY_ERROR = "maximum active Enoshima VM count reached"
+
+_AUR_PACKAGE_NAME = r"[a-z0-9@._+-]+"
+_AUR_FAILURE_RE = re.compile(
+    rf"FAILURE: AUR package base (?P<package>{_AUR_PACKAGE_NAME}) "
+    r"exited with status [1-9][0-9]*; continuing\."
+)
+_PROTECTED_AUR_FAILURE_RE = re.compile(
+    rf"FAILURE: protected AUR package base (?P<package>{_AUR_PACKAGE_NAME}) "
+    r"exited with status [1-9][0-9]*; continuing\."
+)
+_AUR_RETRY_RE = re.compile(
+    rf"WARNING: approved AUR package base (?P<package>{_AUR_PACKAGE_NAME}) "
+    r"attempt (?P<attempt>[1-9][0-9]*)/(?P<maximum>[1-9][0-9]*) failed; "
+    r"retrying in [0-9]+s\."
+)
+_AUR_TRANSIENT_TRANSPORT_FRAGMENTS = (
+    "unexpected eof",
+    "connection closed before message completed",
+    "connection reset by peer",
+)
+
+
+def _aur_transport_attempt_line(line: str, package: str) -> bool:
+    lowered = line.strip().lower()
+    if not lowered:
+        return True
+    if lowered == f"cloning into '{package}'...":
+        return True
+    if lowered.startswith("error: command failed:"):
+        return f"https://aur.archlinux.org/{package}" in lowered and lowered.endswith(
+            f" {package}:"
+        )
+    if lowered.startswith("fatal: unable to access "):
+        return f"https://aur.archlinux.org/{package}/" in lowered and any(
+            fragment in lowered for fragment in _AUR_TRANSIENT_TRANSPORT_FRAGMENTS
+        )
+    if lowered.startswith("error: error sending request for url "):
+        return "https://aur.archlinux.org/rpc" in lowered and any(
+            fragment in lowered for fragment in _AUR_TRANSIENT_TRANSPORT_FRAGMENTS
+        )
+    return False
+
+
+def _aur_transport_attempt_has_failure(lines: Sequence[str]) -> bool:
+    return any(
+        line.strip().lower().startswith(("fatal:", "error: error sending"))
+        and any(
+            fragment in line.lower() for fragment in _AUR_TRANSIENT_TRANSPORT_FRAGMENTS
+        )
+        for line in lines
+    )
+
+
+def _exhausted_aur_transport_packages(stderr: str) -> tuple[str, ...]:
+    """Return the first exhausted AUR package only for proven TLS/RPC EOFs.
+
+    Bootstrap deliberately continues after independent failures. Classifying
+    its first actionable failure lets a fresh overlay retry transient AUR
+    transport without treating a later product failure as resolved. Every
+    attempt for the exhausted package must match this narrow transport grammar;
+    HTTP, certificate, integrity, and build failures remain product failures.
+    """
+
+    lines = stderr.splitlines()
+    first_failure_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.strip().startswith("FAILURE:")
+        ),
+        None,
+    )
+    if first_failure_index is None:
+        return ()
+    first_failure = lines[first_failure_index].strip()
+    protected_failure = _PROTECTED_AUR_FAILURE_RE.fullmatch(first_failure)
+    if protected_failure is not None:
+        package = protected_failure.group("package")
+        protected_attempt = lines[max(0, first_failure_index - 2) : first_failure_index]
+        if len(protected_attempt) != 2:
+            return ()
+        fatal, provenance = (line.strip().lower() for line in protected_attempt)
+        if not (
+            fatal.startswith("fatal: unable to access ")
+            and f"https://aur.archlinux.org/{package}.git/" in fatal
+            and any(
+                fragment in fatal for fragment in _AUR_TRANSIENT_TRANSPORT_FRAGMENTS
+            )
+            and re.fullmatch(
+                r"aur provenance error: pinned aur commit fetch failed "
+                r"with exit status [1-9][0-9]*",
+                provenance,
+            )
+        ):
+            return ()
+        return (package,)
+
+    failure = _AUR_FAILURE_RE.fullmatch(first_failure)
+    if failure is None:
+        return ()
+    package = failure.group("package")
+
+    retry_points: list[tuple[int, int, int]] = []
+    for index, line in enumerate(lines[:first_failure_index]):
+        retry = _AUR_RETRY_RE.fullmatch(line.strip())
+        if retry is None or retry.group("package") != package:
+            continue
+        retry_points.append(
+            (index, int(retry.group("attempt")), int(retry.group("maximum")))
+        )
+    if not retry_points:
+        return ()
+    maximums = {maximum for _, _, maximum in retry_points}
+    if len(maximums) != 1:
+        return ()
+    maximum = maximums.pop()
+    if [attempt for _, attempt, _ in retry_points] != list(range(1, maximum)):
+        return ()
+
+    first_retry_index = retry_points[0][0]
+    first_attempt_start = first_retry_index
+    while first_attempt_start > 0 and _aur_transport_attempt_line(
+        lines[first_attempt_start - 1], package
+    ):
+        first_attempt_start -= 1
+
+    delimiters = [index for index, _, _ in retry_points] + [first_failure_index]
+    attempt_start = first_attempt_start
+    for delimiter in delimiters:
+        attempt_lines = lines[attempt_start:delimiter]
+        if not attempt_lines or not all(
+            _aur_transport_attempt_line(line, package) for line in attempt_lines
+        ):
+            return ()
+        if not _aur_transport_attempt_has_failure(attempt_lines):
+            return ()
+        attempt_start = delimiter + 1
+    return (package,)
+
+
+def _harness_source_digest() -> str:
+    digest = sha256()
+    source_root = Path(__file__).resolve().parent
+    for path in sorted(source_root.glob("*.py")):
+        digest.update(path.name.encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+LOADED_HARNESS_SOURCE_DIGEST = _harness_source_digest()
 
 
 def utc_now() -> str:
@@ -134,6 +320,17 @@ def normalized_image_metric(output: str) -> float:
     return float(values[-1])
 
 
+def mutation_guard(function):
+    """Make a public service mutation honor the global operation lease."""
+
+    @wraps(function)
+    def guarded(self, *args, **kwargs):
+        with self._mutation_lease():
+            return function(self, *args, **kwargs)
+
+    return guarded
+
+
 class VMService:
     def __init__(
         self,
@@ -150,6 +347,365 @@ class VMService:
         self.cloud_init = CloudInitBuilder(self.paths)
         self.runs_root = self.paths.state / "runs"
         self.audit_path = self.paths.state / "audit.jsonl"
+        self._mutation_lease_depth = 0
+
+    @contextmanager
+    def _mutation_lease(self):
+        """Serialize every service mutation, including legacy MCP/CLI callers."""
+        if self._mutation_lease_depth:
+            self._mutation_lease_depth += 1
+            try:
+                yield
+            finally:
+                self._mutation_lease_depth -= 1
+            return
+
+        inherited_raw = os.environ.get("ENOSHIMA_VM_OPERATION_LOCK_FD")
+        inherited_fd: int | None = None
+        if inherited_raw is not None:
+            try:
+                inherited_fd = int(inherited_raw)
+                validate_global_mutation_lock_fd(inherited_fd)
+                fcntl.flock(inherited_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (OSError, ValueError, VMError) as error:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "invalid inherited VM operation lease; refusing mutation",
+                    {"error": str(error)},
+                ) from error
+
+        acquired_fd: int | None = None
+        if inherited_fd is None:
+            acquired_fd = open_global_mutation_lock()
+            try:
+                fcntl.flock(acquired_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                os.close(acquired_fd)
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "a durable VM operation owns the mutation lease; use its "
+                    "operation ID instead of a legacy MCP or CLI mutation",
+                ) from error
+
+        self._mutation_lease_depth = 1
+        try:
+            yield
+        finally:
+            self._mutation_lease_depth = 0
+            if acquired_fd is not None:
+                os.close(acquired_fd)
+
+    @staticmethod
+    def _recorded_domain_uuid(record: dict[str, Any]) -> str | None:
+        value = record.get("domain_uuid")
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            return str(uuid.UUID(value))
+        except ValueError:
+            return None
+
+    def _require_recorded_domain_uuid(self, record: dict[str, Any]) -> str:
+        domain_uuid = self._recorded_domain_uuid(record)
+        if domain_uuid is None:
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                "run record has no verifiable domain UUID; preserving the domain "
+                "and ephemeral storage",
+                {"run_id": record.get("run_id"), "domain": record.get("domain")},
+            )
+        return domain_uuid
+
+    @staticmethod
+    def _process_start_ticks(pid: int) -> int | None:
+        try:
+            raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        except OSError:
+            return None
+        closing = raw.rfind(")")
+        if closing < 0:
+            return None
+        fields = raw[closing + 2 :].split()
+        try:
+            return int(fields[19])
+        except (IndexError, ValueError):
+            return None
+
+    @staticmethod
+    def _process_executable(pid: int) -> Path | None:
+        try:
+            return Path(f"/proc/{pid}/exe").resolve(strict=True)
+        except OSError:
+            return None
+
+    @staticmethod
+    def _open_pidfd(pid: int) -> int | None:
+        """Pin a process identity, failing closed when pidfd is unavailable."""
+        libc = ctypes.CDLL(None, use_errno=True)
+        pidfd_open = getattr(libc, "pidfd_open", None)
+        if pidfd_open is None:
+            return None
+        descriptor = int(pidfd_open(pid, 0))
+        if descriptor >= 0:
+            return descriptor
+        error_number = ctypes.get_errno()
+        if error_number in {getattr(os, "ENOSYS", 38), getattr(os, "ESRCH", 3)}:
+            return None
+        raise OSError(error_number, os.strerror(error_number))
+
+    @staticmethod
+    def _pidfd_send_signal(descriptor: int, signum: int) -> bool:
+        libc = ctypes.CDLL(None, use_errno=True)
+        sender = getattr(libc, "pidfd_send_signal", None)
+        if sender is None:
+            return False
+        if sender(descriptor, signum, None, 0) == 0:
+            return True
+        error_number = ctypes.get_errno()
+        if error_number in {getattr(os, "ENOSYS", 38), getattr(os, "ESRCH", 3)}:
+            return False
+        raise OSError(error_number, os.strerror(error_number))
+
+    @classmethod
+    def _stop_watchdog(cls, record: dict[str, Any]) -> None:
+        """Signal only the exact watchdog identity recorded for this run."""
+        pid = record.get("watchdog_pid")
+        start_ticks = record.get("watchdog_start_ticks")
+        if not isinstance(pid, int) or pid <= 1 or not isinstance(start_ticks, int):
+            return
+        pidfd = cls._open_pidfd(pid)
+        if pidfd is None:
+            return
+        try:
+            if cls._process_start_ticks(pid) != start_ticks:
+                return
+            expected = f"enoshima_vm.watchdog {record.get('run_id')} "
+            try:
+                command = (
+                    Path(f"/proc/{pid}/cmdline")
+                    .read_bytes()
+                    .replace(b"\0", b" ")
+                    .decode(errors="replace")
+                )
+            except OSError:
+                return
+            if expected not in command:
+                return
+            cls._pidfd_send_signal(pidfd, signal.SIGTERM)
+        finally:
+            os.close(pidfd)
+
+    @classmethod
+    def _watchdog_identity_alive(cls, record: dict[str, Any]) -> bool:
+        pid = record.get("watchdog_pid")
+        start_ticks = record.get("watchdog_start_ticks")
+        if not isinstance(pid, int) or pid <= 1 or not isinstance(start_ticks, int):
+            return False
+        if cls._process_start_ticks(pid) != start_ticks:
+            return False
+        try:
+            command = (
+                Path(f"/proc/{pid}/cmdline")
+                .read_bytes()
+                .replace(b"\0", b" ")
+                .decode(errors="replace")
+            )
+        except OSError:
+            return False
+        return f"enoshima_vm.watchdog {record.get('run_id')} " in command
+
+    @classmethod
+    def _wait_watchdog_stopped(
+        cls, record: dict[str, Any], timeout_seconds: float = 10
+    ) -> None:
+        deadline = time.monotonic() + timeout_seconds
+        while cls._watchdog_identity_alive(record) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if cls._watchdog_identity_alive(record):
+            raise RuntimeError("recorded VM watchdog did not stop after SIGTERM")
+
+    @staticmethod
+    def _watchdog_unit_name(run_id: str) -> str:
+        require_run_id(run_id)
+        return f"{WATCHDOG_UNIT_PREFIX}{run_id}.service"
+
+    def _start_watchdog(
+        self, run_id: str, timeout_seconds: int
+    ) -> dict[str, object]:
+        """Start a VM deadline owner outside the disposable worker ancestry."""
+        if timeout_seconds <= 0:
+            raise ValueError("watchdog timeout must be positive")
+        unit = self._watchdog_unit_name(run_id)
+        uid = os.getuid()
+        home = Path(pwd.getpwuid(uid).pw_dir)
+        runtime = Path(f"/run/user/{uid}")
+        # Preserve the virtual-environment launcher path. Resolving this
+        # symlink selects the base interpreter and drops project dependencies.
+        watchdog_launcher = Path(sys.executable).absolute()
+        watchdog_executable = watchdog_launcher.resolve()
+        watchdog_pythonpath = (self.paths.project / "src").resolve()
+        cache_root = self.paths.cache.resolve()
+        state_root = self.paths.state.resolve()
+        runtime_max_seconds = (
+            timeout_seconds
+            + WATCHDOG_FINALIZATION_SECONDS
+            + WATCHDOG_RUNTIME_GRACE_SECONDS
+        )
+        run_dir = self._run_dir(run_id)
+        ready_path = confined_path(run_dir, run_dir / WATCHDOG_READY_NAME)
+        ready_path.unlink(missing_ok=True)
+        environment = {
+            "HOME": str(home),
+            "PATH": "/usr/bin",
+            "XDG_RUNTIME_DIR": str(runtime),
+            "DBUS_SESSION_BUS_ADDRESS": f"unix:path={runtime}/bus",
+        }
+        command = [
+            "/usr/bin/systemd-run",
+            "--user",
+            "--quiet",
+            "--collect",
+            "--service-type=exec",
+            f"--unit={unit}",
+            "--property=KillMode=control-group",
+            "--property=SendSIGKILL=yes",
+            "--property=Restart=no",
+            "--property=TimeoutStopSec=10s",
+            "--property=NoNewPrivileges=yes",
+            f"--property=RuntimeMaxSec={runtime_max_seconds}s",
+            f"--setenv=HOME={home}",
+            "--setenv=PATH=/usr/bin",
+            f"--setenv=XDG_RUNTIME_DIR={runtime}",
+            f"--setenv=XDG_CACHE_HOME={home / '.cache'}",
+            f"--setenv=XDG_CONFIG_HOME={home / '.config'}",
+            f"--setenv=ENOSHIMA_VM_CACHE_ROOT={cache_root}",
+            f"--setenv=ENOSHIMA_VM_STATE_ROOT={state_root}",
+            f"--setenv=PYTHONPATH={watchdog_pythonpath}",
+            "--setenv=PYTHONDONTWRITEBYTECODE=1",
+            str(watchdog_launcher),
+            "-m",
+            "enoshima_vm.watchdog",
+            run_id,
+            str(timeout_seconds),
+            self.uri,
+        ]
+        started = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+            check=False,
+            text=True,
+            env=environment,
+        )
+        if started.returncode:
+            raise subprocess.CalledProcessError(
+                started.returncode,
+                command,
+                output=started.stdout,
+                stderr=started.stderr,
+            )
+        def stop_unit() -> None:
+            subprocess.run(
+                ["/usr/bin/systemctl", "--user", "stop", unit],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+                env=environment,
+            )
+        try:
+            shown = subprocess.run(
+                [
+                    "/usr/bin/systemctl",
+                    "--user",
+                    "show",
+                    unit,
+                    "--property=MainPID",
+                    "--property=ActiveState",
+                    "--property=SubState",
+                ],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=15,
+                check=False,
+                text=True,
+                env=environment,
+            )
+            properties = dict(
+                line.split("=", 1)
+                for line in shown.stdout.splitlines()
+                if "=" in line
+            )
+            try:
+                pid = int(properties.get("MainPID", "0"))
+            except ValueError:
+                pid = 0
+            start_ticks = self._process_start_ticks(pid) if pid > 1 else None
+            executable = self._process_executable(pid) if pid > 1 else None
+            if (
+                shown.returncode
+                or properties.get("ActiveState") != "active"
+                or properties.get("SubState") != "running"
+                or pid <= 1
+                or start_ticks is None
+                or executable != watchdog_executable
+            ):
+                raise RuntimeError(
+                    "watchdog transient service did not expose a live main process: "
+                    + (shown.stderr.strip() or shown.stdout.strip() or unit)
+                )
+            deadline = time.monotonic() + WATCHDOG_READY_TIMEOUT_SECONDS
+            ready: dict[str, object] | None = None
+            while time.monotonic() < deadline:
+                if self._process_start_ticks(pid) != start_ticks:
+                    raise RuntimeError("watchdog exited before publishing readiness")
+                if ready_path.exists():
+                    metadata = ready_path.lstat()
+                    if (
+                        not stat.S_ISREG(metadata.st_mode)
+                        or stat.S_ISLNK(metadata.st_mode)
+                        or metadata.st_uid != uid
+                        or stat.S_IMODE(metadata.st_mode) != 0o600
+                    ):
+                        raise RuntimeError("watchdog readiness proof is unsafe")
+                    ready = json.loads(ready_path.read_text(encoding="utf-8"))
+                    break
+                time.sleep(0.05)
+            if ready is None:
+                raise RuntimeError("watchdog readiness proof timed out")
+            if (
+                ready.get("runId") != run_id
+                or ready.get("pid") != pid
+                or ready.get("pidStartTicks") != start_ticks
+                or ready.get("libvirtSession") != self.backend.session_identity()
+            ):
+                raise RuntimeError("watchdog readiness proof does not match this run")
+            if self._process_start_ticks(pid) != start_ticks:
+                raise RuntimeError("watchdog exited after publishing readiness")
+        except Exception:
+            stop_unit()
+            raise
+        return {
+            "watchdog_unit": unit,
+            "watchdog_pid": pid,
+            "watchdog_start_ticks": start_ticks,
+        }
+
+    @staticmethod
+    def _assert_loaded_harness_current() -> None:
+        current = _harness_source_digest()
+        if current != LOADED_HARNESS_SOURCE_DIGEST:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "MCP harness source changed while this worker was loading; retry "
+                "the MCP call so the durable proxy can start a new worker",
+                {
+                    "loaded_harness_digest": LOADED_HARNESS_SOURCE_DIGEST,
+                    "current_harness_digest": current,
+                },
+            )
 
     def _audit(
         self,
@@ -182,13 +738,27 @@ class VMService:
     def _record_path(self, run_id: str) -> Path:
         return self._run_dir(run_id) / "run.json"
 
-    def _write_record(self, record: dict[str, Any]) -> None:
+    def _write_record_unlocked(self, record: dict[str, Any]) -> None:
         path = self._record_path(record["run_id"])
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         temporary = path.with_suffix(".json.new")
         temporary.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
         temporary.chmod(0o600)
         os.replace(temporary, path)
+
+    def _write_record(self, record: dict[str, Any]) -> None:
+        run_dir = self._run_dir(record["run_id"])
+        with run_record_lock(run_dir):
+            path = self._record_path(record["run_id"])
+            if path.is_file():
+                current = json.loads(path.read_text(encoding="utf-8"))
+                if terminal_run_state_preserved(
+                    current.get("status"), record.get("status")
+                ):
+                    record.clear()
+                    record.update(current)
+                    return
+            self._write_record_unlocked(record)
 
     def load_record(self, run_id: str) -> dict[str, Any]:
         path = self._record_path(run_id)
@@ -198,7 +768,36 @@ class VMService:
         if record.get("run_id") != run_id:
             raise VMError(FailureCategory.HARNESS_ERROR, f"corrupt run record: {path}")
         require_domain(record["domain"])
+        if not record.get("synthetic") and record.get("libvirt_session") is not None:
+            expected_session = self.backend.session_identity()
+            recorded_session = record.get("libvirt_session")
+            if recorded_session != expected_session:
+                raise VMError(
+                    FailureCategory.HOST_INFRA_ERROR,
+                    "run record belongs to a different or unknown libvirt session; "
+                    "refusing domain or ephemeral-storage access",
+                    {
+                        "recorded_session": recorded_session,
+                        "expected_session": expected_session,
+                    },
+                )
         return record
+
+    def _require_recorded_libvirt_session(self, record: dict[str, Any]) -> None:
+        if record.get("synthetic"):
+            return
+        expected_session = self.backend.session_identity()
+        recorded_session = record.get("libvirt_session")
+        if recorded_session != expected_session:
+            raise VMError(
+                FailureCategory.HOST_INFRA_ERROR,
+                "destructive cleanup requires the exact recorded libvirt session; "
+                "preserving the domain and ephemeral storage",
+                {
+                    "recorded_session": recorded_session,
+                    "expected_session": expected_session,
+                },
+            )
 
     def _guest(self, record: dict[str, Any]) -> Guest:
         private_key = confined_path(
@@ -225,6 +824,7 @@ class VMService:
         checks["cache_root"] = str(self.paths.cache)
         return checks
 
+    @mutation_guard
     def create(
         self,
         suite_name: str,
@@ -236,6 +836,7 @@ class VMService:
         planned_source_tree_digest: str | None = None,
         planned_retry_digest: str | None = None,
     ) -> dict[str, Any]:
+        self._assert_loaded_harness_current()
         if source_ref != "working-tree":
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
@@ -244,18 +845,21 @@ class VMService:
         suite = load_suite(suite_name, self.paths)
         mode = load_verification_mode(verification_mode, self.paths)
         run_id = f"run-{uuid.uuid4().hex[:12]}"
+        domain_uuid = str(uuid.uuid4())
         run_dir = self._run_dir(run_id)
         run_dir.mkdir(mode=0o700, parents=True)
         record: dict[str, Any] = {
             "schema": 1,
             "run_id": run_id,
             "domain": f"{DOMAIN_PREFIX}{run_id}",
+            "domain_uuid": domain_uuid,
             "suite": suite.name,
             "status": "creating",
             "category": None,
             "created_at": utc_now(),
             "updated_at": utc_now(),
             "libvirt_uri": self.uri,
+            "libvirt_session": self.backend.session_identity(),
             "artifact_dir": str(run_dir / "artifacts"),
             "source_ref": source_ref,
             "verification_mode": mode.name,
@@ -269,6 +873,7 @@ class VMService:
             "planned_retry_digest": planned_retry_digest,
         }
         self._write_record(record)
+        watchdog_started = False
         try:
             if suite.name == "boot-security":
                 secret_dir = run_dir / "secrets"
@@ -288,11 +893,12 @@ class VMService:
                 definition.repository_snapshot,
             )
             spec = self.backend.prepare_domain(
-                run_dir, run_id, suite, base_image, cloud.seed
+                run_dir, run_id, domain_uuid, suite, base_image, cloud.seed
             )
             record.update(
                 {
                     "domain": spec.domain,
+                    "domain_uuid": spec.domain_uuid,
                     "base_image": str(base_image),
                     "overlay": str(spec.overlay),
                     "seed": str(spec.seed),
@@ -306,25 +912,15 @@ class VMService:
             if spec.boot_disk:
                 record["boot_disk"] = str(spec.boot_disk)
             self._write_record(record)
+            record.update(
+                self._start_watchdog(run_id, suite.timeout_minutes * 60)
+            )
+            watchdog_started = True
+            record["maximum_duration_minutes"] = suite.timeout_minutes
+            self._write_record(record)
             self.backend.define_and_start(spec)
             record["status"] = "running"
             record["updated_at"] = utc_now()
-            watchdog = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "enoshima_vm.watchdog",
-                    run_id,
-                    str(suite.timeout_minutes * 60),
-                    self.uri,
-                ],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            record["watchdog_pid"] = watchdog.pid
-            record["maximum_duration_minutes"] = suite.timeout_minutes
             self._write_record(record)
             self._audit("vm_create", run_id=run_id)
             return record
@@ -381,32 +977,59 @@ class VMService:
             record["create_error_artifact"] = str(create_error)
             self._write_record(record)
             cleanup_errors: list[str] = []
+            domain_removed = False
             try:
-                self.backend.destroy(record["domain"])
+                self.backend.destroy(
+                    record["domain"], str(record.get("domain_uuid", ""))
+                )
+                domain_removed = True
             except Exception as cleanup_error:
                 cleanup_errors.append(f"domain cleanup: {cleanup_error}")
-            try:
-                self._remove_ephemeral(record)
-            except Exception as cleanup_error:
-                cleanup_errors.append(f"ephemeral cleanup: {cleanup_error}")
+            if domain_removed and watchdog_started:
+                try:
+                    self._stop_watchdog(record)
+                    self._wait_watchdog_stopped(record)
+                except Exception as cleanup_error:
+                    cleanup_errors.append(f"watchdog cleanup: {cleanup_error}")
+            if domain_removed and not cleanup_errors:
+                try:
+                    self._remove_ephemeral(record)
+                except Exception as cleanup_error:
+                    cleanup_errors.append(f"ephemeral cleanup: {cleanup_error}")
+                else:
+                    record["status"] = "destroyed"
+                    record["destroyed_at"] = utc_now()
+                    record.pop("private_key", None)
+                    record.pop("recovery_key", None)
+                    record.pop("login_password", None)
             if cleanup_errors:
                 record["cleanup_errors"] = cleanup_errors
+            self._write_record(record)
+            try:
+                self._audit("vm_create", run_id=run_id, result="failed")
+            except Exception as audit_error:
+                record["audit_error"] = str(audit_error)
                 self._write_record(record)
-            self._audit("vm_create", run_id=run_id, result="failed")
             raise
 
+    @mutation_guard
     def wait(self, run_id: str, timeout_seconds: int = 1200) -> dict[str, Any]:
         record = self.load_record(run_id)
         guest = self._guest(record)
         guest.wait_ssh(min(timeout_seconds, 600))
         guest.wait_cloud_init(timeout_seconds)
-        self.backend.wait_guest_agent(record["domain"], min(timeout_seconds, 300))
+        self.backend.wait_guest_agent(
+            record["domain"],
+            self._require_recorded_domain_uuid(record),
+            min(timeout_seconds, 300),
+        )
         record["status"] = "ready"
         record["updated_at"] = utc_now()
         self._write_record(record)
         self._audit("vm_wait", run_id=run_id)
         return record
 
+    @mutation_guard
     def upload_worktree(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
         identity = self._guest(record).upload_worktree(
@@ -448,20 +1071,26 @@ class VMService:
         self._audit("vm_upload_worktree", run_id=run_id)
         return source
 
+    @mutation_guard
     def exec(
         self,
         run_id: str,
         argv: Sequence[str],
         *,
         timeout_seconds: int = 300,
+        idle_timeout_seconds: int | None = None,
     ) -> dict[str, object]:
         if not argv:
             raise VMError(FailureCategory.HARNESS_ERROR, "argv must not be empty")
         record = self.load_record(run_id)
         start = time.monotonic()
-        result = self._guest(record).exec(
-            list(argv), timeout=timeout_seconds, check=False
-        )
+        guest_options: dict[str, object] = {
+            "timeout": timeout_seconds,
+            "check": False,
+        }
+        if idle_timeout_seconds is not None:
+            guest_options["idle_timeout"] = idle_timeout_seconds
+        result = self._guest(record).exec(list(argv), **guest_options)
         duration_ms = int((time.monotonic() - start) * 1000)
         self._audit(
             "vm_exec",
@@ -477,6 +1106,7 @@ class VMService:
             "duration_ms": duration_ms,
         }
 
+    @mutation_guard
     def exec_bounded(
         self,
         run_id: str,
@@ -555,18 +1185,57 @@ class VMService:
         category: FailureCategory,
         *,
         timeout_seconds: int = 7200,
+        idle_timeout_seconds: int | None = None,
     ) -> dict[str, object]:
-        result = self.exec(record["run_id"], argv, timeout_seconds=timeout_seconds)
+        try:
+            result = self.exec(
+                record["run_id"],
+                argv,
+                timeout_seconds=timeout_seconds,
+                idle_timeout_seconds=idle_timeout_seconds,
+            )
+        except GuestCommandTimeout as error:
+            log = self._write_step_log(
+                record,
+                name,
+                {
+                    "exit_code": 124,
+                    "stdout": error.stdout,
+                    "stderr": error.stderr,
+                    "duration_ms": timeout_seconds * 1000,
+                },
+            )
+            details = dict(error.details or {})
+            details["log"] = str(log)
+            error.details = details
+            raise
         log = self._write_step_log(record, name, result)
         if result["exit_code"]:
+            failure_category = category
+            message = f"suite step failed: {name}"
+            details: dict[str, object] = {
+                "exit_code": result["exit_code"],
+                "log": str(log),
+                "stderr_tail": str(result["stderr"])[-4000:],
+            }
+            if category == FailureCategory.BOOTSTRAP_FAILED:
+                packages = _exhausted_aur_transport_packages(str(result["stderr"]))
+                if packages:
+                    failure_category = FailureCategory.HOST_INFRA_ERROR
+                    message = "AUR transport attempts were exhausted for: " + ", ".join(
+                        packages
+                    )
+                    details.update(
+                        {
+                            "underlying_category": str(category),
+                            "transport_kind": "aur-tls-eof",
+                            "packages": list(packages),
+                        }
+                    )
             raise VMError(
-                category,
-                f"suite step failed: {name}",
-                {
-                    "exit_code": result["exit_code"],
-                    "log": str(log),
-                    "stderr_tail": str(result["stderr"])[-4000:],
-                },
+                failure_category,
+                message,
+                details,
             )
         return result
 
@@ -1086,6 +1755,17 @@ class VMService:
                 "archive_sha256": metadata["archive_sha256"],
             }
 
+        # cloud-final starts concurrently with the first SSH connection.  It
+        # waits for this marker before deciding whether the immutable package
+        # cache can replace the network download phase.  Publish `seeded`
+        # first so the ready marker can never expose a partial extraction.
+        guest = self._guest(record)
+        if observation["status"] == "seeded":
+            guest.exec(["sudo", "touch", str(REMOTE_PACMAN_CACHE_SEEDED)])
+        else:
+            guest.exec(["sudo", "rm", "-f", "--", str(REMOTE_PACMAN_CACHE_SEEDED)])
+        guest.exec(["sudo", "touch", str(REMOTE_PACMAN_CACHE_SEED_READY)])
+
         record.setdefault("observations", {})["pacman_cache_seed"] = observation
         record["updated_at"] = utc_now()
         self._write_record(record)
@@ -1307,6 +1987,20 @@ class VMService:
             raise VMError(
                 FailureCategory.HARNESS_ERROR, "invalid bootstrap report name"
             )
+        repeat = values.get("repeat", False)
+        if not isinstance(repeat, bool):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "bootstrap repeat flag must be a boolean",
+            )
+        timeout_seconds = (
+            REPEAT_BOOTSTRAP_TIMEOUT_SECONDS if repeat else BOOTSTRAP_TIMEOUT_SECONDS
+        )
+        idle_timeout_seconds = (
+            REPEAT_BOOTSTRAP_IDLE_TIMEOUT_SECONDS
+            if repeat
+            else BOOTSTRAP_IDLE_TIMEOUT_SECONDS
+        )
         suite = load_suite(record["suite"], self.paths)
         remote_report = REMOTE_ARTIFACTS / f"bootstrap-{report}"
         inventory = f"{REMOTE_SOURCE}/ansible/inventory/hosts.yml"
@@ -1321,7 +2015,17 @@ class VMService:
             " --apply-boot-artifacts" if values.get("apply_boot_artifacts") else ""
         )
         command = (
-            f"cd {REMOTE_SOURCE} && ./bootstrap.sh --profile {suite.profile} "
+            f"cd {REMOTE_SOURCE} && "
+            f"MISE_INSTALL_MAX_ATTEMPTS={VM_MISE_INSTALL_MAX_ATTEMPTS} "
+            f"MISE_INSTALL_TIMEOUT_SECONDS={VM_MISE_INSTALL_TIMEOUT_SECONDS} "
+            "MISE_INSTALL_RETRY_DELAY_SECONDS="
+            f"{VM_MISE_INSTALL_RETRY_DELAY_SECONDS} "
+            f"CODEX_DESKTOP_BUILD_ATTEMPTS={VM_CODEX_DESKTOP_BUILD_ATTEMPTS} "
+            "CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS="
+            f"{VM_CODEX_DESKTOP_BUILD_TIMEOUT_SECONDS} "
+            "CODEX_DESKTOP_BUILD_RETRY_DELAY_SECONDS="
+            f"{VM_CODEX_DESKTOP_BUILD_RETRY_DELAY_SECONDS} "
+            f"./bootstrap.sh --profile {suite.profile} "
             f"--inventory {inventory} "
             f"--conflict-policy backup --report-dir {remote_report} "
             f"--report-format json{apply_boot_artifacts}"
@@ -1332,7 +2036,8 @@ class VMService:
                 f"bootstrap-{report}",
                 self._remote_shell(command),
                 FailureCategory.BOOTSTRAP_FAILED,
-                timeout_seconds=4 * 60 * 60,
+                timeout_seconds=timeout_seconds,
+                idle_timeout_seconds=idle_timeout_seconds,
             )
         finally:
             try:
@@ -1391,6 +2096,164 @@ class VMService:
             FailureCategory.POSTFLIGHT_FAILED,
         )
         record.setdefault("observations", {})["last_postflight"] = str(destination)
+        self._write_record(record)
+
+    def _seed_sysstat_schema_migration(self, record: dict[str, Any]) -> None:
+        minimum_seconds_before_midnight = REPEAT_BOOTSTRAP_TIMEOUT_SECONDS + 15 * 60
+        script = f"""
+set -euo pipefail
+
+day=$(date +%d)
+now=$(date +%s)
+next_midnight=$(date -d tomorrow +%s)
+((next_midnight - now > {minimum_seconds_before_midnight})) || {{
+  echo 'Not enough time remains before midnight for the sysstat fixture.' >&2
+  exit 1
+}}
+
+current=/var/log/sa/sa${{day}}
+managed_before=/var/log/sa/.enoshima-fixture-managed-before-sa${{day}}
+[[ -s $current && ! -e $managed_before ]]
+
+restore_fixture() {{
+  status=$?
+  if ((status != 0)); then
+    if [[ -e $managed_before ]]; then
+      mv -f -- "$managed_before" "$current"
+      chown root:root "$current"
+      chmod 0600 "$current"
+    fi
+    systemctl start sysstat-collect.timer >/dev/null 2>&1 || true
+  fi
+  exit "$status"
+}}
+trap restore_fixture EXIT
+
+systemctl stop sysstat-collect.timer sysstat-collect.service
+mv -- "$current" "$managed_before"
+timeout 30 /usr/lib/sa/sadc -F -L 1 1 "$current"
+chown root:root "$current"
+chmod 0600 "$current"
+
+set +e
+timeout 30 /usr/bin/sar -d -f "$current" >/dev/null 2>&1
+disk_status=$?
+timeout 30 /usr/bin/sar -m CPU,FREQ,TEMP -f "$current" >/dev/null 2>&1
+power_status=$?
+set -e
+((disk_status != 0 && disk_status != 124))
+((power_status != 0 && power_status != 124))
+
+fixture_sha=$(sha256sum "$current" | awk '{{print $1}}')
+[[ $fixture_sha =~ ^[0-9a-f]{{64}}$ ]]
+printf '{{"day":"%s","sha256":"%s"}}\n' "$day" "$fixture_sha"
+trap - EXIT
+"""
+        result = self._run_checked(
+            record,
+            "seed-sysstat-schema-migration",
+            ["sudo", "-n", "bash", "-ceu", script],
+            FailureCategory.HARNESS_ERROR,
+            timeout_seconds=120,
+        )
+        try:
+            fixture = json.loads(str(result["stdout"]))
+        except (KeyError, TypeError, json.JSONDecodeError) as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "sysstat schema fixture returned invalid metadata",
+            ) from error
+        if (
+            not isinstance(fixture, dict)
+            or not re.fullmatch(r"[0-9]{2}", str(fixture.get("day", "")))
+            or not re.fullmatch(r"[0-9a-f]{64}", str(fixture.get("sha256", "")))
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "sysstat schema fixture metadata is invalid",
+                {"fixture": fixture},
+            )
+        record.setdefault("observations", {})["sysstat_schema_fixture"] = fixture
+        self._write_record(record)
+
+    def _assert_sysstat_schema_migration(self, record: dict[str, Any]) -> None:
+        fixture = record.get("observations", {}).get("sysstat_schema_fixture")
+        if not isinstance(fixture, dict):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "sysstat schema fixture metadata is unavailable",
+            )
+        day = str(fixture.get("day", ""))
+        fixture_sha = str(fixture.get("sha256", ""))
+        if not re.fullmatch(r"[0-9]{2}", day) or not re.fullmatch(
+            r"[0-9a-f]{64}", fixture_sha
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "sysstat schema fixture metadata is invalid",
+            )
+
+        script = f"""
+set -euo pipefail
+
+day={shlex.quote(day)}
+expected_sha={shlex.quote(fixture_sha)}
+current=/var/log/sa/sa${{day}}
+managed_before=/var/log/sa/.enoshima-fixture-managed-before-sa${{day}}
+[[ -s $current ]]
+[[ $(sha256sum "$current" | awk '{{print $1}}') != "$expected_sha" ]]
+
+match=
+matches=0
+while IFS= read -r -d '' candidate; do
+  if [[ $(sha256sum "$candidate" | awk '{{print $1}}') == "$expected_sha" ]]; then
+    match=$candidate
+    ((matches += 1))
+  fi
+done < <(
+  find /var/log/sa -mindepth 2 -maxdepth 2 -type f \
+    -path "/var/log/sa/.enoshima-migrated-*/sa${{day}}" -print0
+)
+((matches == 1))
+archive_dir=$(dirname -- "$match")
+[[ $(stat -c '%U:%G:%a' "$archive_dir") == root:root:700 ]]
+[[ $(stat -c '%U:%G:%a' "$match") == root:root:600 ]]
+
+set +e
+timeout 30 /usr/bin/sar -d -f "$match" >/dev/null 2>&1
+disk_status=$?
+timeout 30 /usr/bin/sar -m CPU,FREQ,TEMP -f "$match" >/dev/null 2>&1
+power_status=$?
+set -e
+((disk_status != 0 && disk_status != 124))
+((power_status != 0 && power_status != 124))
+
+timeout 30 /usr/bin/sar -d -f "$current" >/dev/null
+timeout 30 /usr/bin/sar -m CPU,FREQ,TEMP -f "$current" >/dev/null
+systemctl is-enabled --quiet sysstat-collect.timer
+systemctl is-active --quiet sysstat-collect.timer
+[[ $(systemctl show sysstat-collect.service -P Result) == success ]]
+
+rm -f -- "$managed_before"
+printf '%s\n' "$match"
+"""
+        result = self._run_checked(
+            record,
+            "assert-sysstat-schema-migration",
+            ["sudo", "-n", "bash", "-ceu", script],
+            FailureCategory.POSTFLIGHT_FAILED,
+            timeout_seconds=120,
+        )
+        migrated_path = str(result["stdout"]).strip()
+        if not migrated_path.startswith("/var/log/sa/.enoshima-migrated-"):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "sysstat migration assertion returned an invalid archive path",
+                {"path": migrated_path},
+            )
+        record.setdefault("observations", {})["sysstat_schema_migrated_path"] = (
+            migrated_path
+        )
         self._write_record(record)
 
     def _assert_idempotent(self, record: dict[str, Any]) -> None:
@@ -1487,13 +2350,17 @@ class VMService:
                 },
             )
 
+    @mutation_guard
     def reboot(self, run_id: str, timeout_seconds: int = 600) -> dict[str, object]:
         record = self.load_record(run_id)
         guest = self._guest(record)
         before = guest.exec(["cat", "/proc/sys/kernel/random/boot_id"]).stdout.strip()
-        self.backend.reboot(record["domain"])
+        domain_uuid = self._require_recorded_domain_uuid(record)
+        self.backend.reboot(record["domain"], domain_uuid)
         guest.wait_ssh_cycle(timeout_seconds)
-        self.backend.wait_guest_agent(record["domain"], min(timeout_seconds, 300))
+        self.backend.wait_guest_agent(
+            record["domain"], domain_uuid, min(timeout_seconds, 300)
+        )
         after = guest.exec(["cat", "/proc/sys/kernel/random/boot_id"]).stdout.strip()
         if not before or before == after:
             raise VMError(
@@ -1600,7 +2467,9 @@ class VMService:
                     },
                 )
             guest.wait_ssh_cycle(600)
-            self.backend.wait_guest_agent(record["domain"], 300)
+            self.backend.wait_guest_agent(
+                record["domain"], self._require_recorded_domain_uuid(record), 300
+            )
             after = guest.exec(
                 ["cat", "/proc/sys/kernel/random/boot_id"]
             ).stdout.strip()
@@ -1649,10 +2518,29 @@ class VMService:
     @staticmethod
     def _hypr_command(command: str) -> list[str]:
         shell = (
-            "uid=$(id -u); "
-            "sig=$(find /run/user/$uid/hypr -mindepth 1 -maxdepth 1 -type d "
-            "-printf '%f\\n' 2>/dev/null | head -n1); "
-            'test -n "$sig"; export HYPRLAND_INSTANCE_SIGNATURE=$sig; '
+            "uid=$(id -u); runtime=/run/user/$uid; "
+            "export XDG_RUNTIME_DIR=$runtime; "
+            "manager_wayland=; manager_sig=; "
+            "while IFS= read -r entry; do case $entry in "
+            "WAYLAND_DISPLAY=*) manager_wayland=${entry#*=} ;; "
+            "HYPRLAND_INSTANCE_SIGNATURE=*) manager_sig=${entry#*=} ;; "
+            "esac; done < <(systemctl --user show-environment); "
+            "instances=$(hyprctl -j instances 2>/dev/null); "
+            'pair=$(printf %s "$instances" | jq -r '
+            '--arg sig "$manager_sig" --arg wl "$manager_wayland" '
+            "'map(select(.instance == $sig and .wl_socket == $wl)) | first | "
+            "if . == null then empty else [.instance, .wl_socket] | @tsv end'); "
+            'if test -z "$pair"; then pair=$(printf %s "$instances" | jq -r '
+            '\'map(select((.instance | type) == "string" and '
+            '(.wl_socket | type) == "string")) | sort_by(.time // 0) | last | '
+            "if . == null then empty else [.instance, .wl_socket] | @tsv end'); fi; "
+            'read -r sig wayland <<<"$pair"; '
+            "case $sig in ''|*[!A-Za-z0-9._-]*) exit 1 ;; esac; "
+            "case $wayland in wayland-[0-9]*) ;; *) exit 1 ;; esac; "
+            'test -S "$runtime/$wayland"; '
+            'test -S "$runtime/hypr/$sig/.socket.sock"; '
+            "export WAYLAND_DISPLAY=$wayland; "
+            "export HYPRLAND_INSTANCE_SIGNATURE=$sig; "
             'export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:'
             '/usr/local/bin:/usr/bin"; ' + command
         )
@@ -1739,8 +2627,13 @@ class VMService:
                 FailureCategory.HARNESS_ERROR,
                 "configure_virtual_displays requires a monitor list",
             )
-        guest = self._guest(record)
+        if not config["monitors"]:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "configure_virtual_displays requires at least one monitor",
+            )
         configured_names: set[str] = set()
+        validated_monitors: list[tuple[str, str, str, str]] = []
         for monitor in config["monitors"]:
             if not isinstance(monitor, dict):
                 raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor")
@@ -1750,6 +2643,12 @@ class VMService:
             scale = str(monitor.get("scale", ""))
             if not re.fullmatch(r"HEADLESS-[A-Z]+", name):
                 raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor name")
+            if name in configured_names:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "duplicate monitor name",
+                    {"name": name},
+                )
             configured_names.add(name)
             if not re.fullmatch(r"[0-9]{3,5}x[0-9]{3,5}@[0-9]{2,3}", mode):
                 raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor mode")
@@ -1757,33 +2656,210 @@ class VMService:
                 raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor position")
             if not re.fullmatch(r"[0-9](?:\.[0-9]+)?", scale):
                 raise VMError(FailureCategory.HARNESS_ERROR, "invalid monitor scale")
+            validated_monitors.append((name, mode, position, scale))
+
+        expected_topology: dict[str, dict[str, int | float]] = {}
+        for name, mode, position, scale in validated_monitors:
+            width, height = (int(value) for value in mode.split("@", 1)[0].split("x"))
+            x, y = (int(value) for value in position.split("x"))
+            expected_topology[name] = {
+                "width": width,
+                "height": height,
+                "x": x,
+                "y": y,
+                "scale": float(scale),
+            }
+
+        def topology_failures(monitors: list[dict[str, Any]]) -> list[str]:
+            by_name = {str(monitor.get("name", "")): monitor for monitor in monitors}
+            failures: list[str] = []
+            for name, expected in expected_topology.items():
+                actual = by_name.get(name)
+                if actual is None:
+                    failures.append(f"missing configured output {name}")
+                    continue
+                if bool(actual.get("disabled", False)):
+                    failures.append(f"configured output {name} is disabled")
+                    continue
+                for key in ("width", "height", "x", "y"):
+                    try:
+                        observed = int(actual.get(key, -1))
+                    except (TypeError, ValueError):
+                        observed = -1
+                    if observed != expected[key]:
+                        failures.append(
+                            f"{name}.{key}={observed}, expected {expected[key]}"
+                        )
+                try:
+                    observed_scale = float(actual.get("scale", 0))
+                except (TypeError, ValueError):
+                    observed_scale = 0
+                if abs(observed_scale - float(expected["scale"])) > 0.01:
+                    failures.append(
+                        f"{name}.scale={observed_scale}, expected {expected['scale']}"
+                    )
+            if config.get("disable_unlisted"):
+                for name, actual in by_name.items():
+                    if name not in configured_names and not bool(
+                        actual.get("disabled", False)
+                    ):
+                        failures.append(f"unlisted output {name} is active")
+            return failures
+
+        guest = self._guest(record)
+        deadline = time.monotonic() + 30
+        monitor_state: list[dict[str, Any]] = []
+        observed_names: set[str] = set()
+        last_query_error = ""
+        while time.monotonic() < deadline:
+            monitors = guest.exec_retryable(
+                self._hypr_command("hyprctl -j monitors all"),
+                timeout=10,
+                check=False,
+            )
+            if monitors.returncode:
+                last_query_error = monitors.stderr[-2000:]
+            else:
+                try:
+                    candidate = json.loads(monitors.stdout)
+                except json.JSONDecodeError as error:
+                    last_query_error = str(error)
+                else:
+                    if isinstance(candidate, list):
+                        monitor_state = [
+                            monitor
+                            for monitor in candidate
+                            if isinstance(monitor, dict)
+                        ]
+                        observed_names = {
+                            str(monitor.get("name", "")) for monitor in monitor_state
+                        }
+                        break
+                    else:
+                        last_query_error = "monitor response is not a list"
+            time.sleep(0.1)
+        else:
+            raise VMError(
+                FailureCategory.DESKTOP_SESSION_FAILED,
+                "cannot inspect virtual outputs before configuration",
+                {
+                    "observed": sorted(observed_names),
+                    "error": last_query_error,
+                },
+            )
+
+        # An identical live topology needs no compositor mutation. In
+        # particular, avoid reissuing output creation before this comparison:
+        # Hyprland can deliver that wl_output event after the command returns.
+        if not topology_failures(monitor_state):
+            consecutive_ready = 1
+            deadline = time.monotonic() + 30
+            while consecutive_ready < 10 and time.monotonic() < deadline:
+                time.sleep(0.1)
+                monitors = guest.exec_retryable(
+                    self._hypr_command("hyprctl -j monitors all"),
+                    timeout=10,
+                    check=False,
+                )
+                if monitors.returncode:
+                    consecutive_ready = 0
+                    last_query_error = monitors.stderr[-2000:]
+                    continue
+                try:
+                    candidate = json.loads(monitors.stdout)
+                except json.JSONDecodeError as error:
+                    consecutive_ready = 0
+                    last_query_error = str(error)
+                    continue
+                if not isinstance(candidate, list):
+                    consecutive_ready = 0
+                    last_query_error = "monitor response is not a list"
+                    continue
+                monitor_state = [
+                    monitor for monitor in candidate if isinstance(monitor, dict)
+                ]
+                observed_names = {
+                    str(monitor.get("name", "")) for monitor in monitor_state
+                }
+                if topology_failures(monitor_state):
+                    break
+                consecutive_ready += 1
+            if consecutive_ready >= 10:
+                return
+            if not topology_failures(monitor_state):
+                raise VMError(
+                    FailureCategory.DESKTOP_SESSION_FAILED,
+                    "cannot confirm a stable virtual output topology",
+                    {"error": last_query_error, "monitors": monitor_state},
+                )
+
+        # Only create outputs that are genuinely absent. Reissuing `output
+        # create` for an existing headless output can emit a delayed wl_output
+        # event after an otherwise successful monitor-rule batch.
+        missing_names = configured_names - observed_names
+        for name, _mode, _position, _scale in validated_monitors:
+            if name not in missing_names:
+                continue
             create = guest.exec(
                 self._hypr_command(f"hyprctl output create headless {name}"),
                 timeout=30,
                 check=False,
             )
-            if (
-                create.returncode
-                and "already" not in (create.stdout + create.stderr).lower()
-            ):
+            if create.returncode:
                 raise VMError(
                     FailureCategory.DESKTOP_SESSION_FAILED,
                     f"cannot create virtual output: {name}",
                     {"stderr": create.stderr[-2000:]},
                 )
-            monitor_expression = self._monitor_eval_expression(
-                name, mode, position, scale
-            )
-            self._run_checked(
-                record,
-                f"configure-{name.lower()}",
-                self._hypr_command(f"hyprctl eval '{monitor_expression}'"),
-                FailureCategory.DESKTOP_SESSION_FAILED,
-                timeout_seconds=30,
-            )
+
+        if missing_names:
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                monitors = guest.exec_retryable(
+                    self._hypr_command("hyprctl -j monitors all"),
+                    timeout=10,
+                    check=False,
+                )
+                if monitors.returncode:
+                    last_query_error = monitors.stderr[-2000:]
+                else:
+                    try:
+                        candidate = json.loads(monitors.stdout)
+                    except json.JSONDecodeError as error:
+                        last_query_error = str(error)
+                    else:
+                        if isinstance(candidate, list):
+                            monitor_state = [
+                                monitor
+                                for monitor in candidate
+                                if isinstance(monitor, dict)
+                            ]
+                            observed_names = {
+                                str(monitor.get("name", ""))
+                                for monitor in monitor_state
+                            }
+                            if configured_names.issubset(observed_names):
+                                break
+                        else:
+                            last_query_error = "monitor response is not a list"
+                time.sleep(0.1)
+            else:
+                raise VMError(
+                    FailureCategory.DESKTOP_SESSION_FAILED,
+                    "virtual outputs did not appear before configuration",
+                    {
+                        "expected": sorted(configured_names),
+                        "observed": sorted(observed_names),
+                        "error": last_query_error,
+                    },
+                )
+
+        monitor_expressions = [
+            self._monitor_eval_expression(name, mode, position, scale)
+            for name, mode, position, scale in validated_monitors
+        ]
         if config.get("disable_unlisted"):
-            monitors = guest.exec(self._hypr_command("hyprctl -j monitors"), timeout=30)
-            for monitor in json.loads(monitors.stdout):
+            for monitor in monitor_state:
                 output = str(monitor.get("name", ""))
                 if output in configured_names:
                     continue
@@ -1793,15 +2869,66 @@ class VMService:
                         "Hyprland reported an unsafe output name",
                         {"output": output},
                     )
-                self._run_checked(
-                    record,
-                    f"disable-{output.lower()}",
-                    self._hypr_command(
-                        f"hyprctl eval '{self._monitor_disable_expression(output)}'"
-                    ),
-                    FailureCategory.DESKTOP_SESSION_FAILED,
-                    timeout_seconds=30,
-                )
+                monitor_expressions.append(self._monitor_disable_expression(output))
+
+        # Register every rule in one compositor turn. Hyprland coalesces their
+        # deferred monitor-state refresh so wildcard geometry cannot win
+        # between per-output updates.
+        monitor_batch = "; ".join(monitor_expressions)
+        if monitor_batch:
+            self._run_checked(
+                record,
+                "configure-virtual-displays",
+                self._hypr_command("hyprctl eval " + shlex.quote(monitor_batch)),
+                FailureCategory.DESKTOP_SESSION_FAILED,
+                timeout_seconds=30,
+            )
+
+        # Retain disable rules for already inactive outputs and require a quiet
+        # window after applying them. A single successful sample can precede a
+        # delayed wl_output event and wildcard preferred/auto reconfiguration.
+        deadline = time.monotonic() + 30
+        last_topology: list[dict[str, Any]] = []
+        last_failures: list[str] = []
+        consecutive_ready = 0
+        while time.monotonic() < deadline:
+            monitors = guest.exec_retryable(
+                self._hypr_command("hyprctl -j monitors all"),
+                timeout=10,
+                check=False,
+            )
+            if monitors.returncode:
+                last_failures = [monitors.stderr[-2000:]]
+                time.sleep(0.1)
+                continue
+            try:
+                candidate = json.loads(monitors.stdout)
+            except json.JSONDecodeError as error:
+                last_failures = [str(error)]
+                time.sleep(0.1)
+                continue
+            if not isinstance(candidate, list):
+                last_failures = ["monitor response is not a list"]
+                time.sleep(0.1)
+                continue
+            last_topology = [
+                monitor for monitor in candidate if isinstance(monitor, dict)
+            ]
+            failures = topology_failures(last_topology)
+            if not failures:
+                consecutive_ready += 1
+                if consecutive_ready >= 10:
+                    return
+            else:
+                consecutive_ready = 0
+                last_failures = failures
+            time.sleep(0.1)
+
+        raise VMError(
+            FailureCategory.DESKTOP_SESSION_FAILED,
+            "virtual outputs did not reach the requested topology",
+            {"failures": last_failures, "monitors": last_topology},
+        )
 
     @staticmethod
     def _monitor_eval_expression(
@@ -1967,10 +3094,35 @@ class VMService:
         *,
         present: bool,
         timeout_seconds: float = 20,
+        service_unit: str | None = None,
+        allow_transparent: bool = False,
+        max_width: float | None = None,
+        max_height: float | None = None,
     ) -> None:
+        if service_unit not in {None, "hyprshell.service", "vicinae.service"}:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "invalid UI review layer service",
+            )
+        if (max_width is None) != (max_height is None) or (
+            max_width is not None and (max_width <= 0 or max_height <= 0)
+        ):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "invalid UI review layer geometry bound",
+            )
+        if not present and (allow_transparent or max_width is not None):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "absent UI layers cannot have appearance constraints",
+            )
         guest = self._guest(record)
         deadline = time.monotonic() + timeout_seconds
         last_layers: object = {}
+        last_service_pid = 0
+        last_mapping_state: bool | None = None
+        last_mapping_response = ""
+        consecutive_ready = 0
         while time.monotonic() < deadline:
             result = guest.exec_retryable(
                 self._hypr_command("hyprctl -j layers"), timeout=15, check=False
@@ -1983,13 +3135,14 @@ class VMService:
                 output_layers = (
                     last_layers.get(output, {}) if isinstance(last_layers, dict) else {}
                 )
-                namespaces: set[str] = set()
+                output_known = isinstance(last_layers, dict) and output in last_layers
+                matching_layers: list[dict[str, object]] = []
 
                 def visit(value: object) -> None:
                     if isinstance(value, dict):
                         candidate = value.get("namespace")
-                        if isinstance(candidate, str):
-                            namespaces.add(candidate)
+                        if candidate == namespace:
+                            matching_layers.append(value)
                         for child in value.values():
                             visit(child)
                     elif isinstance(value, list):
@@ -1997,8 +3150,75 @@ class VMService:
                             visit(child)
 
                 visit(output_layers)
-                if (namespace in namespaces) is present:
-                    return
+                if output_known:
+                    last_mapping_state, last_mapping_response = (
+                        self._ui_review_layer_mapping_state(
+                            record,
+                            namespace,
+                            output,
+                        )
+                    )
+                else:
+                    last_mapping_state = None
+                    last_mapping_response = "output is absent from hyprctl layers"
+
+                if not present:
+                    ready = last_mapping_state is False
+                    consecutive_ready = consecutive_ready + 1 if ready else 0
+                    if consecutive_ready >= 2:
+                        return
+                    time.sleep(0.1)
+                    continue
+                if present:
+
+                    def numeric(value: object) -> float:
+                        try:
+                            return float(value)
+                        except (TypeError, ValueError):
+                            return 0.0
+
+                    if service_unit is not None:
+                        service = guest.exec_retryable(
+                            self._hypr_command(
+                                "systemctl --user show --property MainPID --value "
+                                + service_unit
+                            ),
+                            timeout=10,
+                            check=False,
+                        )
+                        if service.returncode == 0:
+                            try:
+                                last_service_pid = int(service.stdout.strip())
+                            except ValueError:
+                                last_service_pid = 0
+                    ready = (
+                        any(
+                            numeric(layer.get("w")) > 0
+                            and numeric(layer.get("h")) > 0
+                            and (
+                                allow_transparent
+                                or "alpha" not in layer
+                                or numeric(layer.get("alpha")) > 0
+                            )
+                            and (
+                                max_width is None
+                                or (
+                                    numeric(layer.get("w")) <= max_width
+                                    and numeric(layer.get("h")) <= max_height
+                                )
+                            )
+                            and numeric(layer.get("pid")) > 0
+                            and (
+                                service_unit is None
+                                or numeric(layer.get("pid")) == last_service_pid
+                            )
+                            for layer in matching_layers
+                        )
+                        and last_mapping_state is True
+                    )
+                    consecutive_ready = consecutive_ready + 1 if ready else 0
+                    if consecutive_ready >= 2:
+                        return
             time.sleep(0.1)
         expected = "appear" if present else "disappear"
         raise VMError(
@@ -2009,8 +3229,112 @@ class VMService:
                 "namespace": namespace,
                 "expected_present": present,
                 "layers": last_layers,
+                "mapped": last_mapping_state,
+                "mapping_probe": last_mapping_response,
+                "service_unit": service_unit,
+                "service_main_pid": last_service_pid,
+                "allow_transparent": allow_transparent,
+                "max_width": max_width,
+                "max_height": max_height,
             },
         )
+
+    def _ui_review_layer_mapping_state(
+        self,
+        record: dict[str, Any],
+        namespace: str,
+        output: str | None = None,
+    ) -> tuple[bool | None, str]:
+        """Return the compositor's mapped state for a production layer.
+
+        Hyprland 0.55's ``hyprctl -j layers`` output retains an unmapped layer
+        shell resource, including its previous geometry, so namespace presence
+        is not a visibility contract.  The Lua layer object exposes the actual
+        ``mapped`` bit.  ``hyprctl eval`` does not return Lua values, therefore
+        a private error sentinel represents the mapped branch; a plain ``ok``
+        means that no matching layer is mapped.  Any other response is
+        inconclusive and must never satisfy an appearance or disappearance
+        postcondition.
+        """
+
+        if not re.fullmatch(r"[A-Za-z0-9._:+-]+", namespace):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "invalid UI review layer namespace",
+            )
+        if output is not None and not re.fullmatch(r"[A-Za-z0-9._:+-]+", output):
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "invalid UI review layer output",
+            )
+
+        filters = [f"namespace = {json.dumps(namespace)}"]
+        if output is not None:
+            filters.insert(0, f"monitor = {json.dumps(output)}")
+        sentinel = "__ENOSHIMA_UI_LAYER_MAPPED__"
+        lua = (
+            "for _, layer in ipairs(hl.get_layers({ "
+            + ", ".join(filters)
+            + " })) do "
+            + f"if layer.mapped then error({json.dumps(sentinel)}) end "
+            + "end"
+        )
+        result = self._guest(record).exec_retryable(
+            self._hypr_command("hyprctl eval " + shlex.quote(lua)),
+            timeout=15,
+            check=False,
+        )
+        response = "\n".join(
+            value.strip() for value in (result.stdout, result.stderr) if value.strip()
+        )
+        if result.returncode != 0:
+            return None, response
+        if sentinel in response:
+            return True, response
+        if response == "ok":
+            return False, response
+        return None, response
+
+    def _ui_review_layer_present(
+        self,
+        record: dict[str, Any],
+        namespace: str,
+        output: str | None = None,
+    ) -> bool:
+        mapped, _response = self._ui_review_layer_mapping_state(
+            record,
+            namespace,
+            output,
+        )
+        if mapped is not None:
+            return mapped
+
+        # Fail closed when the Lua probe is temporarily unavailable.  Raw
+        # namespace presence can over-report a hidden GTK layer, but treating
+        # it as present merely triggers the bounded close path; it can never
+        # make cleanup pass.
+        result = self._guest(record).exec_retryable(
+            self._hypr_command("hyprctl -j layers"), timeout=15, check=False
+        )
+        if result.returncode != 0:
+            return True
+        try:
+            layers: object = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return True
+        if output is not None and isinstance(layers, dict):
+            layers = layers.get(output, {})
+
+        def contains(value: object) -> bool:
+            if isinstance(value, dict):
+                if value.get("namespace") == namespace:
+                    return True
+                return any(contains(child) for child in value.values())
+            if isinstance(value, list):
+                return any(contains(child) for child in value)
+            return False
+
+        return contains(layers)
 
     def _prepare_login(self, record: dict[str, Any]) -> None:
         secret_dir = self._run_dir(record["run_id"]) / "secrets"
@@ -2070,9 +3394,16 @@ class VMService:
                 "application autostart suppression is not allowed for this suite",
             )
         autostart_dir = "/home/kentakang/.config/autostart"
+        vicinae_suppression = (
+            "systemctl --user mask --force --now vicinae.service; "
+            if suite == "ui-review"
+            else ""
+        )
         shell = (
-            "set -eu; "
-            f"install -d -m 0700 {autostart_dir}; "
+            "set -eu; export XDG_RUNTIME_DIR=/run/user/$(id -u); "
+            "systemctl --user mask --force --now codex-update-manager.service; "
+            + vicinae_suppression
+            + f"install -d -m 0700 {autostart_dir}; "
             "for entry in discord slack kakaotalk; do "
             f"printf '[Desktop Entry]\\nType=Application\\nHidden=true\\n' "
             f">{autostart_dir}/$entry.desktop; "
@@ -2094,6 +3425,8 @@ class VMService:
         ] = {
             "suite": suite,
             "applications": ["discord", "slack", "kakaotalk"],
+            "services": ["codex-update-manager.service"]
+            + (["vicinae.service"] if suite == "ui-review" else []),
         }
 
     def _login_greetd(self, record: dict[str, Any]) -> None:
@@ -2118,10 +3451,13 @@ class VMService:
         # greetd protocol's two phases: create the managed-user session, then
         # answer the PAM password prompt. Typing before the first Enter only
         # reaches the focused Continue button and leaves the password empty.
-        self.backend.send_keys(record["domain"], ["KEY_ENTER"])
+        domain_uuid = self._require_recorded_domain_uuid(record)
+        self.backend.send_keys(record["domain"], domain_uuid, ["KEY_ENTER"])
         time.sleep(1)
         self.backend.type_text(
-            record["domain"], password_path.read_text(encoding="utf-8").strip()
+            record["domain"],
+            domain_uuid,
+            password_path.read_text(encoding="utf-8").strip(),
         )
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
@@ -2130,6 +3466,8 @@ class VMService:
             )
             if result.returncode == 0:
                 self._assert_login_keyring(record)
+                self._assert_deterministic_login_suppression(record)
+                self._start_ui_review_vicinae_after_keyring(record)
                 record.setdefault("observations", {})["greetd_login_at"] = utc_now()
                 self._write_record(record)
                 return
@@ -2144,17 +3482,89 @@ class VMService:
             {"journal": journal.stdout[-8000:]},
         )
 
+    def _assert_deterministic_login_suppression(
+        self,
+        record: dict[str, Any],
+    ) -> None:
+        suite = str(record.get("suite", ""))
+        if suite not in {"ui-review", "reboot"}:
+            return
+        services = ["codex-update-manager.service"]
+        if suite == "ui-review":
+            services.append("vicinae.service")
+        self._run_checked(
+            record,
+            f"assert-{suite}-autostart-suppression",
+            self._hypr_command(
+                "for service in "
+                + " ".join(services)
+                + '; do test "$(systemctl --user is-enabled "$service")" '
+                "= masked; done"
+            ),
+            (
+                FailureCategory.VISUAL_ASSERTION_FAILED
+                if suite == "ui-review"
+                else FailureCategory.REBOOT_FAILED
+            ),
+            timeout_seconds=15,
+        )
+
+    def _start_ui_review_vicinae_after_keyring(
+        self,
+        record: dict[str, Any],
+    ) -> None:
+        """Serialize the ui-review keyring probe ahead of Vicinae startup."""
+        if str(record.get("suite", "")) != "ui-review":
+            return
+        shell = (
+            "set -u; uid=$(id -u); export XDG_RUNTIME_DIR=/run/user/$uid; "
+            "export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus; "
+            "systemctl --user unmask vicinae.service; "
+            "systemctl --user reset-failed vicinae.service; "
+            "start_status=0; "
+            "timeout --signal=TERM --kill-after=2s 25s "
+            "systemctl --user start vicinae.service || start_status=$?; "
+            "if (( start_status != 0 )); then "
+            "printf 'Vicinae serialized startup failed: status=%s\\n' "
+            '"$start_status" >&2; '
+            "timeout 5s systemctl --user status vicinae.service --no-pager "
+            ">&2 || true; "
+            "timeout 5s journalctl --user -u vicinae.service -b -n 120 "
+            "--no-pager -o short-monotonic >&2 || true; "
+            'exit "$start_status"; fi; '
+            "timeout --signal=TERM --kill-after=1s 3s "
+            "vicinae ping >/dev/null"
+        )
+        self._run_checked(
+            record,
+            "start-ui-review-vicinae-after-keyring",
+            self._hypr_command(shell),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=40,
+        )
+        record.setdefault("observations", {})[
+            "ui_review_vicinae_started_after_keyring_probe"
+        ] = True
+
     def _assert_login_keyring(self, record: dict[str, Any]) -> None:
         guest = self._guest(record)
+        probe_id = f"{record['run_id']}-{secrets.token_hex(8)}"
         shell = (
             "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
             "export XDG_RUNTIME_DIR=$runtime; "
             "export DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus; "
-            "timeout 12s bash -c 'printf vm-probe | secret-tool store "
-            "--label=Enoshima-VM-Probe enoshima-vm probe >/dev/null; "
-            "value=$(secret-tool lookup enoshima-vm probe); "
+            "timeout 12s bash -c 'set -euo pipefail; "
+            f"probe_id={shlex.quote(probe_id)}; "
+            "cleanup() { secret-tool clear enoshima-vm probe "
+            'probe-id "$probe_id" >/dev/null 2>&1 || true; }; '
+            "trap cleanup EXIT; "
+            "printf vm-probe | secret-tool store "
+            "--label=Enoshima-VM-Probe enoshima-vm probe "
+            'probe-id "$probe_id" >/dev/null; '
+            "value=$(secret-tool lookup enoshima-vm probe "
+            'probe-id "$probe_id"); '
             'test "$value" = vm-probe; '
-            "secret-tool clear enoshima-vm probe >/dev/null'"
+            "cleanup; trap - EXIT'"
         )
         result = guest.exec(self._remote_shell(shell), timeout=20, check=False)
         clients_result = guest.exec_retryable(
@@ -2333,6 +3743,7 @@ class VMService:
             )
         return width, height
 
+    @mutation_guard
     def screenshot(
         self,
         run_id: str,
@@ -2347,9 +3758,6 @@ class VMService:
         remote = REMOTE_ARTIFACTS / "screenshots" / f"{name}.png"
         output_argument = f" -o {output}" if output else ""
         command = self._hypr_command(
-            "wayland=$(find /run/user/$(id -u) -maxdepth 1 -type s "
-            "-name 'wayland-*' -printf '%f\\n' | head -n1); "
-            'test -n "$wayland"; export WAYLAND_DISPLAY=$wayland; '
             f"install -d -m 0700 {remote.parent}; grim{output_argument} {remote}"
         )
         result = self._guest(record).exec_retryable(command, timeout=60, check=False)
@@ -2707,8 +4115,7 @@ class VMService:
         shell = (
             "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
             "export XDG_RUNTIME_DIR=$runtime; "
-            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
-            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            'wayland=$WAYLAND_DISPLAY; test -n "$wayland"; '
             "pkill -TERM -x qs 2>/dev/null || true; "
             "for attempt in $(seq 1 50); do pgrep -x qs >/dev/null || break; "
             "sleep 0.1; done; ! pgrep -x qs >/dev/null; "
@@ -2772,8 +4179,7 @@ class VMService:
         shell = (
             "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
             "export XDG_RUNTIME_DIR=$runtime; "
-            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
-            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            'wayland=$WAYLAND_DISPLAY; test -n "$wayland"; '
             f"nohup env LANG={locale} LC_ALL={locale} GDK_BACKEND=wayland "
             "ENOSHIMA_VM_UI_TEST=1 XDG_RUNTIME_DIR=$runtime "
             "WAYLAND_DISPLAY=$wayland /usr/bin/enoshima-greeter "
@@ -2883,8 +4289,7 @@ class VMService:
             "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
             "export XDG_RUNTIME_DIR=$runtime; "
             "export DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus; "
-            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
-            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            'wayland=$WAYLAND_DISPLAY; test -n "$wayland"; '
             f"nohup env LANG={locale} LC_ALL={locale} XDG_RUNTIME_DIR=$runtime "
             "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus WAYLAND_DISPLAY=$wayland "
             "/home/kentakang/.local/bin/enoshima-swaync "
@@ -3021,7 +4426,12 @@ class VMService:
                 f"rm -f {pid_path}; fi"
             )
             self._guest(record).exec(self._remote_shell(shell), timeout=15, check=False)
-        self.backend.pointer_button(record["domain"], "left", False)
+        self.backend.pointer_button(
+            record["domain"],
+            self._require_recorded_domain_uuid(record),
+            "left",
+            False,
+        )
 
     def _compile_titlebar_fixture(self, record: dict[str, Any]) -> None:
         binary = REMOTE_ROOT / "ui-fixture" / "titlebar-window"
@@ -3051,8 +4461,7 @@ class VMService:
         shell = (
             "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
             "export XDG_RUNTIME_DIR=$runtime; "
-            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
-            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            'wayland=$WAYLAND_DISPLAY; test -n "$wayland"; '
             f"nohup env LANG={locale} LC_ALL={locale} GDK_BACKEND=wayland "
             f"XDG_RUNTIME_DIR=$runtime WAYLAND_DISPLAY=$wayland {binary} "
             f">{log_path} 2>&1 </dev/null & echo $! >{pid_path}"
@@ -3193,7 +4602,12 @@ class VMService:
                 timeout=10,
             )
             if state == "pressed":
-                self.backend.pointer_button(record["domain"], "left", True)
+                self.backend.pointer_button(
+                    record["domain"],
+                    self._require_recorded_domain_uuid(record),
+                    "left",
+                    True,
+                )
         return primary
 
     def _stop_desktop_shell_review(self, record: dict[str, Any]) -> None:
@@ -3212,6 +4626,996 @@ class VMService:
                 f"rm -f {pid_path}; fi"
             )
             self._guest(record).exec(self._remote_shell(shell), timeout=15, check=False)
+
+    def _run_vicinae_control(
+        self,
+        record: dict[str, Any],
+        name: str,
+        action: str,
+    ) -> None:
+        command = (
+            "status=0; "
+            "timeout --signal=TERM --kill-after=1s 5s "
+            f"{action} </dev/null >/dev/null 2>&1 || status=$?; "
+            "case $status in "
+            "0) ;; "
+            "124) printf '%s\\n' 'Vicinae accepted the request but its IPC reply "
+            "did not close within 5 seconds.' ;; "
+            "*) exit $status ;; "
+            "esac"
+        )
+        self._run_checked(
+            record,
+            f"control-command-palette-{name}",
+            [
+                "timeout",
+                "--signal=TERM",
+                "--kill-after=1s",
+                "8s",
+                *self._hypr_command(command),
+            ],
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=10,
+        )
+
+    def _stop_command_palette_review(self, record: dict[str, Any]) -> None:
+        guest = self._guest(record)
+        if self._ui_review_layer_present(record, "vicinae"):
+            self._run_vicinae_control(record, "close", "vicinae close")
+            self._wait_for_ui_review_layer(
+                record,
+                "HEADLESS-UI",
+                "vicinae",
+                present=False,
+            )
+        guest.exec(
+            self._hypr_command(
+                "wl-copy --clear >/dev/null 2>&1 || true; "
+                "rm -f -- $HOME/.local/share/vicinae/scripts/"
+                "executable_ui-review-long-title.sh"
+            ),
+            timeout=15,
+            check=False,
+        )
+
+    def _prepare_command_palette_review_scripts(
+        self,
+        record: dict[str, Any],
+        state: str,
+    ) -> str:
+        title = (
+            "Review Retained Performance History Across a Very Long Incident Timeline"
+        )
+        path = "$HOME/.local/share/vicinae/scripts/executable_ui-review-long-title.sh"
+        if state != "long-title":
+            self._guest(record).exec(
+                self._hypr_command(f"rm -f -- {path}"),
+                timeout=15,
+                check=False,
+            )
+            return "Resources"
+        script = (
+            "#!/usr/bin/env bash\n"
+            "# @vicinae.schemaVersion 1\n"
+            f"# @vicinae.title {title}\n"
+            "# @vicinae.mode silent\n"
+            "# @vicinae.packageName Performance Qualification\n"
+            "# @vicinae.icon utilities-system-monitor\n"
+            "# @vicinae.description Deterministic long-title visual evidence.\n"
+            '# @vicinae.exec ["/bin/bash"]\n\n'
+            "exit 0\n"
+        )
+        command = (
+            "install -d -m 0755 $HOME/.local/share/vicinae/scripts; "
+            f"printf %s {shlex.quote(script)} > {path}; chmod 0755 {path}"
+        )
+        self._run_checked(
+            record,
+            "prepare-command-palette-long-title",
+            self._hypr_command(command),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=15,
+        )
+        return title
+
+    @staticmethod
+    def _temporary_user_manager_locale(locale: str) -> str:
+        return (
+            "old_lang=$(systemctl --user show-environment | "
+            "grep -m1 '^LANG=' || true); "
+            "old_lc_all=$(systemctl --user show-environment | "
+            "grep -m1 '^LC_ALL=' || true); "
+            "restore_manager_locale() { "
+            "systemctl --user unset-environment LANG LC_ALL; "
+            'test -z "$old_lang" || systemctl --user set-environment "$old_lang"; '
+            'test -z "$old_lc_all" || systemctl --user set-environment "$old_lc_all"; '
+            "}; trap restore_manager_locale EXIT; "
+            f"systemctl --user set-environment LANG={locale} LC_ALL={locale}; "
+        )
+
+    def _restart_command_palette_service(
+        self,
+        record: dict[str, Any],
+        locale: str,
+        expected_command: str,
+        restart: bool,
+    ) -> None:
+        if locale not in {"en_US.UTF-8", "ko_KR.UTF-8"}:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "unsupported command-palette review locale",
+            )
+        locale_setup = self._temporary_user_manager_locale(locale) if restart else ""
+        service_setup = (
+            "systemctl --user reset-failed vicinae.service; "
+            "restart_status=0; "
+            "timeout --signal=TERM --kill-after=2s 25s "
+            "systemctl --user restart vicinae.service || restart_status=$?; "
+            "if (( restart_status != 0 )); then "
+            'diagnose_vicinae restart "$restart_status" not-run; '
+            'exit "$restart_status"; fi; '
+            if restart
+            else ""
+        )
+        readiness_probe = (
+            "deadline=$((SECONDS + 15)); "
+            "while (( SECONDS < deadline )); do "
+            "ping_status=0; "
+            "ping_output=$(timeout --signal=TERM --kill-after=1s 1s "
+            "vicinae ping 2>&1) || ping_status=$?; "
+            "if (( ping_status == 0 )); then "
+            "command_status=0; "
+            "command_output=$(timeout --signal=TERM --kill-after=1s 1s "
+            "vicinae cmd list --json 2>&1) || command_status=$?; "
+            "if (( command_status == 0 )) && "
+            f"grep -Fq -- {shlex.quote(expected_command)} "
+            '<<<"$command_output"; then ready=true; break; fi; '
+            "fi; sleep 0.1; done; "
+            "if [[ $ready == true ]]; then exit 0; fi; "
+            'diagnose_vicinae readiness "$ping_status" '
+            '"$command_status"; exit 1'
+        )
+        probe_state = (
+            "ping_status=not-run; command_status=not-run; "
+            "ping_output=; command_output=; ready=false; "
+        )
+        diagnostics = (
+            "diagnose_vicinae() { "
+            "printf 'Vicinae %s failure: ping_status=%s command_status=%s "
+            f'expected_command=%s\\n\' "$1" "$2" "$3" '
+            f"{shlex.quote(expected_command)} >&2; "
+            "printf 'last ping output: %.2000s\\n' \"$ping_output\" >&2; "
+            "printf 'last command output: %.4000s\\n' \"$command_output\" >&2; "
+            "timeout 5s systemctl --user show vicinae.service --no-pager "
+            "--property=ActiveState --property=SubState --property=Result "
+            "--property=ExecMainPID >&2 || true; "
+            "timeout 5s systemctl --user status vicinae.service --no-pager "
+            ">&2 || true; "
+            "timeout 5s journalctl --user -u vicinae.service -b -n 120 "
+            "--no-pager -o short-monotonic >&2 || true; "
+            "timeout 5s ps -C vicinae -o pid=,stat=,etime=,time=,cmd= "
+            ">&2 || true; }; "
+        )
+        command = (
+            "set -u; uid=$(id -u); export XDG_RUNTIME_DIR=/run/user/$uid; "
+            + locale_setup
+            + probe_state
+            + diagnostics
+            + service_setup
+            + readiness_probe
+        )
+        self._run_checked(
+            record,
+            f"restart-command-palette-{locale}",
+            self._hypr_command(command),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=55,
+        )
+
+    def _start_command_palette_review(
+        self,
+        record: dict[str, Any],
+        locale: str,
+        state: str,
+        output: str,
+        restart_service: bool,
+    ) -> None:
+        allowed_states = {
+            "default",
+            "search",
+            "clipboard-history",
+            "emoji-picker",
+            "empty-results",
+            "long-title",
+        }
+        if state not in allowed_states:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "invalid command-palette review state",
+            )
+        expected_command = self._prepare_command_palette_review_scripts(record, state)
+        self._restart_command_palette_service(
+            record,
+            locale,
+            expected_command,
+            restart_service,
+        )
+        guest = self._guest(record)
+        if state == "clipboard-history":
+            guest.exec(
+                self._hypr_command(
+                    "printf 'Enoshima clipboard review' | "
+                    "wl-copy >/dev/null 2>&1; sleep 0.5"
+                ),
+                timeout=15,
+            )
+            action = "vicinae deeplink 'vicinae://launch/clipboard/history?toggle=true'"
+        elif state == "emoji-picker":
+            action = (
+                "vicinae deeplink 'vicinae://launch/core/search-emojis?toggle=true'"
+            )
+        else:
+            action = "vicinae toggle"
+        # Vicinae can wait indefinitely for the IPC reply after the
+        # server has already accepted a deeplink.  Bound only that control
+        # client; the compositor layer below remains the authoritative result.
+        self._run_vicinae_control(record, state, action)
+        self._wait_for_ui_review_layer(
+            record,
+            output,
+            "vicinae",
+            present=True,
+            service_unit="vicinae.service",
+        )
+        # Layer mapping precedes the search field's keyboard-focus handoff by
+        # a short Qt event-loop turn. Avoid racing the production window.
+        time.sleep(0.3)
+        query = {
+            "search": "resources",
+            "empty-results": "zzzzzzzz",
+            "long-title": "retained performance history",
+        }.get(state)
+        if query is not None:
+            self.backend.type_text(
+                record["domain"],
+                self._require_recorded_domain_uuid(record),
+                query,
+                submit=False,
+            )
+            time.sleep(0.5)
+
+    def _restart_overview_service(
+        self,
+        record: dict[str, Any],
+        locale: str | None = None,
+    ) -> None:
+        locale_setup = ""
+        if locale is not None:
+            if locale not in {"en_US.UTF-8", "ko_KR.UTF-8"}:
+                raise VMError(
+                    FailureCategory.HARNESS_ERROR,
+                    "unsupported overview review locale",
+                )
+            locale_setup = self._temporary_user_manager_locale(locale)
+        # Hyprshell normally reloads the complete Hyprland configuration on
+        # every process start.  During UI review that would replace the exact
+        # named-output rules above with the workstation wildcard rule and can
+        # resurrect Virtual-1 at its preferred mode.  The reviewed package
+        # extends its existing no-listeners mode to suppress that one eager
+        # reload.  Scope the flag to this service spawn and restore the user
+        # manager environment as soon as the process has inherited it.
+        restore_locale = "restore_manager_locale; " if locale is not None else ""
+        topology_owner_setup = (
+            "old_no_listeners=$(systemctl --user show-environment | "
+            "grep -m1 '^HYPRSHELL_NO_LISTENERS=' || true); "
+            "restore_overview_manager_environment() { "
+            + restore_locale
+            + "systemctl --user unset-environment HYPRSHELL_NO_LISTENERS; "
+            'test -z "$old_no_listeners" || systemctl --user '
+            'set-environment "$old_no_listeners"; '
+            "}; trap restore_overview_manager_environment EXIT; "
+            "systemctl --user set-environment HYPRSHELL_NO_LISTENERS=1; "
+        )
+        command = (
+            "set -eu; uid=$(id -u); export XDG_RUNTIME_DIR=/run/user/$uid; "
+            + locale_setup
+            + topology_owner_setup
+            + "systemctl --user reset-failed hyprshell.service; "
+            + "systemctl --user restart hyprshell.service; "
+            + "for attempt in $(seq 1 100); do "
+            + "systemctl --user is-active --quiet hyprshell.service && "
+            + "hyprshell config check >/dev/null 2>&1 && exit 0; "
+            + "sleep 0.1; done; exit 1"
+        )
+        self._run_checked(
+            record,
+            "restart-overview-service",
+            self._hypr_command(command),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+
+    def _stop_overview_service(self, record: dict[str, Any]) -> None:
+        """Quiesce Hyprshell before changing the compositor output topology.
+
+        Hyprshell owns one GTK window per GDK monitor.  Removing a wl_output
+        while those objects are alive can race GTK's Wayland dispatch before
+        Hyprshell's delayed monitor reload runs.  A bounded systemd stop makes
+        topology reconciliation deterministic and leaves restart policy to the
+        caller once every output has settled.
+        """
+
+        command = (
+            "set -eu; uid=$(id -u); export XDG_RUNTIME_DIR=/run/user/$uid; "
+            "systemctl --user stop hyprshell.service; "
+            "for attempt in $(seq 1 100); do "
+            "state=$(systemctl --user show hyprshell.service "
+            "--property=ActiveState --value); "
+            "main_pid=$(systemctl --user show hyprshell.service "
+            "--property=MainPID --value); "
+            'case "$state:$main_pid" in inactive:0|failed:0) exit 0;; esac; '
+            "sleep 0.1; done; exit 1"
+        )
+        self._run_checked(
+            record,
+            "stop-overview-service-for-topology",
+            self._hypr_command(command),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+
+    def _stop_overview_review(
+        self,
+        record: dict[str, Any],
+        *,
+        best_effort: bool = False,
+    ) -> None:
+        cleanup_errors: list[str] = []
+
+        def cleanup_step(label: str, action: Callable[[], Any]) -> Any:
+            try:
+                return action()
+            except Exception as error:
+                cleanup_errors.append(f"{label}: {error}")
+                return None
+
+        overview_present = cleanup_step(
+            "inspect overview layer",
+            lambda: self._ui_review_layer_present(record, "hyprshell_overview"),
+        )
+        launcher_present = cleanup_step(
+            "inspect overview launcher",
+            lambda: self._ui_review_layer_present(record, "hyprshell_launcher"),
+        )
+        if overview_present is not False or launcher_present is not False:
+            cleanup_step(
+                "close overview layers",
+                lambda: self._close_overview_layers(record),
+            )
+        guest = self._guest(record)
+        monitors = guest.exec_retryable(
+            self._hypr_command("hyprctl -j monitors"), timeout=15, check=False
+        )
+        aux_present = True
+        if monitors.returncode != 0:
+            cleanup_errors.append(
+                "inspect outputs: hyprctl monitors failed: " + monitors.stderr[-1000:]
+            )
+        else:
+            try:
+                monitor_state = json.loads(monitors.stdout)
+                if not isinstance(monitor_state, list):
+                    raise TypeError("monitor response is not a list")
+            except (json.JSONDecodeError, TypeError):
+                cleanup_errors.append("inspect outputs: invalid monitor JSON")
+            else:
+                aux_present = any(
+                    str(monitor.get("name", "")) == "HEADLESS-AUX"
+                    for monitor in monitor_state
+                    if isinstance(monitor, dict)
+                )
+
+        workspaces = guest.exec_retryable(
+            self._hypr_command("hyprctl -j workspaces"), timeout=15, check=False
+        )
+        managed_workspaces: list[int] = []
+        if workspaces.returncode != 0:
+            cleanup_errors.append(
+                "inspect workspaces: hyprctl workspaces failed: "
+                + workspaces.stderr[-1000:]
+            )
+        else:
+            try:
+                workspace_state = json.loads(workspaces.stdout)
+                if not isinstance(workspace_state, list):
+                    raise TypeError("workspace response is not a list")
+                observed_workspaces: set[int] = set()
+                for workspace in workspace_state:
+                    if not isinstance(workspace, dict):
+                        continue
+                    try:
+                        workspace_id = int(workspace.get("id", -1))
+                    except (TypeError, ValueError):
+                        continue
+                    if 1 <= workspace_id <= 5:
+                        observed_workspaces.add(workspace_id)
+                managed_workspaces = sorted(observed_workspaces)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                cleanup_errors.append("inspect workspaces: invalid workspace JSON")
+
+        # Restore every extant review workspace even when the auxiliary output
+        # already disappeared or an earlier layer-close step failed.
+        for workspace in managed_workspaces:
+            cleanup_step(
+                f"restore workspace {workspace}",
+                lambda workspace=workspace: guest.exec(
+                    self._hypr_command(
+                        self._hypr_dispatch(
+                            "hl.dsp.workspace.move({ workspace = "
+                            f'{workspace}, monitor = "HEADLESS-UI" }})'
+                        )
+                    ),
+                    timeout=10,
+                    check=True,
+                ),
+            )
+        if aux_present:
+            # The overview fixture opens real GTK clients on the auxiliary
+            # output.  Close them before withdrawing wl_output; otherwise
+            # Ghostty can still be dispatching that output while GTK tears it
+            # down and crash in the Wayland event queue.
+            cleanup_step(
+                "close fixture clients before output removal",
+                lambda: self._close_ui_review_clients(record),
+            )
+            cleanup_step(
+                "stop overview service before output removal",
+                lambda: self._stop_overview_service(record),
+            )
+            cleanup_step(
+                "remove auxiliary output",
+                lambda: guest.exec(
+                    self._hypr_command("hyprctl output remove HEADLESS-AUX"),
+                    timeout=15,
+                    check=True,
+                ),
+            )
+        deadline = time.monotonic() + 20
+        last_monitors: list[dict[str, Any]] = []
+        last_workspaces: list[dict[str, Any]] = []
+        while time.monotonic() < deadline:
+            monitors = guest.exec_retryable(
+                self._hypr_command("hyprctl -j monitors"), timeout=10, check=False
+            )
+            workspaces = guest.exec_retryable(
+                self._hypr_command("hyprctl -j workspaces"), timeout=10, check=False
+            )
+            if monitors.returncode == 0 and workspaces.returncode == 0:
+                try:
+                    monitor_state = json.loads(monitors.stdout)
+                    workspace_state = json.loads(workspaces.stdout)
+                    if not isinstance(monitor_state, list) or not isinstance(
+                        workspace_state, list
+                    ):
+                        raise TypeError("topology response is not a list")
+                except (json.JSONDecodeError, TypeError):
+                    time.sleep(0.1)
+                    continue
+                last_monitors = monitor_state
+                last_workspaces = workspace_state
+                aux_absent = all(
+                    str(monitor.get("name", "")) != "HEADLESS-AUX"
+                    for monitor in last_monitors
+                    if isinstance(monitor, dict)
+                )
+                workspace_outputs: dict[int, str] = {}
+                for workspace in last_workspaces:
+                    if not isinstance(workspace, dict):
+                        continue
+                    try:
+                        workspace_id = int(workspace.get("id", -1))
+                    except (TypeError, ValueError):
+                        continue
+                    if 1 <= workspace_id <= 5:
+                        workspace_outputs[workspace_id] = str(
+                            workspace.get("monitor", "")
+                        )
+                workspaces_restored = all(
+                    monitor == "HEADLESS-UI" for monitor in workspace_outputs.values()
+                )
+                if aux_absent and workspaces_restored:
+                    if cleanup_errors:
+                        raise VMError(
+                            FailureCategory.VISUAL_ASSERTION_FAILED,
+                            "overview cleanup completed with recoverable errors",
+                            {
+                                "errors": cleanup_errors,
+                                "best_effort": best_effort,
+                            },
+                        )
+                    return
+            time.sleep(0.1)
+        cleanup_errors.append("topology postcondition did not settle")
+        raise VMError(
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            "overview topology did not cleanly restore",
+            {
+                "monitors": last_monitors,
+                "workspaces": last_workspaces,
+                "errors": cleanup_errors,
+                "best_effort": best_effort,
+            },
+        )
+
+    def _close_overview_layers(self, record: dict[str, Any]) -> None:
+        """Close Hyprshell without racing its asynchronous monitor reload.
+
+        ``OpenOverview`` is a toggle.  A monitor/config reload can set the
+        internal model to closed a moment before Hyprland unmaps the old layer
+        surfaces, so choosing the toggle from layer presence can reopen the
+        overview.  Escape is idempotent for the production launcher: it closes
+        an open model and cannot reopen a model that is already closing.  If
+        two real keyboard attempts do not settle, reload the production model
+        in place so its locale-bearing service process is preserved.
+        """
+
+        errors: list[str] = []
+        for attempt in range(1, 3):
+            self.backend.send_keys(
+                record["domain"],
+                self._require_recorded_domain_uuid(record),
+                ["KEY_ESC"],
+            )
+            try:
+                self._wait_for_ui_review_layer(
+                    record,
+                    "HEADLESS-UI",
+                    "hyprshell_overview",
+                    present=False,
+                    timeout_seconds=5,
+                )
+                self._wait_for_ui_review_layer(
+                    record,
+                    "HEADLESS-UI",
+                    "hyprshell_launcher",
+                    present=False,
+                    timeout_seconds=5,
+                )
+                return
+            except VMError as error:
+                errors.append(f"escape attempt {attempt}: {error}")
+
+        self._run_checked(
+            record,
+            "close-overview-layer",
+            self._hypr_command(
+                "for attempt in $(seq 1 10); do "
+                "timeout --signal=TERM --kill-after=1s 2s "
+                "hyprshell socat '\"Reload\"' && exit 0; "
+                "sleep 0.1; done; exit 1"
+            ),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+        try:
+            self._wait_for_ui_review_layer(
+                record,
+                "HEADLESS-UI",
+                "hyprshell_overview",
+                present=False,
+            )
+            self._wait_for_ui_review_layer(
+                record,
+                "HEADLESS-UI",
+                "hyprshell_launcher",
+                present=False,
+            )
+        except VMError as error:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "production overview layers did not close",
+                {"errors": [*errors, f"reload fallback: {error}"]},
+            ) from error
+
+    def _open_overview_layers(
+        self,
+        record: dict[str, Any],
+        state: str,
+        output: str,
+    ) -> None:
+        self._run_checked(
+            record,
+            f"open-overview-{state}",
+            self._hypr_command(
+                "for attempt in $(seq 1 100); do "
+                "hyprshell socat '\"OpenOverview\"' && exit 0; "
+                "sleep 0.1; done; exit 1"
+            ),
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            timeout_seconds=30,
+        )
+        self._wait_for_ui_review_layer(
+            record,
+            output,
+            "hyprshell_overview",
+            present=True,
+            service_unit="hyprshell.service",
+        )
+        # The Enoshima source patch installs the key controller on the mapped
+        # overview itself. Controller-only mode must never create the old
+        # transparent launcher layer; real Tab/arrow cue changes below prove
+        # that the visible surface owns input.
+        self._wait_for_ui_review_layer(
+            record,
+            output,
+            "hyprshell_launcher",
+            present=False,
+        )
+        if state == "multi-monitor":
+            self._wait_for_ui_review_layer(
+                record,
+                "HEADLESS-AUX",
+                "hyprshell_overview",
+                present=True,
+                service_unit="hyprshell.service",
+            )
+
+    def _acknowledge_overview_navigation(
+        self,
+        record: dict[str, Any],
+        state: str,
+        scale: float,
+        output: str,
+    ) -> None:
+        keys = {
+            "selected-window": ["KEY_TAB"],
+            "selected-workspace": ["KEY_RIGHT"],
+            "multi-monitor": ["KEY_RIGHT"],
+        }.get(state)
+        if keys is None:
+            return
+
+        navigation_output = "HEADLESS-AUX" if state == "multi-monitor" else output
+        navigation_scale = (
+            overview_auxiliary_scale(scale) if state == "multi-monitor" else scale
+        )
+        before_name = f"overview-{state}-input-before"
+        after_name = f"overview-{state}-input-after"
+        captured_paths: set[Path] = set()
+        acknowledged = False
+        before_cue: dict[str, object] = {}
+        after_cue: dict[str, object] = {}
+        changed_pixels = 0
+        minimum_changed_pixels = max(64, round(200 * navigation_scale**2))
+        attempts = 2
+        try:
+            for attempt in range(attempts):
+                before = self._capture_stable_ui(
+                    record,
+                    before_name,
+                    navigation_output,
+                    timeout_seconds=5,
+                )
+                before_path = Path(str(before["path"]))
+                captured_paths.add(before_path)
+                before_mask = self._overview_navigation_cue_mask(
+                    before_path, state, navigation_scale
+                )
+                before_cue = self._overview_navigation_cue_metrics(before_mask)
+
+                self.backend.send_keys(
+                    record["domain"], self._require_recorded_domain_uuid(record), keys
+                )
+                deadline = time.monotonic() + 5
+                while True:
+                    after = self._capture_stable_ui(
+                        record,
+                        after_name,
+                        navigation_output,
+                        timeout_seconds=5,
+                    )
+                    after_path = Path(str(after["path"]))
+                    captured_paths.add(after_path)
+                    after_mask = self._overview_navigation_cue_mask(
+                        after_path, state, navigation_scale
+                    )
+                    after_cue = self._overview_navigation_cue_metrics(after_mask)
+                    if len(after_mask) != len(before_mask):
+                        raise VMError(
+                            FailureCategory.VISUAL_ASSERTION_FAILED,
+                            "overview navigation cue dimensions changed",
+                            {
+                                "state": state,
+                                "before_bytes": len(before_mask),
+                                "after_bytes": len(after_mask),
+                            },
+                        )
+                    changed_pixels = sum(
+                        before_value != after_value
+                        for before_value, after_value in zip(
+                            before_mask, after_mask, strict=True
+                        )
+                    )
+                    if changed_pixels >= minimum_changed_pixels:
+                        acknowledged = True
+                        return
+                    if time.monotonic() >= deadline:
+                        break
+                    time.sleep(0.1)
+
+                if attempt + 1 < attempts:
+                    # Reopen before retrying so a delayed first input cannot
+                    # become an unintended double navigation. Preserve the
+                    # review topology here: the full stop path restores every
+                    # workspace to HEADLESS-UI and removes HEADLESS-AUX, while
+                    # this retry only needs fresh production layer surfaces.
+                    self._close_overview_layers(record)
+                    self._open_overview_layers(record, state, output)
+        finally:
+            if acknowledged:
+                for path in captured_paths:
+                    path.unlink(missing_ok=True)
+                self._guest(record).exec(
+                    [
+                        "rm",
+                        "-f",
+                        str(REMOTE_ARTIFACTS / "screenshots" / f"{before_name}.png"),
+                        str(REMOTE_ARTIFACTS / "screenshots" / f"{after_name}.png"),
+                    ],
+                    timeout=10,
+                    check=False,
+                )
+        raise VMError(
+            FailureCategory.VISUAL_ASSERTION_FAILED,
+            "overview navigation did not produce its approved selection cue",
+            {
+                "state": state,
+                "output": navigation_output,
+                "scale": navigation_scale,
+                "attempts": attempts,
+                "cue": (
+                    "cyan-window-edge"
+                    if state == "selected-window"
+                    else "violet-workspace-inset"
+                ),
+                "minimum_changed_pixels": minimum_changed_pixels,
+                "changed_pixels": changed_pixels,
+                "before_cue": before_cue,
+                "after_cue": after_cue,
+                "screenshots": sorted(str(path) for path in captured_paths),
+            },
+        )
+
+    @staticmethod
+    def _overview_navigation_cue_mask(
+        image: Path,
+        state: str,
+        scale: float,
+    ) -> bytes:
+        color = "#62d8ff" if state == "selected-window" else "#9a5cff"
+        width, height = (
+            int(value) for value in physical_mode(scale).split("@", 1)[0].split("x")
+        )
+        y = min(height - 1, round(52 * scale))
+        return subprocess.run(
+            [
+                "magick",
+                str(image),
+                "-crop",
+                f"{width}x{height - y}+0+{y}",
+                "+repage",
+                "-alpha",
+                "off",
+                "-fill",
+                "black",
+                "+opaque",
+                color,
+                "-fill",
+                "white",
+                "-opaque",
+                color,
+                "-depth",
+                "8",
+                "gray:-",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
+
+    @staticmethod
+    def _overview_navigation_cue_metrics(mask: bytes) -> dict[str, object]:
+        return {
+            "sha256": sha256(mask).hexdigest(),
+            "selected_pixels": sum(value != 0 for value in mask),
+        }
+
+    def _start_overview_review(
+        self,
+        record: dict[str, Any],
+        locale: str,
+        state: str,
+        scale: float,
+        output: str,
+        restart_service: bool,
+    ) -> None:
+        allowed_states = {
+            "all-workspaces",
+            "selected-window",
+            "selected-workspace",
+            "multi-monitor",
+            "no-windows",
+            "reduced-motion",
+            "reduced-transparency",
+        }
+        if locale not in {"en_US.UTF-8", "ko_KR.UTF-8"} or state not in allowed_states:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "invalid overview review state",
+            )
+        mode = physical_mode(scale)
+        monitors = [
+            {
+                "name": output,
+                "mode": mode,
+                "position": "0x0",
+                "scale": f"{scale:g}",
+            }
+        ]
+        if state == "multi-monitor":
+            auxiliary_scale = overview_auxiliary_scale(scale)
+            monitors.append(
+                {
+                    "name": "HEADLESS-AUX",
+                    "mode": physical_mode(auxiliary_scale),
+                    "position": "1280x0",
+                    "scale": f"{auxiliary_scale:g}",
+                }
+            )
+        if restart_service:
+            self._stop_overview_service(record)
+            self._configure_virtual_displays(
+                record,
+                {"disable_unlisted": True, "monitors": monitors},
+            )
+            self._restart_overview_service(record, locale)
+        guest = self._guest(record)
+        found: dict[str, dict[str, Any]] = {}
+        titles = [
+            "app.tsx",
+            "Documentation — Enoshima workstation integration reference",
+            "Remote Desktop",
+            "Meeting Notes",
+            "성능 기록",
+        ]
+        if state != "no-windows":
+            log_root = REMOTE_ARTIFACTS / "ui-review"
+            commands: list[str] = []
+            for index, title in enumerate(titles, start=1):
+                commands.append(
+                    f"nohup env LANG={locale} LC_ALL={locale} ghostty "
+                    "--cursor-opacity=0 "
+                    "--confirm-close-surface=false "
+                    f"--title={shlex.quote(title)} -e sh -lc "
+                    f"{shlex.quote('exec sleep infinity')} "
+                    f">{log_root}/overview-{index}.log 2>&1 </dev/null &"
+                )
+            self._run_checked(
+                record,
+                f"start-overview-clients-{state}",
+                self._hypr_command(" ".join(commands)),
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                timeout_seconds=30,
+            )
+            deadline = time.monotonic() + 30
+            last_clients: list[dict[str, Any]] = []
+            while time.monotonic() < deadline:
+                result = guest.exec_retryable(
+                    self._hypr_command("hyprctl -j clients"),
+                    timeout=10,
+                    check=False,
+                )
+                if result.returncode == 0:
+                    last_clients = json.loads(result.stdout)
+                    found = {
+                        str(client.get("title", "")): client
+                        for client in last_clients
+                        if str(client.get("title", "")) in titles
+                    }
+                    if len(found) == len(titles):
+                        break
+                time.sleep(0.1)
+            else:
+                raise VMError(
+                    FailureCategory.VISUAL_ASSERTION_FAILED,
+                    "overview review clients did not open",
+                    {"found": sorted(found), "clients": last_clients},
+                )
+            for workspace, title in enumerate(titles, start=1):
+                address = str(found[title]["address"])
+                guest.exec(
+                    self._hypr_command(
+                        self._hypr_dispatch(
+                            "hl.dsp.window.move({ workspace = "
+                            f"{workspace}, follow = false, "
+                            f'window = "address:{address}" }})'
+                        )
+                    ),
+                    timeout=10,
+                )
+            if state == "multi-monitor":
+                for workspace in (1, 2, 4):
+                    guest.exec(
+                        self._hypr_command(
+                            self._hypr_dispatch(
+                                "hl.dsp.workspace.move({ workspace = "
+                                f'{workspace}, monitor = "HEADLESS-AUX" }})'
+                            )
+                        ),
+                        timeout=10,
+                    )
+                workspaces = guest.exec_retryable(
+                    self._hypr_command("hyprctl -j workspaces"),
+                    timeout=15,
+                )
+                workspace_outputs = {
+                    int(workspace.get("id", -1)): str(workspace.get("monitor", ""))
+                    for workspace in json.loads(workspaces.stdout)
+                    if isinstance(workspace, dict)
+                }
+                expected_outputs = {
+                    1: "HEADLESS-AUX",
+                    2: "HEADLESS-AUX",
+                    3: output,
+                    4: "HEADLESS-AUX",
+                    5: output,
+                }
+                if any(
+                    workspace_outputs.get(workspace) != expected
+                    for workspace, expected in expected_outputs.items()
+                ):
+                    raise VMError(
+                        FailureCategory.VISUAL_ASSERTION_FAILED,
+                        "overview workspaces did not reach the intended outputs",
+                        {
+                            "expected": expected_outputs,
+                            "actual": workspace_outputs,
+                        },
+                    )
+                # Exercise keyboard navigation on the mixed-DPI output that
+                # the cue assertion captures. Keeping the active workspace on
+                # HEADLESS-UI would leave keyboard ownership on the primary
+                # overview while requiring a selection change on HEADLESS-AUX.
+                active_workspace = 1
+            else:
+                active_workspace = 1
+            active_title = titles[active_workspace - 1]
+            guest.exec(
+                self._hypr_command(
+                    self._hypr_dispatch(
+                        f"hl.dsp.focus({{ workspace = {active_workspace} }})"
+                    )
+                ),
+                timeout=10,
+            )
+            guest.exec(
+                self._hypr_command(
+                    self._hypr_dispatch(
+                        'hl.dsp.focus({ window = "address:'
+                        + str(found[active_title]["address"])
+                        + '" })'
+                    )
+                ),
+                timeout=10,
+            )
+        else:
+            guest.exec(
+                self._hypr_command(
+                    self._hypr_dispatch("hl.dsp.focus({ workspace = 1 })")
+                ),
+                timeout=10,
+            )
+        self._open_overview_layers(record, state, output)
+        self._acknowledge_overview_navigation(record, state, scale, output)
 
     @staticmethod
     def _ui_review_cleanup_targets(clients: list[object]) -> list[dict[str, Any]]:
@@ -3282,6 +5686,8 @@ class VMService:
         clients from tiling a greeter or obscuring a shell capture while still
         preserving the reserved XEmbed tray infrastructure.
         """
+        self._stop_command_palette_review(record)
+        self._stop_overview_review(record)
         self._stop_auth_review(record)
         self._stop_notification_review(record)
         self._stop_titlebar_review(record)
@@ -3301,7 +5707,9 @@ class VMService:
             )
             group = groups.setdefault(key, {"states": set(), "hashes": set()})
             group["states"].add(str(capture.get("state", "")))
-            group["hashes"].add(str(capture.get("image_sha256", "")))
+            group["hashes"].add(
+                str(capture.get("semantic_sha256") or capture.get("image_sha256", ""))
+            )
         return [
             {
                 "surface": surface,
@@ -3312,6 +5720,155 @@ class VMService:
             for (surface, locale, scale), group in sorted(groups.items())
             if len(group["states"]) > 1 and len(group["hashes"]) == 1
         ]
+
+    @staticmethod
+    def _ui_review_semantic_pixels(
+        image: Path,
+        surface: str,
+        scale: float,
+    ) -> bytes:
+        width, height = (
+            int(value) for value in physical_mode(scale).split("@", 1)[0].split("x")
+        )
+        if surface == "command-palette":
+            crop_width = min(width, round(790 * scale))
+            palette_height = min(height, round(500 * scale))
+            search_height = min(palette_height - 1, round(68 * scale))
+            x = max(0, (width - crop_width) // 2)
+            y = max(0, (height - palette_height) // 2) + search_height
+            crop_height = palette_height - search_height
+        elif surface == "overview":
+            x = 0
+            y = min(height - 1, round(52 * scale))
+            crop_width = width
+            crop_height = height - y
+        else:
+            x = 0
+            y = 0
+            crop_width = width
+            crop_height = height
+        return subprocess.run(
+            [
+                "magick",
+                str(image),
+                "-crop",
+                f"{crop_width}x{crop_height}+{x}+{y}",
+                "+repage",
+                "-colorspace",
+                "Gray",
+                "-resize",
+                "25%",
+                "-depth",
+                "8",
+                "gray:-",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
+
+    @classmethod
+    def _ui_review_semantic_metrics(
+        cls,
+        image: Path,
+        surface: str,
+        scale: float,
+    ) -> dict[str, object]:
+        pixels = cls._ui_review_semantic_pixels(image, surface, scale)
+        if not pixels:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "UI review semantic region is empty",
+                {"image": str(image), "surface": surface, "scale": scale},
+            )
+        mean = sum(pixels) / len(pixels)
+        normalized_stddev = (
+            sum((value - mean) ** 2 for value in pixels) / len(pixels)
+        ) ** 0.5 / 255
+        return {
+            "sha256": sha256(pixels).hexdigest(),
+            "unique_gray_values": len(set(pixels)),
+            "normalized_standard_deviation": round(normalized_stddev, 8),
+        }
+
+    @classmethod
+    def _ui_review_semantic_sha256(
+        cls,
+        image: Path,
+        surface: str,
+        scale: float,
+    ) -> str:
+        return str(cls._ui_review_semantic_metrics(image, surface, scale)["sha256"])
+
+    @staticmethod
+    def _ui_review_identical_required_pairs(
+        captures: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        required_pairs = {
+            "command-palette": (
+                ("default", "search"),
+                ("search", "empty-results"),
+                ("search", "long-title"),
+                ("clipboard-history", "emoji-picker"),
+            ),
+            "overview": (
+                ("all-workspaces", "selected-window"),
+                ("all-workspaces", "selected-workspace"),
+                ("selected-window", "selected-workspace"),
+                ("all-workspaces", "multi-monitor"),
+                ("all-workspaces", "no-windows"),
+            ),
+        }
+        indexed_captures = {
+            (
+                str(capture.get("surface_id", "")),
+                str(capture.get("locale", "")),
+                float(capture.get("scale", 0)),
+                str(capture.get("state", "")),
+            ): capture
+            for capture in captures
+        }
+        failures: list[dict[str, object]] = []
+        environments = sorted(
+            {
+                (surface, locale, scale)
+                for surface, locale, scale, _state in indexed_captures
+                if surface in required_pairs
+            }
+        )
+        for surface, locale, scale in environments:
+            for first, second in required_pairs[surface]:
+                first_capture = indexed_captures.get((surface, locale, scale, first))
+                second_capture = indexed_captures.get((surface, locale, scale, second))
+                if first_capture is None or second_capture is None:
+                    continue
+
+                def semantic_hash(capture: dict[str, object]) -> str:
+                    if surface == "overview" and {
+                        first,
+                        second,
+                    } == {"all-workspaces", "multi-monitor"}:
+                        outputs = capture.get("semantic_outputs")
+                        if isinstance(outputs, dict):
+                            primary = outputs.get("HEADLESS-UI")
+                            if isinstance(primary, str):
+                                return primary
+                    return str(
+                        capture.get("semantic_sha256")
+                        or capture.get("image_sha256", "")
+                    )
+
+                first_hash = semantic_hash(first_capture)
+                second_hash = semantic_hash(second_capture)
+                if first_hash and first_hash == second_hash:
+                    failures.append(
+                        {
+                            "surface": surface,
+                            "locale": locale,
+                            "scale": scale,
+                            "states": [first, second],
+                        }
+                    )
+        return failures
 
     def _start_desktop_shell_review(
         self,
@@ -3325,6 +5882,7 @@ class VMService:
             "inactive-window",
             "internal-display",
             "external-display",
+            "accessible",
         }:
             raise VMError(
                 FailureCategory.HARNESS_ERROR, "invalid desktop shell review state"
@@ -3335,8 +5893,7 @@ class VMService:
         launch = (
             "set -eu; uid=$(id -u); runtime=/run/user/$uid; "
             "export XDG_RUNTIME_DIR=$runtime; "
-            "wayland=$(find \"$runtime\" -maxdepth 1 -type s -name 'wayland-*' "
-            "-printf '%f\\n' | LC_ALL=C sort | head -n1); test -n \"$wayland\"; "
+            'wayland=$WAYLAND_DISPLAY; test -n "$wayland"; '
             f"nohup env LANG={locale} LC_ALL={locale} XDG_RUNTIME_DIR=$runtime "
             "WAYLAND_DISPLAY=$wayland ghostty --title='Enoshima Workspace' "
             '-e sh -lc \'printf "ENOSHIMA // WORKSPACE\\n\\nVM visual review\\n"; '
@@ -3412,7 +5969,108 @@ class VMService:
             timeout=10,
         )
 
+    def _restore_external_ui_review_services(
+        self,
+        record: dict[str, Any],
+        surfaces: set[str],
+    ) -> None:
+        services = []
+        if "command-palette" in surfaces:
+            services.append("vicinae.service")
+        if "overview" in surfaces:
+            services.append("hyprshell.service")
+        if not services:
+            return
+        units = " ".join(services)
+        self._guest(record).exec(
+            self._hypr_command(
+                f"systemctl --user reset-failed {units} || true; "
+                f"systemctl --user restart {units}"
+            ),
+            timeout=45,
+        )
+
+    def _cleanup_ui_review(
+        self,
+        record: dict[str, Any],
+        surfaces: set[str],
+        *,
+        best_effort: bool,
+    ) -> list[str]:
+        notification_cleanup = (
+            self._restore_notification_review
+            if "notification-center" in surfaces
+            else self._stop_notification_review
+        )
+        actions = [
+            (
+                "release pointer",
+                lambda: self.backend.pointer_button(
+                    record["domain"],
+                    self._require_recorded_domain_uuid(record),
+                    "left",
+                    False,
+                ),
+            ),
+            ("stop auth", lambda: self._stop_auth_review(record)),
+            ("restore notifications", lambda: notification_cleanup(record)),
+            ("stop command palette", lambda: self._stop_command_palette_review(record)),
+            (
+                "stop overview",
+                lambda: self._stop_overview_review(
+                    record,
+                    best_effort=best_effort,
+                ),
+            ),
+            ("stop titlebar", lambda: self._stop_titlebar_review(record)),
+            ("stop desktop shell", lambda: self._stop_desktop_shell_review(record)),
+            ("close clients", lambda: self._close_ui_review_clients(record)),
+            (
+                "restore external services",
+                lambda: self._restore_external_ui_review_services(record, surfaces),
+            ),
+        ]
+        errors: list[str] = []
+        for label, action in actions:
+            try:
+                action()
+            except Exception as error:
+                errors.append(f"{label}: {error}")
+        return errors
+
     def _run_ui_review(self, record: dict[str, Any], config: Any) -> None:
+        values = config if isinstance(config, dict) else {}
+        requested = values.get("surfaces")
+        cleanup_surfaces = (
+            {str(value) for value in requested}
+            if isinstance(requested, list)
+            else set()
+        )
+        failure: BaseException | None = None
+        try:
+            self._run_ui_review_body(record, config)
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            cleanup_errors = self._cleanup_ui_review(
+                record,
+                cleanup_surfaces,
+                best_effort=failure is not None,
+            )
+            if cleanup_errors:
+                record.setdefault("observations", {})["ui_review_cleanup_errors"] = (
+                    cleanup_errors
+                )
+                self._write_record(record)
+                if failure is None:
+                    raise VMError(
+                        FailureCategory.VISUAL_ASSERTION_FAILED,
+                        "UI review cleanup did not restore the guest session",
+                        {"errors": cleanup_errors},
+                    )
+
+    def _run_ui_review_body(self, record: dict[str, Any], config: Any) -> None:
         values = config if isinstance(config, dict) else {}
         requested = values.get("surfaces")
         if not isinstance(requested, list) or not requested:
@@ -3422,9 +6080,11 @@ class VMService:
             )
         supported = {
             "auth",
+            "command-palette",
             "desktop-shell",
             "launcher",
             "notification-center",
+            "overview",
             "power-menu",
             "osd",
             "display-mode",
@@ -3490,10 +6150,15 @@ class VMService:
         captures: list[dict[str, object]] = []
         overflow_failures: list[dict[str, object]] = []
         current_environment: tuple[str, float] | None = None
+        command_palette_locale: str | None = None
+        overview_environment: tuple[str, float] | None = None
+        overview_previous_state: str | None = None
         for case in matrix:
             fixture_ack: dict[str, object] | None = None
             environment = (case.locale, case.scale)
             if environment != current_environment:
+                if "overview" in surfaces:
+                    self._stop_overview_service(record)
                 mode = physical_mode(case.scale)
                 self._configure_virtual_displays(
                     record,
@@ -3516,6 +6181,14 @@ class VMService:
                 self._wait_for_ui_fixture_ready(record, sequence)
                 current_environment = environment
             self._reset_ui_review_surface(record)
+            if "notification-center" not in surfaces:
+                self._run_checked(
+                    record,
+                    "clear-ui-review-notifications",
+                    self._hypr_command("swaync-client -cp -sw; swaync-client -C -sw"),
+                    FailureCategory.VISUAL_ASSERTION_FAILED,
+                    timeout_seconds=15,
+                )
             # Hyprland client cleanup cannot dismiss Quickshell layer-shell
             # surfaces.  Reset the production shell model at every boundary
             # and wait for its exact sequence ACK before opening the next
@@ -3540,6 +6213,16 @@ class VMService:
                 )
             if case.surface == "auth":
                 self._start_auth_review(record, case.locale, case.state)
+            elif case.surface == "command-palette":
+                restart_service = case.locale != command_palette_locale
+                self._start_command_palette_review(
+                    record,
+                    case.locale,
+                    case.state,
+                    output,
+                    restart_service,
+                )
+                command_palette_locale = case.locale
             elif case.surface == "notification-center":
                 self._start_notification_review(record, case.locale, case.state)
             elif case.surface == "system-titlebar":
@@ -3565,6 +6248,22 @@ class VMService:
                     record, case.surface, case.state, output
                 )
                 fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
+            elif case.surface == "overview":
+                restart_service = (
+                    environment != overview_environment
+                    or case.state == "multi-monitor"
+                    or overview_previous_state == "multi-monitor"
+                )
+                self._start_overview_review(
+                    record,
+                    case.locale,
+                    case.state,
+                    case.scale,
+                    output,
+                    restart_service,
+                )
+                overview_environment = environment
+                overview_previous_state = case.state
             else:
                 sequence = self._write_ui_fixture_state(
                     record, case.surface, case.state, output
@@ -3572,7 +6271,12 @@ class VMService:
                 fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
             capture = self._capture_stable_ui(record, case.artifact_name, output)
             if case.surface == "system-titlebar":
-                self.backend.pointer_button(record["domain"], "left", False)
+                self.backend.pointer_button(
+                    record["domain"],
+                    self._require_recorded_domain_uuid(record),
+                    "left",
+                    False,
+                )
             expected_width, expected_height = (
                 int(value)
                 for value in physical_mode(case.scale).split("@", 1)[0].split("x")
@@ -3586,7 +6290,90 @@ class VMService:
                     "UI review capture has the wrong output dimensions",
                     {"case": case.key, "capture": capture},
                 )
+            auxiliary_outputs: list[dict[str, object]] = []
+            if case.surface == "overview" and case.state == "multi-monitor":
+                auxiliary_scale = overview_auxiliary_scale(case.scale)
+                auxiliary_width, auxiliary_height = (
+                    int(value)
+                    for value in physical_mode(auxiliary_scale)
+                    .split("@", 1)[0]
+                    .split("x")
+                )
+                auxiliary = self._capture_stable_ui(
+                    record,
+                    f"{case.artifact_name}--headless-aux",
+                    "HEADLESS-AUX",
+                )
+                if (auxiliary["width"], auxiliary["height"]) != (
+                    auxiliary_width,
+                    auxiliary_height,
+                ):
+                    raise VMError(
+                        FailureCategory.VISUAL_ASSERTION_FAILED,
+                        "auxiliary UI review capture has the wrong dimensions",
+                        {"case": case.key, "capture": auxiliary},
+                    )
+                auxiliary_path = Path(str(auxiliary["path"]))
+                auxiliary_semantic = self._ui_review_semantic_metrics(
+                    auxiliary_path,
+                    case.surface,
+                    auxiliary_scale,
+                )
+                if (
+                    int(auxiliary_semantic["unique_gray_values"])
+                    < UI_SEMANTIC_MIN_UNIQUE_GRAY_VALUES
+                    or float(auxiliary_semantic["normalized_standard_deviation"])
+                    < UI_SEMANTIC_MIN_NORMALIZED_STDDEV
+                ):
+                    raise VMError(
+                        FailureCategory.VISUAL_ASSERTION_FAILED,
+                        "auxiliary overview lacks visible workspace content",
+                        {
+                            "case": case.key,
+                            "expected_workspaces": [1, 2, 4],
+                            "semantic_content": auxiliary_semantic,
+                            "image": str(auxiliary_path),
+                        },
+                    )
+                auxiliary_outputs.append(
+                    {
+                        "output": "HEADLESS-AUX",
+                        "image": str(auxiliary_path),
+                        "image_sha256": sha256(auxiliary_path.read_bytes()).hexdigest(),
+                        "logical_size": [1280, 800],
+                        "pixel_size": [auxiliary["width"], auxiliary["height"]],
+                        "scale": auxiliary_scale,
+                        "expected_workspaces": [1, 2, 4],
+                        "semantic_content": auxiliary_semantic,
+                        "stability_changed_pixel_ratio": auxiliary.get(
+                            "stability_changed_pixel_ratio", 0.0
+                        ),
+                    }
+                )
             image_path = Path(str(capture["path"]))
+            semantic_outputs = {
+                "HEADLESS-UI": self._ui_review_semantic_sha256(
+                    image_path,
+                    case.surface,
+                    case.scale,
+                )
+            }
+            for auxiliary in auxiliary_outputs:
+                content = auxiliary["semantic_content"]
+                if not isinstance(content, dict):
+                    raise AssertionError("auxiliary semantic content is missing")
+                semantic_outputs[str(auxiliary["output"])] = str(content["sha256"])
+            if len(set(semantic_outputs.values())) != len(semantic_outputs):
+                raise VMError(
+                    FailureCategory.VISUAL_ASSERTION_FAILED,
+                    "multiple outputs rendered the same semantic UI region",
+                    {"case": case.key, "semantic_outputs": semantic_outputs},
+                )
+            semantic_parts = [
+                f"{output_name}:{output_hash}"
+                for output_name, output_hash in semantic_outputs.items()
+            ]
+            semantic_sha256 = sha256("\0".join(semantic_parts).encode()).hexdigest()
             fixture_metadata = {
                 "auth": {
                     "used": True,
@@ -3595,6 +6382,22 @@ class VMService:
                 "notification-center": {
                     "used": False,
                     "reason": "production SwayNC and notification D-Bus state",
+                },
+                "command-palette": {
+                    "used": case.state == "long-title",
+                    "reason": (
+                        "production Vicinae with one deterministic long-title "
+                        "Script Command"
+                        if case.state == "long-title"
+                        else "production Vicinae over its packaged user service"
+                    ),
+                },
+                "overview": {
+                    "used": False,
+                    "reason": (
+                        "production Hyprshell over real Hyprland clients and "
+                        "virtual outputs"
+                    ),
                 },
                 "system-titlebar": {
                     "used": True,
@@ -3632,6 +6435,9 @@ class VMService:
                 },
                 "image": str(image_path),
                 "image_sha256": sha256(image_path.read_bytes()).hexdigest(),
+                "semantic_sha256": semantic_sha256,
+                "semantic_outputs": semantic_outputs,
+                "auxiliary_outputs": auxiliary_outputs,
                 "run_id": record["run_id"],
                 "source_commit": record.get("source", {}).get("source_commit"),
                 "worktree_hash": record.get("source", {}).get("worktree_hash"),
@@ -3657,6 +6463,7 @@ class VMService:
                     }
                 )
         identical_state_failures = self._ui_review_identical_state_groups(captures)
+        identical_pair_failures = self._ui_review_identical_required_pairs(captures)
         summary = {
             "schema": 1,
             "matrix_mode": matrix_mode,
@@ -3667,18 +6474,12 @@ class VMService:
             "scales": sorted({case.scale for case in matrix}),
             "text_overflow_failures": overflow_failures,
             "identical_state_failures": identical_state_failures,
+            "identical_pair_failures": identical_pair_failures,
         }
         (artifact_root / "summary.json").write_text(
             json.dumps(summary, indent=2) + "\n", encoding="utf-8"
         )
         record.setdefault("observations", {})["ui_review"] = summary
-        self._stop_auth_review(record)
-        if "notification-center" in surfaces:
-            self._restore_notification_review(record)
-        else:
-            self._stop_notification_review(record)
-        self._stop_titlebar_review(record)
-        self._stop_desktop_shell_review(record)
         self._write_record(record)
         if overflow_failures:
             raise VMError(
@@ -3689,13 +6490,16 @@ class VMService:
                     "failures": overflow_failures[:20],
                 },
             )
-        if identical_state_failures:
+        if identical_state_failures or identical_pair_failures:
             raise VMError(
                 FailureCategory.VISUAL_ASSERTION_FAILED,
-                "UI review rendered every required state identically",
+                "UI review rendered required states identically",
                 {
-                    "count": len(identical_state_failures),
-                    "failures": identical_state_failures[:20],
+                    "count": len(identical_state_failures)
+                    + len(identical_pair_failures),
+                    "failures": (identical_state_failures + identical_pair_failures)[
+                        :20
+                    ],
                 },
             )
 
@@ -3784,6 +6588,7 @@ class VMService:
         record.setdefault("observations", {})["electron_qualification"] = document
         self._write_record(record)
 
+    @mutation_guard
     def collect(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
         artifact_dir = Path(record["artifact_dir"])
@@ -3798,33 +6603,52 @@ class VMService:
 
     def status(self, run_id: str) -> dict[str, object]:
         record = self.load_record(run_id)
-        record["domain_state"] = (
-            "not-created"
-            if record.get("synthetic")
-            else self.backend.state(record["domain"])
-        )
+        domain_uuid = self._recorded_domain_uuid(record)
+        if record.get("synthetic"):
+            record["domain_state"] = "not-created"
+        elif domain_uuid is None:
+            record["domain_state"] = "ownership-unverified"
+        else:
+            record["domain_state"] = self.backend.owned_state(
+                record["domain"], domain_uuid
+            )
         return record
 
+    @mutation_guard
     def poweroff(self, run_id: str) -> dict[str, str]:
         record = self.load_record(run_id)
-        self.backend.poweroff(record["domain"])
+        self.backend.poweroff(
+            record["domain"], self._require_recorded_domain_uuid(record)
+        )
         self._audit("vm_poweroff", run_id=run_id)
         return {"run_id": run_id, "status": "poweroff-requested"}
 
+    @mutation_guard
     def destroy(self, run_id: str) -> dict[str, object]:
-        record = self.load_record(run_id)
-        if not record.get("synthetic"):
-            self.backend.destroy(record["domain"])
-        removed = self._remove_ephemeral(record)
-        record["status"] = (
-            "completed" if record.get("result") == "passed" else "destroyed"
-        )
-        record["destroyed_at"] = utc_now()
-        record["updated_at"] = utc_now()
-        record.pop("private_key", None)
-        record.pop("recovery_key", None)
-        record.pop("login_password", None)
-        self._write_record(record)
+        run_dir = self._run_dir(run_id)
+        with run_record_lock(run_dir):
+            record = self.load_record(run_id)
+            if run_cleanup_complete(record):
+                return {"run_id": run_id, "removed": [], "recoverable": False}
+            invalidated = record.get("status") == "invalidated"
+            if not record.get("synthetic"):
+                self._require_recorded_libvirt_session(record)
+                self.backend.destroy(
+                    record["domain"], self._require_recorded_domain_uuid(record)
+                )
+            self._stop_watchdog(record)
+            self._wait_watchdog_stopped(record)
+            removed = self._remove_ephemeral(record)
+            if not invalidated:
+                record["status"] = (
+                    "completed" if record.get("result") == "passed" else "destroyed"
+                )
+            record["destroyed_at"] = utc_now()
+            record["updated_at"] = utc_now()
+            record.pop("private_key", None)
+            record.pop("recovery_key", None)
+            record.pop("login_password", None)
+            self._write_record_unlocked(record)
         self._audit("vm_destroy", run_id=run_id)
         return {"run_id": run_id, "removed": removed, "recoverable": False}
 
@@ -3835,6 +6659,7 @@ class VMService:
             run_dir / "root.qcow2",
             run_dir / "boot.qcow2",
             run_dir / "seed.iso",
+            run_dir / WATCHDOG_READY_NAME,
         }
         for key in ("overlay", "boot_disk", "seed"):
             if record.get(key):
@@ -3869,18 +6694,64 @@ class VMService:
         )
         return records
 
+    @mutation_guard
     def clean(self) -> dict[str, object]:
-        cleaned = []
-        for record in self.list_runs():
-            has_key = bool(record.get("private_key"))
-            has_domain = (
-                False
-                if record.get("synthetic")
-                else self.backend.state(record["domain"]) != "undefined"
-            )
-            if has_key or has_domain:
-                cleaned.append(self.destroy(record["run_id"]))
-        return {"cleaned": cleaned, "preserved_reports": True}
+        cleaned: list[dict[str, object]] = []
+        preserved: list[dict[str, str]] = []
+        if not self.runs_root.exists():
+            records: list[tuple[dict[str, object], str | None]] = []
+        else:
+            records = []
+            for path in sorted(self.runs_root.glob("run-*/run.json")):
+                try:
+                    raw = json.loads(path.read_text(encoding="utf-8"))
+                    if raw.get("run_id") != path.parent.name:
+                        raise ValueError("run ID does not match its record path")
+                    require_domain(str(raw.get("domain", "")))
+                except (OSError, ValueError, json.JSONDecodeError) as error:
+                    preserved.append(
+                        {
+                            "run_id": path.parent.name,
+                            "reason": f"invalid-run-record: {error}",
+                        }
+                    )
+                    continue
+                recorded_session = raw.get("libvirt_session")
+                expected_session = (
+                    None if raw.get("synthetic") else self.backend.session_identity()
+                )
+                session_reason: str | None = None
+                if not raw.get("synthetic") and recorded_session is None:
+                    session_reason = "missing-libvirt-session"
+                elif not raw.get("synthetic") and recorded_session != expected_session:
+                    session_reason = "mismatched-libvirt-session"
+                records.append((raw, session_reason))
+
+        for record, session_reason in records:
+            if run_cleanup_complete(record):
+                continue
+            if session_reason is not None:
+                preserved.append(
+                    {"run_id": str(record["run_id"]), "reason": session_reason}
+                )
+                continue
+            if (
+                not record.get("synthetic")
+                and self._recorded_domain_uuid(record) is None
+            ):
+                preserved.append(
+                    {
+                        "run_id": str(record["run_id"]),
+                        "reason": "missing-domain-uuid",
+                    }
+                )
+                continue
+            cleaned.append(self.destroy(str(record["run_id"])))
+        return {
+            "cleaned": cleaned,
+            "preserved": preserved,
+            "preserved_reports": True,
+        }
 
     def _execute_step(
         self,
@@ -3894,7 +6765,9 @@ class VMService:
         elif action == "wait_for_cloud_init":
             self._guest(record).wait_cloud_init()
         elif action == "wait_for_guest_agent":
-            self.backend.wait_guest_agent(record["domain"])
+            self.backend.wait_guest_agent(
+                record["domain"], self._require_recorded_domain_uuid(record)
+            )
         elif action == "upload_worktree":
             self.upload_worktree(record["run_id"])
         elif action == "seed_codex_electron_cache":
@@ -3907,6 +6780,10 @@ class VMService:
             self._run_bootstrap(record, config)
         elif action == "run_postflight":
             self._run_postflight(record, config)
+        elif action == "seed_sysstat_schema_migration":
+            self._seed_sysstat_schema_migration(record)
+        elif action == "assert_sysstat_schema_migration":
+            self._assert_sysstat_schema_migration(record)
         elif action == "assert_idempotent":
             self._assert_idempotent(record)
         elif action == "assert_expected_skips":
@@ -3933,7 +6810,9 @@ class VMService:
             if not isinstance(config, dict) or not isinstance(config.get("keys"), list):
                 raise VMError(FailureCategory.HARNESS_ERROR, "send_key requires keys")
             keys = [str(key) for key in config["keys"]]
-            self.backend.send_keys(record["domain"], keys)
+            self.backend.send_keys(
+                record["domain"], self._require_recorded_domain_uuid(record), keys
+            )
         elif action == "send_pointer":
             if not isinstance(config, dict):
                 raise VMError(
@@ -3949,11 +6828,15 @@ class VMService:
                         "send_pointer requires integer x and y coordinates",
                     )
                 self.backend.pointer_move_absolute(
-                    record["domain"], int(config["x"]), int(config["y"])
+                    record["domain"],
+                    self._require_recorded_domain_uuid(record),
+                    int(config["x"]),
+                    int(config["y"]),
                 )
             if "button" in config:
                 self.backend.pointer_button(
                     record["domain"],
+                    self._require_recorded_domain_uuid(record),
                     str(config["button"]),
                     bool(config.get("down", False)),
                 )
@@ -3997,6 +6880,7 @@ class VMService:
                 FailureCategory.HARNESS_ERROR, f"unknown suite step: {action}"
             )
 
+    @mutation_guard
     def run_suite(
         self,
         suite_name: str,
@@ -4125,6 +7009,7 @@ class VMService:
                 return self.load_record(record["run_id"])
             raise
 
+    @mutation_guard
     def run_suite_result(
         self,
         suite_name: str,
@@ -4133,6 +7018,7 @@ class VMService:
         verification_mode: str = "checkpoint",
         base_ref: str = "origin/main",
     ) -> dict[str, object]:
+        self._assert_loaded_harness_current()
         if verification_mode == "release":
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
@@ -4481,8 +7367,28 @@ class VMService:
             for record in prior
             if record.get("failure_origin") == str(FailureOrigin.INFRA)
         )
+        capacity_fingerprint = failure_fingerprint(
+            suite=suite,
+            step="vm_create",
+            category=FailureCategory.HOST_INFRA_ERROR,
+            message=_ACTIVE_DOMAIN_CAPACITY_ERROR,
+        )
+        capacity_recovered = False
+        if infra_counts.get(capacity_fingerprint, 0) >= 2:
+            try:
+                capacity_recovered = (
+                    len(self.backend.active_managed_domains()) < MAX_ACTIVE_DOMAINS
+                )
+            except Exception:
+                # A failed capacity probe cannot prove that the contention is gone.
+                capacity_recovered = False
         exhausted_fingerprint = next(
-            (fingerprint for fingerprint, count in infra_counts.items() if count >= 2),
+            (
+                fingerprint
+                for fingerprint, count in infra_counts.items()
+                if count >= 2
+                and not (capacity_recovered and fingerprint == capacity_fingerprint)
+            ),
             None,
         )
         if exhausted_fingerprint:
@@ -4824,11 +7730,13 @@ class VMService:
             )
         return response
 
+    @mutation_guard
     def run_affected(
         self,
         base_ref: str = "origin/main",
         mode: str = "checkpoint",
     ) -> dict[str, object]:
+        self._assert_loaded_harness_current()
         if mode == "release":
             raise VMError(
                 FailureCategory.HARNESS_ERROR,
@@ -4898,12 +7806,14 @@ class VMService:
             operation_id=operation_id,
         )
 
+    @mutation_guard
     def run_plan(
         self,
         plan_name: str = "release",
         *,
         base_ref: str = "origin/main",
     ) -> dict[str, object]:
+        self._assert_loaded_harness_current()
         plan = load_verification_plan(plan_name, self.paths)
         selection = select_verification(
             base_ref=base_ref,
@@ -4916,6 +7826,8 @@ class VMService:
                 for command in selection.focused_checks
                 if command != "make vm-unit"
             ]
+            if "scripts/check-ui-visual-evidence" not in checks:
+                checks.append("scripts/check-ui-visual-evidence")
             if "make validate" not in checks:
                 checks.append("make validate")
             selection = replace(selection, focused_checks=tuple(checks))

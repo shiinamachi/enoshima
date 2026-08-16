@@ -17,3 +17,7 @@
     method: user
     remote: flathub
     state: present
+  # The module buffers libostree output until completion. Bound that silent
+  # interval below the VM bootstrap's dedicated no-output budget.
+  async: 1800
+  poll: 30

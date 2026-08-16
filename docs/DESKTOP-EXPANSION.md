@@ -124,6 +124,32 @@ Fcitx5 Classic UI, tooltips, and session controls.
   focus; Up/Down, Enter, and Escape work without a pointer; launches pass
   through `uwsm app`. The stock package is declared absent and convergence
   disables its stale user unit.
+- Vicinae is built from the repository-pinned v0.25.0 stable upstream source
+  as a staged command palette on `Super+Shift+Space`. Its
+  packaged service owns search, clipboard,
+  emoji, and Script Command behavior; Enoshima only supplies privacy-first
+  settings and eight performance-tool entries. `Super+Shift+V` opens the local
+  clipboard history and `Super+period` opens emoji search. File indexing,
+  telemetry, global shortcuts, favicon fetching, and the privileged input
+  server are disabled. A user-service condition starts the encrypted database
+  only while the login keyring is unlocked. The managed shortcut, application
+  menu, and external URI paths all use the same bounded adapter, so a locked
+  keyring or stalled reply cannot bypass the service policy or create a restart
+  loop. The managed `mimeapps.list` also fixes the `vicinae`, `raycast`, and
+  `com.raycast` schemes to `vicinae-url-handler.desktop`, preventing a competing
+  default handler from bypassing that adapter. CyberLauncher retains
+  `Super+Space` and `Super+R` for at least
+  one qualification release, and clipboard history is never synchronized.
+  The final local package archive is verified before installation, including
+  exact payload ownership, modes, source hashes, dependencies, bounded upgrade hook,
+  and reviewed bundled notices. The upstream artifact's unrecorded permission
+  for modified Raycast-derived icons remains an explicit provenance limitation,
+  not an inferred MIT grant.
+- Hyprshell's packaged service owns the all-workspaces Overview on `Super+Tab`.
+  Only its Overview surface is enabled; native `Alt+Tab` remains the fast
+  current-workspace fallback. Hyprshot, Hyprpicker, Swappy, and Kooha own screen
+  capture, color picking, annotation, and recording respectively, without an
+  Enoshima capture daemon or recording state machine.
 - CyberOSD is part of the same Quickshell process and semantic palette. Audio
   and brightness helpers send a short-lived, non-focusable bottom-center
   percentage display through Quickshell IPC instead of starting another daemon.
@@ -503,8 +529,8 @@ application state.
 | Owner | Additions |
 | --- | --- |
 | Official Arch manifests | greetd, GTK4/JSON-GLib, fallback SDDM, Quickshell, `adw-gtk-theme`, `capitaine-cursors`, `fcitx5-material-color`, FileZilla, Hyprpwcenter, nwg-displays, GIMP, Thunderbird, Proton Mail Bridge, rclone, FUSE support, office-compatible fonts, required validation utilities |
-| Reviewed AUR allowlist | `cloudflare-warp-bin`, `onlyoffice-bin`, `pear-desktop-bin`, `photogimp` |
-| Pinned local packages | Enoshima Auth greeter, Pretendard/Jetendard desktop fonts, and sandboxed RHWP Desktop |
+| Reviewed AUR allowlist | Approved current-revision package bases; the protected-revision list is currently empty |
+| Pinned local packages | Enoshima Auth greeter, Pretendard/Jetendard desktop fonts, sandboxed RHWP Desktop, and verified Vicinae/Hyprshell stable source builds |
 | User-scoped Flatpak | Existing Bottles |
 | chezmoi | Wallpaper, UI configuration, launch wrappers, user services, setup helpers, MIME/bookmark declarations |
 | Ansible | System packages, greetd/Enoshima Auth and fallback SDDM configuration, Cloudflare daemon enablement, root-owned package/runtime configuration |
@@ -550,6 +576,10 @@ resulting account state.
 | --- | --- |
 | Theme | Ratio-specific managed wallpapers on both outputs; coherent bar, lock, CyberLauncher, CyberOSD, notifications, Dock, GTK 3/4 apps, Fcitx5, cursor, terminal, editor, native app titlebars, and login palette |
 | Shell | CyberLauncher owns a full-screen modal scrim, keeps a responsive two-column hierarchy, has immediate search focus, four labeled quick apps, keyboard selection/cancel, real desktop-entry launch actions, and at most seven search results; volume and brightness helpers display CyberOSD without taking focus |
+| Staged command palette | Vicinae opens on `Super+Shift+Space`; Korean preedit, copy-only clipboard/emoji actions, privacy defaults, mixed-DPI focus, cold start, and idle resources pass before any primary CyberLauncher shortcut moves |
+| Overview | Hyprshell shows real windows across workspaces on `Super+Tab`, preserves keyboard and multi-monitor focus, and leaves native `Alt+Tab` available |
+| Capture and recording | Hyprshot captures output/window/frozen region, Swappy annotates a selected region, Hyprpicker copies a color, and Kooha records PipeWire video and audio without a custom wrapper |
+| Diagnostics | atop, sysstat, and bounded persistent journal history remain local; Resources, iotop-c, nvtop, and Sysprof provide on-demand investigation |
 | Dock | Persistent and non-overlapping on both outputs during windowed use; hidden for launcher/true fullscreen; six-pixel fullscreen recovery; approved click behavior; crash recovery for minimized clients |
 | Quick settings | SwayNC shows six functional actions in two rows; toggle state tracks Wi-Fi, Bluetooth, and Night Light; Power, Audio, and Display open their managed tools |
 | Window controls | Required apps own native titlebars and close, minimize, and maximize/restore paths; Hyprland keyboard controls and true fullscreen remain available without Waybar or compositor-owned duplicate titlebars |

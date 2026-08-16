@@ -209,3 +209,11 @@ def physical_mode(scale: float, logical_size: tuple[int, int] = (1280, 800)) -> 
     ):
         raise ValueError("scale cannot produce an integral physical mode")
     return f"{width}x{height}@60"
+
+
+def overview_auxiliary_scale(primary_scale: float) -> float:
+    """Choose a supported, deliberately different scale for the second output."""
+    supported = (1.0, 1.25, 2.0)
+    if not any(abs(primary_scale - value) < 0.001 for value in supported):
+        raise ValueError("overview scale must be part of the review matrix")
+    return 2.0 if abs(primary_scale - 1.25) < 0.001 else 1.25

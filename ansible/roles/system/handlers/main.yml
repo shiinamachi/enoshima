@@ -3,6 +3,31 @@
   ansible.builtin.systemd_service:
     daemon_reload: true
 
+- name: Reexecute systemd manager
+  ansible.builtin.systemd_service:
+    daemon_reexec: true
+
+- name: Reload journald
+  ansible.builtin.systemd_service:
+    name: systemd-journald.service
+    state: reloaded
+
+- name: Flush journal to persistent storage
+  ansible.builtin.command: /usr/bin/journalctl --flush
+  changed_when: false
+
+- name: Restart atop
+  ansible.builtin.systemd_service:
+    name: atop.service
+    state: restarted
+    daemon_reload: true
+
+- name: Restart sysstat collection timer
+  ansible.builtin.systemd_service:
+    name: sysstat-collect.timer
+    state: restarted
+    daemon_reload: true
+
 - name: Reload TLP power policy
   ansible.builtin.systemd_service:
     name: tlp.service

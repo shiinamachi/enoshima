@@ -1,0 +1,313 @@
+---
+- name: Ensure persistent journal storage exists
+  ansible.builtin.file:
+    path: /var/log/journal
+    state: directory
+    owner: root
+    group: systemd-journal
+    mode: "2755"
+  notify:
+    - Reload journald
+    - Flush journal to persistent storage
+
+- name: Ensure journald drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure bounded persistent journal retention
+  ansible.builtin.copy:
+    content: |
+      [Journal]
+      Storage=persistent
+      Compress=yes
+      SystemMaxUse=1G
+      SystemKeepFree=2G
+      MaxRetentionSec=30day
+    dest: /etc/systemd/journald.conf.d/60-enoshima-retention.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload journald
+    - Flush journal to persistent storage
+
+- name: Ensure system manager drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enable per-service IO accounting by default
+  ansible.builtin.copy:
+    content: |
+      [Manager]
+      DefaultIOAccounting=yes
+    dest: /etc/systemd/system.conf.d/60-enoshima-accounting.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reexecute systemd manager
+
+- name: Configure atop history collection
+  ansible.builtin.lineinfile:
+    path: /etc/default/atop
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+    validate: /usr/bin/bash -n %s
+  loop:
+    - { key: LOGOPTS, value: '""' }
+    - { key: LOGINTERVAL, value: "60" }
+    - { key: LOGGENERATIONS, value: "14" }
+    - { key: LOGPATH, value: /var/log/atop }
+    - { key: ATOPACCT, value: '""' }
+  notify: Restart atop
+
+- name: Restrict atop history directory to root
+  ansible.builtin.file:
+    path: /var/log/atop
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Keep the atop fallback accounting directory private
+  ansible.builtin.file:
+    path: /var/cache/atop.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Remove stale atop fallback process-accounting data
+  ansible.builtin.file:
+    path: /var/cache/atop.d/atop.acct
+    state: absent
+  notify: Restart atop
+
+- name: Ensure atop service drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/atop.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep atop private and restart it after collector failures
+  ansible.builtin.copy:
+    content: |
+      [Unit]
+      StartLimitIntervalSec=60s
+      StartLimitBurst=5
+
+      [Service]
+      UMask=0077
+      Restart=on-failure
+      RestartSec=5s
+    dest: /etc/systemd/system/atop.service.d/60-enoshima-privacy.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart atop
+
+- name: Remove the previously managed atop accounting resilience drop-in
+  ansible.builtin.file:
+    path: /etc/systemd/system/atopacct.service.d/60-enoshima-resilience.conf
+    state: absent
+
+- name: Disable atop process accounting
+  ansible.builtin.systemd_service:
+    name: atopacct.service
+    enabled: false
+    state: stopped
+    daemon_reload: true
+
+- name: Disable optional atop GPU collector
+  ansible.builtin.systemd_service:
+    name: atopgpu.service
+    enabled: false
+    state: stopped
+
+- name: Enable atop process history and rotation
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - atop.service
+    - atop-rotate.timer
+
+- name: Configure private sysstat history retention
+  ansible.builtin.lineinfile:
+    path: /etc/conf.d/sysstat
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+    validate: /usr/bin/bash -n %s
+  loop:
+    - { key: HISTORY, value: "28" }
+    - { key: SADC_OPTIONS, value: '"-S DISK,POWER"' }
+    - { key: UMASK, value: "0077" }
+
+- name: Restrict sysstat history directory to root
+  ansible.builtin.file:
+    path: /var/log/sa
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Discover today's sysstat history file
+  ansible.builtin.stat:
+    path: "/var/log/sa/sa{{ ansible_date_time.day }}"
+  register: sysstat_current_history
+
+- name: Inspect today's sysstat history schema
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/bash
+      - -ceu
+      - >-
+        /usr/bin/sar -d -f "$1" >/dev/null &&
+        /usr/bin/sar -m CPU,FREQ,TEMP -f "$1" >/dev/null
+      - enoshima-sysstat-schema
+      - "/var/log/sa/sa{{ ansible_date_time.day }}"
+  register: sysstat_current_schema
+  changed_when: false
+  failed_when: false
+  when: sysstat_current_history.stat.exists
+
+# sadc fixes the activity schema when a daily file is first created. Preserve
+# an incompatible file privately, then create a new same-day file so the
+# managed DISK and POWER history is available without waiting for midnight.
+- name: Migrate an incompatible current sysstat history file
+  when:
+    - sysstat_current_history.stat.exists
+    - (sysstat_current_schema.rc | default(0)) != 0
+  block:
+    - name: Pause sysstat collection during schema migration
+      ansible.builtin.systemd_service:
+        name: sysstat-collect.timer
+        state: stopped
+
+    - name: Create a private sysstat schema migration archive
+      ansible.builtin.file:
+        path: "/var/log/sa/.enoshima-migrated-{{ ansible_date_time.epoch }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Preserve the incompatible current sysstat history
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/mv
+          - --
+          - "/var/log/sa/sa{{ ansible_date_time.day }}"
+          - >-
+            /var/log/sa/.enoshima-migrated-{{ ansible_date_time.epoch }}/sa{{ ansible_date_time.day }}
+      args:
+        removes: "/var/log/sa/sa{{ ansible_date_time.day }}"
+
+    - name: Keep the migrated sysstat history file private
+      ansible.builtin.file:
+        path: >-
+          /var/log/sa/.enoshima-migrated-{{ ansible_date_time.epoch }}/sa{{ ansible_date_time.day }}
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Create a current sysstat sample with the managed schema
+      ansible.builtin.systemd_service:
+        name: sysstat-collect.service
+        state: started
+  always:
+    - name: Resume sysstat collection after schema migration
+      ansible.builtin.systemd_service:
+        name: sysstat-collect.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
+- name: Discover expired sysstat schema migration archives
+  ansible.builtin.find:
+    paths: /var/log/sa
+    patterns: ".enoshima-migrated-*"
+    file_type: directory
+    recurse: false
+    age: 28d
+  register: expired_sysstat_migration_archives
+
+- name: Remove expired sysstat schema migration archives
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ expired_sysstat_migration_archives.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Discover existing sysstat history files
+  ansible.builtin.find:
+    paths: /var/log/sa
+    file_type: file
+    hidden: true
+    recurse: false
+  register: sysstat_history_files
+
+- name: Make existing sysstat history files private
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ sysstat_history_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Ensure sysstat timer drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/sysstat-collect.timer.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Collect sysstat samples every 30 seconds
+  ansible.builtin.copy:
+    content: |
+      [Timer]
+      OnCalendar=
+      OnCalendar=*-*-* *:*:00/30
+      AccuracySec=1s
+    dest: /etc/systemd/system/sysstat-collect.timer.d/60-enoshima-interval.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart sysstat collection timer
+
+- name: Enable sysstat collection and retention units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - sysstat.service
+    - sysstat-collect.timer
+    - sysstat-rotate.timer
+    - sysstat-summary.timer

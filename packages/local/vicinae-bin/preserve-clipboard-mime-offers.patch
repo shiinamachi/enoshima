@@ -1,0 +1,242 @@
+diff --git a/src/server/CMakeLists.txt b/src/server/CMakeLists.txt
+index f3a376e..95d084b 100644
+--- a/src/server/CMakeLists.txt
++++ b/src/server/CMakeLists.txt
+@@ -1241,6 +1241,18 @@ elseif(NOT APPLE)
+ 	)
+ endif()
+ 
++if (UNIX AND NOT APPLE)
++	set(CLIPBOARD_MIME_TEST_TARGET vicinae-clipboard-mime-tests)
++	add_executable(${CLIPBOARD_MIME_TEST_TARGET} EXCLUDE_FROM_ALL
++		src/services/clipboard/clipboard-mime.cpp
++		tests/clipboard/mime-data-from-selection.cpp
++	)
++	target_link_libraries(${CLIPBOARD_MIME_TEST_TARGET} PRIVATE
++		vicinae::common Qt6::Core Qt6::Gui
++	)
++	target_compile_features(${CLIPBOARD_MIME_TEST_TARGET} PUBLIC cxx_std_23)
++endif()
++
+ if (BUILD_TESTS AND UNIX AND NOT APPLE)
+ 	set(TEST_TARGET ${TARGET}-tests)
+ 	find_package(Catch2 3 REQUIRED)
+diff --git a/src/server/src/services/clipboard/clipboard-mime.cpp b/src/server/src/services/clipboard/clipboard-mime.cpp
+index eb4cb62..dbd6bbb 100644
+--- a/src/server/src/services/clipboard/clipboard-mime.cpp
++++ b/src/server/src/services/clipboard/clipboard-mime.cpp
+@@ -1,10 +1,12 @@
+ #include <QImage>
+ #include "clipboard-mime.hpp"
+ #include <QUrl>
+ #include <QBuffer>
++#include <QMimeDatabase>
+ #include <qlogging.h>
+ #include <ranges>
+ #include <concepts>
++#include <algorithm>
+ 
+ static bool isLegacyContentType(const QString &str) {
+   if (str.startsWith("-x") || str.startsWith("-X")) return false;
+@@ -37,6 +39,43 @@ std::unique_ptr<QMimeData> mimeDataForContent(const Content &content) {
+       content);
+ }
+ 
++std::unique_ptr<QMimeData> mimeDataFromSelection(const ClipboardSelection &selection) {
++  auto mimeData = std::make_unique<QMimeData>();
++  auto normalizedMimeName = [](const QString &name) { return name.section(';', 0, 0); };
++  auto isPlainTextCompatible = [&](const QString &name) {
++    static const QStringList x11TextTargets = {
++        QStringLiteral("UTF8_STRING"), QStringLiteral("STRING"), QStringLiteral("TEXT"),
++        QStringLiteral("COMPOUND_TEXT")};
++    if (x11TextTargets.contains(name)) return true;
++    return QMimeDatabase().mimeTypeForName(normalizedMimeName(name)).inherits("text/plain");
++  };
++
++  // Prefer an explicit plain-text offer for Qt's compatibility view. The DB
++  // does not guarantee offer order, so never let an HTML offer overwrite it.
++  auto textOffer = std::ranges::find_if(selection.offers, [](const ClipboardDataOffer &offer) {
++    return offer.mimeType.section(';', 0, 0) == QStringLiteral("text/plain");
++  });
++
++  if (textOffer == selection.offers.end()) {
++    textOffer = std::ranges::find_if(selection.offers, [&](const ClipboardDataOffer &offer) {
++      return offer.mimeType != Clipboard::URI_LIST && isPlainTextCompatible(offer.mimeType);
++    });
++  }
++
++  if (textOffer != selection.offers.end()) {
++    mimeData->setText(QString::fromUtf8(textOffer->data));
++  }
++
++  // Preserve every advertised MIME name and its original bytes. This second
++  // pass deliberately follows setText(): exact text/plain bytes win while
++  // image, HTML, URI and application offers remain independently available.
++  for (const auto &offer : selection.offers) {
++    mimeData->setData(offer.mimeType, offer.data);
++  }
++
++  return mimeData;
++}
++
+ std::optional<ClipboardSelection> selectionFromMimeData(const QMimeData *mimeData) {
+   if (!mimeData) return std::nullopt;
+ 
+diff --git a/src/server/src/services/clipboard/clipboard-mime.hpp b/src/server/src/services/clipboard/clipboard-mime.hpp
+index 9664819..cb35d22 100644
+--- a/src/server/src/services/clipboard/clipboard-mime.hpp
++++ b/src/server/src/services/clipboard/clipboard-mime.hpp
+@@ -8,5 +8,6 @@ namespace Clipboard {
+ 
+ std::optional<ClipboardSelection> selectionFromMimeData(const QMimeData *mimeData);
+ std::unique_ptr<QMimeData> mimeDataForContent(const Content &content);
++std::unique_ptr<QMimeData> mimeDataFromSelection(const ClipboardSelection &selection);
+ 
+ } // namespace Clipboard
+diff --git a/src/server/src/services/clipboard/clipboard-service.cpp b/src/server/src/services/clipboard/clipboard-service.cpp
+index 5cdb079..2410b95 100644
+--- a/src/server/src/services/clipboard/clipboard-service.cpp
++++ b/src/server/src/services/clipboard/clipboard-service.cpp
+@@ -549,17 +549,7 @@ void ClipboardService::restoreClipboard() {
+ 
+ std::unique_ptr<QMimeData>
+ ClipboardService::mimeDataFromSelection(const ClipboardSelection &selection) const {
+-  QMimeData *mimeData = new QMimeData;
+-
+-  for (auto &offer : selection.offers) {
+-    if (offer.mimeType != Clipboard::URI_LIST && Utils::isTextMimeType(offer.mimeType)) {
+-      mimeData->setText(QString::fromUtf8(offer.data));
+-    } else {
+-      mimeData->setData(offer.mimeType, offer.data);
+-    }
+-  }
+-
+-  return std::unique_ptr<QMimeData>{mimeData};
++  return Clipboard::mimeDataFromSelection(selection);
+ }
+ 
+ std::unique_ptr<QMimeData>
+diff --git a/src/server/tests/clipboard/mime-data-from-selection.cpp b/src/server/tests/clipboard/mime-data-from-selection.cpp
+new file mode 100644
+index 0000000..5c62bfa
+--- /dev/null
++++ b/src/server/tests/clipboard/mime-data-from-selection.cpp
+@@ -0,0 +1,118 @@
++#include "services/clipboard/clipboard-mime.hpp"
++
++#include <QByteArray>
++#include <QMimeData>
++#include <QString>
++#include <QUrl>
++
++#include <iostream>
++#include <string>
++#include <string_view>
++#include <vector>
++
++namespace {
++
++int failures = 0;
++
++void expect(bool condition, std::string_view message) {
++  if (condition) return;
++  std::cerr << "FAIL: " << message << '\n';
++  ++failures;
++}
++
++void expectOffer(const QMimeData &data, const QString &mimeType, const QByteArray &payload,
++                 std::string_view label) {
++  expect(data.hasFormat(mimeType), std::string(label) + " MIME is advertised");
++  expect(data.data(mimeType) == payload, std::string(label) + " payload is exact");
++}
++
++void verifyRichSelection(std::vector<ClipboardDataOffer> offers, std::string_view label) {
++  const QByteArray png{"\x89PNG\r\n\x1a\nrich-image", 18};
++  const QByteArray html{"<p><b>Rich</b> clipboard</p>"};
++  const QByteArray plain{"Rich clipboard"};
++  auto data = Clipboard::mimeDataFromSelection(ClipboardSelection{.offers = std::move(offers)});
++
++  expectOffer(*data, QStringLiteral("image/png"), png, std::string(label) + " image");
++  expectOffer(*data, QStringLiteral("text/html"), html, std::string(label) + " HTML");
++  expectOffer(*data, QStringLiteral("text/plain"), plain, std::string(label) + " plain text");
++  expect(data->text() == QString::fromUtf8(plain), std::string(label) + " plain view is preferred");
++  expect(data->html() == QString::fromUtf8(html), std::string(label) + " HTML view is preserved");
++}
++
++} // namespace
++
++int main() {
++  const QByteArray png{"\x89PNG\r\n\x1a\nrich-image", 18};
++  const QByteArray html{"<p><b>Rich</b> clipboard</p>"};
++  const QByteArray plain{"Rich clipboard"};
++
++  verifyRichSelection(
++      {
++          {.mimeType = QStringLiteral("image/png"), .data = png},
++          {.mimeType = QStringLiteral("text/html"), .data = html},
++          {.mimeType = QStringLiteral("text/plain"), .data = plain},
++      },
++      "rich forward");
++  verifyRichSelection(
++      {
++          {.mimeType = QStringLiteral("text/plain"), .data = plain},
++          {.mimeType = QStringLiteral("text/html"), .data = html},
++          {.mimeType = QStringLiteral("image/png"), .data = png},
++      },
++      "rich reverse");
++
++  {
++    const QByteArray charsetPlain{"charset-aware text"};
++    auto data = Clipboard::mimeDataFromSelection(ClipboardSelection{.offers = {
++        {.mimeType = QStringLiteral("text/html"), .data = html},
++        {.mimeType = QStringLiteral("text/plain;charset=utf-8"), .data = charsetPlain},
++    }});
++    expectOffer(*data, QStringLiteral("text/plain;charset=utf-8"), charsetPlain,
++                "charset plain");
++    expectOffer(*data, QStringLiteral("text/html"), html, "charset HTML");
++    expectOffer(*data, QStringLiteral("text/plain"), charsetPlain, "charset canonical plain");
++    expect(data->text() == QString::fromUtf8(charsetPlain),
++           "charset plain supplies the compatibility view");
++  }
++
++  const QByteArray uriPayload{"file:///tmp/first.txt\r\nfile:///tmp/second.txt"};
++  {
++    auto data = Clipboard::mimeDataFromSelection(ClipboardSelection{.offers = {
++        {.mimeType = QStringLiteral("text/uri-list"), .data = uriPayload},
++    }});
++    expect(data->hasFormat(QStringLiteral("text/uri-list")), "URI-only MIME is advertised");
++    expect(!data->hasFormat(QStringLiteral("text/plain")),
++           "URI-only selection does not synthesize plain text");
++    expect(data->urls() == QList<QUrl>{QUrl::fromLocalFile(QStringLiteral("/tmp/first.txt")),
++                                      QUrl::fromLocalFile(QStringLiteral("/tmp/second.txt"))},
++           "URI-only selection keeps parsed URLs");
++  }
++
++  {
++    auto data = Clipboard::mimeDataFromSelection(ClipboardSelection{.offers = {
++        {.mimeType = QStringLiteral("text/uri-list"), .data = uriPayload},
++        {.mimeType = QStringLiteral("text/plain"), .data = plain},
++    }});
++    expect(data->hasFormat(QStringLiteral("text/uri-list")),
++           "URI plus plain advertises the URI MIME");
++    expectOffer(*data, QStringLiteral("text/plain"), plain, "URI plus plain text");
++    expect(data->text() == QString::fromUtf8(plain), "URI plus plain keeps the plain view");
++  }
++
++  {
++    const QByteArray x11Text{"X11 compatibility text"};
++    auto data = Clipboard::mimeDataFromSelection(ClipboardSelection{.offers = {
++        {.mimeType = QStringLiteral("UTF8_STRING"), .data = x11Text},
++    }});
++    expectOffer(*data, QStringLiteral("UTF8_STRING"), x11Text, "X11 target");
++    expectOffer(*data, QStringLiteral("text/plain"), x11Text, "X11 canonical plain");
++    expect(data->text() == QString::fromUtf8(x11Text), "X11 target supplies the plain view");
++  }
++
++  if (failures != 0) {
++    std::cerr << failures << " clipboard MIME regression check(s) failed\n";
++    return 1;
++  }
++  std::cout << "Vicinae clipboard MIME preservation tests passed.\n";
++  return 0;
++}

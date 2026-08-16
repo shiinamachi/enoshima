@@ -1,0 +1,69 @@
+:root {
+    --window-padding: 8px;
+    --border-radius: 12px;
+    --border-size: 2px;
+    --border-style: solid;
+    --bg-window-color: #050623;
+    --bg-color: #0a0c3e;
+    --bg-color-hover: #161151;
+    --border-color: #6d8cff;
+    --border-color-active: #62d8ff;
+}
+
+window {
+    color: #f2ecff;
+    background: transparent;
+    font-family: Pretendard, sans-serif;
+}
+
+.monitor {
+    padding: 8px;
+    background: #050623;
+    border: 2px solid #6d8cff;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px #050623;
+}
+
+.monitor > flowboxchild {
+    padding: 0;
+}
+
+.workspace {
+    margin: 4px;
+    color: #f2ecff;
+    background: #0a0c3e;
+    border: 2px solid #6d8cff;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.workspace.active {
+    border: 2px solid #9a5cff;
+    box-shadow: inset 5px 0 #9a5cff;
+}
+
+.client {
+    margin: 4px;
+    color: #c9bfe8;
+    background: #161151;
+    border: 2px solid #6d8cff;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.client:hover {
+    color: #f2ecff;
+    background: #222064;
+}
+
+.client.active {
+    color: #f2ecff;
+    border: 2px solid #62d8ff;
+    box-shadow: inset 0 -5px #62d8ff;
+}
+
+.client-image {
+    margin: 4px 0;
+}

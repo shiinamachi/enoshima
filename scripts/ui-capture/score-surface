@@ -12,7 +12,6 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
-
 AUTOMATED_WEIGHTS = {
     "geometry": 0.20,
     "color_tokens": 0.10,
@@ -29,7 +28,9 @@ WEIGHTS = AUTOMATED_WEIGHTS | MANUAL_WEIGHTS
 
 
 def yaml(path: Path) -> dict:
-    result = subprocess.run(["yq", ".", str(path)], check=True, capture_output=True, text=True)
+    result = subprocess.run(
+        ["yq", ".", str(path)], check=True, capture_output=True, text=True
+    )
     return json.loads(result.stdout)
 
 
@@ -47,6 +48,65 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def reject_symlink_components(value: Path, label: str) -> Path:
+    candidate = Path(os.path.abspath(value))
+    current = Path(candidate.anchor)
+    for part in candidate.parts[1:]:
+        current /= part
+        if current.is_symlink():
+            raise SystemExit(f"{label} must not traverse a symlink: {current}")
+    return candidate
+
+
+def regular_file_without_symlinks(value: Path, label: str) -> Path:
+    candidate = reject_symlink_components(value, label)
+    if not candidate.is_file():
+        raise SystemExit(f"{label} must be a regular file: {candidate}")
+    return candidate
+
+
+def safe_relative(root: Path, value: str, label: str) -> Path:
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts:
+        raise SystemExit(f"{label} must stay inside the repository: {value}")
+    candidate = regular_file_without_symlinks(root / path, label).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as error:
+        raise SystemExit(f"{label} must stay inside the repository: {value}") from error
+    return candidate
+
+
+def expected_sidecars(root: Path, surface: str, entry: dict) -> list[str]:
+    aggregate_path = root / "docs/evidence/vm-run.json"
+    if aggregate_path.is_file() and not aggregate_path.is_symlink():
+        aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+        provenance = aggregate.get("surfaces", {}).get(surface, {})
+        captures = provenance.get("captures") if isinstance(provenance, dict) else None
+        if isinstance(captures, list) and captures:
+            return sorted(str(value) for value in captures)
+    evidence = entry.get("evidence", {})
+    captures = evidence.get("captures") if isinstance(evidence, dict) else None
+    if isinstance(captures, list) and captures:
+        return sorted(str(value) for value in captures)
+    discovered: list[str] = []
+    for path in (root / "docs/evidence" / surface).glob("*.json"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            sidecar = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (
+            sidecar.get("schema") == 1
+            and sidecar.get("surface_id") == surface
+            and isinstance(sidecar.get("state"), str)
+            and isinstance(sidecar.get("image"), str)
+        ):
+            discovered.append(path.relative_to(root).as_posix())
+    return sorted(discovered)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--surface", required=True)
@@ -54,7 +114,9 @@ def main() -> None:
     parser.add_argument("--automated-report", required=True, type=Path)
     parser.add_argument("--repo-root", type=Path)
     for category in MANUAL_WEIGHTS:
-        parser.add_argument(f"--{category.replace('_', '-')}", required=True, type=float)
+        parser.add_argument(
+            f"--{category.replace('_', '-')}", required=True, type=float
+        )
     args = parser.parse_args()
 
     root = (args.repo_root or Path(__file__).resolve().parents[2]).resolve()
@@ -62,9 +124,11 @@ def main() -> None:
     entry = manifest.get("surfaces", {}).get(args.surface)
     if not isinstance(entry, dict):
         raise SystemExit(f"unknown surface: {args.surface}")
-    automated_path = args.automated_report.resolve()
-    if not automated_path.is_file() or automated_path.is_symlink():
-        raise SystemExit("automated report must be a regular JSON file")
+    if not args.reviewer.strip():
+        raise SystemExit("reviewer must not be empty")
+    automated_path = regular_file_without_symlinks(
+        args.automated_report, "automated report"
+    )
     try:
         automated_relative = automated_path.relative_to(root).as_posix()
     except ValueError as error:
@@ -73,7 +137,7 @@ def main() -> None:
     current_digest = implementation_digest(root, entry["implementation"])
     concept_spec_hash = sha256(root / entry["concept"]["spec"])
     if (
-        automated.get("schema") != 1
+        automated.get("schema") != 2
         or automated.get("surface_id") != args.surface
         or automated.get("implementation_digest") != current_digest
         or automated.get("concept_sha256") != entry["concept"]["sha256"]
@@ -82,19 +146,72 @@ def main() -> None:
         raise SystemExit("automated report is stale or belongs to another surface")
     if automated.get("text_overflow_failures"):
         raise SystemExit("automated report contains text overflow failures")
+    expected = expected_sidecars(root, args.surface, entry)
+    if not expected:
+        raise SystemExit(f"no canonical capture sidecars found for {args.surface}")
+    sources = automated.get("sources")
+    observed = (
+        [str(value.get("sidecar", "")) for value in sources]
+        if isinstance(sources, list)
+        and all(isinstance(value, dict) for value in sources)
+        else []
+    )
+    if len(observed) != len(set(observed)) or sorted(observed) != expected:
+        raise SystemExit("automated report does not cover every canonical sidecar")
+    mapping_path = safe_relative(root, str(automated.get("mapping", "")), "mapping")
+    if automated.get("mapping_sha256") != sha256(mapping_path):
+        raise SystemExit("automated report mapping hash is stale")
+    mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+    comparisons = mapping.get("comparisons")
+    if (
+        mapping.get("schema") != 1
+        or mapping.get("surface_id") != args.surface
+        or not isinstance(comparisons, list)
+        or not all(isinstance(value, dict) for value in comparisons)
+    ):
+        raise SystemExit("automated report mapping schema/surface mismatch")
+    comparison_by_sidecar = {
+        str(value.get("sidecar", "")): value for value in comparisons
+    }
+    mapped = [str(value.get("sidecar", "")) for value in comparisons]
+    if len(mapped) != len(set(mapped)) or sorted(mapped) != expected:
+        raise SystemExit(
+            "automated report mapping does not cover every canonical sidecar"
+        )
+    for source in sources:
+        sidecar = str(source.get("sidecar", ""))
+        sidecar_path = safe_relative(root, sidecar, "automated source sidecar")
+        comparison = comparison_by_sidecar.get(sidecar, {})
+        if source.get("sidecar_sha256") != sha256(sidecar_path):
+            raise SystemExit(f"automated source sidecar hash is stale: {sidecar}")
+        if source.get("reference_crop") != comparison.get(
+            "reference_crop"
+        ) or source.get("implementation_crop") != comparison.get("implementation_crop"):
+            raise SystemExit(f"automated source crop does not match mapping: {sidecar}")
     automatic_scores = automated.get("scores", {})
-    scores = {category: float(automatic_scores.get(category, -1)) for category in AUTOMATED_WEIGHTS}
-    scores.update({category: float(getattr(args, category)) for category in MANUAL_WEIGHTS})
-    invalid = {category: score for category, score in scores.items() if not 0 <= score <= 100}
+    scores = {
+        category: float(automatic_scores.get(category, -1))
+        for category in AUTOMATED_WEIGHTS
+    }
+    scores.update(
+        {category: float(getattr(args, category)) for category in MANUAL_WEIGHTS}
+    )
+    invalid = {
+        category: score for category, score in scores.items() if not 0 <= score <= 100
+    }
     if invalid:
         raise SystemExit(f"scores must be between 0 and 100: {invalid}")
     below_floor = {category: score for category, score in scores.items() if score < 85}
-    total = round(sum(scores[category] * weight for category, weight in WEIGHTS.items()), 2)
+    total = round(
+        sum(scores[category] * weight for category, weight in WEIGHTS.items()), 2
+    )
     if below_floor or total < 90:
-        raise SystemExit(f"review does not pass: total={total}, below_floor={below_floor}")
+        raise SystemExit(
+            f"review does not pass: total={total}, below_floor={below_floor}"
+        )
 
     review = {
-        "schema": 2,
+        "schema": 3,
         "surface_id": args.surface,
         "reviewer": args.reviewer,
         "reviewed_at": date.today().isoformat(),
@@ -102,16 +219,21 @@ def main() -> None:
         "concept_sha256": entry["concept"]["sha256"],
         "concept_spec_sha256": concept_spec_hash,
         "automated_report": automated_relative,
-        "automated_report_sha256": hashlib.sha256(automated_path.read_bytes()).hexdigest(),
+        "automated_report_sha256": hashlib.sha256(
+            automated_path.read_bytes()
+        ).hexdigest(),
         "scores": scores,
         "total": total,
     }
     evidence_dir = root / "docs/evidence" / args.surface
+    reject_symlink_components(evidence_dir, "evidence output directory")
     evidence_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
     output = evidence_dir / "review.json"
     if output.is_symlink():
         raise SystemExit("review output must not be a symbolic link")
-    descriptor, temporary = tempfile.mkstemp(prefix=".review-", suffix=".json", dir=evidence_dir, text=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=".review-", suffix=".json", dir=evidence_dir, text=True
+    )
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
         json.dump(review, stream, ensure_ascii=False, indent=2)
         stream.write("\n")

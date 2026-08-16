@@ -1,0 +1,41 @@
+---
+- name: Resolve the optional Vicinae input server
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/realpath
+      - --canonicalize-existing
+      - --
+      - /usr/libexec/vicinae/vicinae-input-server
+  register: vicinae_input_server
+  changed_when: false
+  failed_when: vicinae_input_server.rc not in [0, 1]
+
+- name: Constrain the resolved Vicinae input server path
+  ansible.builtin.assert:
+    that:
+      - >-
+        vicinae_input_server.stdout in
+        ['/usr/libexec/vicinae/vicinae-input-server']
+    fail_msg: >-
+      Refusing to alter capabilities on an unexpected Vicinae input-server
+      target: {{ vicinae_input_server.stdout }}
+  when: vicinae_input_server.rc == 0
+
+# Older AUR installs granted cap_dac_override for global input injection.
+# Enoshima's pinned source-build recipe never grants it, but remove the
+# capability once during migration in case that older package was installed.
+- name: Remove the unused Vicinae input-injection capability
+  community.general.capabilities:
+    path: "{{ vicinae_input_server.stdout }}"
+    capability: cap_dac_override+ep
+    state: absent
+  when: vicinae_input_server.rc == 0
+
+- name: Remove obsolete Vicinae privilege surfaces
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/lib/modules-load.d/vicinae.conf
+    - /etc/pacman.d/hooks/95-enoshima-vicinae-capability.hook
+    - /usr/local/libexec/enoshima-vicinae-unprivileged

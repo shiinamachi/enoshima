@@ -27,6 +27,28 @@ fi
 PARU
 chmod +x "$work/bin/paru"
 
+cat >"$work/bin/provenance-empty" <<'PROVENANCE'
+#!/usr/bin/env bash
+set -eu
+case ${1:-} in
+  validate)
+    exit 0
+    ;;
+  list)
+    :
+    ;;
+  install)
+    printf 'empty provenance helper cannot install protected packages\n' >&2
+    exit 90
+    ;;
+  *)
+    exit 91
+    ;;
+esac
+PROVENANCE
+chmod +x "$work/bin/provenance-empty"
+export AUR_PROVENANCE_HELPER=$work/bin/provenance-empty
+
 printf 'alpha-bin\nbeta-bin\n' >"$work/aur.txt"
 if env \
   PATH="$work/bin:$PATH" \
@@ -83,13 +105,16 @@ chmod +x "$work/bin/makepkg"
 cat >"$work/bin/mise" <<'MISE'
 #!/usr/bin/env bash
 set -eu
-printf '{"rust":[{"version":"1.90.0"}]}\n'
+printf 'mise must not be consulted for the paru toolchain\n' >&2
+exit 97
 MISE
 chmod +x "$work/bin/mise"
+printf '[tools]\nrust = "0.0.1"\n' >"$work/untrusted-mise.toml"
 printf 'paru\nbeta-bin\n' >"$work/aur.txt"
 : >"$work/attempts.log"
 env \
   PATH="$work/bin:$PATH" \
+  MISE_CONFIG_FILE="$work/untrusted-mise.toml" \
   AUR_MANIFEST="$work/aur.txt" \
   AUR_PARU_URL="$work/paru-source" \
   AUR_INSTALL_RETRY_DELAY_SECONDS=0 \
@@ -98,8 +123,8 @@ env \
   "$installer" >"$work/paru.out"
 [[ $(wc -l <"$work/makepkg.log") -eq 1 ]] ||
   fail 'the approved paru package was not converged exactly once by makepkg'
-grep -Fq '1.90.0|--config ' "$work/makepkg.log" ||
-  fail 'the approved paru build did not select the mise-managed Rust toolchain'
+grep -Fq '1.97.0|--config ' "$work/makepkg.log" ||
+  fail 'the approved paru build did not select the repository-pinned Rust toolchain'
 [[ $(grep -c -- '--needed -S -- beta-bin' "$work/attempts.log") -eq 1 ]] ||
   fail 'a package after paru was not converged exactly once'
 if grep -Fq -- '--needed -S -- paru' "$work/attempts.log"; then
@@ -108,9 +133,104 @@ fi
 grep -Fq 'SUCCESS: approved AUR package base converged: paru' \
   "$work/paru.out" || fail 'the separately converged paru package was not reported'
 
-if rg -q 'aur-review|review-aur|aur_commit|pkgbuild_sha256|srcinfo_sha256' \
-  "$installer" "$repo_root/packages/aur.txt"; then
-  fail 'the AUR installer still contains revision-level approval machinery'
+cat >"$work/bin/provenance-protected" <<'PROVENANCE'
+#!/usr/bin/env bash
+set -eu
+case ${1:-} in
+  validate)
+    exit 0
+    ;;
+  list)
+    printf 'hyprshell-bin\n'
+    ;;
+  install)
+    printf '%s\n' "$*" >>"$AUR_PROVENANCE_TEST_LOG"
+    exit "${AUR_PROVENANCE_TEST_STATUS:-37}"
+    ;;
+  *)
+    exit 91
+    ;;
+esac
+PROVENANCE
+chmod +x "$work/bin/provenance-protected"
+printf 'hyprshell-bin\nbeta-bin\n' >"$work/aur.txt"
+: >"$work/attempts.log"
+if env \
+  AUR_PROVENANCE_HELPER="$work/bin/provenance-protected" \
+  AUR_PROVENANCE_TEST_LOG="$work/protected.log" \
+  PATH="$work/bin:$PATH" \
+  AUR_MANIFEST="$work/aur.txt" \
+  AUR_INSTALL_RETRY_DELAY_SECONDS=0 \
+  AUR_TEST_LOG="$work/attempts.log" \
+  "$installer" >"$work/protected.out" 2>&1; then
+  fail 'a failed protected package did not produce a final failure status'
 fi
+[[ $(wc -l <"$work/protected.log") -eq 1 ]] ||
+  fail 'the protected package did not use exactly one provenance installation attempt'
+grep -Fq 'install --lock ' "$work/protected.log" ||
+  fail 'the protected package did not use the provenance installation command'
+if grep -Eq -- '--needed -S -- hyprshell-bin($|[[:space:]])' "$work/attempts.log"; then
+  fail 'the protected package fell back to the unreviewed paru path'
+fi
+[[ $(grep -c -- '--needed -S -- beta-bin' "$work/attempts.log") -eq 1 ]] ||
+  fail 'a failed protected package prevented later legacy convergence'
+grep -Fq \
+  'FAILURE: protected AUR package base hyprshell-bin exited with status 37; continuing.' \
+  "$work/protected.out" || fail 'the protected provenance failure was not explicit'
+
+: >"$work/attempts.log"
+if env \
+  AUR_PROVENANCE_HELPER="$work/bin/provenance-protected" \
+  AUR_PROVENANCE_TEST_LOG="$work/protected-unsafe.log" \
+  AUR_PROVENANCE_TEST_STATUS=70 \
+  PATH="$work/bin:$PATH" \
+  AUR_MANIFEST="$work/aur.txt" \
+  AUR_INSTALL_RETRY_DELAY_SECONDS=0 \
+  AUR_TEST_LOG="$work/attempts.log" \
+  "$installer" >"$work/protected-unsafe.out" 2>&1; then
+  fail 'a residual unsafe protected state did not fail convergence'
+fi
+[[ ! -s $work/attempts.log ]] ||
+  fail 'legacy convergence continued after a residual unsafe protected state'
+grep -Fq \
+  'FAILURE: unsafe installed state for protected AUR package base hyprshell-bin; stopping immediately.' \
+  "$work/protected-unsafe.out" ||
+  fail 'the residual unsafe-state hard stop was not explicit'
+
+cat >"$work/bin/provenance-list-failure" <<'PROVENANCE'
+#!/usr/bin/env bash
+set -eu
+case ${1:-} in
+  validate)
+    exit 0
+    ;;
+  list)
+    exit 66
+    ;;
+  install)
+    exit 67
+    ;;
+  *)
+    exit 68
+    ;;
+esac
+PROVENANCE
+chmod +x "$work/bin/provenance-list-failure"
+: >"$work/attempts.log"
+if env \
+  AUR_PROVENANCE_HELPER="$work/bin/provenance-list-failure" \
+  PATH="$work/bin:$PATH" \
+  AUR_MANIFEST="$work/aur.txt" \
+  AUR_INSTALL_RETRY_DELAY_SECONDS=0 \
+  AUR_TEST_LOG="$work/attempts.log" \
+  "$installer" >"$work/protected-list-failure.out" 2>&1; then
+  fail 'a failed protected package classification did not stop convergence'
+fi
+[[ ! -s $work/attempts.log ]] ||
+  fail 'a failed protected classification fell through to paru'
+grep -Fq \
+  'Protected AUR package classification failed; refusing all AUR convergence.' \
+  "$work/protected-list-failure.out" ||
+  fail 'the protected classification failure was not explicit'
 
 printf 'AUR allowlist tests passed.\n'

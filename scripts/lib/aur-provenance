@@ -1,0 +1,1414 @@
+#!/usr/bin/python3
+"""Fail-closed provenance checks for repository-protected AUR packages."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import platform
+import re
+import shlex
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+from typing import Any
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+
+
+PACKAGE_RE = re.compile(r"^[a-z0-9@._+-]+$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+)*(?:[._+-][0-9A-Za-z]+)*$")
+UNSTABLE_RE = re.compile(
+    r"(?:^|[._+-])(alpha|beta|canary|dev|nightly|pre|preview|rc|snapshot)(?:[._+-]|[0-9]|$)",
+    re.IGNORECASE,
+)
+NETWORK_COMMAND_RE = re.compile(
+    r"(?:^|[\n;&|()`{])\s*(?:command\s+)?(?:env\s+(?:-[^\s]+\s+|[A-Za-z_][A-Za-z0-9_]*=[^\s]+\s+)*)?"
+    r"(aria2c|bzr|curl|fetch|fossil|ftp|git|hg|lftp|nc|ncat|netcat|rsync|scp|sftp|socat|ssh|svn|telnet|wget)\b",
+    re.MULTILINE,
+)
+NETWORK_URL_RE = re.compile(r"(?:ftp|git|https?|ssh)://", re.IGNORECASE)
+VCS_SOURCE_RE = re.compile(
+    r"^(?:bzr|fossil|git|hg|svn)\+|(?:^|/)\.git(?:#|$)|#(?:branch|commit|tag)=",
+    re.IGNORECASE,
+)
+FUNCTION_DECL_RE = re.compile(
+    r"(?m)^[ \t]*(pkgver|prepare|build|check|package(?:_[A-Za-z0-9@._+-]+)?)"
+    r"[ \t]*\([ \t]*\)[ \t]*\{"
+)
+RELEVANT_FUNCTION_RE = re.compile(
+    r"(?m)^[ \t]*(?:function[ \t]+)?"
+    r"(pkgver|prepare|build|check|package(?:_[A-Za-z0-9@._+-]+)?)\b"
+    r"[ \t]*(?:\([ \t]*\))?[ \t]*\{"
+)
+CHECKSUM_KEY_RE = re.compile(
+    r"^(md5|sha1|sha224|sha256|sha384|sha512|b2)sums(?:_([A-Za-z0-9_]+))?$"
+)
+SOURCE_KEY_RE = re.compile(r"^source(?:_([A-Za-z0-9_]+))?$")
+
+SYSTEM_UNIT_PREFIXES = (
+    "usr/lib/systemd/system/",
+    "usr/local/lib/systemd/system/",
+    "lib/systemd/system/",
+    "etc/systemd/system/",
+    "run/systemd/system/",
+)
+USER_UNIT_PREFIXES = (
+    "usr/lib/systemd/user/",
+    "usr/local/lib/systemd/user/",
+    "usr/share/systemd/user/",
+    "usr/local/share/systemd/user/",
+    "lib/systemd/user/",
+    "etc/systemd/user/",
+    "etc/xdg/systemd/user/",
+    "run/systemd/user/",
+)
+RUNTIME_USER_UNIT_RE = re.compile(r"^run/user/[^/]+/systemd/user(?:/.*)?$")
+HOME_USER_UNIT_RE = re.compile(
+    r"^(?:home/[^/]+|root)/(?:\.config|\.local/share)/systemd/user(?:/.*)?$"
+)
+PACMAN_HOOK_PREFIXES = (
+    "usr/share/libalpm/hooks/",
+    "usr/local/share/libalpm/hooks/",
+    "share/libalpm/hooks/",
+    "etc/pacman.d/hooks/",
+)
+MODULES_LOAD_PREFIXES = (
+    "usr/lib/modules-load.d/",
+    "usr/local/lib/modules-load.d/",
+    "lib/modules-load.d/",
+    "etc/modules-load.d/",
+    "run/modules-load.d/",
+)
+
+
+class ProvenanceError(RuntimeError):
+    """A protected package did not satisfy the reviewed provenance policy."""
+
+
+class InstalledSafetyError(ProvenanceError):
+    """An installed protected package owns forbidden security attributes."""
+
+    def __init__(self, setid_paths: list[str], capability_paths: list[str]) -> None:
+        self.setid_paths = tuple(setid_paths)
+        self.capability_paths = tuple(capability_paths)
+        if setid_paths:
+            detail = f"set-ID path: {setid_paths[0]}"
+        else:
+            detail = f"file capability: {capability_paths[0]}"
+        super().__init__(f"installed package owns a {detail}")
+
+
+class ResidualInstalledSafetyError(ProvenanceError):
+    """Forbidden live attributes could not be safely neutralized."""
+
+
+def require_keys(value: dict[str, Any], expected: set[str], context: str) -> None:
+    actual = set(value)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        details: list[str] = []
+        if missing:
+            details.append("missing " + ", ".join(missing))
+        if extra:
+            details.append("unexpected " + ", ".join(extra))
+        raise ProvenanceError(f"{context} keys are invalid: {'; '.join(details)}")
+
+
+def require_string(value: Any, context: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ProvenanceError(f"{context} must be a non-empty string")
+    return value
+
+
+def require_sha256(value: Any, context: str) -> str:
+    digest = require_string(value, context)
+    if not SHA256_RE.fullmatch(digest):
+        raise ProvenanceError(f"{context} must be a lowercase SHA-256 digest")
+    return digest
+
+
+def require_https(value: Any, context: str, *, host: str | None = None) -> str:
+    url = require_string(value, context)
+    parsed = urlparse(url)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ProvenanceError(f"{context} must be an HTTPS URL without credentials")
+    if host is not None and parsed.hostname.lower() != host:
+        raise ProvenanceError(f"{context} must use {host}")
+    return url
+
+
+def require_relative_path(value: Any, context: str) -> str:
+    path = require_string(value, context)
+    pure = PurePosixPath(path)
+    if (
+        pure.is_absolute()
+        or path.startswith("./")
+        or path.endswith("/")
+        or any(part in ("", ".", "..") for part in pure.parts)
+        or "\x00" in path
+    ):
+        raise ProvenanceError(f"{context} must be a normalized relative path")
+    return path
+
+
+def validate_policy_paths(values: Any, context: str) -> list[str]:
+    if not isinstance(values, list):
+        raise ProvenanceError(f"{context} must be a list")
+    result = [require_relative_path(value, context) for value in values]
+    if result != sorted(set(result)):
+        raise ProvenanceError(f"{context} must be sorted and contain no duplicates")
+    return result
+
+
+def validate_package(raw: Any, index: int) -> dict[str, Any]:
+    context = f"protected_packages[{index}]"
+    if not isinstance(raw, dict):
+        raise ProvenanceError(f"{context} must be an object")
+    require_keys(
+        raw,
+        {
+            "architecture",
+            "archive_policy",
+            "aur",
+            "install_script",
+            "pkgbase",
+            "pkgname",
+            "pkgrel",
+            "pkgver",
+            "sources",
+            "tree",
+            "upstream_release",
+        },
+        context,
+    )
+
+    pkgbase = require_string(raw["pkgbase"], f"{context}.pkgbase")
+    pkgname = require_string(raw["pkgname"], f"{context}.pkgname")
+    if not PACKAGE_RE.fullmatch(pkgbase) or not PACKAGE_RE.fullmatch(pkgname):
+        raise ProvenanceError(f"{context} contains an invalid package name")
+    architecture = require_string(raw["architecture"], f"{context}.architecture")
+    if architecture not in {"x86_64", "aarch64"}:
+        raise ProvenanceError(f"{context}.architecture is unsupported")
+    pkgver = require_string(raw["pkgver"], f"{context}.pkgver")
+    pkgrel = require_string(raw["pkgrel"], f"{context}.pkgrel")
+    if not VERSION_RE.fullmatch(pkgver) or UNSTABLE_RE.search(pkgver):
+        raise ProvenanceError(f"{context}.pkgver is not a stable release version")
+    if not re.fullmatch(r"[1-9][0-9]*(?:\.[0-9]+)?", pkgrel):
+        raise ProvenanceError(f"{context}.pkgrel is invalid")
+
+    aur = raw["aur"]
+    if not isinstance(aur, dict):
+        raise ProvenanceError(f"{context}.aur must be an object")
+    require_keys(aur, {"commit", "url"}, f"{context}.aur")
+    aur_url = require_https(aur["url"], f"{context}.aur.url", host="aur.archlinux.org")
+    if aur_url != f"https://aur.archlinux.org/{pkgbase}.git":
+        raise ProvenanceError(f"{context}.aur.url does not match pkgbase")
+    commit = require_string(aur["commit"], f"{context}.aur.commit")
+    if not COMMIT_RE.fullmatch(commit):
+        raise ProvenanceError(f"{context}.aur.commit must be a lowercase Git commit")
+
+    tree = raw["tree"]
+    if not isinstance(tree, dict) or not tree:
+        raise ProvenanceError(f"{context}.tree must be a non-empty object")
+    normalized_tree: dict[str, str] = {}
+    for path, digest in tree.items():
+        normalized_path = require_relative_path(path, f"{context}.tree path")
+        normalized_tree[normalized_path] = require_sha256(
+            digest, f"{context}.tree[{normalized_path}]"
+        )
+    if "PKGBUILD" not in normalized_tree or ".SRCINFO" not in normalized_tree:
+        raise ProvenanceError(f"{context}.tree must include PKGBUILD and .SRCINFO")
+
+    install_script = raw["install_script"]
+    if install_script is not None:
+        if not isinstance(install_script, dict):
+            raise ProvenanceError(f"{context}.install_script must be null or an object")
+        require_keys(install_script, {"path", "sha256"}, f"{context}.install_script")
+        install_path = require_relative_path(
+            install_script["path"], f"{context}.install_script.path"
+        )
+        install_digest = require_sha256(
+            install_script["sha256"], f"{context}.install_script.sha256"
+        )
+        if normalized_tree.get(install_path) != install_digest:
+            raise ProvenanceError(
+                f"{context}.install_script is not covered by the exact tree hash"
+            )
+
+    sources = raw["sources"]
+    if not isinstance(sources, list) or not sources:
+        raise ProvenanceError(f"{context}.sources must be a non-empty list")
+    source_architectures: list[str] = []
+    for source_index, source in enumerate(sources):
+        source_context = f"{context}.sources[{source_index}]"
+        if not isinstance(source, dict):
+            raise ProvenanceError(f"{source_context} must be an object")
+        require_keys(source, {"architecture", "sha256", "url"}, source_context)
+        source_architecture = require_string(
+            source["architecture"], f"{source_context}.architecture"
+        )
+        if source_architecture not in {"x86_64", "aarch64"}:
+            raise ProvenanceError(f"{source_context}.architecture is unsupported")
+        source_architectures.append(source_architecture)
+        locked_url = require_https(source["url"], f"{source_context}.url")
+        if VCS_SOURCE_RE.search(locked_url):
+            raise ProvenanceError(f"{source_context}.url must not be a VCS source")
+        require_sha256(source["sha256"], f"{source_context}.sha256")
+    if source_architectures != sorted(set(source_architectures)):
+        raise ProvenanceError(
+            f"{context}.sources must be architecture-sorted and contain no duplicates"
+        )
+    if architecture not in source_architectures:
+        raise ProvenanceError(
+            f"{context}.sources does not include the installation architecture"
+        )
+
+    release = raw["upstream_release"]
+    if not isinstance(release, dict):
+        raise ProvenanceError(f"{context}.upstream_release must be an object")
+    require_keys(
+        release,
+        {"api_url", "draft", "id", "prerelease", "tag"},
+        f"{context}.upstream_release",
+    )
+    api_url = require_https(
+        release["api_url"], f"{context}.upstream_release.api_url", host="api.github.com"
+    )
+    if not api_url.endswith("/releases/latest"):
+        raise ProvenanceError(
+            f"{context}.upstream_release.api_url must use the latest release endpoint"
+        )
+    if type(release["id"]) is not int or release["id"] <= 0:
+        raise ProvenanceError(f"{context}.upstream_release.id must be positive")
+    if release["draft"] is not False or release["prerelease"] is not False:
+        raise ProvenanceError(
+            f"{context}.upstream_release must be stable and published"
+        )
+    if release["tag"] != f"v{pkgver}" or UNSTABLE_RE.search(str(release["tag"])):
+        raise ProvenanceError(
+            f"{context}.upstream_release.tag does not match the stable pkgver"
+        )
+
+    policy = raw["archive_policy"]
+    if not isinstance(policy, dict):
+        raise ProvenanceError(f"{context}.archive_policy must be an object")
+    require_keys(
+        policy,
+        {"modules_load", "pacman_hooks", "system_units", "user_units"},
+        f"{context}.archive_policy",
+    )
+    for key in ("modules_load", "pacman_hooks", "system_units", "user_units"):
+        validate_policy_paths(policy[key], f"{context}.archive_policy.{key}")
+
+    return raw
+
+
+def load_lock(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    if not path.is_file() or path.is_symlink():
+        raise ProvenanceError(f"provenance lock is missing or unsafe: {path}")
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ProvenanceError(f"cannot parse provenance lock {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ProvenanceError("provenance lock must be an object")
+    require_keys(raw, {"protected_packages", "reviewed_at", "schema"}, "lock")
+    if raw["schema"] != 1:
+        raise ProvenanceError("unsupported provenance lock schema")
+    try:
+        dt.date.fromisoformat(require_string(raw["reviewed_at"], "lock.reviewed_at"))
+    except ValueError as exc:
+        raise ProvenanceError("lock.reviewed_at must be an ISO date") from exc
+    if not isinstance(raw["protected_packages"], list):
+        raise ProvenanceError("lock.protected_packages must be a list")
+
+    packages: dict[str, dict[str, Any]] = {}
+    for index, package_raw in enumerate(raw["protected_packages"]):
+        package = validate_package(package_raw, index)
+        pkgbase = package["pkgbase"]
+        if pkgbase in packages:
+            raise ProvenanceError(f"duplicate protected package: {pkgbase}")
+        packages[pkgbase] = package
+    return packages, raw
+
+
+def load_manifest(path: Path) -> list[str]:
+    if not path.is_file() or path.is_symlink():
+        raise ProvenanceError(f"AUR manifest is missing or unsafe: {path}")
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if not PACKAGE_RE.fullmatch(line):
+            raise ProvenanceError(f"invalid AUR manifest package: {line}")
+        if line in seen:
+            raise ProvenanceError(f"duplicate AUR manifest package: {line}")
+        result.append(line)
+        seen.add(line)
+    return result
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def recipe_files(recipe_dir: Path) -> dict[str, Path]:
+    if not recipe_dir.is_dir() or recipe_dir.is_symlink():
+        raise ProvenanceError(f"recipe directory is missing or unsafe: {recipe_dir}")
+    result: dict[str, Path] = {}
+    for candidate in recipe_dir.rglob("*"):
+        relative = candidate.relative_to(recipe_dir)
+        if relative.parts and relative.parts[0] == ".git":
+            continue
+        name = relative.as_posix()
+        if candidate.is_symlink():
+            raise ProvenanceError(f"recipe tree contains a symlink: {name}")
+        if candidate.is_dir():
+            continue
+        if not candidate.is_file():
+            raise ProvenanceError(f"recipe tree contains a non-regular file: {name}")
+        result[name] = candidate
+    return result
+
+
+def parse_srcinfo(text: str, context: str) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "=" not in line:
+            raise ProvenanceError(f"{context}:{number} is not a key/value entry")
+        key, value = (part.strip() for part in line.split("=", 1))
+        if not re.fullmatch(r"[a-z0-9_]+", key) or not value:
+            raise ProvenanceError(f"{context}:{number} has an invalid entry")
+        result.setdefault(key, []).append(value)
+    return result
+
+
+def srcinfo_single(entries: dict[str, list[str]], key: str, context: str) -> str:
+    values = entries.get(key, [])
+    if len(values) != 1:
+        raise ProvenanceError(f"{context} must contain exactly one {key}")
+    return values[0]
+
+
+def source_url(value: str, context: str) -> str:
+    resolved = value.split("::", 1)[-1]
+    if "$" in resolved:
+        raise ProvenanceError(f"{context} contains an unresolved source URL")
+    if VCS_SOURCE_RE.search(resolved):
+        raise ProvenanceError(f"{context} contains a VCS source")
+    require_https(resolved, context)
+    return resolved
+
+
+def validate_srcinfo(
+    package: dict[str, Any], text: str, context: str
+) -> dict[str, list[str]]:
+    entries = parse_srcinfo(text, context)
+    if srcinfo_single(entries, "pkgbase", context) != package["pkgbase"]:
+        raise ProvenanceError(f"{context} pkgbase does not match the lock")
+    if entries.get("pkgname") != [package["pkgname"]]:
+        raise ProvenanceError(f"{context} pkgname does not exactly match the lock")
+    if srcinfo_single(entries, "pkgver", context) != package["pkgver"]:
+        raise ProvenanceError(f"{context} pkgver does not match the stable release")
+    if srcinfo_single(entries, "pkgrel", context) != package["pkgrel"]:
+        raise ProvenanceError(f"{context} pkgrel does not match the lock")
+    if package["architecture"] not in entries.get("arch", []):
+        raise ProvenanceError(f"{context} does not support the locked architecture")
+
+    expected_install = package["install_script"]
+    install_values = entries.get("install", [])
+    if expected_install is None:
+        if install_values:
+            raise ProvenanceError(f"{context} unexpectedly declares an install script")
+    elif install_values != [expected_install["path"]]:
+        raise ProvenanceError(f"{context} install script does not match the lock")
+
+    source_groups: dict[str, list[str]] = {}
+    checksum_groups: dict[tuple[str, str], list[str]] = {}
+    for key, values in entries.items():
+        source_match = SOURCE_KEY_RE.fullmatch(key)
+        if source_match:
+            suffix = source_match.group(1) or ""
+            source_groups[suffix] = values
+            for value in values:
+                source_url(value, f"{context} {key}")
+            continue
+        checksum_match = CHECKSUM_KEY_RE.fullmatch(key)
+        if checksum_match:
+            algorithm = checksum_match.group(1)
+            suffix = checksum_match.group(2) or ""
+            if any(value.upper() == "SKIP" for value in values):
+                raise ProvenanceError(f"{context} uses SKIP in {key}")
+            checksum_groups[(algorithm, suffix)] = values
+
+    if not source_groups:
+        raise ProvenanceError(f"{context} contains no sources")
+    for suffix, values in source_groups.items():
+        sums = checksum_groups.get(("sha256", suffix), [])
+        if len(sums) != len(values) or any(
+            not SHA256_RE.fullmatch(item) for item in sums
+        ):
+            label = suffix or "generic"
+            raise ProvenanceError(
+                f"{context} {label} sources require exact lowercase SHA-256 checksums"
+            )
+    for (algorithm, suffix), values in checksum_groups.items():
+        if suffix not in source_groups:
+            raise ProvenanceError(
+                f"{context} {algorithm} checksums have no matching source group"
+            )
+        if len(values) != len(source_groups[suffix]):
+            raise ProvenanceError(f"{context} checksum/source counts do not match")
+
+    locked_sources = {source["architecture"]: source for source in package["sources"]}
+    if set(source_groups) != set(locked_sources):
+        raise ProvenanceError(
+            f"{context} source architecture set does not exactly match the lock"
+        )
+    for architecture, locked_source in locked_sources.items():
+        if source_groups.get(architecture) != [locked_source["url"]]:
+            raise ProvenanceError(
+                f"{context} {architecture} source URL does not exactly match the lock"
+            )
+        if checksum_groups.get(("sha256", architecture)) != [locked_source["sha256"]]:
+            raise ProvenanceError(
+                f"{context} {architecture} source checksum does not exactly match the lock"
+            )
+    return entries
+
+
+def scalar_assignments(text: str, name: str) -> list[str]:
+    pattern = re.compile(rf"(?m)^[ \t]*{re.escape(name)}[ \t]*=[ \t]*([^\n#]+)")
+    values: list[str] = []
+    for match in pattern.finditer(text):
+        value = match.group(1).strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values.append(value)
+    return values
+
+
+def relevant_function_bodies(text: str, context: str) -> list[tuple[str, str]]:
+    declared = RELEVANT_FUNCTION_RE.findall(text)
+    bodies: list[tuple[str, str]] = []
+    for match in FUNCTION_DECL_RE.finditer(text):
+        depth = 1
+        cursor = match.end()
+        while cursor < len(text) and depth:
+            if text[cursor] == "{":
+                depth += 1
+            elif text[cursor] == "}":
+                depth -= 1
+            cursor += 1
+        if depth:
+            raise ProvenanceError(
+                f"{context} contains an unterminated {match.group(1)}"
+            )
+        bodies.append((match.group(1), text[match.end() : cursor - 1]))
+    if sorted(declared) != sorted(name for name, _ in bodies):
+        raise ProvenanceError(
+            f"{context} contains a recipe function that cannot be scanned"
+        )
+    return bodies
+
+
+def scan_no_network(text: str, context: str, *, recipe_functions: bool) -> None:
+    sections = (
+        relevant_function_bodies(text, context)
+        if recipe_functions
+        else [("install", text)]
+    )
+    for name, body in sections:
+        command = NETWORK_COMMAND_RE.search(body)
+        if command:
+            raise ProvenanceError(
+                f"{context} {name} contains network command {command.group(1)}"
+            )
+        if NETWORK_URL_RE.search(body):
+            raise ProvenanceError(f"{context} {name} contains a network URL")
+
+
+def verify_recipe(package: dict[str, Any], recipe_dir: Path) -> None:
+    expected_tree = package["tree"]
+    actual_files = recipe_files(recipe_dir)
+    if set(actual_files) != set(expected_tree):
+        missing = sorted(set(expected_tree) - set(actual_files))
+        extra = sorted(set(actual_files) - set(expected_tree))
+        details: list[str] = []
+        if missing:
+            details.append("missing " + ", ".join(missing))
+        if extra:
+            details.append("unexpected " + ", ".join(extra))
+        raise ProvenanceError(
+            f"AUR recipe tree differs from the lock: {'; '.join(details)}"
+        )
+    for name, expected_digest in expected_tree.items():
+        actual_digest = sha256_file(actual_files[name])
+        if actual_digest != expected_digest:
+            raise ProvenanceError(f"AUR recipe hash differs from the lock: {name}")
+
+    try:
+        srcinfo_text = actual_files[".SRCINFO"].read_text(encoding="utf-8")
+        pkgbuild_text = actual_files["PKGBUILD"].read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise ProvenanceError(f"cannot read the reviewed AUR recipe: {exc}") from exc
+    validate_srcinfo(package, srcinfo_text, ".SRCINFO")
+
+    for name, expected in (
+        ("pkgname", package["pkgname"]),
+        ("pkgver", package["pkgver"]),
+        ("pkgrel", package["pkgrel"]),
+    ):
+        if scalar_assignments(pkgbuild_text, name) != [expected]:
+            raise ProvenanceError(f"PKGBUILD {name} does not exactly match the lock")
+    install_values = scalar_assignments(pkgbuild_text, "install")
+    install_script = package["install_script"]
+    if install_script is None:
+        if install_values:
+            raise ProvenanceError("PKGBUILD unexpectedly declares an install script")
+    elif install_values != [install_script["path"]]:
+        raise ProvenanceError("PKGBUILD install script does not exactly match the lock")
+
+    scan_no_network(pkgbuild_text, "PKGBUILD", recipe_functions=True)
+    if install_script is not None:
+        install_path = actual_files[install_script["path"]]
+        install_text = install_path.read_text(encoding="utf-8")
+        scan_no_network(install_text, install_script["path"], recipe_functions=False)
+
+
+def normalize_archive_path(name: str) -> str:
+    while name.startswith("./"):
+        name = name[2:]
+    name = name.rstrip("/")
+    pure = PurePosixPath(name)
+    if (
+        not name
+        or pure.is_absolute()
+        or any(part in ("", ".", "..") for part in pure.parts)
+        or "\x00" in name
+    ):
+        raise ProvenanceError(f"archive contains an unsafe path: {name!r}")
+    return pure.as_posix()
+
+
+def archive_metadata(archive: tarfile.TarFile, member: tarfile.TarInfo) -> str:
+    extracted = archive.extractfile(member)
+    if extracted is None:
+        raise ProvenanceError(f"cannot read {member.name} from package archive")
+    data = extracted.read(1024 * 1024 + 1)
+    if len(data) > 1024 * 1024:
+        raise ProvenanceError(f"archive metadata is unexpectedly large: {member.name}")
+    try:
+        return data.decode("utf-8")
+    except UnicodeError as exc:
+        raise ProvenanceError(f"archive metadata is not UTF-8: {member.name}") from exc
+
+
+def metadata_entries(text: str, context: str) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if " = " not in line:
+            raise ProvenanceError(f"{context}:{number} is invalid")
+        key, value = line.split(" = ", 1)
+        result.setdefault(key, []).append(value)
+    return result
+
+
+def matches_sensitive_root(name: str, prefixes: tuple[str, ...], is_link: bool) -> bool:
+    roots = (prefix.rstrip("/") for prefix in prefixes)
+    return any(
+        name == root
+        or name.startswith(root + "/")
+        or (is_link and root.startswith(name + "/"))
+        for root in roots
+    )
+
+
+def matches_dynamic_user_root(name: str, is_link: bool) -> bool:
+    if RUNTIME_USER_UNIT_RE.fullmatch(name) or HOME_USER_UNIT_RE.fullmatch(name):
+        return True
+    if not is_link:
+        return False
+    runtime_ancestor = re.fullmatch(r"run(?:/user(?:/[^/]+(?:/systemd)?)?)?", name)
+    home_ancestor = re.fullmatch(
+        r"(?:home/[^/]+|root)/(?:\.config|\.local(?:/share)?)(?:/systemd)?",
+        name,
+    )
+    return runtime_ancestor is not None or home_ancestor is not None
+
+
+def verify_archive(package: dict[str, Any], archive_path: Path) -> None:
+    if not archive_path.is_file() or archive_path.is_symlink():
+        raise ProvenanceError(f"package archive is missing or unsafe: {archive_path}")
+    found = {
+        "system_units": set(),
+        "user_units": set(),
+        "pacman_hooks": set(),
+        "modules_load": set(),
+    }
+    names: set[str] = set()
+    pkginfo_member: tarfile.TarInfo | None = None
+    install_digest: str | None = None
+    try:
+        archive = tarfile.open(archive_path, mode="r:*")
+    except (OSError, tarfile.TarError) as exc:
+        raise ProvenanceError(
+            f"cannot read package archive {archive_path}: {exc}"
+        ) from exc
+    with archive:
+        for member in archive.getmembers():
+            name = normalize_archive_path(member.name)
+            if name in names:
+                raise ProvenanceError(f"archive contains a duplicate path: {name}")
+            names.add(name)
+            if member.mode & (stat.S_ISUID | stat.S_ISGID):
+                raise ProvenanceError(f"archive contains a set-ID member: {name}")
+            if any("security.capability" in key.lower() for key in member.pax_headers):
+                raise ProvenanceError(f"archive contains a file capability: {name}")
+            if member.ischr() or member.isblk() or member.isfifo():
+                raise ProvenanceError(
+                    f"archive contains a special device member: {name}"
+                )
+            if name == ".PKGINFO":
+                if not member.isfile():
+                    raise ProvenanceError("archive .PKGINFO is not a regular file")
+                pkginfo_member = member
+            if name == ".INSTALL":
+                if not member.isfile():
+                    raise ProvenanceError("archive .INSTALL is not a regular file")
+                install_text = archive_metadata(archive, member)
+                install_digest = hashlib.sha256(
+                    install_text.encode("utf-8")
+                ).hexdigest()
+            is_link = member.issym() or member.islnk()
+            if not (member.isfile() or is_link):
+                continue
+            if matches_sensitive_root(name, SYSTEM_UNIT_PREFIXES, is_link):
+                found["system_units"].add(name)
+            if matches_sensitive_root(
+                name, USER_UNIT_PREFIXES, is_link
+            ) or matches_dynamic_user_root(name, is_link):
+                found["user_units"].add(name)
+            if matches_sensitive_root(name, PACMAN_HOOK_PREFIXES, is_link):
+                found["pacman_hooks"].add(name)
+            if matches_sensitive_root(name, MODULES_LOAD_PREFIXES, is_link):
+                found["modules_load"].add(name)
+        if pkginfo_member is None:
+            raise ProvenanceError("archive does not contain .PKGINFO")
+        pkginfo = metadata_entries(
+            archive_metadata(archive, pkginfo_member), ".PKGINFO"
+        )
+
+    expected_version = f"{package['pkgver']}-{package['pkgrel']}"
+    expected_metadata = {
+        "pkgname": [package["pkgname"]],
+        "pkgver": [expected_version],
+        "arch": [package["architecture"]],
+    }
+    for key, expected in expected_metadata.items():
+        if pkginfo.get(key) != expected:
+            raise ProvenanceError(f"archive {key} does not exactly match the lock")
+    expected_install = package["install_script"]
+    if expected_install is None:
+        if install_digest is not None:
+            raise ProvenanceError("archive unexpectedly contains .INSTALL")
+    elif install_digest != expected_install["sha256"]:
+        raise ProvenanceError("archive .INSTALL hash does not exactly match the lock")
+    for key, actual in found.items():
+        expected = set(package["archive_policy"][key])
+        if actual != expected:
+            unexpected = sorted(actual - expected)
+            missing = sorted(expected - actual)
+            details: list[str] = []
+            if unexpected:
+                details.append("unexpected " + ", ".join(unexpected))
+            if missing:
+                details.append("missing " + ", ".join(missing))
+            raise ProvenanceError(
+                f"archive {key} differs from the reviewed policy: {'; '.join(details)}"
+            )
+
+
+def run_checked(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    capture: bool = False,
+    env: dict[str, str] | None = None,
+    label: str | None = None,
+) -> str:
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.PIPE if capture else None,
+        )
+    except FileNotFoundError as exc:
+        raise ProvenanceError(f"required command is unavailable: {command[0]}") from exc
+    except subprocess.CalledProcessError as exc:
+        description = label or shlex.join(command)
+        detail = (exc.stderr or "").strip()
+        suffix = f": {detail}" if detail else ""
+        raise ProvenanceError(
+            f"{description} failed with exit status {exc.returncode}{suffix}"
+        ) from exc
+    return completed.stdout if capture else ""
+
+
+def environment_integer(name: str, default: int, *, allow_zero: bool) -> int:
+    raw = os.environ.get(name, str(default))
+    pattern = r"[0-9]+" if allow_zero else r"[1-9][0-9]*"
+    if not re.fullmatch(pattern, raw):
+        qualifier = "a non-negative" if allow_zero else "a positive"
+        raise ProvenanceError(f"{name} must be {qualifier} integer")
+    return int(raw)
+
+
+def run_checked_with_retries(
+    command: list[str],
+    *,
+    attempts: int,
+    delay_seconds: int,
+    cwd: Path | None = None,
+    capture: bool = False,
+    env: dict[str, str] | None = None,
+    label: str,
+) -> str:
+    for attempt in range(1, attempts + 1):
+        try:
+            return run_checked(
+                command,
+                cwd=cwd,
+                capture=capture,
+                env=env,
+                label=label,
+            )
+        except ProvenanceError:
+            if attempt == attempts:
+                raise
+            print(
+                f"WARNING: {label} attempt {attempt}/{attempts} failed; "
+                f"retrying in {delay_seconds}s.",
+                file=sys.stderr,
+            )
+            time.sleep(delay_seconds)
+    raise AssertionError("bounded retry loop did not return or raise")
+
+
+def verify_installed(
+    package: dict[str, Any],
+    *,
+    pacman: str = "/usr/bin/pacman",
+    getcap: str = "/usr/bin/getcap",
+) -> None:
+    query = run_checked(
+        [pacman, "-Q", package["pkgname"]],
+        capture=True,
+        label="installed package query",
+    ).strip()
+    expected = f"{package['pkgname']} {package['pkgver']}-{package['pkgrel']}"
+    if query != expected:
+        raise ProvenanceError(
+            f"installed package identity differs from the lock: expected {expected!r}"
+        )
+    output = run_checked(
+        [pacman, "-Qlq", package["pkgname"]],
+        capture=True,
+        label="installed package file query",
+    )
+    owned_files: list[str] = []
+    setid_paths: list[str] = []
+    for raw_path in output.splitlines():
+        if not raw_path.startswith("/") or "\x00" in raw_path:
+            raise ProvenanceError(f"pacman returned an unsafe owned path: {raw_path!r}")
+        path = Path(raw_path)
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError as exc:
+            raise ProvenanceError(
+                f"installed package owns a missing path: {path}"
+            ) from exc
+        if metadata.st_mode & (stat.S_ISUID | stat.S_ISGID):
+            setid_paths.append(str(path))
+        if stat.S_ISREG(metadata.st_mode):
+            owned_files.append(str(path))
+    capability_paths: list[str] = []
+    for offset in range(0, len(owned_files), 128):
+        batch = owned_files[offset : offset + 128]
+        capabilities = run_checked(
+            [getcap, "--", *batch],
+            capture=True,
+            label="installed file capability query",
+        ).strip()
+        if capabilities:
+            batch_capability_paths: list[str] = []
+            for path in batch:
+                single_capability = run_checked(
+                    [getcap, "--", path],
+                    capture=True,
+                    label="installed file capability query",
+                ).strip()
+                if single_capability:
+                    batch_capability_paths.append(path)
+            if not batch_capability_paths:
+                raise ProvenanceError(
+                    "getcap reported a capability that could not be tied to an owned path"
+                )
+            capability_paths.extend(batch_capability_paths)
+    if setid_paths or capability_paths:
+        raise InstalledSafetyError(setid_paths, capability_paths)
+
+
+def neutralize_installed_attributes(
+    package: dict[str, Any],
+    finding: InstalledSafetyError,
+    *,
+    sudo_command: str,
+    pacman: str = "/usr/bin/pacman",
+    getcap: str = "/usr/bin/getcap",
+) -> None:
+    try:
+        for offset in range(0, len(finding.setid_paths), 128):
+            run_checked(
+                [
+                    sudo_command,
+                    "/usr/bin/chmod",
+                    "--no-dereference",
+                    "a-s",
+                    "--",
+                    *finding.setid_paths[offset : offset + 128],
+                ],
+                label="installed set-ID attribute removal",
+            )
+        for offset in range(0, len(finding.capability_paths), 128):
+            run_checked(
+                capability_removal_command(
+                    sudo_command,
+                    list(finding.capability_paths[offset : offset + 128]),
+                ),
+                label="installed file capability removal",
+            )
+        verify_installed(package, pacman=pacman, getcap=getcap)
+    except ProvenanceError as exc:
+        residual_paths = sorted(
+            set(finding.setid_paths) | set(finding.capability_paths)
+        )
+        raise ResidualInstalledSafetyError(
+            "forbidden installed attributes may remain after failed neutralization: "
+            + ", ".join(residual_paths)
+        ) from exc
+    raise ProvenanceError(
+        "forbidden installed attributes were detected and removed; "
+        "the protected installation is rejected"
+    )
+
+
+def package_identity(pkgname: str, version: str) -> dict[str, str]:
+    if not PACKAGE_RE.fullmatch(pkgname):
+        raise ProvenanceError("installed package safety name is invalid")
+    try:
+        pkgver, pkgrel = version.rsplit("-", 1)
+    except ValueError as exc:
+        raise ProvenanceError("installed package safety version is invalid") from exc
+    if (
+        not VERSION_RE.fullmatch(pkgver)
+        or UNSTABLE_RE.search(pkgver)
+        or not re.fullmatch(r"[1-9][0-9]*(?:\.[0-9]+)?", pkgrel)
+    ):
+        raise ProvenanceError("installed package safety version is invalid")
+    return {"pkgname": pkgname, "pkgver": pkgver, "pkgrel": pkgrel}
+
+
+def enforce_installed_safety(
+    package: dict[str, Any],
+    *,
+    sudo_command: str,
+    pacman: str = "/usr/bin/pacman",
+    getcap: str = "/usr/bin/getcap",
+) -> None:
+    try:
+        verify_installed(package, pacman=pacman, getcap=getcap)
+    except InstalledSafetyError as finding:
+        neutralize_installed_attributes(
+            package,
+            finding,
+            sudo_command=sudo_command,
+            pacman=pacman,
+            getcap=getcap,
+        )
+    except ProvenanceError as exc:
+        raise ResidualInstalledSafetyError(
+            "cannot establish the package's installed safety"
+        ) from exc
+
+
+def capability_removal_command(sudo_command: str, paths: list[str]) -> list[str]:
+    command = [sudo_command, "/usr/bin/setcap"]
+    for path in paths:
+        command.extend(("-r", path))
+    return command
+
+
+def checkout_pinned(package: dict[str, Any], destination: Path) -> None:
+    git = "/usr/bin/git"
+    fetch_attempts = environment_integer(
+        "AUR_PROVENANCE_FETCH_MAX_ATTEMPTS", 4, allow_zero=False
+    )
+    fetch_retry_delay = environment_integer(
+        "AUR_PROVENANCE_FETCH_RETRY_DELAY_SECONDS", 10, allow_zero=True
+    )
+    run_checked([git, "init", "--quiet", str(destination)], label="AUR repository init")
+    run_checked(
+        [git, "-C", str(destination), "remote", "add", "origin", package["aur"]["url"]],
+        label="AUR remote configuration",
+    )
+    run_checked_with_retries(
+        [
+            git,
+            "-C",
+            str(destination),
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "--depth",
+            "1",
+            "origin",
+            package["aur"]["commit"],
+        ],
+        attempts=fetch_attempts,
+        delay_seconds=fetch_retry_delay,
+        label="pinned AUR commit fetch",
+    )
+    run_checked(
+        [git, "-C", str(destination), "checkout", "--quiet", "--detach", "FETCH_HEAD"],
+        label="pinned AUR commit checkout",
+    )
+    head = run_checked(
+        [git, "-C", str(destination), "rev-parse", "HEAD"],
+        capture=True,
+        label="AUR commit identity query",
+    ).strip()
+    if head != package["aur"]["commit"]:
+        raise ProvenanceError("checked-out AUR commit differs from the lock")
+    tree_output = run_checked(
+        [git, "-C", str(destination), "ls-tree", "-r", "--name-only", "-z", "HEAD"],
+        capture=True,
+        label="AUR tree query",
+    )
+    tree_names = {name for name in tree_output.split("\x00") if name}
+    if tree_names != set(package["tree"]):
+        raise ProvenanceError("committed AUR file set differs from the lock")
+    verify_recipe(package, destination)
+
+
+def makepkg_environment() -> dict[str, str]:
+    environment = dict(os.environ)
+    for name in (
+        "BUILDDIR",
+        "CARCH",
+        "CHOST",
+        "LOGDEST",
+        "MAKEPKG_CONF",
+        "PACMAN_AUTH",
+        "PKGDEST",
+        "PKGEXT",
+        "SRCDEST",
+        "SRCPKGDEST",
+    ):
+        environment.pop(name, None)
+    return environment
+
+
+def append_makepkg_policy(
+    config_path: Path, sudo_command: str, workspace: Path
+) -> None:
+    if not sudo_command or "\x00" in sudo_command or "\n" in sudo_command:
+        raise ProvenanceError("sudo command wrapper is invalid")
+    additions = f"""
+
+# Repository-protected AUR build isolation.
+PACMAN_AUTH=({shlex.quote(sudo_command)})
+PKGDEST={shlex.quote(str(workspace / "packages"))}
+SRCDEST={shlex.quote(str(workspace / "sources"))}
+BUILDDIR={shlex.quote(str(workspace / "build"))}
+_enoshima_options=()
+for _enoshima_option in "${{OPTIONS[@]}}"; do
+  case $_enoshima_option in
+    debug | '!debug') ;;
+    *) _enoshima_options+=("$_enoshima_option") ;;
+  esac
+done
+OPTIONS=("${{_enoshima_options[@]}}" '!debug')
+unset _enoshima_option _enoshima_options
+"""
+    with config_path.open("a", encoding="utf-8") as handle:
+        handle.write(additions)
+
+
+def protected_archive_install_command(
+    sudo_command: str, archive_path: Path
+) -> list[str]:
+    # A protected package must converge to the reviewed archive even when an
+    # unreviewed package with the same pkgver-pkgrel is already installed.
+    # pacman's --needed would skip that replacement based only on version.
+    return [
+        sudo_command,
+        "/usr/bin/pacman",
+        "--noconfirm",
+        "--noscriptlet",
+        "-U",
+        "--",
+        str(archive_path),
+    ]
+
+
+def install_protected(package: dict[str, Any], sudo_command: str) -> None:
+    if os.geteuid() == 0:
+        raise ProvenanceError(
+            "protected AUR packages must be built as an unprivileged user"
+        )
+    if platform.machine() != package["architecture"]:
+        raise ProvenanceError(
+            f"host architecture {platform.machine()} does not match the provenance lock"
+        )
+    for command in (
+        "/usr/bin/git",
+        "/usr/bin/makepkg",
+        "/usr/bin/pacman",
+        "/usr/bin/getcap",
+    ):
+        if not Path(command).is_file():
+            raise ProvenanceError(f"required command is unavailable: {command}")
+    system_config = Path("/etc/makepkg.conf")
+    if not system_config.is_file() or system_config.is_symlink():
+        raise ProvenanceError("/etc/makepkg.conf is missing or unsafe")
+
+    with tempfile.TemporaryDirectory(
+        prefix=f"aur-provenance-{package['pkgbase']}-"
+    ) as raw:
+        workspace = Path(raw)
+        recipe_dir = workspace / "recipe"
+        for directory in (
+            workspace / "packages",
+            workspace / "sources",
+            workspace / "build",
+        ):
+            directory.mkdir(mode=0o700)
+        print(f"==> Fetching reviewed AUR commit for {package['pkgbase']}")
+        checkout_pinned(package, recipe_dir)
+
+        makepkg_config = workspace / "makepkg.conf"
+        shutil.copyfile(system_config, makepkg_config)
+        append_makepkg_policy(makepkg_config, sudo_command, workspace)
+        environment = makepkg_environment()
+        generated_srcinfo = run_checked(
+            ["/usr/bin/makepkg", "--config", str(makepkg_config), "--printsrcinfo"],
+            cwd=recipe_dir,
+            capture=True,
+            env=environment,
+            label="generated SRCINFO validation",
+        )
+        validate_srcinfo(package, generated_srcinfo, "generated .SRCINFO")
+
+        package_paths = [
+            Path(line)
+            for line in run_checked(
+                ["/usr/bin/makepkg", "--config", str(makepkg_config), "--packagelist"],
+                cwd=recipe_dir,
+                capture=True,
+                env=environment,
+                label="local package path query",
+            ).splitlines()
+            if line
+        ]
+        if len(package_paths) != 1:
+            raise ProvenanceError(
+                "protected build must produce exactly one package archive"
+            )
+        archive_path = package_paths[0]
+        if archive_path.parent.resolve() != (workspace / "packages").resolve():
+            raise ProvenanceError(
+                "makepkg selected an archive path outside the isolated workspace"
+            )
+
+        print(
+            f"==> Verifying and building reviewed AUR source for {package['pkgbase']}"
+        )
+        run_checked(
+            ["/usr/bin/makepkg", "--config", str(makepkg_config), "--verifysource"],
+            cwd=recipe_dir,
+            env=environment,
+            label="protected source verification",
+        )
+        run_checked(
+            [
+                "/usr/bin/makepkg",
+                "--config",
+                str(makepkg_config),
+                "--cleanbuild",
+                "--noconfirm",
+                "--nocheck",
+                "--needed",
+                "--syncdeps",
+            ],
+            cwd=recipe_dir,
+            env=environment,
+            label="protected local package build",
+        )
+        verify_recipe(package, recipe_dir)
+        verify_archive(package, archive_path)
+
+        print(f"==> Installing verified local archive for {package['pkgbase']}")
+        run_checked(
+            protected_archive_install_command(sudo_command, archive_path),
+            label="verified local package installation",
+        )
+        try:
+            verify_installed(package)
+        except InstalledSafetyError as finding:
+            neutralize_installed_attributes(package, finding, sudo_command=sudo_command)
+        except ProvenanceError as exc:
+            raise ResidualInstalledSafetyError(
+                "cannot establish the protected package's installed safety"
+            ) from exc
+
+
+def fetch_json(url: str) -> dict[str, Any]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "enoshima-aur-provenance/1",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    request = Request(
+        url,
+        headers=headers,
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            payload = response.read(5 * 1024 * 1024 + 1)
+    except OSError as exc:
+        raise ProvenanceError(f"upstream release API request failed: {exc}") from exc
+    if len(payload) > 5 * 1024 * 1024:
+        raise ProvenanceError("upstream release API response is unexpectedly large")
+    try:
+        result = json.loads(payload)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ProvenanceError(
+            f"upstream release API returned invalid JSON: {exc}"
+        ) from exc
+    if not isinstance(result, dict):
+        raise ProvenanceError("upstream release API did not return an object")
+    return result
+
+
+def validate_online(package: dict[str, Any]) -> None:
+    release = fetch_json(package["upstream_release"]["api_url"])
+    expected_release = package["upstream_release"]
+    for key in ("id", "tag_name", "draft", "prerelease"):
+        expected_key = "tag" if key == "tag_name" else key
+        if release.get(key) != expected_release[expected_key]:
+            raise ProvenanceError(
+                f"latest upstream release {key} differs from the provenance lock"
+            )
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        raise ProvenanceError("latest upstream release assets are missing")
+    for source in package["sources"]:
+        matching = [
+            asset
+            for asset in assets
+            if isinstance(asset, dict)
+            and asset.get("browser_download_url") == source["url"]
+        ]
+        if len(matching) != 1:
+            raise ProvenanceError(
+                f"locked {source['architecture']} source is not an exact latest-release asset"
+            )
+        if matching[0].get("digest") != f"sha256:{source['sha256']}":
+            raise ProvenanceError(
+                f"latest-release {source['architecture']} asset digest differs from the lock"
+            )
+
+    remote = run_checked(
+        ["/usr/bin/git", "ls-remote", "--exit-code", package["aur"]["url"], "HEAD"],
+        capture=True,
+        label="AUR remote HEAD query",
+    ).splitlines()
+    expected_head = [package["aur"]["commit"], "HEAD"]
+    if not remote or any(line.split() != expected_head for line in remote):
+        raise ProvenanceError("AUR remote HEAD differs from the reviewed commit")
+    with tempfile.TemporaryDirectory(prefix="aur-provenance-online-") as raw:
+        checkout_pinned(package, Path(raw) / "recipe")
+
+
+def package_from_lock(lock_path: Path, pkgbase: str) -> dict[str, Any]:
+    packages, _ = load_lock(lock_path)
+    try:
+        return packages[pkgbase]
+    except KeyError as exc:
+        raise ProvenanceError(
+            f"package is not protected by the lock: {pkgbase}"
+        ) from exc
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    validate = subparsers.add_parser("validate", help="validate the lock and manifest")
+    validate.add_argument("--lock", type=Path, required=True)
+    validate.add_argument("--manifest", type=Path)
+    validate.add_argument("--require-manifest-membership", action="store_true")
+    validate.add_argument("--online", action="store_true")
+
+    list_parser = subparsers.add_parser("list", help="list protected package bases")
+    list_parser.add_argument("--lock", type=Path, required=True)
+
+    recipe = subparsers.add_parser(
+        "verify-recipe", help="verify a checked-out AUR tree"
+    )
+    recipe.add_argument("--lock", type=Path, required=True)
+    recipe.add_argument("--package", required=True)
+    recipe.add_argument("--recipe-dir", type=Path, required=True)
+
+    archive = subparsers.add_parser(
+        "verify-archive", help="verify a built package archive"
+    )
+    archive.add_argument("--lock", type=Path, required=True)
+    archive.add_argument("--package", required=True)
+    archive.add_argument("--archive", type=Path, required=True)
+
+    installed = subparsers.add_parser(
+        "verify-installed", help="verify installed files owned by a protected package"
+    )
+    installed.add_argument("--lock", type=Path, required=True)
+    installed.add_argument("--package", required=True)
+    installed.add_argument("--pacman-command", default="/usr/bin/pacman")
+    installed.add_argument("--getcap-command", default="/usr/bin/getcap")
+
+    installed_safety = subparsers.add_parser(
+        "enforce-installed-safety",
+        help="verify and fail-closed neutralize one exact installed package",
+    )
+    installed_safety.add_argument("--package", required=True)
+    installed_safety.add_argument("--version", required=True)
+    installed_safety.add_argument("--sudo-command", required=True)
+    installed_safety.add_argument("--pacman-command", default="/usr/bin/pacman")
+    installed_safety.add_argument("--getcap-command", default="/usr/bin/getcap")
+
+    install = subparsers.add_parser(
+        "install", help="build and install one protected package"
+    )
+    install.add_argument("--lock", type=Path, required=True)
+    install.add_argument("--package", required=True)
+    install.add_argument("--sudo-command", required=True)
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    if args.command == "validate":
+        packages, _ = load_lock(args.lock)
+        manifest: list[str] | None = None
+        if args.manifest is not None:
+            manifest = load_manifest(args.manifest)
+        if args.require_manifest_membership:
+            if manifest is None:
+                raise ProvenanceError(
+                    "--require-manifest-membership requires --manifest"
+                )
+            missing = sorted(set(packages) - set(manifest))
+            if missing:
+                raise ProvenanceError(
+                    "protected packages are missing from the AUR manifest: "
+                    + ", ".join(missing)
+                )
+        if args.online:
+            for package in packages.values():
+                validate_online(package)
+        mode = "online" if args.online else "offline"
+        print(
+            f"AUR provenance {mode} validation passed for {len(packages)} package(s)."
+        )
+        return 0
+    if args.command == "list":
+        packages, _ = load_lock(args.lock)
+        for pkgbase in packages:
+            print(pkgbase)
+        return 0
+
+    if args.command == "enforce-installed-safety":
+        package = package_identity(args.package, args.version)
+        enforce_installed_safety(
+            package,
+            sudo_command=args.sudo_command,
+            pacman=args.pacman_command,
+            getcap=args.getcap_command,
+        )
+        print(
+            f"Installed package safety check passed: {args.package} {args.version}"
+        )
+        return 0
+
+    package = package_from_lock(args.lock, args.package)
+    if args.command == "verify-recipe":
+        verify_recipe(package, args.recipe_dir)
+    elif args.command == "verify-archive":
+        verify_archive(package, args.archive)
+    elif args.command == "verify-installed":
+        verify_installed(
+            package, pacman=args.pacman_command, getcap=args.getcap_command
+        )
+    elif args.command == "install":
+        install_protected(package, args.sudo_command)
+    else:
+        raise ProvenanceError(f"unsupported command: {args.command}")
+    print(f"AUR provenance check passed: {args.package} ({args.command})")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ResidualInstalledSafetyError as error:
+        print(f"AUR provenance unsafe-state error: {error}", file=sys.stderr)
+        raise SystemExit(70) from error
+    except ProvenanceError as error:
+        print(f"AUR provenance error: {error}", file=sys.stderr)
+        raise SystemExit(1) from error

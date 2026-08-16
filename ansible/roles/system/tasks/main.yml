@@ -120,6 +120,9 @@
 - name: Configure local desktop integration
   ansible.builtin.import_tasks: desktop.yml
 
+- name: Configure persistent performance observability
+  ansible.builtin.import_tasks: observability.yml
+
 - name: Select and configure the login manager
   ansible.builtin.import_tasks: login-manager.yml
 

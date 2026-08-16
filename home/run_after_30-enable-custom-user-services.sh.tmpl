@@ -11,6 +11,20 @@ units=(
   xembed-sni-proxy.service
 )
 
+# Foreign packages were installed after the first Ansible convergence. Refresh the
+# user manager before probing their newly installed packaged unit files.
+systemctl --user daemon-reload
+
+# This stable local source package is converged before chezmoi. Keep SKIP_LOCAL useful for
+# diagnostics by enabling its packaged user unit only when installed.
+if systemctl --user cat hyprshell.service >/dev/null 2>&1; then
+  units+=(hyprshell.service)
+fi
+
+# Bootstrap alone owns Vicinae's mask, policy validation, ABI release, and
+# declarative enable/start sequence. A standalone dotfile apply must not change
+# that service state in either direction.
+
 # The custom Quickshell launcher now shares Cyberdock's process and design
 # tokens. Retire the old daemon so it cannot consume memory or race for focus.
 systemctl --user disable --now hyprlauncher.service 2>/dev/null || true
@@ -50,11 +64,17 @@ configuration_consumers=(
   waybar.service
 )
 
-systemctl --user daemon-reload
 systemctl --user enable "${units[@]}"
 
 if systemctl --user --quiet is-active graphical-session.target; then
   # Chezmoi runs after Ansible has started the existing user units. Refresh
   # every long-running consumer whose configuration was just deployed.
-  systemctl --user restart "${units[@]}" "${configuration_consumers[@]}"
+  # Bootstrap owns Vicinae's fail-closed guard and service convergence. Never
+  # start or restart it from chezmoi before bootstrap validates privacy, ABI,
+  # and effective service policy.
+  restart_units=()
+  for unit in "${units[@]}"; do
+    [[ $unit == vicinae.service ]] || restart_units+=("$unit")
+  done
+  systemctl --user restart "${restart_units[@]}" "${configuration_consumers[@]}"
 fi

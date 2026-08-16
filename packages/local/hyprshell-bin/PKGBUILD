@@ -1,0 +1,116 @@
+# Maintainer: Enoshima workstation maintainers
+
+pkgname=hyprshell-bin
+pkgver=4.10.8
+pkgrel=3
+pkgdesc='A pinned Hyprland overview with Enoshima direct-keyboard input support'
+arch=('x86_64')
+url='https://github.com/H3rmt/hyprshell'
+license=('MIT')
+depends=(
+  hyprland
+  gtk4-layer-shell
+  gtk4
+  libadwaita
+  zstd
+)
+makedepends=('rustup')
+checkdepends=('desktop-file-utils')
+optdepends=('org.freedesktop.secrets: Store clipboard encryption in the keyring')
+provides=("hyprshell=$pkgver")
+conflicts=('hyprshell')
+options=('!debug' '!lto')
+
+_commit=61ddaa30563c1f091ca5fbe5d7203c19f42b519c
+_source_date_epoch=1781132855
+_source_archive="hyprshell-${_commit}.tar.gz"
+_source_root="hyprshell-${_commit}"
+_cargo_lock_sha256=026e688dbf4a7c95c6c5a1a5d8a17880dce5aa1dfa3a30d40cbabb3200d858a9
+
+source=(
+  "${_source_archive}::${url}/archive/${_commit}.tar.gz"
+  'overview-direct-input.patch'
+)
+sha256sums=(
+  '6f32a195a92bd7f7efd5470de48882a071bcc4732ad9a7d6533c5050e0ccf265'
+  'a85b4c46c03a31f0b1cf73b60cba623b8b2f06a3532d4ade3becf0f4d4b39079'
+)
+
+prepare() {
+  export CARGO_HOME="$srcdir/cargo-home"
+  export CARGO_TARGET_DIR="$srcdir/target"
+
+  cd "$_source_root"
+  [[ $(sha256sum Cargo.lock | cut -d ' ' -f 1) == "$_cargo_lock_sha256" ]]
+  patch --forward --strip=1 --input="$srcdir/overview-direct-input.patch"
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  export CARGO_HOME="$srcdir/cargo-home"
+  export CARGO_TARGET_DIR="$srcdir/target"
+  export CARGO_BUILD_JOBS=1
+  export CARGO_PROFILE_RELEASE_LTO=false
+  export CARGO_PROFILE_RELEASE_DEBUG=0
+  export CARGO_PROFILE_RELEASE_OPT_LEVEL=2
+  export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=64
+  export CARGO_PROFILE_RELEASE_INCREMENTAL=false
+
+  cd "$_source_root"
+  cargo build \
+    --frozen \
+    --release \
+    --jobs 1 \
+    --no-default-features \
+    --features slim \
+    --bin hyprshell
+}
+
+check() {
+  export CARGO_HOME="$srcdir/cargo-home"
+  export CARGO_TARGET_DIR="$srcdir/target"
+  export CARGO_BUILD_JOBS=1
+  export CARGO_PROFILE_TEST_DEBUG=0
+  export CARGO_PROFILE_TEST_OPT_LEVEL=1
+  export CARGO_PROFILE_TEST_CODEGEN_UNITS=64
+  export CARGO_PROFILE_TEST_INCREMENTAL=false
+
+  cd "$_source_root"
+  cargo test \
+    --frozen \
+    --jobs 1 \
+    -p hyprshell-windows-lib \
+    overview
+  desktop-file-validate packaging/hyprshell-settings.desktop
+  ! readelf -d "$CARGO_TARGET_DIR/release/hyprshell" | grep -Eq 'RPATH|RUNPATH'
+  ldd -r "$CARGO_TARGET_DIR/release/hyprshell"
+  "$CARGO_TARGET_DIR/release/hyprshell" --version | grep -Fq "$pkgver"
+}
+
+package() {
+  cd "$_source_root"
+  install -Dm755 "$srcdir/target/release/hyprshell" \
+    "$pkgdir/usr/bin/hyprshell"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md docs/CONFIGURE.md docs/DEBUG.md \
+    -t "$pkgdir/usr/share/doc/hyprshell"
+  install -Dm644 packaging/hyprshell.service \
+    "$pkgdir/usr/lib/systemd/user/hyprshell.service"
+  install -Dm644 packaging/hyprshell-settings.png \
+    "$pkgdir/usr/share/pixmaps/hyprshell.png"
+  install -Dm644 packaging/hyprshell-settings.desktop \
+    "$pkgdir/usr/share/applications/hyprshell-settings.desktop"
+
+  install -d "$pkgdir/usr/share/hyprshell"
+  # The reviewed upstream archive records uid/gid 0. makepkg runs package()
+  # unprivileged, so preserve its payload and modes without attempting chown(2).
+  bsdtar --no-same-owner -xf packaging/usr-share.tar \
+    -C "$pkgdir/usr/share/hyprshell"
+
+  "$pkgdir/usr/bin/hyprshell" completions bash -p \
+    "$pkgdir/usr/share/bash-completion/completions"
+  "$pkgdir/usr/bin/hyprshell" completions fish -p \
+    "$pkgdir/usr/share/fish/vendor_completions.d"
+  "$pkgdir/usr/bin/hyprshell" completions zsh -p \
+    "$pkgdir/usr/share/zsh/site-functions"
+}

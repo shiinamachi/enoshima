@@ -10,7 +10,11 @@ Use this workflow before implementation. The approved concept is a design contra
 ## Workflow
 
 1. Read `docs/ui-surfaces.yaml`, `docs/DESKTOP-UI-CONCEPT.md`, and `docs/DESKTOP-UX-REFERENCES.md`.
-2. Find the affected `surface-id`. If none exists, add a planned entry before generating images.
+2. Find the affected contract. If the repository owns any rendered pixels or
+   visible state, use a `surfaces` entry and add it as planned before generating
+   images. Use `external_surfaces` without image generation only when upstream
+   tools own every rendered pixel and lifecycle; record the exact implementation,
+   upstream tools, physical procedure, and T5 gate instead.
 3. Read [visual-language.md](references/visual-language.md), [prompt-template.md](references/prompt-template.md), and [surface-checklist.md](references/surface-checklist.md).
 4. Inspect the implementation, its focused tests, and the closest approved concept assets.
 5. Generate one three-direction candidate board with the built-in `imagegen` skill. Treat existing images as style references, not edit targets.
@@ -45,4 +49,4 @@ scripts/check-ui-concept-coverage
 python3 .agents/skills/enoshima-concept-art/scripts/validate-concept-manifest docs/ui-surfaces.yaml
 ```
 
-The validator fails when a visible implementation is unregistered, an approved asset/spec is missing, or a token-consuming QML file introduces direct palette literals.
+The validator fails when a visible implementation is unregistered, an approved asset/spec is missing, an external contract lacks its exact T5 mapping, or a token-consuming QML file introduces direct palette literals. External contracts never satisfy or bypass their physical gate.

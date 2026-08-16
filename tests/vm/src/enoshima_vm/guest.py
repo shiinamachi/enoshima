@@ -10,13 +10,41 @@ from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 
 from .errors import FailureCategory, VMError
-from .process import CommandResult, run
+from .process import CommandResult, ProcessIdleTimeout, run
 from .source import SourceIdentity, create_source_archive
 
 INITIAL_SSH_TIMEOUT_SECONDS = 1200
 # One retry for caller-declared idempotent transport operations. A failed
 # affected suite may receive one separate fresh-overlay INFRA retry.
 RETRYABLE_SSH_ATTEMPTS = 2
+GUEST_COMMAND_IDLE_TIMEOUT_SECONDS = 10 * 60
+SSH_CONNECT_TIMEOUT_SECONDS = 10
+SSH_SERVER_ALIVE_INTERVAL_SECONDS = 30
+SSH_SERVER_ALIVE_COUNT_MAX = 3
+
+
+class GuestCommandTimeout(VMError):
+    """A started guest command exceeded a local progress or absolute bound."""
+
+    __slots__ = ("stdout", "stderr")
+
+    def __init__(
+        self,
+        message: str,
+        details: dict[str, object],
+        *,
+        stdout: str,
+        stderr: str,
+    ) -> None:
+        super().__init__(FailureCategory.SSH_TIMEOUT, message, details)
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _timeout_capture(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value if isinstance(value, str) else ""
 
 
 class Guest:
@@ -25,6 +53,27 @@ class Guest:
         self.private_key = private_key
         self.user = user
 
+    @staticmethod
+    def ssh_transport_options() -> list[str]:
+        return [
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "IdentitiesOnly=yes",
+            "-o",
+            f"ConnectTimeout={SSH_CONNECT_TIMEOUT_SECONDS}",
+            "-o",
+            f"ServerAliveInterval={SSH_SERVER_ALIVE_INTERVAL_SECONDS}",
+            "-o",
+            f"ServerAliveCountMax={SSH_SERVER_ALIVE_COUNT_MAX}",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "LogLevel=ERROR",
+        ]
+
     def ssh_base(self) -> list[str]:
         return [
             "ssh",
@@ -32,16 +81,7 @@ class Guest:
             str(self.private_key),
             "-p",
             str(self.port),
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "IdentitiesOnly=yes",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "UserKnownHostsFile=/dev/null",
-            "-o",
-            "LogLevel=ERROR",
+            *self.ssh_transport_options(),
             f"{self.user}@127.0.0.1",
         ]
 
@@ -50,21 +90,56 @@ class Guest:
         argv: Sequence[str],
         *,
         timeout: float = 300,
+        idle_timeout: float | None = GUEST_COMMAND_IDLE_TIMEOUT_SECONDS,
         check: bool = True,
     ) -> CommandResult:
         if not argv:
             raise ValueError("guest argv must not be empty")
+        if idle_timeout is not None and idle_timeout <= 0:
+            raise ValueError("guest idle timeout must be positive")
         remote_command = shlex.join(argv)
         try:
+            effective_idle_timeout = (
+                float(idle_timeout)
+                if idle_timeout is not None and timeout > idle_timeout
+                else None
+            )
             result = run(
                 [*self.ssh_base(), "--", remote_command],
                 timeout=timeout,
+                idle_timeout=effective_idle_timeout,
                 check=False,
             )
+        except ProcessIdleTimeout as error:
+            stdout = _timeout_capture(error.output)
+            stderr = _timeout_capture(error.stderr)
+            raise GuestCommandTimeout(
+                f"guest command made no output progress for "
+                f"{error.idle_timeout:g}s: {argv[0]}",
+                {
+                    "command": str(argv[0]),
+                    "timeout_kind": "idle",
+                    "idle_timeout_seconds": error.idle_timeout,
+                    "stdout_tail": stdout[-4000:],
+                    "stderr_tail": stderr[-4000:],
+                },
+                stdout=stdout,
+                stderr=stderr,
+            ) from error
         except subprocess.TimeoutExpired as error:
-            raise VMError(
-                FailureCategory.SSH_TIMEOUT,
+            stdout = _timeout_capture(error.output)
+            stderr = _timeout_capture(error.stderr)
+            raise GuestCommandTimeout(
                 f"guest command timed out: {argv[0]}",
+                {
+                    "command": str(argv[0]),
+                    "timeout_kind": "absolute",
+                    "timeout_seconds": timeout,
+                    "stdout_tail": stdout[-4000:],
+                    "stderr_tail": stderr[-4000:],
+                },
+                stdout=stdout,
+                stderr=stderr,
             ) from error
         if result.returncode == 255:
             raise VMError(
@@ -92,48 +167,37 @@ class Guest:
         check: bool = True,
     ) -> CommandResult:
         """Run a caller-declared idempotent command across transient SSH loss."""
-        last_result: CommandResult | None = None
         last_timeout: VMError | None = None
         for attempt in range(RETRYABLE_SSH_ATTEMPTS):
             try:
                 result = self.exec(argv, timeout=timeout, check=False)
+            except GuestCommandTimeout:
+                # The remote command started and may already have mutated the
+                # guest. Only retry transport loss, never execution bounds.
+                raise
             except VMError as error:
                 if error.category != FailureCategory.SSH_TIMEOUT:
                     raise
                 last_timeout = error
             else:
                 last_timeout = None
-                if result.returncode != 255:
-                    if check and result.returncode:
-                        raise VMError(
-                            FailureCategory.VALIDATION_FAILED,
-                            f"guest command failed: {argv[0]}",
-                            {
-                                "command": str(argv[0]),
-                                "exit_code": result.returncode,
-                                "stderr_tail": result.stderr[-4000:],
-                            },
-                        )
-                    return result
-                last_result = result
+                if check and result.returncode:
+                    raise VMError(
+                        FailureCategory.VALIDATION_FAILED,
+                        f"guest command failed: {argv[0]}",
+                        {
+                            "command": str(argv[0]),
+                            "exit_code": result.returncode,
+                            "stderr_tail": result.stderr[-4000:],
+                        },
+                    )
+                return result
             if attempt + 1 < RETRYABLE_SSH_ATTEMPTS:
                 time.sleep(0.2 * (attempt + 1))
 
         if last_timeout is not None:
             raise last_timeout
-        if last_result is None:
-            raise AssertionError("retryable SSH command produced no result")
-        if check:
-            raise VMError(
-                FailureCategory.SSH_TIMEOUT,
-                "retryable guest command lost its SSH transport",
-                {
-                    "command": str(argv[0]),
-                    "attempts": RETRYABLE_SSH_ATTEMPTS,
-                    "stderr": last_result.stderr[-2000:],
-                },
-            )
-        return last_result
+        raise AssertionError("retryable SSH command produced no result")
 
     def wait_ssh(self, timeout_seconds: int = INITIAL_SSH_TIMEOUT_SECONDS) -> None:
         deadline = time.monotonic() + timeout_seconds
@@ -331,16 +395,7 @@ class Guest:
             str(self.private_key),
             "-P",
             str(self.port),
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "IdentitiesOnly=yes",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "UserKnownHostsFile=/dev/null",
-            "-o",
-            "LogLevel=ERROR",
+            *self.ssh_transport_options(),
         ]
         if recursive:
             argv.append("-r")
@@ -390,16 +445,7 @@ class Guest:
             str(self.private_key),
             "-P",
             str(self.port),
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "IdentitiesOnly=yes",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "UserKnownHostsFile=/dev/null",
-            "-o",
-            "LogLevel=ERROR",
+            *self.ssh_transport_options(),
             str(local),
             f"{self.user}@127.0.0.1:{remote}",
         ]

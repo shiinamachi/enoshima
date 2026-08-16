@@ -6,9 +6,10 @@ from typing import Any
 
 import pytest
 
-from enoshima_vm.config import RuntimePaths
+from enoshima_vm.config import MAX_ACTIVE_DOMAINS, RuntimePaths
 from enoshima_vm.errors import FailureCategory, VMError
 from enoshima_vm.impact import VerificationSelection
+from enoshima_vm.results import failure_fingerprint
 from enoshima_vm.service import VMService
 from enoshima_vm.source import SourceIdentity
 from enoshima_vm.verification import VerificationPlanDefinition
@@ -76,6 +77,28 @@ def failed_record(origin: str, fingerprint: str, index: int) -> dict[str, object
     }
 
 
+def capacity_failure_record(index: int) -> dict[str, object]:
+    message = "maximum active Enoshima VM count reached"
+    record = failed_record(
+        "INFRA",
+        failure_fingerprint(
+            suite="smoke",
+            step="vm_create",
+            category=FailureCategory.HOST_INFRA_ERROR,
+            message=message,
+        ),
+        index,
+    )
+    record.update(
+        {
+            "current_step": "vm_create",
+            "category": str(FailureCategory.HOST_INFRA_ERROR),
+            "error": f"{FailureCategory.HOST_INFRA_ERROR}: {message}",
+        }
+    )
+    return record
+
+
 def persist_record(
     service: VMService,
     record: dict[str, object],
@@ -87,10 +110,11 @@ def persist_record(
         {
             "schema": 1,
             "domain": f"enoshima-test-{run_id}",
-            "status": persisted.get("result", "failed"),
+            "status": persisted.get("status", persisted.get("result", "failed")),
             "created_at": "2026-08-05T00:00:00+00:00",
             "updated_at": "2026-08-05T00:00:00+00:00",
             "artifact_dir": str(tmp_path / "state" / "runs" / run_id / "artifacts"),
+            "synthetic": True,
         }
     )
     service._write_record(persisted)
@@ -292,6 +316,13 @@ def test_exhausted_infra_history_blocks_before_vm_creation(
         "_prior_unchanged_failures",
         lambda **_kwargs: prior,
     )
+    monkeypatch.setattr(
+        service.backend,
+        "active_managed_domains",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("unrelated fingerprints must not probe live capacity")
+        ),
+    )
     calls = 0
 
     def run_suite(*_args, **_kwargs):
@@ -306,6 +337,109 @@ def test_exhausted_infra_history_blocks_before_vm_creation(
     assert calls == 0
     assert result["result"] == "blocked"
     assert result["attempts"] == []
+
+
+def test_exhausted_capacity_history_runs_when_capacity_has_cleared(
+    tmp_path: Path, monkeypatch
+) -> None:
+    service = service_with_temporary_state(tmp_path)
+    prior = [capacity_failure_record(index) for index in (1, 2)]
+    calls = 0
+    monkeypatch.setattr(
+        "enoshima_vm.service.assert_selection_unchanged",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        service,
+        "_prior_unchanged_failures",
+        lambda **_kwargs: prior,
+    )
+    monkeypatch.setattr(service.backend, "active_managed_domains", lambda: [])
+
+    def run_suite(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        record = failed_record("PRODUCT", "sha256:" + "a" * 64, 3)
+        record.update(
+            {
+                "result": "passed",
+                "status": "completed",
+                "category": None,
+                "failure_origin": None,
+                "failure_fingerprint": None,
+            }
+        )
+        return record
+
+    monkeypatch.setattr(service, "run_suite", run_suite)
+
+    result = service._run_suite_with_retry_budget("smoke", selection())
+
+    assert calls == 1
+    assert result["result"] == "passed"
+
+
+def test_exhausted_capacity_history_stays_blocked_while_full(
+    tmp_path: Path, monkeypatch
+) -> None:
+    service = service_with_temporary_state(tmp_path)
+    prior = [capacity_failure_record(index) for index in (1, 2)]
+    monkeypatch.setattr(
+        service,
+        "_prior_unchanged_failures",
+        lambda **_kwargs: prior,
+    )
+    monkeypatch.setattr(
+        service.backend,
+        "active_managed_domains",
+        lambda: [
+            f"enoshima-test-run-{index:012x}" for index in range(MAX_ACTIVE_DOMAINS)
+        ],
+    )
+    monkeypatch.setattr(
+        service,
+        "run_suite",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("VM must not be created")
+        ),
+    )
+
+    result = service._run_suite_with_retry_budget("smoke", selection())
+
+    assert result["result"] == "blocked"
+    assert result["attempts"] == []
+
+
+def test_recovered_capacity_does_not_mask_other_exhausted_fingerprint(
+    tmp_path: Path, monkeypatch
+) -> None:
+    service = service_with_temporary_state(tmp_path)
+    other_fingerprint = "sha256:" + "9" * 64
+    prior = [
+        capacity_failure_record(1),
+        capacity_failure_record(2),
+        failed_record("INFRA", other_fingerprint, 3),
+        failed_record("INFRA", other_fingerprint, 4),
+    ]
+    monkeypatch.setattr(
+        service,
+        "_prior_unchanged_failures",
+        lambda **_kwargs: prior,
+    )
+    monkeypatch.setattr(service.backend, "active_managed_domains", lambda: [])
+    monkeypatch.setattr(
+        service,
+        "run_suite",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("VM must not be created")
+        ),
+    )
+
+    result = service._run_suite_with_retry_budget("smoke", selection())
+
+    assert result["result"] == "blocked"
+    assert result["attempts"] == []
+    assert result["failure"]["failureFingerprint"] == other_fingerprint
 
 
 def test_synthetic_infra_failures_persist_across_operations(
@@ -353,6 +487,7 @@ def test_create_failure_before_overlay_has_raw_artifact_and_no_authority(
         service.create("smoke", verification_mode="checkpoint")
 
     record = service.list_runs()[0]
+    assert record["domain_uuid"]
     assert record["fresh_overlay"] is False
     assert record["authoritative"] is False
     assert Path(str(record["create_error_artifact"])).is_file()
@@ -375,6 +510,7 @@ def test_preflight_failure_has_raw_artifact_and_retry_record(
         service.create("smoke", verification_mode="checkpoint")
 
     record = service.list_runs()[0]
+    assert record["domain_uuid"]
     assert record["current_step"] == "vm_create"
     assert record["failure_origin"] == "INFRA"
     assert record["fresh_overlay"] is False
@@ -558,6 +694,7 @@ def test_source_change_invalidates_persisted_authoritative_pass(
     invalidated = service.load_record(str(persisted["run_id"]))
 
     assert result["result"] == "blocked"
+    assert invalidated["status"] == "invalidated"
     assert invalidated["result"] == "failed"
     assert invalidated["authoritative"] is False
     assert invalidated["source_invalidated"] is True
@@ -741,6 +878,44 @@ def test_release_plan_runs_focused_checks_before_vm_suites(
     service.run_plan("release")
 
     assert events == ["focused", "freeze", "vm"]
+
+
+def test_release_plan_requires_canonical_visual_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    service = service_with_temporary_state(tmp_path)
+    frozen = selection(mode="release", suites=("smoke",))
+    plan = VerificationPlanDefinition("release", "release", ("smoke",), True)
+    observed_checks: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        "enoshima_vm.service.load_verification_plan", lambda *_args: plan
+    )
+    monkeypatch.setattr(
+        "enoshima_vm.service.select_verification", lambda **_kwargs: frozen
+    )
+    monkeypatch.setattr(
+        "enoshima_vm.service.run_focused_checks",
+        lambda selected, *_args, **_kwargs: (
+            observed_checks.append(selected.focused_checks)
+            or {"result": "passed", "checks": [], "artifactRoot": "/checks"}
+        ),
+    )
+    monkeypatch.setattr(
+        "enoshima_vm.service.assert_selection_unchanged",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        service,
+        "_run_suite_with_retry_budget",
+        lambda suite, _selection: {"suite": suite, "result": "passed", "attempts": []},
+    )
+
+    service.run_plan("release")
+
+    assert observed_checks == [
+        ("scripts/check-ui-visual-evidence", "make validate")
+    ]
 
 
 def test_release_operation_is_persisted_before_focused_checks(

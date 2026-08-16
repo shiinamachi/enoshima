@@ -48,6 +48,10 @@ hl.monitor({
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 hl.env("XCURSOR_THEME", "capitaine-cursors")
+local home = os.getenv("HOME")
+if home ~= nil and home ~= "" then
+    hl.env("HYPRSHOT_DIR", home .. "/Pictures/Screenshots")
+end
 
 hl.config({
     general = {
@@ -342,6 +346,41 @@ hl.bind(mainMod .. " + A", hl.dsp.exec_cmd("swaync-client -t -sw"), {
 hl.bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd("swaync-client -d -sw"), {
     dont_inhibit = true,
     description = "Toggle do not disturb",
+})
+
+-- Vicinae is staged alongside CyberLauncher for one qualification release.
+-- Super+Space and Super+R stay on the proven launcher until mixed-DPI, IME,
+-- clipboard, cold-start, and idle-resource checks pass on the physical host.
+hl.bind(mainMod .. " + SHIFT + SPACE", hl.dsp.exec_cmd("vicinae-control toggle"), {
+    dont_inhibit = true,
+    description = "Open the staged Vicinae command palette",
+})
+hl.bind(mainMod .. " + SHIFT + V",
+    hl.dsp.exec_cmd([[vicinae-control deeplink 'vicinae://launch/clipboard/history?toggle=true']]),
+    { description = "Open Vicinae clipboard history" })
+hl.bind(mainMod .. " + period",
+    hl.dsp.exec_cmd([[vicinae-control deeplink 'vicinae://launch/core/search-emojis?toggle=true']]),
+    { description = "Open Vicinae emoji and symbol picker" })
+
+-- Keep capture behavior in the mature upstream tools. Hyprshot owns capture,
+-- Swappy owns annotation, and Kooha owns the complete recording lifecycle.
+hl.bind("Print", hl.dsp.exec_cmd("hyprshot -m output -m active"), {
+    description = "Capture the focused output",
+})
+hl.bind(mainMod .. " + Print", hl.dsp.exec_cmd("hyprshot -m window"), {
+    description = "Capture a window",
+})
+hl.bind(mainMod .. " + SHIFT + S",
+    hl.dsp.exec_cmd("hyprshot -m region --freeze"),
+    { description = "Capture a frozen region" })
+hl.bind(mainMod .. " + SHIFT + E",
+    hl.dsp.exec_cmd([[sh -c 'selection=$(slurp) && grim -g "$selection" - | swappy -f -']]),
+    { description = "Capture and annotate a region" })
+hl.bind(mainMod .. " + SHIFT + C", hl.dsp.exec_cmd("hyprpicker -a"), {
+    description = "Pick and copy a screen color",
+})
+hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("uwsm app -- kooha"), {
+    description = "Open Kooha screen recorder",
 })
 
 local function cycleWindow(nextWindow)

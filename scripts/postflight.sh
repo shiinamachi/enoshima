@@ -5,6 +5,9 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=lib/inventory-capabilities.sh
 # shellcheck disable=SC1091
 source "$repo_root/scripts/lib/inventory-capabilities.sh"
+# shellcheck source=lib/vicinae-service-policy.sh
+# shellcheck disable=SC1091
+source "$repo_root/scripts/lib/vicinae-service-policy.sh"
 inventory=$repo_root/ansible/inventory/hosts.yml
 profile=${PROFILE:-}
 report_format=text
@@ -314,6 +317,455 @@ hyprfocus_configured() {
   esac
 }
 
+effective_systemd_setting() {
+  local namespace=$1 wanted_section=$2 wanted_key=$3 expected=$4 actual
+
+  actual=$(
+    systemd-analyze cat-config "$namespace" 2>/dev/null |
+      awk -v wanted_section="$wanted_section" -v wanted_key="$wanted_key" '
+        function trim(value) {
+          sub(/^[[:space:]]+/, "", value)
+          sub(/[[:space:]]+$/, "", value)
+          return value
+        }
+        {
+          line = trim($0)
+          if (line == "" || line ~ /^[#;]/) next
+          if (line ~ /^\[[^]]+\]$/) {
+            section = substr(line, 2, length(line) - 2)
+            next
+          }
+          separator = index(line, "=")
+          if (!separator || section != wanted_section) next
+          key = trim(substr(line, 1, separator - 1))
+          if (key == wanted_key) {
+            value = trim(substr(line, separator + 1))
+            found = 1
+          }
+        }
+        END {
+          if (!found) exit 1
+          print value
+        }
+      '
+  ) || return 1
+
+  [[ $actual == "$expected" ]]
+}
+
+atop_history_policy_configured() (
+  unset LOGOPTS LOGINTERVAL LOGGENERATIONS LOGPATH ATOPACCT
+  # shellcheck disable=SC1091
+  source /etc/default/atop || return 1
+
+  [[ ${LOGOPTS+x} && -z $LOGOPTS ]] &&
+    [[ ${LOGINTERVAL-} == 60 ]] &&
+    [[ ${LOGGENERATIONS-} == 14 ]] &&
+    [[ ${LOGPATH-} == /var/log/atop ]] &&
+    [[ ${ATOPACCT+x} && -z $ATOPACCT ]]
+)
+
+atop_process_accounting_disabled() {
+  local environment main_pid
+
+  main_pid=$(systemctl show atop.service -P MainPID) || return 1
+  [[ $main_pid =~ ^[1-9][0-9]*$ ]] || return 1
+  environment=$(sudo -n cat "/proc/$main_pid/environ" | tr '\0' '\n') || return 1
+  grep -Fxq 'ATOPACCT=' <<<"$environment"
+}
+
+sysstat_history_policy_configured() (
+  unset HISTORY SADC_OPTIONS UMASK
+  # shellcheck disable=SC1091
+  source /etc/conf.d/sysstat || return 1
+  [[ ${HISTORY-} == 28 ]] &&
+    [[ ${SADC_OPTIONS-} == '-S DISK,POWER' ]] &&
+    [[ ${UMASK-} == 0077 ]]
+)
+
+sysstat_timer_policy_configured() {
+  local calendar accuracy
+
+  calendar=$(systemctl show sysstat-collect.timer -P TimersCalendar) || return 1
+  accuracy=$(systemctl show sysstat-collect.timer -P AccuracyUSec) || return 1
+  [[ $calendar == *"OnCalendar=*-*-* *:*:00/30"* ]] &&
+    [[ $accuracy == 1s ]]
+}
+
+unit_disabled_and_inactive() {
+  systemctl cat "$1" >/dev/null 2>&1 &&
+    ! systemctl is-enabled --quiet "$1" &&
+    ! systemctl is-active --quiet "$1"
+}
+
+history_file_recent() {
+  local path=$1 maximum_age=$2 now modified age
+
+  now=$(date +%s) || return 1
+  modified=$(sudo -n stat -c %Y -- "$path") || return 1
+  age=$((now - modified))
+  ((age >= 0 && age <= maximum_age))
+}
+
+atop_history_recent_and_readable() {
+  local latest
+
+  latest=$(
+    sudo -n find /var/log/atop -maxdepth 1 -type f \
+      -name 'atop_*' -size +0c -printf '%T@ %p\n' |
+      sort -nr | head -n 1 | cut -d ' ' -f 2-
+  ) || return 1
+  [[ -n $latest ]] || return 1
+  history_file_recent "$latest" 180 || return 1
+  sudo -n timeout 30 /usr/bin/atop -r "$latest" -PCPU >/dev/null
+}
+
+sysstat_history_recent_and_readable() {
+  local latest
+
+  latest=$(
+    sudo -n find /var/log/sa -maxdepth 1 -type f \
+      -name 'sa[0-9][0-9]' -size +0c -printf '%T@ %p\n' |
+      sort -nr | head -n 1 | cut -d ' ' -f 2-
+  ) || return 1
+  [[ -n $latest ]] || return 1
+  history_file_recent "$latest" 120 || return 1
+  sudo -n timeout 30 /usr/bin/sar -A -f "$latest" >/dev/null &&
+    sudo -n timeout 30 /usr/bin/sar -d -f "$latest" >/dev/null &&
+    sudo -n timeout 30 /usr/bin/sar -m CPU,FREQ,TEMP -f "$latest" >/dev/null
+}
+
+vicinae_input_server_unprivileged() {
+  local helper=/usr/libexec/vicinae/vicinae-input-server
+  local capabilities mode
+
+  [[ -x $helper ]] || return 1
+  [[ $(stat -c '%U:%G' "$helper") == root:root ]] || return 1
+  mode=$(stat -c '%a' "$helper") || return 1
+  (((8#$mode & 06000) == 0)) || return 1
+  capabilities=$(getcap -n "$helper" 2>/dev/null) || return 1
+  [[ -z $capabilities ]]
+}
+
+vicinae_source_build_identity_valid() {
+  local actual
+
+  [[ $(pacman -Q vicinae-bin) == 'vicinae-bin 0.25.0-10' ]] || return 1
+  actual=$(vicinae version) || return 1
+  grep -Fxq 'Version v0.25.0 (commit 7e13b3f54)' <<<"$actual" || return 1
+  grep -Eq '^Build: GCC [0-9]+(\.[0-9]+)+ - Release$' <<<"$actual" || return 1
+  grep -Fxq 'Provenance: arch_source' <<<"$actual"
+}
+
+hyprshell_source_build_identity_valid() {
+  local capabilities mode
+
+  [[ $(pacman -Q hyprshell-bin) == 'hyprshell-bin 4.10.8-3' ]] || return 1
+  [[ -f /usr/bin/hyprshell && ! -L /usr/bin/hyprshell && -x /usr/bin/hyprshell ]] ||
+    return 1
+  [[ $(stat -c '%U:%G' /usr/bin/hyprshell) == root:root ]] || return 1
+  mode=$(stat -c '%a' /usr/bin/hyprshell) || return 1
+  [[ $mode == 755 ]] || return 1
+  capabilities=$(getcap -n /usr/bin/hyprshell 2>/dev/null) || return 1
+  [[ -z $capabilities ]] || return 1
+  ! readelf -d /usr/bin/hyprshell | grep -Eq '\((RPATH|RUNPATH)\)' || return 1
+  hyprshell --version | grep -Fq '4.10.8'
+}
+
+vicinae_native_runtime_valid() {
+  local elf mode
+  local -a executables=(
+    /usr/bin/vicinae
+    /usr/libexec/vicinae/vicinae-browser-link
+    /usr/libexec/vicinae/vicinae-data-control-server
+    /usr/libexec/vicinae/vicinae-file-indexer
+    /usr/libexec/vicinae/vicinae-input-server
+    /usr/libexec/vicinae/vicinae-server
+  )
+
+  [[ ! -e /opt/vicinae && ! -e /usr/bin/qt.conf ]] || return 1
+  for directory in /usr/libexec/vicinae /usr/share/vicinae; do
+    [[ -d $directory && ! -L $directory ]] || return 1
+    [[ $(stat -c '%U:%G' "$directory") == root:root ]] || return 1
+    mode=$(stat -c '%a' "$directory") || return 1
+    (((8#$mode & 00022) == 0)) || return 1
+  done
+  [[ -f /usr/share/vicinae/themes/tokyo-night.toml ]] || return 1
+  [[ -f /usr/share/licenses/vicinae-bin/LICENSE ]] || return 1
+  sha256_matches /usr/share/licenses/vicinae-bin/LICENSE \
+    3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986 ||
+    return 1
+  if find /usr/libexec/vicinae /usr/share/vicinae -xdev -mindepth 1 \
+    ! -type d ! -type f -print -quit | grep -q .; then
+    return 1
+  fi
+  if find /usr/libexec/vicinae /usr/share/vicinae -xdev -mindepth 1 \
+    \( ! -user root -o ! -group root -o -perm /0022 \) \
+    -print -quit | grep -q .; then
+    return 1
+  fi
+
+  for elf in "${executables[@]}"; do
+    [[ -f $elf && ! -L $elf && -x $elf ]] || return 1
+    [[ $(stat -c '%U:%G' "$elf") == root:root ]] || return 1
+    mode=$(stat -c '%a' "$elf") || return 1
+    [[ $mode == 755 ]] || return 1
+    readelf -n "$elf" | grep -Fq 'Build ID:' || return 1
+    ! readelf -d "$elf" | grep -Eq '\((RPATH|RUNPATH)\)' || return 1
+    ! readelf --wide --dyn-syms "$elf" | grep -Fq '@Qt_6_PRIVATE_API' ||
+      return 1
+  done
+  [[ -f /usr/share/vicinae/build-environment.json &&
+    ! -L /usr/share/vicinae/build-environment.json ]] || return 1
+  jq -e '
+    .schemaVersion == 2 and
+    .packageVersion == "0.25.0-10" and
+    .source.commit == "7e13b3f5450e9d91b09be2fec2f05c021c8ebb95" and
+    .qmlCachegen == false and
+    .usesQtGuiPrivate == true and
+    (.qtLibraries | length > 0) and
+    (.executables | length == 6)
+  ' /usr/share/vicinae/build-environment.json >/dev/null
+}
+
+vicinae_bundled_notices_valid() {
+  local notice_root=/usr/share/licenses/vicinae-bin/bundled
+  local notice expected
+  local -A digests=(
+    ["cmark-gfm-COPYING"]=c22e885f33b821bddb24cf007145e5540655b6c0f403e49e6c76a93c28e6d9a9
+    ["kirigami-wheelhandler-COPYING"]=de588a8b1c41fe73ffe1201f9d12c718a988ed8e1302929625a6e7c2bced7461
+    ["vicinae-server-LICENSE"]=34d47ed18ab118421ec7cde3f04673a266d4f5f30ba573ab5147dbff57c55ea5
+    ["glaze-LICENSE"]=5d49e66411a0807a7c8d6b911b9a26b59e940c71aebe561a3ad8b0b80ac4b7b6
+    ["react-LICENSE"]=da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93
+    ["pugixml-LICENSE"]=0d0b3772af2fa45628a548a3b34583707ebcc68bb6f83ec48ca273aab4a510f1
+    ["sqlcipher-LICENSE"]=2a2826f6acf46fa650730cf42cbb22a642be33a7ef119c9c4f4bf6daf3bef48e
+    ["tomlplusplus-LICENSE"]=529bc3900a9571e49db285b0df432397e70b881cc3bf48de6667ae74ff4b06d8
+    ["zip-LICENSE"]=6c1643ab0353b42030e903654fdb3845570b741da5ffafcaf9d305e8ec79a4a0
+    ["miniz-LICENSE"]=0115478d567121238cf6cc1c0c361926cf07a49d9e4c9e66da97fac6a01646b3
+    ["CLI11-LICENSE"]=88cffe4600851e8dad1b8eb1e304d54286a89d2373a1b98f59cb969b9e967b90
+    ["rang-LICENSE"]=88d9b4eb60579c191ec391ca04c16130572d7eedc4a86daa58bf28c6e14c9bcd
+    ["fzf-LICENSE"]=c308be1be029070dd6a9c1134e19c398169eb9cfbd5f078fb002659db1e1b7cc
+    ["emoji-segmenter-LICENSE"]=cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+    ["unicode-data-LICENSE"]=e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96
+    ["geist-mono-OFL"]=1781d2806a07d91c4edf4740b88449fab7d0eadad53f7c351b94cd4d4eb8c00f
+    ["outfit-OFL"]=c676351bf8576b9aba743cd5eaa8c0e7ee0d51f805d720447b4df4ddb6a2e416
+    ["noto-sans-math-OFL"]=c9c63b8ed6cf76b2ce0c58b241acfc1195c2c928334c989c7047cbdac58773d9
+    ["noto-sans-symbols-OFL"]=b118dd41337806a5d4797052c77caf3bd096aed783e5eb21b4d11154351e1ac0
+    ["devicon-LICENSE"]=121194741d4a915b9f5890fdd6dd95121f9b1f816517c792358d72d7c838d664
+    ["wayland-protocols-COPYING"]=f1a2b233e8a9a71c40f4aa885be08a0842ac85bb8588703c1dd7e6e6502e3124
+  )
+  local -a installed=()
+
+  [[ -d $notice_root && ! -L $notice_root ]] || return 1
+  [[ $(stat -c '%U:%G:%a' "$notice_root") == root:root:755 ]] || return 1
+  if find "$notice_root" -mindepth 1 ! -type f -print -quit | grep -q .; then
+    return 1
+  fi
+  mapfile -t installed < <(
+    find "$notice_root" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' |
+      LC_ALL=C sort
+  )
+  ((${#installed[@]} == ${#digests[@]})) || return 1
+  for notice in "${installed[@]}"; do
+    [[ -v digests[$notice] ]] || return 1
+    [[ $(stat -c '%U:%G:%a' "$notice_root/$notice") == root:root:644 ]] ||
+      return 1
+    expected=${digests[$notice]}
+    sha256_matches "$notice_root/$notice" "$expected" || return 1
+  done
+}
+
+vicinae_native_linkage_valid() {
+  local elf ldd_output resolved
+  local -a executables=(
+    /usr/bin/vicinae
+    /usr/libexec/vicinae/vicinae-browser-link
+    /usr/libexec/vicinae/vicinae-data-control-server
+    /usr/libexec/vicinae/vicinae-file-indexer
+    /usr/libexec/vicinae/vicinae-input-server
+    /usr/libexec/vicinae/vicinae-server
+  )
+
+  for elf in "${executables[@]}"; do
+    [[ -f $elf && ! -L $elf && -x $elf ]] || return 1
+    ldd_output=$(
+      LC_ALL=C timeout 20s env \
+        -u LD_LIBRARY_PATH -u LD_PRELOAD -u LD_AUDIT -u LD_DEBUG \
+        /usr/bin/ldd -r "$elf" 2>&1
+    ) || return 1
+    ! grep -Eq 'not found|undefined symbol:' <<<"$ldd_output" || return 1
+    while read -r resolved; do
+      resolved=$(readlink -e -- "$resolved") || return 1
+      [[ $resolved == /usr/lib/* ]] || return 1
+    done < <(sed -n 's/.*=> \(\/[^ ]*\) .*/\1/p' <<<"$ldd_output")
+  done
+}
+
+vicinae_system_qt_glib_valid() {
+  local ldd_output qt_core_dynamic qt_core_symbols resolved soname
+  local server=/usr/libexec/vicinae/vicinae-server
+  local -A expected_mappings=(
+    [libQt6Core_so_6]=/usr/lib/libQt6Core.so.6
+    [libQt6Qml_so_6]=/usr/lib/libQt6Qml.so.6
+    [libqt6keychain_so_1]=/usr/lib/libqt6keychain.so.1
+  )
+
+  qt_core_dynamic=$(readelf -d /usr/lib/libQt6Core.so.6) || return 1
+  grep -Fq 'Shared library: [libglib-2.0.so.0]' <<<"$qt_core_dynamic" ||
+    return 1
+  qt_core_symbols=$(readelf --wide --dyn-syms /usr/lib/libQt6Core.so.6) ||
+    return 1
+  grep -Fq 'QEventDispatcherGlib13processEvents' <<<"$qt_core_symbols" ||
+    return 1
+  [[ $(pacman -Qoq /usr/lib/libQt6Core.so.6) == qt6-base ]] || return 1
+  [[ $(pacman -Qoq /usr/lib/libQt6Qml.so.6) == qt6-declarative ]] || return 1
+  [[ $(pacman -Qoq /usr/lib/libqt6keychain.so.1) == qtkeychain-qt6 ]] || return 1
+  [[ $(pacman -Qoq /usr/lib/libsecret-1.so.0) == libsecret ]] || return 1
+  grep -aFq 'secret-1' /usr/lib/libqt6keychain.so.1 || return 1
+
+  ldd_output=$(
+    LC_ALL=C timeout 20s env \
+      -u LD_LIBRARY_PATH -u LD_PRELOAD -u LD_AUDIT -u LD_DEBUG \
+      /usr/bin/ldd -r "$server" 2>&1
+  ) || return 1
+  ! grep -Eq 'not found|undefined symbol:' <<<"$ldd_output" || return 1
+  for soname in libQt6Core.so.6 libQt6Qml.so.6 libqt6keychain.so.1; do
+    resolved=$(
+      awk -v library="$soname" \
+        '$1 == library && $2 == "=>" { print $3 }' <<<"$ldd_output"
+    ) || return 1
+    [[ $resolved == "${expected_mappings[${soname//./_}]}" ]] || return 1
+  done
+
+  ! readelf --wide --dyn-syms "$server" | grep -Fq '@Qt_6_PRIVATE_API' ||
+    return 1
+  [[ ! -e /run/systemd/user/vicinae.service &&
+    ! -L /run/systemd/user/vicinae.service ]] ||
+    return 1
+  sudo -n /usr/libexec/vicinae/vicinae-build-compatible
+}
+
+vicinae_active_runtime_mapping_valid() {
+  local main_pid maps library
+  local -a required_libraries=(
+    libQt6Core.so
+    libQt6Qml.so
+    libglib-2.0.so
+    libsecret-1.so
+  )
+
+  main_pid=$(systemctl --user show vicinae.service -P MainPID) || return 1
+  [[ $main_pid =~ ^[1-9][0-9]*$ && -r /proc/$main_pid/maps ]] || return 1
+  maps=$(<"/proc/$main_pid/maps") || return 1
+  ! grep -Fq ' /opt/' <<<"$maps" || return 1
+  for library in "${required_libraries[@]}"; do
+    grep -Eq " /usr/lib/${library//./\\.}([.][0-9]+)*([[:space:]]|$)" \
+      <<<"$maps" || return 1
+  done
+}
+
+vicinae_desktop_entries_valid() {
+  local launcher=/usr/share/applications/vicinae.desktop
+  local uri_handler=/usr/share/applications/vicinae-url-handler.desktop
+
+  sha256_matches \
+    "$launcher" \
+    e67900456fd1c29defcf0f5ca1e78de9aab7241bebb5290c2725efa99dd61079 ||
+    return 1
+  sha256_matches \
+    "$uri_handler" \
+    e6be7ddb52ccdeb8872a512cbe7b193a1260d8376bd97785d865dc64af578133 ||
+    return 1
+  grep -Fxq 'Exec=vicinae-control toggle' "$launcher" || return 1
+  grep -Fxq 'TryExec=vicinae-control' "$launcher" || return 1
+  grep -Fxq 'Exec=vicinae-control uri %u' "$uri_handler" || return 1
+  grep -Fxq 'TryExec=vicinae-control' "$uri_handler" || return 1
+  ! grep -Fq 'server --replace' "$launcher" "$uri_handler" || return 1
+  desktop-file-validate "$launcher" "$uri_handler"
+}
+
+vicinae_uri_associations_valid() {
+  local scheme
+
+  for scheme in vicinae raycast com.raycast; do
+    [[ $(xdg-mime query default "x-scheme-handler/$scheme" 2>/dev/null) == vicinae-url-handler.desktop ]] || return 1
+  done
+}
+
+vicinae_service_policy_valid() (
+  local properties
+  local keyring_helper=$HOME/.local/libexec/vicinae-keyring-ready
+  local server_helper=$HOME/.local/libexec/vicinae-server-ready
+
+  sha256_matches \
+    /usr/lib/systemd/user/vicinae.service \
+    6f2e12e55d1dd179d40557a8386fed5ad081b5897fe38508567c1eceaf3bc7d1 ||
+    return 1
+  # Keep LoadUnit and GetAll on one sd-bus connection. A headless, inactive
+  # unit can otherwise be garbage-collected between short busctl processes.
+  properties=$(
+    systemctl --user show vicinae.service --no-pager \
+      --property=Environment \
+      --property=EnvironmentFiles \
+      --property=UnsetEnvironment \
+      --property=ExecCondition \
+      --property=ExecStart \
+      --property=ExecStartPre \
+      --property=ExecStartPost \
+      --property=ExecReload \
+      --property=ExecStop \
+      --property=ExecStopPost \
+      --property=ExecSearchPath \
+      --property=FragmentPath \
+      --property=DropInPaths \
+      --property=KillMode \
+      --property=Restart \
+      --property=RestartUSec \
+      --property=TimeoutStartUSec \
+      --property=TimeoutStopUSec \
+      --property=StartLimitIntervalUSec \
+      --property=StartLimitBurst
+  ) || return 1
+  vicinae_effective_service_policy_valid \
+    "$properties" "$keyring_helper" "$server_helper"
+)
+
+vicinae_performance_scripts_valid() {
+  local scripts_dir=$HOME/.local/share/vicinae/scripts
+  local script
+  local -a scripts=()
+
+  [[ -d $scripts_dir ]] || return 1
+  mapfile -d '' -t scripts < <(
+    find "$scripts_dir" -maxdepth 1 -type f \
+      -name 'performance-*.sh' -print0 |
+      sort -z
+  )
+  ((${#scripts[@]} == 8)) || return 1
+  for script in "${scripts[@]}"; do
+    [[ -x $script ]] || return 1
+    vicinae script check "$script" || return 1
+  done
+}
+
+vicinae_accessibility_scripts_valid() {
+  local scripts_dir=$HOME/.local/share/vicinae/scripts
+  local script
+  local -a scripts=()
+
+  [[ -d $scripts_dir ]] || return 1
+  mapfile -d '' -t scripts < <(
+    find "$scripts_dir" -maxdepth 1 -type f \
+      -name 'accessibility-*.sh' -print0 |
+      sort -z
+  )
+  ((${#scripts[@]} == 2)) || return 1
+  for script in "${scripts[@]}"; do
+    [[ -x $script ]] || return 1
+    vicinae script check "$script" || return 1
+  done
+}
+
 echo "==> Packages"
 while IFS= read -r package; do
   check "pacman package installed: $package" pacman -Q "$package"
@@ -326,6 +778,24 @@ done < <(
     manifest_entries "$manifest"
   done | sort -u
 )
+
+if jq -e '.desktop_accessibility_profile_enabled == true' \
+  <<<"$inventory_host_json" >/dev/null 2>&1; then
+  check "opt-in Orca screen reader package installed" pacman -Q orca
+  check "opt-in Orca screen reader executable responds" orca --version
+  orca_desktop_entry=$(
+    pacman -Ql orca |
+      awk '$2 ~ "^/usr/share/applications/.+\\.desktop$" { print $2; exit }'
+  )
+  check "opt-in Orca desktop entry is installed" test -n "$orca_desktop_entry"
+  if [[ -n $orca_desktop_entry ]]; then
+    check "opt-in Orca desktop entry validates" \
+      desktop-file-validate "$orca_desktop_entry"
+  fi
+else
+  skip "opt-in Orca screen reader package" \
+    "desktop_accessibility_profile_enabled is false"
+fi
 
 while IFS= read -r package; do
   check "local package installed: $package" pacman -Q "$package"
@@ -347,6 +817,83 @@ done < <(manifest_entries "$repo_root/packages/absent.txt")
 
 check "multilib repository enabled" bash -c \
   "pacman-conf --repo-list | grep -Fxq multilib"
+
+echo "==> Performance observability"
+check "journald uses persistent storage" \
+  effective_systemd_setting systemd/journald.conf Journal Storage persistent
+check "journald compresses retained records" \
+  effective_systemd_setting systemd/journald.conf Journal Compress yes
+check "journald storage is capped at 1 GiB" \
+  effective_systemd_setting systemd/journald.conf Journal SystemMaxUse 1G
+check "journald preserves 2 GiB of filesystem space" \
+  effective_systemd_setting systemd/journald.conf Journal SystemKeepFree 2G
+check "journald retention is capped at 30 days" \
+  effective_systemd_setting systemd/journald.conf Journal MaxRetentionSec 30day
+# The child shell owns the command substitution in these mode checks.
+# shellcheck disable=SC2016
+check "persistent journal directory ownership and mode are managed" bash -c \
+  '[[ $(stat -c "%U:%G:%a" /var/log/journal) == root:systemd-journal:2755 ]]'
+check "systemd-journald is active" \
+  systemctl is-active --quiet systemd-journald.service
+# shellcheck disable=SC2016
+check "systemd default IO accounting is live" bash -c \
+  '[[ $(systemctl show -P DefaultIOAccounting) == yes ]]'
+
+check "atop collection interval and retention are configured" \
+  atop_history_policy_configured
+# shellcheck disable=SC2016
+check "atop history directory is private" bash -c \
+  '[[ $(stat -c "%U:%G:%a" /var/log/atop) == root:root:700 ]]'
+# shellcheck disable=SC2016
+check "atop fallback accounting directory is private" bash -c \
+  '[[ $(stat -c "%U:%G:%a" /var/cache/atop.d) == root:root:700 ]]'
+check "atop crash-unsafe fallback accounting file is absent" sudo -n \
+  test ! -e /var/cache/atop.d/atop.acct
+# shellcheck disable=SC2016
+check "atop writes files with a private umask" bash -c \
+  '[[ $(systemctl show atop.service -P UMask) == 0077 ]]'
+# shellcheck disable=SC2016
+check "atop restarts after collector failures" bash -c \
+  '[[ $(systemctl show atop.service -P Restart) == on-failure ]]'
+# shellcheck disable=SC2016
+check "atop uses bounded restart attempts" bash -c \
+  '[[ $(systemctl show atop.service -P StartLimitIntervalUSec) == 1min ]] &&
+   [[ $(systemctl show atop.service -P StartLimitBurst) == 5 ]]'
+check "atop process accounting is disabled" \
+  unit_disabled_and_inactive atopacct.service
+check "running atop has process accounting explicitly disabled" \
+  atop_process_accounting_disabled
+check "optional atop GPU collector is disabled" \
+  unit_disabled_and_inactive atopgpu.service
+for unit in atop.service atop-rotate.timer; do
+  check "$unit enabled" systemctl is-enabled --quiet "$unit"
+  check "$unit active" systemctl is-active --quiet "$unit"
+done
+check "atop has written recent parseable local history" \
+  atop_history_recent_and_readable
+
+check "sysstat retains 28 days with private files" \
+  sysstat_history_policy_configured
+check "sysstat collection timer uses the 30-second schedule" \
+  sysstat_timer_policy_configured
+# shellcheck disable=SC2016
+check "sysstat history directory is private" bash -c \
+  '[[ $(stat -c "%U:%G:%a" /var/log/sa) == root:root:700 ]]'
+for unit in \
+  sysstat.service \
+  sysstat-collect.timer \
+  sysstat-rotate.timer \
+  sysstat-summary.timer; do
+  check "$unit enabled" systemctl is-enabled --quiet "$unit"
+  check "$unit active" systemctl is-active --quiet "$unit"
+done
+# shellcheck disable=SC2016
+check "latest sysstat collection completed successfully" bash -c \
+  '[[ $(systemctl show sysstat-collect.service -P Result) == success ]]'
+check "sysstat has written recent parseable local history" \
+  sysstat_history_recent_and_readable
+check "persistent journal contains a current-boot record" sudo -n bash -c \
+  'journalctl --directory=/var/log/journal -b 0 --no-pager -n 1 --output=short-unix | grep -q .'
 
 echo "==> Power and sleep"
 if capability battery; then
@@ -652,6 +1199,10 @@ for unit in \
   xembed-sni-proxy.service; do
   check "custom user unit enabled: $unit" systemctl --user is-enabled --quiet "$unit"
 done
+for unit in hyprshell.service vicinae.service; do
+  check "packaged desktop user unit enabled: $unit" \
+    systemctl --user is-enabled --quiet "$unit"
+done
 
 check "official hyprfocus plugin is enabled" hyprpm_plugin_enabled hyprfocus
 if hyprpm_plugin_enabled hyprbars; then
@@ -684,6 +1235,8 @@ if systemctl --user is-active --quiet graphical-session.target; then
     cyberdock-event-bridge.service \
     desktop-display-events.service \
     kakaotalk-focus-guard.service \
+    hyprshell.service \
+    vicinae.service \
     xembed-sni-proxy.service; do
     check_or_warn "user unit active after login: $unit" systemctl --user is-active --quiet "$unit"
   done
@@ -694,7 +1247,12 @@ if systemctl --user is-active --quiet graphical-session.target; then
   check_or_warn "Fcitx XIM environment imported into user manager (new login if absent)" bash -c \
     "systemctl --user show-environment | grep -Fxq 'XMODIFIERS=@im=fcitx'"
   check_or_warn "Secret Service is available for application credentials after login" \
+    timeout --signal=TERM --kill-after=1s 5s \
     busctl --user --quiet status org.freedesktop.secrets
+  check_or_warn "Vicinae server responds after login" \
+    timeout --signal=TERM --kill-after=1s 5s /usr/bin/vicinae ping
+  check_or_warn "Vicinae active server maps only the reviewed system runtime" \
+    vicinae_active_runtime_mapping_valid
   check_or_warn "graphical session imports mise shims (log out once if absent)" bash -c \
     "systemctl --user show-environment | grep -Eq '^PATH=.*/\.local/share/mise/shims'"
   check_or_warn "hyprfocus plugin is loaded in the active compositor" hyprfocus_loaded
@@ -839,6 +1397,61 @@ else
 fi
 
 echo "==> Desktop expansion"
+check "Hyprshot CLI is callable" hyprshot --help
+check "Kooha executable is installed" test -x /usr/bin/kooha
+check "Kooha desktop entry is installed" \
+  test -f /usr/share/applications/io.github.seadve.Kooha.desktop
+check "Hyprshell overview configuration parses" \
+  hyprshell -c "$HOME/.config/hyprshell/config.ron" config check
+check "Hyprshell stylesheet is deployed" \
+  test -s "$HOME/.config/hyprshell/styles.css"
+check "Hyprshell is the pinned direct-input source build" \
+  hyprshell_source_build_identity_valid
+check "Hyprshell package source and patch provenance are pinned" \
+  "$repo_root/scripts/check-hyprshell-provenance" --root "$repo_root"
+check "Vicinae staged privacy policy is deployed" jq -e '
+  .telemetry.system_info == false and
+  .input_server.enabled == false and
+  .global_shortcuts.toggle == "" and
+  all(.providers[]?.entrypoints[]?; (.shortcut // "") == "") and
+  .encrypt_sensitive_data == true and
+  .providers.clipboard.preferences.ignorePasswords == true and
+  .providers.clipboard.preferences.eraseOnStartup == true and
+  .providers.files.enabled == false and
+  .providers.files.preferences.autoIndexing == false
+' "$HOME/.config/vicinae/settings.json"
+check "Vicinae shortcut IPC is bounded" \
+  test -x "$HOME/.local/bin/vicinae-control"
+check "Vicinae waits for an unlocked login keyring" \
+  test -x "$HOME/.local/libexec/vicinae-keyring-ready"
+check "Vicinae server startup is bounded" \
+  test -x "$HOME/.local/libexec/vicinae-server-ready"
+check "Vicinae packaged service has the effective bounded keyring guard" \
+  vicinae_service_policy_valid
+check "Vicinae performance Script Commands validate" \
+  vicinae_performance_scripts_valid
+check "Vicinae accessibility Script Commands validate" \
+  vicinae_accessibility_scripts_valid
+check "Vicinae is the pinned stable upstream source build" \
+  vicinae_source_build_identity_valid
+check "Vicinae native runtime is safely source-built" \
+  vicinae_native_runtime_valid
+check "Vicinae reviewed bundled third-party notices are pinned" \
+  vicinae_bundled_notices_valid
+check "Vicinae system Qt keeps the GLib dispatcher and matches the build manifest" \
+  vicinae_system_qt_glib_valid
+check "Vicinae managed desktop entries cannot bypass the user service" \
+  vicinae_desktop_entries_valid
+check "Vicinae URI schemes select the managed service adapter" \
+  vicinae_uri_associations_valid
+check "Vicinae native linkage is complete after the full system upgrade" \
+  vicinae_native_linkage_valid
+check "Vicinae input helper has no elevated capability or set-ID bit" \
+  vicinae_input_server_unprivileged
+check "Vicinae package and ephemeral Qt guard hooks are pinned" \
+  "$repo_root/scripts/check-vicinae-provenance" --root "$repo_root"
+check "Vicinae global-input migration surfaces are absent" bash -c \
+  '[[ ! -e /usr/lib/modules-load.d/vicinae.conf && ! -e /opt/vicinae && ! -e /etc/pacman.d/hooks/95-enoshima-vicinae-capability.hook && ! -e /usr/local/libexec/enoshima-vicinae-unprivileged ]]'
 check "FileZilla executable is installed" \
   test -x /usr/bin/filezilla
 check "FileZilla desktop entry is installed" \
@@ -1102,7 +1715,7 @@ fi
 
 printf '\nPostflight result: %d failure(s), %d warning(s), %d skip(s).\n' \
   "$failures" "$warnings" "$skips"
-printf 'Manual checks still required: sudo/Enoshima Auth fingerprint, fallback SDDM rollback, Hyprlock, Wi-Fi/WWAN handoff, Kakao login/files/clipboard/tray, and Parsec input/video.\n'
+printf 'Manual checks still required: fingerprint/auth and fallback SDDM; suspend, boot security, WWAN, and displays; Hyprshot/Kooha capture; Vicinae IME/privacy/idle; Hyprshell mixed-DPI keyboard focus; performance-history retention/overhead; Kakao and Parsec workflows.\n'
 
 if [[ $report_format == json ]]; then
   report_destination=${report_output:-$results_file.json}

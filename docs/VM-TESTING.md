@@ -69,8 +69,17 @@ smoke -> converge -> reboot -> desktop -> login -> ui-review -> boot-security
 An eligible transient infrastructure failure may create one second fresh
 attempt for a plan entry; it does not duplicate that suite in the release
 plan. Image checksum, signature, keyring, and manifest-integrity failures are
-not retryable. The synchronous MCP and trusted CI outer budgets cover two full
-attempts of every canonical suite plus setup, evidence, and cleanup headroom.
+not retryable. Detached MCP workers and trusted CI outer budgets cover two full
+attempts of every canonical suite plus setup, evidence, and cleanup headroom;
+no Codex turn or STDIO transport must remain open for that entire duration.
+
+A cold guest bootstrap has a 155-minute absolute and 32-minute no-output
+deadline. The VM narrows mise to two ten-minute attempts and Codex Desktop to
+two 30-minute attempts within that budget. Convergence-only repeats use a
+30-minute absolute and ten-minute no-output deadline; they must not repeat the
+cold download/build cost. The release-equivalent reboot suite has a 195-minute
+watchdog, leaving bounded room for its ten graphical reboot iterations after a
+worst-case cold bootstrap.
 
 ## Host provisioning
 
@@ -95,6 +104,14 @@ virsh --connect qemu:///session uri
 ```bash
 ENOSHIMA_VM_LIBVIRT_URI=qemu:///system make vm-preflight
 ```
+
+MCP fresh workers overwrite missing or noncanonical inherited home, runtime,
+config, and cache values with the passwd home and `/run/user/$UID`. This keeps
+the same `qemu:///session` URI on one logical daemon across transport restarts.
+Every run records that logical session identity; destructive cleanup rejects
+an unknown or mismatched identity. `vm_destroy` and the watchdog succeed only
+after the managed domain is stopped, undefined, and absent; disposable storage
+and credentials are retained if that postcondition cannot be proved.
 
 No base image or VM disk belongs in Git. Verified base images are cached under
 `~/.cache/enoshima-vm/images`; run records and reports live under
@@ -249,8 +266,9 @@ The lanes have distinct purposes:
   its approved visual states while the `login` lane continues to prove real
   greetd/PAM authentication, drives the production SwayNC process through its
   notification D-Bus protocol, and launches an undecorated GTK Wayland client
-  through the real native title-bar plugin. It covers all ten registered
-  surfaces and all 432 required state/locale/scale matrix entries. Quickshell
+  through the real native title-bar plugin, the packaged Vicinae service, and
+  Hyprshell over real Hyprland clients and virtual outputs. It covers all 12
+  concept/evidence surfaces and all 516 required state/locale/scale matrix entries. Quickshell
   review acknowledgements include a traversal of the live visible text tree;
   truncation or painted bounds outside the allocated item is recorded as a
   text-overflow failure in the capture sidecar. A capture is accepted only
@@ -372,10 +390,14 @@ execute those checks and revalidate the source freeze before starting a VM.
 ## Codex control surface
 
 The project-scoped `.codex/config.toml` starts the STDIO `enoshima_vm` MCP
-server from the locked Python project. The server exposes:
+proxy from the locked Python project. The proxy never imports mutable harness
+modules into its long-lived process; each ordinary call uses a fresh worker,
+and each long run uses a detached worker with a persistent operation ledger.
+The server exposes:
 
 ```text
 verification_plan     vm_run_affected       vm_run_plan
+vm_operation_status   vm_wait_operation     vm_list_operations
 vm_create             vm_run_suite          vm_status
 vm_wait               vm_upload_worktree    vm_exec
 vm_reboot             vm_poweroff           vm_screenshot
@@ -384,19 +406,74 @@ vm_list_runs
 ```
 
 For Codex, `verification_plan` is the read-only selector view,
-`vm_run_affected` is the synchronous `dev` or `checkpoint` execution, and
-`vm_run_plan` is the synchronous frozen `release` execution. One call owns the
-serial suite sequence and returns its bounded result; do not poll a terminal,
+`vm_run_affected` starts a durable `dev` or `checkpoint` execution, and
+`vm_run_plan` starts a durable frozen `release` execution. Each start returns
+an `operationId` promptly. Use one `vm_wait_operation` call at a time (at most
+55 seconds) until it returns the final bounded result; do not poll a terminal,
 `vm_status`, or `vm_wait` while it runs. Heavy suites are never split across
-agents.
+agents. After a client or transport restart, `vm_list_operations` recovers the
+operation id and `vm_operation_status` provides a bounded snapshot without
+interrupting its worker.
 
-The MCP server is required by project configuration and its tool timeout spans
-the release plan's full declared 30.5-hour budget. If the server cannot start
-or perform VM work, Codex must finish the selected focused checks and report
-`VM_BLOCKED` with the missing suite evidence. It must not fall back to a long
-`make vm-*` shell process or interactive terminal polling. The CLI and Make
-targets remain available to a human operator and for short, bounded harness
-diagnosis.
+The MCP server is required by project configuration. Its tool timeout is not a
+lease for a Codex turn or transport: the detached worker and mode-0600 ledger
+under `$ENOSHIMA_VM_STATE_ROOT/mcp-operations/` preserve the run independently.
+The ledger location is configurable for artifact isolation, but the mutation
+lease is not: all proxy, CLI, and service processes for the user session share
+`/run/user/$UID/enoshima-vm/active.lock`. This prevents an alternate state root
+from opening a concurrent mutation path to the same `qemu:///session` daemon.
+Never kill the MCP process to reload source; fresh workers import the current
+harness for every call through an isolated empty bytecode cache. Ordinary
+fresh-worker calls also have a tool-specific absolute deadline; expiry sends
+TERM and then KILL to the complete worker process group while the proxy stays
+available for the next call. Every spawned Python role starts under `-I -S` and
+a stdlib-only bootstrap, which arms Linux parent-death signaling before any
+reviewed site path, `.pth`, or `sitecustomize` can run. A mutating supervisor and
+its guardian inherit `active.lock`; the guardian is a child subreaper and owns
+every daemonized payload descendant except the per-run watchdog described below.
+The outer durable supervisor alone disarms transport-parent death after this
+boundary and runs in a named `systemd --user` scope with absolute
+`RuntimeMaxSec` and five-second `TimeoutStopSec`. Losing only the STDIO proxy
+therefore does not stop an already detached durable operation; a replacement
+proxy recovers it from the ledger. A guardian/payload parent loss or pre-import
+hang still releases no lock until the owned process tree is gone.
+Loss or SIGKILL of the durable supervisor or guardian drains the complete
+mutation payload tree before ownership is released. Durable supervisors have
+their own transport-independent deadline:
+two attempts of each actual canonical suite's declared timeout, two hours for
+pre-VM focused checks, 30 minutes of overhead per attempt, and one hour for
+finalization. For release, the suite list comes from `plans/release.yaml`, not
+the affected selector. Focused checks additionally have a two-hour absolute
+and 20-minute idle deadline and retain partial output. The ledger records
+`planned*` and reconciled `actual*` source identities separately; a mismatch
+fails closed. A partial or damaged historical ledger entry is
+reported as orphaned without hiding valid operations, and a hard-crashed worker
+releases the serial-operation lock. Terminal result envelopes are capped at
+128 KiB and validated for record/envelope state consistency at commit, status,
+and wait boundaries; operation summaries stay below 32 KiB and stderr evidence
+below 80 lines/16 KiB. If
+the proxy cannot start or recover VM work, Codex
+must finish the selected focused checks and report `VM_BLOCKED` with the missing
+suite evidence. It must not fall back to a long `make vm-*` shell process or
+interactive terminal polling. The CLI and Make targets remain available to a
+human operator and for short, bounded harness diagnosis.
+
+Each created VM also has one named `systemd --user` transient watchdog unit.
+It is deliberately started outside the detached worker ancestry so loss of the
+proxy, supervisor, guardian, or Codex task cannot cancel the VM deadline owner.
+The unit receives only canonical absolute user-session and VM state/cache
+variables, a fixed `/usr/bin` path, does not inherit `active.lock`, and has its
+own `RuntimeMaxSec`. Before any domain starts it proves that its Python module,
+run record, and recorded libvirt session are usable through a mode-0600 readiness
+ACK. Normal cleanup proves the exact recorded watchdog PID/start-time identity
+has stopped before removing
+the VM's disposable storage or credentials. The watchdog takes the per-run
+record lock only at expiry, rechecks terminal state, and then independently
+proves domain teardown before removing those files. Transient libvirt or storage
+failures are retried inside a bounded 30-minute finalization window while the
+latest cleanup diagnostic is preserved with the run. Missing, invalid UTF-8,
+malformed JSON, and non-object run records are treated as transient until that
+absolute finalization boundary, never as proof that cleanup completed.
 
 The service rejects unmanaged run IDs and libvirt domains, allows only the
 `enoshima-test-` prefix, limits active domains to one, caps CPU/RAM/disk, binds
@@ -408,13 +485,14 @@ Every service action is written to a mode-0600 JSONL audit log with sensitive
 arguments redacted.
 
 Codex should use `vm_run_affected` for affected checkpoint evidence and
-`vm_run_plan` for final release evidence. `vm_run_suite` accepts only `dev` or
-`checkpoint`, applies the same retry/source-freeze policy to one named lane,
-and cannot claim release authority. Only `vm_run_plan release` can create a
-release result, and its loader enforces the exact canonical order and unique
-membership. The lower-level tools are for evidence gathering and bounded
-diagnosis, not a repaired-guest passing result. Destruction requires explicit
-approval in the project MCP policy.
+`vm_run_plan` for final release evidence, then own the returned operation until
+`vm_wait_operation` yields its final result. `vm_run_suite` accepts only `dev`
+or `checkpoint`, applies the same retry/source-freeze policy to one named lane,
+and cannot claim release authority. Only the final result of `vm_run_plan
+release` can create release authority, and its loader enforces the exact
+canonical order and unique membership. The lower-level tools are for evidence
+gathering and bounded diagnosis, not a repaired-guest passing result.
+Destruction requires explicit approval in the project MCP policy.
 
 ## Image and update policy
 
@@ -478,6 +556,11 @@ plan and operation result:
 | Restart and sleep | `suspend-resume`, `sleep-battery-drain`, `post-resume-thermal` |
 | Display hardware | `internal-oled-edid-refresh-rate`, `external-display-dock` |
 | Visible UI review | `internal-external-display-review` |
+| Desktop capture and recording | `desktop-capture-recording` |
+| Staged command palette | `command-palette-staged-rollout` |
+| All-workspaces Overview | `overview-keyboard-mixed-dpi` |
+| Performance history | `performance-observability-history-overhead` |
+| Opt-in screen reader | `accessibility-screen-reader` |
 | Authentication hardware | `fingerprint-enrollment-authentication` |
 | Boot security | `secure-boot-enrollment`, `tpm-unlock-recovery` |
 | WWAN | `wwan-connectivity-shutdown` |
@@ -485,3 +568,14 @@ plan and operation result:
 Preserve applicable names in the final verification report until they are
 completed on `tpx1c13`. A passing checkpoint or release plan never clears a T5
 gate.
+
+Vicinae's ephemeral Qt guard, pure ABI check, and declarative service-policy
+ordering are covered by focused static tests and guest convergence. Those
+checks may prove that an incompatible binary remains stopped, but they never
+clear `command-palette-staged-rollout`; shortcut, IME, keyring, and mixed-DPI
+behavior still requires the named T5 physical review.
+
+`accessibility-screen-reader`는 opt-in host에서 Vicinae Applications를 통한
+Orca 실행, GTK 3/4의 실제 음성·role·label·focus 순서, 48px 고대비 접근성 모드와
+24px 기본 모드 전환 중 Orca lifecycle 유지, Quit 뒤 재실행을 모두 확인한다.
+VM의 package/version 확인은 이 물리 gate를 충족하지 않는다.

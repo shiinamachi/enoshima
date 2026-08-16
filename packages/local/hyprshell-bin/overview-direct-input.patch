@@ -1,0 +1,348 @@
+diff --git a/crates/windows-lib/src/overview/root.rs b/crates/windows-lib/src/overview/root.rs
+index 5493149..7346aa0 100644
+--- a/crates/windows-lib/src/overview/root.rs
++++ b/crates/windows-lib/src/overview/root.rs
+@@ -90,6 +90,8 @@ impl SimpleComponent for OverviewRoot {
+                     .launch(OverviewWindowInit {
+                         general: init.general.clone(),
+                         gtk_monitor,
++                        direct_input: uses_direct_overview_input(&init.overview),
++                        launch_modifier: init.overview.launcher.launch_modifier,
+                     })
+                     .forward(sender.input_sender(), |m| match m {
+                         OverviewWindowOutput::Clicked(ws) => {
+@@ -98,6 +100,12 @@ impl SimpleComponent for OverviewRoot {
+                         OverviewWindowOutput::ClickedC(cl) => {
+                             OverviewRootInput::CloseOverviewClickC(cl)
+                         }
++                        OverviewWindowOutput::Switch(direction, workspace) => {
++                            OverviewRootInput::Switch(direction, workspace)
++                        }
++                        OverviewWindowOutput::Close(do_switch) => {
++                            OverviewRootInput::CloseOverview(do_switch)
++                        }
+                     });
+                 windows.entry(monitor.id).insert_entry(overview_window);
+             }
+@@ -139,6 +147,13 @@ impl SimpleComponent for OverviewRoot {
+                 self.launcher_root.emit(LauncherRootInput::SetLauncher(
+                     self.overview.launcher.clone(),
+                 ));
++                let direct_input = uses_direct_overview_input(&self.overview);
++                for window in self.windows.values() {
++                    window.emit(OverviewWindowInput::SetInputPolicy(
++                        direct_input,
++                        self.overview.launcher.launch_modifier,
++                    ));
++                }
+             }
+             OverviewRootInput::SetGeneral(general) => {
+                 for window in self.windows.values_mut() {
+@@ -153,7 +168,9 @@ impl SimpleComponent for OverviewRoot {
+                         .emit(OverviewRootInput::CloseOverview(false));
+                 } else {
+                     self.open = true;
+-                    self.launcher_root.emit(LauncherRootInput::OpenLauncher);
++                    if !uses_direct_overview_input(&self.overview) {
++                        self.launcher_root.emit(LauncherRootInput::OpenLauncher);
++                    }
+                     self.open_overview();
+                 }
+             }
+@@ -167,7 +184,9 @@ impl SimpleComponent for OverviewRoot {
+             OverviewRootInput::CloseOverview(do_switch) => {
+                 if self.open {
+                     self.open = false;
+-                    self.launcher_root.emit(LauncherRootInput::CloseLauncher);
++                    if !uses_direct_overview_input(&self.overview) {
++                        self.launcher_root.emit(LauncherRootInput::CloseLauncher);
++                    }
+                     self.close_overview(do_switch);
+                 } else {
+                     trace!("not open");
+@@ -207,6 +226,40 @@ impl SimpleComponent for OverviewRoot {
+     }
+ }
+ 
++fn uses_direct_overview_input(overview: &config_lib::Overview) -> bool {
++    let plugins = &overview.launcher.plugins;
++    !overview.launcher.show_when_empty
++        && plugins.applications.is_none()
++        && plugins.terminal.is_none()
++        && plugins.shell.is_none()
++        && plugins.websearch.is_none()
++        && plugins.calc.is_none()
++        && plugins.path.is_none()
++        && plugins.actions.is_none()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn direct_input_requires_a_nonvisual_controller_only_launcher() {
++        let mut overview = config_lib::Overview::default();
++        overview.launcher.show_when_empty = false;
++        overview.launcher.plugins.applications = None;
++        overview.launcher.plugins.terminal = None;
++        overview.launcher.plugins.shell = None;
++        overview.launcher.plugins.websearch = None;
++        overview.launcher.plugins.calc = None;
++        overview.launcher.plugins.path = None;
++        overview.launcher.plugins.actions = None;
++        assert!(uses_direct_overview_input(&overview));
++
++        overview.launcher.show_when_empty = true;
++        assert!(!uses_direct_overview_input(&overview));
++    }
++}
++
+ impl OverviewRoot {
+     fn open_overview(&mut self) {
+         let (hypr_data, active) = match collect_data(&SortConfig {
+diff --git a/crates/windows-lib/src/overview/window.rs b/crates/windows-lib/src/overview/window.rs
+index 0297a47..0454a0c 100644
+--- a/crates/windows-lib/src/overview/window.rs
++++ b/crates/windows-lib/src/overview/window.rs
+@@ -1,22 +1,28 @@
+ use crate::shared::{Workspaces, WorkspacesInit, WorkspacesInput, WorkspacesOutput};
++use config_lib::Modifier;
+ use core_lib::{
+-    Active, ClientData, ClientId, MonitorData, OVERVIEW_NAMESPACE, WorkspaceData, WorkspaceId,
++    Active, ClientData, ClientId, Direction, MonitorData, OVERVIEW_NAMESPACE, WorkspaceData,
++    WorkspaceId,
+ };
+ use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+ use regex::Regex;
++use relm4::adw::gdk::ModifierType;
+ use relm4::adw::prelude::*;
+-use relm4::adw::{gdk, gtk};
++use relm4::adw::{gdk, glib, gtk};
+ use relm4::factory::FactoryVecDeque;
+-use relm4::gtk::{Orientation, SelectionMode};
++use relm4::gtk::{EventControllerKey, Orientation, PropagationPhase, SelectionMode};
+ use relm4::{ComponentParts, ComponentSender, SimpleComponent};
+ use tracing::trace;
+ 
+ #[derive(Debug)]
+ pub struct OverviewWindow {
+     general: config_lib::WindowsGeneral,
++    direct_input: bool,
++    launch_modifier: Modifier,
+     open: bool,
+     // gtk
+     window: gtk::ApplicationWindow,
++    controller: Option<EventControllerKey>,
+     /// Regex for removing HTML tags from strings
+     remove_html: Regex,
+     /// Factory for workspaces
+@@ -26,6 +32,7 @@ pub struct OverviewWindow {
+ #[derive(Debug)]
+ pub enum OverviewWindowInput {
+     SetGeneral(config_lib::WindowsGeneral),
++    SetInputPolicy(bool, Modifier),
+     OpenOverview((OverviewWindowData, u16)),
+     CloseOverview,
+     ReloadOverview(OverviewWindowData),
+@@ -36,12 +43,16 @@ pub enum OverviewWindowInput {
+ pub struct OverviewWindowInit {
+     pub general: config_lib::WindowsGeneral,
+     pub gtk_monitor: gdk::Monitor,
++    pub direct_input: bool,
++    pub launch_modifier: Modifier,
+ }
+ 
+ #[derive(Debug)]
+ pub enum OverviewWindowOutput {
+     Clicked(WorkspaceId),
+     ClickedC(ClientId),
++    Switch(Direction, bool),
++    Close(bool),
+ }
+ 
+ #[relm4::component(pub)]
+@@ -84,8 +95,11 @@ impl SimpleComponent for OverviewWindow {
+ 
+         let model = Self {
+             general: init.general,
++            direct_input: init.direct_input,
++            launch_modifier: init.launch_modifier,
+             open: false,
+             window: root.clone(),
++            controller: None,
+             remove_html: Regex::new(r"<[^>]*>").expect("invalid regex"),
+             items,
+         };
+@@ -101,6 +115,12 @@ impl SimpleComponent for OverviewWindow {
+         window.set_anchor(Edge::Top, true);
+         window.set_keyboard_mode(KeyboardMode::Exclusive);
+         window.set_monitor(Some(&init.gtk_monitor));
++        sender
++            .input_sender()
++            .emit(OverviewWindowInput::SetInputPolicy(
++                model.direct_input,
++                model.launch_modifier,
++            ));
+         ComponentParts { model, widgets }
+     }
+ 
+@@ -110,6 +130,11 @@ impl SimpleComponent for OverviewWindow {
+             OverviewWindowInput::SetGeneral(general) => {
+                 self.general = general;
+             }
++            OverviewWindowInput::SetInputPolicy(direct_input, launch_modifier) => {
++                self.direct_input = direct_input;
++                self.launch_modifier = launch_modifier;
++                self.setup_keyboard_controller(&_sender);
++            }
+             OverviewWindowInput::OpenOverview((data, top_offset)) => {
+                 if self.open {
+                     trace!("already open");
+@@ -146,6 +171,25 @@ impl SimpleComponent for OverviewWindow {
+ }
+ 
+ impl OverviewWindow {
++    fn setup_keyboard_controller(&mut self, sender: &ComponentSender<Self>) {
++        if let Some(controller) = self.controller.take() {
++            self.window.remove_controller(&controller);
++        }
++        if !self.direct_input {
++            return;
++        }
++
++        let controller = EventControllerKey::new();
++        let launch_modifier = self.launch_modifier;
++        let sender = sender.clone();
++        controller.set_propagation_phase(PropagationPhase::Capture);
++        controller.connect_key_pressed(move |_, key, _, modifiers| {
++            handle_direct_input(key, modifiers, launch_modifier, &sender)
++        });
++        self.window.add_controller(controller.clone());
++        self.controller = Some(controller);
++    }
++
+     fn open_overview(&mut self, data: &OverviewWindowData) {
+         trace!("Showing window {:?}", self.window.id());
+         self.window.set_visible(true);
+@@ -234,6 +278,98 @@ impl OverviewWindow {
+     }
+ }
+ 
++#[derive(Debug, Eq, PartialEq)]
++enum DirectInputAction {
++    Switch(Direction, bool),
++    Close(bool),
++}
++
++fn direct_input_action(
++    key: gdk::Key,
++    modifiers: ModifierType,
++    launch_modifier: Modifier,
++) -> Option<DirectInputAction> {
++    let configured_modifier = match launch_modifier {
++        Modifier::Ctrl => modifiers == ModifierType::CONTROL_MASK,
++        Modifier::Alt => modifiers == ModifierType::ALT_MASK,
++        Modifier::Super => modifiers == ModifierType::SUPER_MASK,
++        Modifier::None => false,
++    };
++    match (configured_modifier, key) {
++        (_, gdk::Key::Escape) => Some(DirectInputAction::Close(false)),
++        (_, gdk::Key::Tab) => Some(DirectInputAction::Switch(Direction::Right, false)),
++        (_, gdk::Key::ISO_Left_Tab | gdk::Key::grave | gdk::Key::dead_grave) => {
++            Some(DirectInputAction::Switch(Direction::Left, false))
++        }
++        (true, gdk::Key::h) => Some(DirectInputAction::Switch(Direction::Left, true)),
++        (true, gdk::Key::l) => Some(DirectInputAction::Switch(Direction::Right, true)),
++        (_, gdk::Key::Left) => Some(DirectInputAction::Switch(Direction::Left, true)),
++        (_, gdk::Key::Right) => Some(DirectInputAction::Switch(Direction::Right, true)),
++        (_, gdk::Key::Up) | (true, gdk::Key::k) => {
++            Some(DirectInputAction::Switch(Direction::Up, true))
++        }
++        (_, gdk::Key::Down) | (true, gdk::Key::j) => {
++            Some(DirectInputAction::Switch(Direction::Down, true))
++        }
++        (_, gdk::Key::Return) => Some(DirectInputAction::Close(true)),
++        _ => None,
++    }
++}
++
++fn handle_direct_input(
++    key: gdk::Key,
++    modifiers: ModifierType,
++    launch_modifier: Modifier,
++    sender: &ComponentSender<OverviewWindow>,
++) -> glib::Propagation {
++    let Some(action) = direct_input_action(key, modifiers, launch_modifier) else {
++        return glib::Propagation::Proceed;
++    };
++    let output = match action {
++        DirectInputAction::Switch(direction, workspace) => {
++            OverviewWindowOutput::Switch(direction, workspace)
++        }
++        DirectInputAction::Close(do_switch) => OverviewWindowOutput::Close(do_switch),
++    };
++    let _ = sender.output(output);
++    glib::Propagation::Stop
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn overview_direct_input_preserves_launcher_navigation_contract() {
++        let none = ModifierType::empty();
++        assert_eq!(
++            direct_input_action(gdk::Key::Tab, none, Modifier::Ctrl),
++            Some(DirectInputAction::Switch(Direction::Right, false))
++        );
++        assert_eq!(
++            direct_input_action(gdk::Key::ISO_Left_Tab, none, Modifier::Ctrl),
++            Some(DirectInputAction::Switch(Direction::Left, false))
++        );
++        assert_eq!(
++            direct_input_action(gdk::Key::Right, none, Modifier::Ctrl),
++            Some(DirectInputAction::Switch(Direction::Right, true))
++        );
++        assert_eq!(
++            direct_input_action(gdk::Key::Return, none, Modifier::Ctrl),
++            Some(DirectInputAction::Close(true))
++        );
++        assert_eq!(
++            direct_input_action(gdk::Key::Escape, none, Modifier::Ctrl),
++            Some(DirectInputAction::Close(false))
++        );
++        assert_eq!(direct_input_action(gdk::Key::l, none, Modifier::Ctrl), None);
++        assert_eq!(
++            direct_input_action(gdk::Key::l, ModifierType::CONTROL_MASK, Modifier::Ctrl,),
++            Some(DirectInputAction::Switch(Direction::Right, true))
++        );
++    }
++}
++
+ #[derive(Debug)]
+ pub struct OverviewWindowData {
+     pub active: Active,
+
+diff --git a/src/wm.rs b/src/wm.rs
+--- a/src/wm.rs
++++ b/src/wm.rs
+@@ -4,7 +4,17 @@ use exec_lib::binds::{apply_exec_bind, apply_layerrules};
+ use tracing::debug;
+ 
+ pub fn configure_wm_initial() {
++    // A topology-owning harness must be able to start Hyprshell without its
++    // initial full compositor reload restoring wildcard monitor rules. The
++    // existing no-listeners mode already promises an inert external-policy
++    // boundary, so extend that contract to the one eager reload as well.
++    if std::env::var_os("HYPRSHELL_NO_LISTENERS").is_some() {
++        debug!(
++            "skipping initial hyprland config reload while listeners are disabled"
++        );
++        return;
++    }
+     exec_lib::reload_hyprland_config()
+         .context("Failed to reload hyprland config")
+         .warn_details("unable to reload hyprland config");
+ }

@@ -44,11 +44,15 @@ def test_boot_with_recovery_tolerates_ssh_timeout_and_types_key(
 
     guest = SimpleNamespace(exec=execute)
     backend = SimpleNamespace(
-        reboot=lambda _domain: None,
+        reboot=lambda _domain, _domain_uuid: None,
         serial_log_size=lambda _domain: 128,
         read_serial_text=lambda _domain, *, start_offset: next(serial_output),
-        type_serial_text=lambda domain, text: typed.append((domain, text)),
-        wait_guest_agent=lambda domain, seconds: waited.append((domain, seconds)),
+        type_serial_text=lambda domain, _domain_uuid, text: typed.append(
+            (domain, text)
+        ),
+        wait_guest_agent=lambda domain, _domain_uuid, seconds: waited.append(
+            (domain, seconds)
+        ),
     )
     service = SimpleNamespace(_guest=lambda _record: guest, backend=backend)
     typed: list[tuple[str, str]] = []
@@ -70,7 +74,11 @@ def test_boot_with_recovery_tolerates_ssh_timeout_and_types_key(
 
     boot_with_recovery(
         service,
-        {"domain": "enoshima-test", "recovery_key": str(recovery_key)},
+        {
+            "domain": "enoshima-test",
+            "domain_uuid": "11111111-2222-3333-4444-555555555555",
+            "recovery_key": str(recovery_key),
+        },
     )
 
     assert typed == [("enoshima-test", "disposable-recovery-key")]
@@ -98,12 +106,14 @@ def test_boot_with_recovery_redacts_and_rejects_echoed_secret(
     typed: list[tuple[str, str]] = []
     guest = SimpleNamespace(exec=execute)
     backend = SimpleNamespace(
-        reboot=lambda _domain: None,
+        reboot=lambda _domain, _domain_uuid: None,
         serial_log_size=lambda _domain: 0,
         read_serial_text=lambda _domain, *, start_offset: serial_log.read_text(
             encoding="utf-8"
         ),
-        type_serial_text=lambda domain, text: typed.append((domain, text)),
+        type_serial_text=lambda domain, _domain_uuid, text: typed.append(
+            (domain, text)
+        ),
     )
     service = SimpleNamespace(
         _guest=lambda _record: guest,
@@ -121,6 +131,7 @@ def test_boot_with_recovery_redacts_and_rejects_echoed_secret(
             service,
             {
                 "domain": "enoshima-test",
+                "domain_uuid": "11111111-2222-3333-4444-555555555555",
                 "recovery_key": str(recovery_key),
                 "run_id": "run-test",
             },
@@ -161,11 +172,15 @@ def test_boot_with_recovery_retries_only_without_serial_progress(
     serial_output = iter((prompt, prompt, prompt, f"{prompt}booted\n"))
     guest = SimpleNamespace(exec=execute)
     backend = SimpleNamespace(
-        reboot=lambda _domain: None,
+        reboot=lambda _domain, _domain_uuid: None,
         serial_log_size=lambda _domain: 0,
         read_serial_text=lambda _domain, *, start_offset: next(serial_output),
-        type_serial_text=lambda domain, text: typed.append((domain, text)),
-        wait_guest_agent=lambda domain, seconds: waited.append((domain, seconds)),
+        type_serial_text=lambda domain, _domain_uuid, text: typed.append(
+            (domain, text)
+        ),
+        wait_guest_agent=lambda domain, _domain_uuid, seconds: waited.append(
+            (domain, seconds)
+        ),
     )
     service = SimpleNamespace(_guest=lambda _record: guest, backend=backend)
     monotonic_values = iter((0.0, 0.0, 2.0, 4.0, 5.0))
@@ -177,7 +192,11 @@ def test_boot_with_recovery_retries_only_without_serial_progress(
 
     boot_with_recovery(
         service,
-        {"domain": "enoshima-test", "recovery_key": str(recovery_key)},
+        {
+            "domain": "enoshima-test",
+            "domain_uuid": "11111111-2222-3333-4444-555555555555",
+            "recovery_key": str(recovery_key),
+        },
     )
 
     assert typed == [
@@ -207,7 +226,7 @@ def test_boot_with_recovery_preserves_non_ssh_vm_errors(
 
     guest = SimpleNamespace(exec=execute)
     backend = SimpleNamespace(
-        reboot=lambda _domain: None,
+        reboot=lambda _domain, _domain_uuid: None,
         serial_log_size=lambda _domain: 0,
     )
     service = SimpleNamespace(_guest=lambda _record: guest, backend=backend)
@@ -216,7 +235,11 @@ def test_boot_with_recovery_preserves_non_ssh_vm_errors(
     with pytest.raises(VMError) as caught:
         boot_with_recovery(
             service,
-            {"domain": "enoshima-test", "recovery_key": str(recovery_key)},
+            {
+                "domain": "enoshima-test",
+                "domain_uuid": "11111111-2222-3333-4444-555555555555",
+                "recovery_key": str(recovery_key),
+            },
         )
 
     assert caught.value.category == FailureCategory.HARNESS_ERROR

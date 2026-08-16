@@ -61,6 +61,11 @@ zram_swap_priority: 100
 # workstation package manifest. The default remains empty on physical hosts.
 additional_native_packages: []
 
+# Screen-reader support is intentionally opt-in. Enable this per host only
+# after the user chooses the accessibility profile; the default install does
+# not pull Orca into every workstation or disposable VM.
+desktop_accessibility_profile_enabled: false
+
 subordinate_id_start: 100000
 subordinate_id_count: 65536
 

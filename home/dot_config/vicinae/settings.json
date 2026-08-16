@@ -1,0 +1,93 @@
+{
+  "$schema": "https://vicinae.com/schemas/config.json",
+  "telemetry": {
+    "system_info": false
+  },
+  "input_server": {
+    "enabled": false
+  },
+  "global_shortcuts": {
+    "toggle": ""
+  },
+  "search_files_in_root": false,
+  "encrypt_sensitive_data": true,
+  "consider_preedit": true,
+  "favicon_service": "none",
+  "font": {
+    "rendering": "native",
+    "normal": {
+      "family": "Pretendard"
+    }
+  },
+  "theme": {
+    "light": {
+      "name": "tokyo-night",
+      "icon_theme": "Papirus-Dark"
+    },
+    "dark": {
+      "name": "tokyo-night",
+      "icon_theme": "Papirus-Dark"
+    }
+  },
+  "launcher_window": {
+    "opacity": 1.0,
+    "material": "none",
+    "rounding": 12,
+    "blur": {
+      "enabled": false
+    },
+    "client_side_decorations": {
+      "enabled": true,
+      "border_width": 2,
+      "shadow_size": 0
+    },
+    "size": {
+      "width": 770,
+      "height": 480
+    },
+    "layer_shell": {
+      "enabled": true,
+      "keyboard_interactivity": "on_demand",
+      "layer": "top"
+    }
+  },
+  "favorites": [
+    "clipboard:history",
+    "core:search-emojis"
+  ],
+  "fallbacks": [],
+  "providers": {
+    "clipboard": {
+      "preferences": {
+        "monitoring": true,
+        "ignorePasswords": true,
+        "eraseOnStartup": true
+      },
+      "entrypoints": {
+        "history": {
+          "enabled": true,
+          "preferences": {
+            "defaultAction": "copy"
+          }
+        }
+      }
+    },
+    "core": {
+      "entrypoints": {
+        "search-emojis": {
+          "enabled": true,
+          "preferences": {
+            "defaultAction": "copy",
+            "skinTone": "default"
+          }
+        }
+      }
+    },
+    "files": {
+      "enabled": false,
+      "preferences": {
+        "autoIndexing": false
+      }
+    }
+  }
+}

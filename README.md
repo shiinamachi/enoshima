@@ -19,6 +19,10 @@ documented in [docs/DESIGN-SKILLS.md](docs/DESIGN-SKILLS.md).
 Disposable Arch VM convergence, desktop, boot-security, agent-control, and
 trusted-CI workflows are documented in
 [docs/VM-TESTING.md](docs/VM-TESTING.md).
+The local-only performance history and incident investigation workflow is in
+[docs/PERFORMANCE-DIAGNOSTICS.md](docs/PERFORMANCE-DIAGNOSTICS.md).
+Orca screen-reader support remains an explicit per-host inventory opt-in;
+`docs/INSTALL.md` documents the supported Ansible profile switch.
 
 The initial inventory was captured on 2026-07-13 from Arch Linux on
 `tpx1c13`:
@@ -36,7 +40,8 @@ The initial inventory was captured on 2026-07-13 from Arch Linux on
 | State | Owner |
 | --- | --- |
 | Native packages and root-owned configuration | Ansible |
-| AUR packages | approved package bases installed at current revisions through paru |
+| AUR packages | approved current revisions through paru; protected-revision schema retained for future use |
+| Pinned upstream packages | reviewed local PKGBUILDs with source, build, and archive policy checks |
 | Codex Desktop | locally built pacman package from `ilysenko/codex-desktop-linux` |
 | User dotfiles | chezmoi (`home/`) |
 | Enabled system and user units | Ansible |
@@ -128,8 +133,8 @@ enabled display manager.
 ## Desired versus observed packages
 
 - `packages/native.txt` is the explicit native package install manifest.
-- `packages/aur.txt` is the explicit approval allowlist of AUR package bases to
-  install at their current upstream revisions.
+- `packages/aur.txt` is the explicit approval allowlist of AUR package bases;
+  the protected list in `packages/aur-provenance.json` is currently empty.
 - `scripts/install-codex-desktop.sh` maintains an XDG-cached checkout of
   `ilysenko/codex-desktop-linux` and installs its locally built native package.
 - `packages/optional-deps.txt` preserves intentionally installed optional

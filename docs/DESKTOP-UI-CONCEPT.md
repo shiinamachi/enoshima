@@ -6,13 +6,14 @@ It is already deployed as the ratio-specific wallpapers under
 studies, not additional wallpapers. They translate the source artwork into
 repeatable layout, color, density, and interaction rules that can be
 implemented with Hyprland, Waybar, the repository-owned Quickshell
-CyberLauncher/Cyberdock/CyberOSD shell, SwayNC, and Hyprlock.
+CyberLauncher/Cyberdock/CyberOSD shell, SwayNC, Hyprlock, and configured
+package-owned Vicinae and Hyprshell surfaces.
 
 ## Concept studies
 
 ### Desktop shell
 
-![Desktop shell concept](assets/concepts/cyberpunk-desktop-shell.png)
+![Desktop shell accessible-mode concept](assets/concepts/desktop-shell/desktop-shell-accessible-v1.png)
 
 The shell study establishes the persistent composition: five purpose-led
 workspaces, quiet status chrome, clearly separated tiled windows, a single
@@ -22,6 +23,13 @@ or while CyberLauncher owns the screen; fullscreen retains a small bottom-edge
 reveal target. Persistent surfaces remain substantially opaque so that the
 wallpaper never competes with text.
 
+The approved accessible state keeps that composition unchanged while making
+shell surfaces opaque, strengthening semantic divider/border/muted-text roles,
+and retaining 2px focus edges plus non-color shape markers. It aggregates a
+48px pointer, reduced motion, reduced transparency, and high contrast through
+the existing appearance profile; default mode restores the 24px pointer and
+ordinary token strengths without starting or stopping Orca.
+
 ### Application launcher
 
 ![Application launcher concept](assets/concepts/cyberpunk-launcher.png)
@@ -30,6 +38,29 @@ The launcher study combines a keyboard-first Spotlight-like entry point with
 the explicit result hierarchy and visible actions of Windows Search. The
 search field is the initial focus, result rows meet the shared minimum target
 size, and the selected result has one unambiguous cyan focus treatment.
+
+### Staged command palette
+
+![Staged Vicinae command palette](assets/concepts/command-palette/command-palette-v2.png)
+
+Vicinae retains its upstream 770×480 command surface while its bundled Tokyo
+Night theme, Papirus-Dark icons, and Pretendard typography bridge it into the
+desktop. The palette is opaque and keyboard-first. Clipboard and emoji actions
+copy only; file indexing, telemetry, synchronization, and the privileged input
+server remain disabled. CyberLauncher keeps the primary launcher shortcuts
+until the documented physical qualification completes.
+The five-row viewport remains unchanged; the three additional package-first
+performance commands continue below the fold through Vicinae's upstream list.
+
+### All-workspaces Overview
+
+![Hyprshell Overview](assets/concepts/overview/overview-v2.png)
+
+Hyprshell owns a dense 3+2 map of real workspaces and windows without becoming
+a second launcher or Dock. Cyan window focus and violet workspace selection use
+shape and edge cues as well as color. Solid surfaces and instant state changes
+make the default rendering satisfy reduced-transparency and reduced-motion
+contracts; native Alt+Tab remains available.
 
 ### Notification and control center
 
@@ -153,6 +184,8 @@ All components use the same behavioral tokens:
 | Five labeled workspaces | `home/dot_config/waybar/config.jsonc` and Hyprland workspace rules |
 | Active focus edge, gaps, radius, motion | `home/dot_config/hypr/hyprland.lua` |
 | Two-column search, result detail, and quick apps | `home/dot_config/quickshell/cyberdock/CyberLauncher.qml` and the `cyberlauncher` layer rule |
+| Staged package-owned command palette, clipboard, emoji, and performance commands | `home/dot_config/vicinae/settings.json` and `home/dot_local/share/vicinae/scripts/` |
+| All-workspaces Overview | `home/dot_config/hyprshell/config.ron` and `home/dot_config/hyprshell/styles.css` |
 | Status and notification entry point | Waybar notification module |
 | Grouped notifications, DND, and six functional quick settings | `home/dot_config/swaync/` |
 | Persistent application Dock and fullscreen reveal | `home/dot_config/quickshell/cyberdock/shell.qml` |
@@ -188,3 +221,11 @@ capture matrix, implementation and concept digests that still match the tree,
 and a weighted review score of at least 90 with no category below 85. Real
 screenshots are imported with `scripts/ui-capture/capture-surface`; generated
 concept pixels and mock renders are not acceptable implementation evidence.
+
+The sibling `external_surfaces` mapping records visible integrations whose
+rendered pixels and lifecycle are wholly owned by upstream applications. These
+contracts name the repository-owned dispatch path, upstream tools, and exact T5
+physical procedure, but deliberately have no concept or screenshot-evidence
+fields. The visual release checker never clears their T5 gate. Any
+repository-owned pixel or visible state remains a normal concept/evidence
+surface and cannot use this boundary.

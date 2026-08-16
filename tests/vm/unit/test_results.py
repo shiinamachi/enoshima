@@ -12,6 +12,7 @@ from enoshima_vm.results import (
     FailureOrigin,
     bound_verification_plan,
     classify_failure,
+    failure_fields,
     failure_fingerprint,
     normalize_failure_text,
     retryable_infrastructure_failure,
@@ -49,6 +50,48 @@ def test_failure_origin_classification(
     error: BaseException, expected: FailureOrigin
 ) -> None:
     assert classify_failure(error) is expected
+
+
+def test_remote_ui_command_timeout_is_a_fixture_failure() -> None:
+    error = VMError(
+        FailureCategory.SSH_TIMEOUT,
+        "guest command made no output progress",
+        {"command": "vicinae", "timeout_kind": "idle"},
+    )
+
+    fields = failure_fields(suite="ui-review", step="run_ui_review", error=error)
+
+    assert fields["failure_origin"] == "TEST_FIXTURE"
+
+
+def test_bootstrap_command_timeout_is_a_non_retryable_fixture_failure() -> None:
+    error = VMError(
+        FailureCategory.SSH_TIMEOUT,
+        "guest command made no output progress",
+        {"command": "bootstrap", "timeout_kind": "idle"},
+    )
+
+    fields = failure_fields(suite="smoke", step="run_bootstrap", error=error)
+
+    assert fields["failure_origin"] == "TEST_FIXTURE"
+    assert not retryable_infrastructure_failure(
+        {**fields, "category": "SSH_TIMEOUT", "error": str(error)}
+    )
+
+
+def test_demonstrated_ssh_transport_loss_remains_retryable_infrastructure() -> None:
+    error = VMError(
+        FailureCategory.SSH_TIMEOUT,
+        "guest SSH transport failed",
+        {"command": "bootstrap", "stderr": "connection reset"},
+    )
+
+    fields = failure_fields(suite="smoke", step="run_bootstrap", error=error)
+
+    assert fields["failure_origin"] == "INFRA"
+    assert retryable_infrastructure_failure(
+        {**fields, "category": "SSH_TIMEOUT", "error": str(error)}
+    )
 
 
 def test_failure_fingerprint_normalizes_ephemeral_values() -> None:
@@ -161,6 +204,20 @@ def test_run_summary_excerpt_is_limited_to_eighty_lines() -> None:
 
     assert len(excerpt.splitlines()) == MAX_EXCERPT_LINES
     assert excerpt.splitlines()[-1] == "line-079"
+
+
+def test_run_summary_prioritizes_latest_stdout_over_stale_stderr() -> None:
+    record = _failed_record("guest command made no output progress")
+    record["details"] = {
+        "stdout_tail": "TASK [user_tools : Install user-scoped Flatpak applications]",
+        "stderr_tail": "Compiling stale-rust-crate v1.0.0",
+    }
+
+    excerpt = str(summarize_run_record(record)["errorExcerpt"])
+
+    assert excerpt.index("Install user-scoped Flatpak applications") < excerpt.index(
+        "Compiling stale-rust-crate"
+    )
 
 
 def test_run_summary_is_bounded_to_thirty_two_kibibytes() -> None:

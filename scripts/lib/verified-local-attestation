@@ -1,0 +1,686 @@
+#!/usr/bin/python3
+"""Root-owned attestation for reviewed local package installations.
+
+The provenance checker authenticates a built archive.  This helper binds that
+archive's .MTREE to pacman's installed database and records the resulting
+identity in a root-only marker.  A same-version fast path is permitted only
+while the marker, pacman database, policy inputs, and live `pacman -Qkk`
+verification all still agree.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import hashlib
+import json
+import os
+from pathlib import Path
+from pathlib import PurePosixPath
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+from typing import Callable, Sequence
+
+
+SCHEMA_VERSION = 1
+SYSTEM_STATE_ROOT = Path("/var/lib/enoshima/verified-local-packages")
+SYSTEM_DB_ROOT = Path("/var/lib/pacman/local")
+PACKAGE_RE = re.compile(r"^[a-z0-9@._+-]+$")
+VERSION_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z@._+:-]*-[1-9][0-9]*(?:\.[0-9]+)?$")
+POLICY_LABEL_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+class AttestationError(RuntimeError):
+    """The attestation or installed state is unsafe."""
+
+
+class AttestationStale(AttestationError):
+    """No attestation exists, or reviewed policy changed and needs a rebuild."""
+
+
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def validate_identity(package: str, version: str) -> None:
+    if not PACKAGE_RE.fullmatch(package):
+        raise AttestationError("verified local package name is invalid")
+    if not VERSION_RE.fullmatch(version) or "/" in version or "\x00" in version:
+        raise AttestationError("verified local package version is invalid")
+
+
+def require_safe_regular(
+    path: Path,
+    *,
+    owner_uid: int,
+    exact_mode: int | None = None,
+) -> os.stat_result:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError as exc:
+        raise AttestationError(f"required attestation file is missing: {path}") from exc
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != owner_uid:
+        raise AttestationError(f"attestation file is not a safe regular file: {path}")
+    mode = stat.S_IMODE(metadata.st_mode)
+    if exact_mode is not None:
+        if mode != exact_mode:
+            raise AttestationError(f"attestation file mode is unsafe: {path}")
+    elif mode & 0o022:
+        raise AttestationError(f"attestation file is group/other writable: {path}")
+    return metadata
+
+
+def require_safe_directory(path: Path, *, owner_uid: int) -> None:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError as exc:
+        raise AttestationError(
+            f"required attestation directory is missing: {path}"
+        ) from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != owner_uid
+        or stat.S_IMODE(metadata.st_mode) & 0o022
+    ):
+        raise AttestationError(f"attestation directory is unsafe: {path}")
+
+
+def require_safe_ancestor_directory(path: Path, *, owner_uid: int) -> None:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError as exc:
+        raise AttestationError(
+            f"required attestation ancestor is missing: {path}"
+        ) from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid not in {0, owner_uid}
+        or stat.S_IMODE(metadata.st_mode) & 0o022
+    ):
+        raise AttestationError(f"attestation ancestor is unsafe: {path}")
+
+
+def require_safe_chain(path: Path, *, owner_uid: int) -> None:
+    if not path.is_absolute():
+        raise AttestationError("attestation path must be absolute")
+    current = Path("/")
+    require_safe_ancestor_directory(current, owner_uid=owner_uid)
+    for part in path.parts[1:]:
+        current /= part
+        require_safe_ancestor_directory(current, owner_uid=owner_uid)
+    require_safe_directory(path, owner_uid=owner_uid)
+
+
+def ensure_state_root(path: Path, *, owner_uid: int) -> None:
+    if not path.is_absolute():
+        raise AttestationError("attestation state root must be absolute")
+    current = Path("/")
+    require_safe_ancestor_directory(current, owner_uid=owner_uid)
+    for index, part in enumerate(path.parts[1:], start=1):
+        current /= part
+        final = index == len(path.parts) - 1
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            os.mkdir(current, 0o700 if final else 0o755)
+            metadata = current.lstat()
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or (final and metadata.st_uid != owner_uid)
+            or (not final and metadata.st_uid not in {0, owner_uid})
+            or stat.S_IMODE(metadata.st_mode) & 0o022
+        ):
+            raise AttestationError(f"attestation state ancestor is unsafe: {current}")
+        if final and stat.S_IMODE(metadata.st_mode) != 0o700:
+            raise AttestationError(f"attestation state root mode is unsafe: {current}")
+
+
+def parse_policy_files(values: Sequence[str]) -> dict[str, Path]:
+    result: dict[str, Path] = {}
+    for value in values:
+        try:
+            label, raw_path = value.split("=", 1)
+        except ValueError as exc:
+            raise AttestationError("policy input must use LABEL=ABSOLUTE_PATH") from exc
+        path = Path(raw_path)
+        if (
+            not POLICY_LABEL_RE.fullmatch(label)
+            or label in result
+            or not path.is_absolute()
+        ):
+            raise AttestationError("policy input label or path is invalid")
+        result[label] = path
+    if set(result) != {"checker", "manifest"}:
+        raise AttestationError(
+            "policy inputs must contain exactly checker and manifest"
+        )
+    return result
+
+
+def policy_identity(policy_files: dict[str, Path]) -> dict[str, str]:
+    identity: dict[str, str] = {}
+    for label, path in sorted(policy_files.items()):
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise AttestationError(f"policy input is not a regular file: {path}")
+        identity[label] = sha256_file(path)
+    helper = Path(__file__).resolve(strict=True)
+    if not helper.is_file():
+        raise AttestationError("attestation helper identity is unavailable")
+    identity["helper"] = sha256_file(helper)
+    return identity
+
+
+def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
+    environment = dict(os.environ)
+    environment["LC_ALL"] = "C"
+    try:
+        return subprocess.run(
+            list(command),
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+        )
+    except OSError as exc:
+        raise AttestationError(
+            f"required attestation command failed to start: {command[0]}"
+        ) from exc
+
+
+def require_installed_identity(
+    package: str,
+    version: str,
+    *,
+    pacman: str,
+    runner: Callable[[Sequence[str]], subprocess.CompletedProcess[bytes]] = run_command,
+) -> None:
+    query = runner([pacman, "-Q", "--", package])
+    if (
+        query.returncode != 0
+        or query.stdout.decode("utf-8", "replace").strip() != f"{package} {version}"
+    ):
+        raise AttestationError(
+            "installed package identity differs from its attestation"
+        )
+    verify = runner([pacman, "-Qkk", "--", package])
+    if verify.returncode != 0:
+        detail = verify.stderr.decode("utf-8", "replace").strip().splitlines()
+        suffix = f": {detail[0][:240]}" if detail else ""
+        raise AttestationError(f"installed package payload verification failed{suffix}")
+
+
+def archive_mtree(
+    archive: Path,
+    *,
+    bsdtar: str,
+    runner: Callable[[Sequence[str]], subprocess.CompletedProcess[bytes]] = run_command,
+) -> bytes:
+    extracted = runner([bsdtar, "-xOf", str(archive), ".MTREE"])
+    if extracted.returncode != 0 or not extracted.stdout:
+        raise AttestationError("verified package archive has no readable .MTREE")
+    return extracted.stdout
+
+
+def decode_mtree_path(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        return chr(int(match.group(1), 8))
+
+    decoded = re.sub(r"\\([0-7]{3})", replace, value)
+    if "\\" in decoded or "\x00" in decoded:
+        raise AttestationError("installed mtree contains an unsupported path escape")
+    return decoded
+
+
+def parse_mtree(value: bytes) -> list[tuple[PurePosixPath, dict[str, str]]]:
+    try:
+        text = gzip.decompress(value).decode("utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise AttestationError(
+            "installed package mtree is not valid gzip UTF-8"
+        ) from exc
+    defaults: dict[str, str] = {}
+    entries: list[tuple[PurePosixPath, dict[str, str]]] = []
+    seen: set[PurePosixPath] = set()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split()
+        if fields[0] == "/set":
+            for field in fields[1:]:
+                if "=" not in field:
+                    raise AttestationError("installed mtree /set entry is invalid")
+                key, item = field.split("=", 1)
+                defaults[key] = item
+            continue
+        if fields[0] == "/unset":
+            for key in fields[1:]:
+                defaults.pop(key, None)
+            continue
+        raw_name = decode_mtree_path(fields[0])
+        if raw_name == ".":
+            continue
+        if not raw_name.startswith("./"):
+            raise AttestationError("installed mtree path is not package-relative")
+        relative = PurePosixPath(raw_name[2:])
+        if (
+            relative.is_absolute()
+            or not relative.parts
+            or any(part in ("", ".", "..") for part in relative.parts)
+        ):
+            raise AttestationError("installed mtree path is unsafe")
+        if len(relative.parts) == 1 and relative.name in {
+            ".BUILDINFO",
+            ".MTREE",
+            ".PKGINFO",
+        }:
+            continue
+        attributes = dict(defaults)
+        for field in fields[1:]:
+            if "=" not in field:
+                raise AttestationError("installed mtree entry attribute is invalid")
+            key, item = field.split("=", 1)
+            attributes[key] = item
+        if relative in seen:
+            raise AttestationError("installed mtree contains a duplicate path")
+        seen.add(relative)
+        entries.append((relative, attributes))
+    if not entries:
+        raise AttestationError("installed package mtree has no live payload entries")
+    return entries
+
+
+def require_no_symlink_chain(path: Path, *, root: Path) -> None:
+    try:
+        relative = path.relative_to(root)
+    except ValueError as exc:
+        raise AttestationError("live package path escapes its root") from exc
+    current = root
+    if stat.S_ISLNK(current.lstat().st_mode):
+        raise AttestationError(f"live package root is a symlink: {root}")
+    for part in relative.parts:
+        current /= part
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError as exc:
+            raise AttestationError(
+                f"installed package path is missing: {current}"
+            ) from exc
+        if stat.S_ISLNK(metadata.st_mode):
+            raise AttestationError(
+                f"installed package path traverses a symlink: {current}"
+            )
+
+
+def verify_live_mtree(value: bytes, *, live_root: Path = Path("/")) -> None:
+    if not live_root.is_absolute():
+        raise AttestationError("live package root must be absolute")
+    for relative, attributes in parse_mtree(value):
+        path = live_root.joinpath(*relative.parts)
+        require_no_symlink_chain(path, root=live_root)
+        metadata = path.lstat()
+        entry_type = attributes.get("type")
+        try:
+            uid = int(attributes["uid"], 10)
+            gid = int(attributes["gid"], 10)
+            mode = int(attributes["mode"], 8)
+        except (KeyError, ValueError) as exc:
+            raise AttestationError(
+                f"installed mtree metadata is incomplete: {relative}"
+            ) from exc
+        if (
+            metadata.st_uid != uid
+            or metadata.st_gid != gid
+            or stat.S_IMODE(metadata.st_mode) != mode
+        ):
+            raise AttestationError(f"installed package metadata differs: /{relative}")
+        if entry_type == "dir":
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise AttestationError(
+                    f"installed package directory type differs: /{relative}"
+                )
+            continue
+        if entry_type != "file" or not stat.S_ISREG(metadata.st_mode):
+            raise AttestationError(
+                f"installed package file type is unsupported: /{relative}"
+            )
+        try:
+            expected_size = int(attributes["size"], 10)
+            expected_digest = attributes["sha256digest"]
+        except (KeyError, ValueError) as exc:
+            raise AttestationError(
+                f"installed file mtree metadata is incomplete: /{relative}"
+            ) from exc
+        if (
+            not SHA256_RE.fullmatch(expected_digest)
+            or metadata.st_size != expected_size
+        ):
+            raise AttestationError(
+                f"installed package file size/digest metadata differs: /{relative}"
+            )
+        flags = os.O_RDONLY | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            descriptor = os.open(path, flags)
+        except OSError as exc:
+            raise AttestationError(
+                f"installed package file cannot be opened safely: /{relative}"
+            ) from exc
+        try:
+            opened = os.fstat(descriptor)
+            digest = hashlib.sha256()
+            while True:
+                block = os.read(descriptor, 1024 * 1024)
+                if not block:
+                    break
+                digest.update(block)
+            final = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        stable_identity = (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_mode,
+            opened.st_uid,
+            opened.st_gid,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_ctime_ns,
+        )
+        final_identity = (
+            final.st_dev,
+            final.st_ino,
+            final.st_mode,
+            final.st_uid,
+            final.st_gid,
+            final.st_size,
+            final.st_mtime_ns,
+            final.st_ctime_ns,
+        )
+        if stable_identity != final_identity or digest.hexdigest() != expected_digest:
+            raise AttestationError(
+                f"installed package file content differs: /{relative}"
+            )
+
+
+def database_identity(
+    db_root: Path,
+    package: str,
+    version: str,
+    *,
+    owner_uid: int,
+) -> tuple[Path, dict[str, str]]:
+    require_safe_chain(db_root, owner_uid=owner_uid)
+    package_root = db_root / f"{package}-{version}"
+    require_safe_directory(package_root, owner_uid=owner_uid)
+    entries = sorted(package_root.iterdir(), key=lambda item: item.name)
+    if [entry.name for entry in entries] != ["desc", "files", "mtree"]:
+        raise AttestationError("installed package database file set is unexpected")
+    digests: dict[str, str] = {}
+    for entry in entries:
+        require_safe_regular(entry, owner_uid=owner_uid)
+        digests[entry.name] = sha256_file(entry)
+    return package_root, digests
+
+
+def validate_marker_shape(marker: object) -> dict[str, object]:
+    if not isinstance(marker, dict) or set(marker) != {
+        "archiveSha256",
+        "databaseFiles",
+        "mtreeSha256",
+        "package",
+        "policy",
+        "schemaVersion",
+        "version",
+    }:
+        raise AttestationError("verified local attestation keys are invalid")
+    if marker.get("schemaVersion") != SCHEMA_VERSION:
+        raise AttestationError("verified local attestation schema is unsupported")
+    for key in ("archiveSha256", "mtreeSha256"):
+        if not isinstance(marker.get(key), str) or not SHA256_RE.fullmatch(
+            str(marker[key])
+        ):
+            raise AttestationError(f"verified local attestation {key} is invalid")
+    for key in ("databaseFiles", "policy"):
+        value = marker.get(key)
+        if not isinstance(value, dict) or not value:
+            raise AttestationError(f"verified local attestation {key} is invalid")
+        if any(
+            not isinstance(name, str)
+            or not isinstance(digest, str)
+            or not SHA256_RE.fullmatch(digest)
+            for name, digest in value.items()
+        ):
+            raise AttestationError(f"verified local attestation {key} is invalid")
+    return marker
+
+
+def write_marker(
+    marker_path: Path,
+    marker: dict[str, object],
+    *,
+    owner_uid: int,
+) -> None:
+    if marker_path.exists() or marker_path.is_symlink():
+        require_safe_regular(marker_path, owner_uid=owner_uid, exact_mode=0o600)
+    encoded = (
+        json.dumps(marker, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=".attestation-", dir=marker_path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb", closefd=True) as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, marker_path)
+        directory_fd = os.open(marker_path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def record_attestation(
+    *,
+    package: str,
+    version: str,
+    archive: Path,
+    policy_files: dict[str, Path],
+    state_root: Path,
+    db_root: Path,
+    pacman: str,
+    bsdtar: str,
+    owner_uid: int,
+    live_root: Path = Path("/"),
+) -> None:
+    validate_identity(package, version)
+    ensure_state_root(state_root, owner_uid=owner_uid)
+    require_safe_chain(archive.parent, owner_uid=owner_uid)
+    require_safe_regular(archive, owner_uid=owner_uid)
+    mtree = archive_mtree(archive, bsdtar=bsdtar)
+    package_root, database_files = database_identity(
+        db_root, package, version, owner_uid=owner_uid
+    )
+    if database_files["mtree"] != sha256_bytes(mtree):
+        raise AttestationError(
+            "installed pacman mtree differs from the verified archive"
+        )
+    require_installed_identity(package, version, pacman=pacman)
+    verify_live_mtree(mtree, live_root=live_root)
+    _, final_database_files = database_identity(
+        db_root, package, version, owner_uid=owner_uid
+    )
+    if final_database_files != database_files or sha256_file(
+        package_root / "mtree"
+    ) != sha256_bytes(mtree):
+        raise AttestationError("installed package database changed during attestation")
+    marker = {
+        "schemaVersion": SCHEMA_VERSION,
+        "package": package,
+        "version": version,
+        "archiveSha256": sha256_file(archive),
+        "mtreeSha256": sha256_bytes(mtree),
+        "databaseFiles": database_files,
+        "policy": policy_identity(policy_files),
+    }
+    write_marker(state_root / f"{package}.json", marker, owner_uid=owner_uid)
+
+
+def verify_attestation(
+    *,
+    package: str,
+    version: str,
+    policy_files: dict[str, Path],
+    state_root: Path,
+    db_root: Path,
+    pacman: str,
+    owner_uid: int,
+    live_root: Path = Path("/"),
+) -> None:
+    validate_identity(package, version)
+    marker_path = state_root / f"{package}.json"
+    if not state_root.exists() and not state_root.is_symlink():
+        raise AttestationStale("verified local attestation is missing")
+    require_safe_chain(state_root, owner_uid=owner_uid)
+    if not marker_path.exists() and not marker_path.is_symlink():
+        raise AttestationStale("verified local attestation is missing")
+    require_safe_regular(marker_path, owner_uid=owner_uid, exact_mode=0o600)
+    try:
+        marker = validate_marker_shape(
+            json.loads(marker_path.read_text(encoding="utf-8"))
+        )
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise AttestationError("verified local attestation is malformed") from exc
+    if marker["package"] != package or marker["version"] != version:
+        raise AttestationError("verified local attestation identity is inconsistent")
+    if marker["policy"] != policy_identity(policy_files):
+        raise AttestationStale("verified local attestation policy changed")
+    package_root, database_files = database_identity(
+        db_root, package, version, owner_uid=owner_uid
+    )
+    if marker["databaseFiles"] != database_files:
+        raise AttestationError(
+            "installed package database differs from its attestation"
+        )
+    if marker["mtreeSha256"] != database_files["mtree"]:
+        raise AttestationError("installed package mtree differs from its attestation")
+    require_installed_identity(package, version, pacman=pacman)
+    mtree = (package_root / "mtree").read_bytes()
+    if sha256_bytes(mtree) != marker["mtreeSha256"]:
+        raise AttestationError("installed package mtree changed while being read")
+    verify_live_mtree(mtree, live_root=live_root)
+    _, final_database_files = database_identity(
+        db_root, package, version, owner_uid=owner_uid
+    )
+    if final_database_files != database_files:
+        raise AttestationError("installed package database changed during verification")
+
+
+def invalidate_attestation(*, package: str, state_root: Path, owner_uid: int) -> None:
+    if not PACKAGE_RE.fullmatch(package):
+        raise AttestationError("verified local package name is invalid")
+    marker_path = state_root / f"{package}.json"
+    if not state_root.exists() and not state_root.is_symlink():
+        return
+    require_safe_chain(state_root, owner_uid=owner_uid)
+    if not marker_path.exists() and not marker_path.is_symlink():
+        return
+    require_safe_regular(marker_path, owner_uid=owner_uid, exact_mode=0o600)
+    marker_path.unlink()
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser()
+    result.add_argument("--state-root", type=Path, default=SYSTEM_STATE_ROOT)
+    result.add_argument("--db-root", type=Path, default=SYSTEM_DB_ROOT)
+    result.add_argument("--pacman-command", default="/usr/bin/pacman")
+    result.add_argument("--bsdtar-command", default="/usr/bin/bsdtar")
+    result.add_argument("--live-root", type=Path, default=Path("/"))
+    subparsers = result.add_subparsers(dest="command", required=True)
+    for name in ("record", "verify"):
+        subparser = subparsers.add_parser(name)
+        subparser.add_argument("--package", required=True)
+        subparser.add_argument("--version", required=True)
+        subparser.add_argument("--policy-file", action="append", default=[])
+        if name == "record":
+            subparser.add_argument("--archive", type=Path, required=True)
+    invalidate = subparsers.add_parser("invalidate")
+    invalidate.add_argument("--package", required=True)
+    return result
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    owner_uid = os.geteuid()
+    if owner_uid != 0 and (
+        args.state_root == SYSTEM_STATE_ROOT or args.db_root == SYSTEM_DB_ROOT
+    ):
+        print("ERROR: system verified-local attestations require root", file=sys.stderr)
+        return 70
+    try:
+        if args.command == "record":
+            record_attestation(
+                package=args.package,
+                version=args.version,
+                archive=args.archive,
+                policy_files=parse_policy_files(args.policy_file),
+                state_root=args.state_root,
+                db_root=args.db_root,
+                pacman=args.pacman_command,
+                bsdtar=args.bsdtar_command,
+                owner_uid=owner_uid,
+                live_root=args.live_root,
+            )
+            print(f"Recorded verified local attestation: {args.package} {args.version}")
+        elif args.command == "verify":
+            verify_attestation(
+                package=args.package,
+                version=args.version,
+                policy_files=parse_policy_files(args.policy_file),
+                state_root=args.state_root,
+                db_root=args.db_root,
+                pacman=args.pacman_command,
+                owner_uid=owner_uid,
+                live_root=args.live_root,
+            )
+            print(
+                f"Verified local installation attested: {args.package} {args.version}"
+            )
+        else:
+            invalidate_attestation(
+                package=args.package,
+                state_root=args.state_root,
+                owner_uid=owner_uid,
+            )
+    except AttestationStale as exc:
+        print(f"STALE: {exc}", file=sys.stderr)
+        return 2
+    except (AttestationError, OSError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 70
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -15,6 +15,8 @@ from typing import Any
 
 from .config import RuntimePaths, _load_yaml, load_suite
 from .errors import FailureCategory, VMError
+from .process import ProcessIdleTimeout
+from .process import run as run_process
 from .source import source_identity
 from .verification import VALID_MODES, load_verification_mode
 
@@ -29,6 +31,16 @@ CANONICAL_SUITE_ORDER = (
 )
 BASE_REF_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@{}^~+-]*$")
 SPECIAL_METADATA_NAMES = {"AGENTS.md", "README.md", "LICENSE"}
+VALIDATE_INCLUDED_CHECKS = frozenset(
+    {
+        "make vm-unit",
+        "scripts/check-ui-concept-coverage",
+        "tests/test-login-manager.sh",
+        "tests/test-ui-evidence-gate.sh",
+    }
+)
+FOCUSED_CHECK_TIMEOUT_SECONDS = 2 * 60 * 60
+FOCUSED_CHECK_IDLE_TIMEOUT_SECONDS = 20 * 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -617,10 +629,16 @@ def select_verification(
             scales = all_scales
 
     suites = tuple(suite for suite in CANONICAL_SUITE_ORDER if suite in suite_set)
-    if "make validate" in checks and "make vm-unit" in checks:
-        checks.remove("make vm-unit")
-        reasons.pop("make vm-unit", None)
-        reason("make validate", "make validate includes the VM runner unit suite")
+    if "make validate" in checks:
+        included = [check for check in checks if check in VALIDATE_INCLUDED_CHECKS]
+        for check in included:
+            checks.remove(check)
+            reasons.pop(check, None)
+        if included:
+            reason(
+                "make validate",
+                "make validate includes: " + ", ".join(sorted(included)),
+            )
     vm_omitted_reason: str | None = None
     if not suites:
         if not selected_paths:
@@ -708,24 +726,58 @@ def run_focused_checks(
         assert artifact_root is not None
         stdout_path = artifact_root / f"{index:02d}-stdout.log"
         stderr_path = artifact_root / f"{index:02d}-stderr.log"
-        with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
-            started = subprocess.run(
+        # Focused checks are external verification subprocesses, not nested VM
+        # mutations.  The durable payload owns the descriptor; Popen closes it
+        # and must not leak a stale descriptor number into make/pytest.
+        focused_environment = os.environ.copy()
+        focused_environment.pop("ENOSHIMA_VM_OPERATION_LOCK_FD", None)
+        try:
+            started = run_process(
                 argv,
                 cwd=paths.repository,
                 check=False,
-                stdout=stdout,
-                stderr=stderr,
+                timeout=FOCUSED_CHECK_TIMEOUT_SECONDS,
+                idle_timeout=FOCUSED_CHECK_IDLE_TIMEOUT_SECONDS,
+                env=focused_environment,
             )
+            stdout_text = started.stdout
+            stderr_text = started.stderr
+            exit_code: int | None = started.returncode
+            timeout_kind: str | None = None
+        except (ProcessIdleTimeout, subprocess.TimeoutExpired) as error:
+            stdout_text = error.output if isinstance(error.output, str) else ""
+            stderr_text = error.stderr if isinstance(error.stderr, str) else ""
+            exit_code = None
+            timeout_kind = (
+                "idle" if isinstance(error, ProcessIdleTimeout) else "absolute"
+            )
+        stdout_path.write_text(stdout_text, encoding="utf-8")
+        stderr_path.write_text(stderr_text, encoding="utf-8")
         stdout_path.chmod(0o600)
         stderr_path.chmod(0o600)
         outcome = {
             "command": command,
-            "exitCode": started.returncode,
+            "exitCode": exit_code,
             "stdoutArtifact": str(stdout_path),
             "stderrArtifact": str(stderr_path),
         }
+        if timeout_kind:
+            outcome.update(
+                {
+                    "timeoutKind": timeout_kind,
+                    "timeoutSeconds": FOCUSED_CHECK_TIMEOUT_SECONDS,
+                    "idleTimeoutSeconds": FOCUSED_CHECK_IDLE_TIMEOUT_SECONDS,
+                }
+            )
         outcomes.append(outcome)
-        if started.returncode:
+        if timeout_kind:
+            raise VMError(
+                FailureCategory.VALIDATION_FAILED,
+                f"affected focused check exceeded its {timeout_kind} deadline: "
+                f"{command}",
+                {"checks": outcomes},
+            )
+        if exit_code:
             raise VMError(
                 FailureCategory.VALIDATION_FAILED,
                 f"affected focused check failed: {command}",

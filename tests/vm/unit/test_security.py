@@ -9,6 +9,7 @@ from enoshima_vm.security import (
     redact_argv,
     require_domain,
     require_run_id,
+    run_cleanup_complete,
 )
 
 
@@ -41,3 +42,11 @@ def test_audit_argv_redacts_sensitive_values() -> None:
         "<redacted>",
         "<redacted>",
     ]
+
+
+def test_invalidated_result_can_still_have_pending_cleanup() -> None:
+    record = {"status": "invalidated", "result": "failed"}
+
+    assert not run_cleanup_complete(record)
+    assert run_cleanup_complete({**record, "destroyed_at": "2026-08-13T00:00:00Z"})
+    assert run_cleanup_complete({**record, "synthetic": True})

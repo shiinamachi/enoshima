@@ -130,6 +130,7 @@ native = manifest(root / "packages" / "native.txt")
 management = manifest(root / "packages" / "management.txt")
 vm_host = manifest(root / "packages" / "vm-host.txt")
 optional = manifest(root / "packages" / "optional-deps.txt")
+accessibility = manifest(root / "packages" / "accessibility.txt")
 absent = manifest(root / "packages" / "absent.txt")
 aur = manifest(root / "packages" / "aur.txt")
 
@@ -138,7 +139,7 @@ for package in aur:
         f"invalid AUR package base in approval manifest: {package}"
     )
 
-pacman_desired = native | management | vm_host | optional
+pacman_desired = native | management | vm_host | optional | accessibility
 local_package_names = {
     path.parent.name
     for path in (root / "packages" / "local").glob("*/PKGBUILD")
@@ -237,7 +238,8 @@ assert vm_mcp["args"] == [
     "--locked",
     "--project",
     "tests/vm",
-    "enoshima-vm-mcp",
+    "python",
+    "tests/vm/scripts/mcp_proxy.py",
 ]
 assert "cwd" not in vm_mcp, (
     "the project MCP must inherit the active session cwd; an explicit relative "
@@ -255,6 +257,9 @@ vm_tool_approvals = {
 assert vm_tool_approvals["vm_status"] == "auto"
 assert vm_tool_approvals["vm_query_desktop"] == "auto"
 assert vm_tool_approvals["vm_list_runs"] == "auto"
+assert vm_tool_approvals["vm_operation_status"] == "auto"
+assert vm_tool_approvals["vm_list_operations"] == "auto"
+assert vm_tool_approvals["vm_wait_operation"] == "auto"
 assert vm_tool_approvals["verification_plan"] == "auto"
 assert vm_tool_approvals["vm_destroy"] == "prompt"
 
@@ -276,6 +281,17 @@ assert not triage_model_routes, (
     + ", ".join(triage_model_routes)
 )
 PY
+
+echo "==> Validating protected AUR provenance lock offline"
+"$repo_root/scripts/lib/aur-provenance" validate \
+  --lock "$repo_root/packages/aur-provenance.json" \
+  --manifest "$repo_root/packages/aur.txt" \
+  --require-manifest-membership
+echo "==> Validating pinned Vicinae release provenance offline"
+"$repo_root/scripts/check-vicinae-provenance"
+
+echo "==> Validating pinned Hyprshell source provenance offline"
+"$repo_root/scripts/check-hyprshell-provenance"
 
 if command -v actionlint >/dev/null 2>&1; then
   echo "==> Checking GitHub Actions workflows"
@@ -465,7 +481,7 @@ done < <(find packages/local -type f -name PKGBUILD -print0 2>/dev/null)
 if command -v desktop-file-validate >/dev/null 2>&1; then
   while IFS= read -r -d '' desktop_file; do
     desktop-file-validate "$desktop_file"
-  done < <(find home -type f -name '*.desktop' -print0)
+  done < <(find home packages/local -type f -name '*.desktop' -print0)
 fi
 
 echo "==> Checking managed Git configuration"
@@ -522,13 +538,19 @@ for test_script in \
   tests/test-audio-output-control.sh \
   tests/test-aur-desktop-apps.sh \
   tests/test-aur-allowlist.sh \
+  tests/test-aur-provenance.sh \
   tests/test-cyberpunk-library-theme.sh \
   tests/test-cyberdock-pins.sh \
   tests/test-cyberdock-state.sh \
+  tests/test-desktop-essentials.sh \
+  tests/test-hyprshell-provenance.sh \
   tests/test-desktop-display-mode.sh \
   tests/test-desktop-power.sh \
   tests/test-power-doctor.sh \
   tests/test-power-policy.sh \
+  tests/test-performance-observability.sh \
+  tests/test-vicinae-lifecycle.sh \
+  tests/test-vicinae-provenance.sh \
   tests/test-transactional-uki.sh \
   tests/test-ui-evidence-gate.sh \
   tests/test-ui-vm-import.sh \
@@ -574,9 +596,6 @@ if [[ -x /usr/lib/qt6/bin/qmllint ]]; then
     ansible/roles/desktop_expansion/files/sddm-cyberpunk/Main.qml
 else
   echo "==> Skipping QML lint: Qt 6 qmllint is not installed yet"
-fi
-if command -v desktop-file-validate >/dev/null 2>&1; then
-  desktop-file-validate packages/local/rhwp-desktop/rhwp-desktop.desktop
 fi
 if command -v systemd-analyze >/dev/null 2>&1; then
   unit_dir=$render_dir/desktop-expansion-units
