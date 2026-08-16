@@ -122,6 +122,8 @@ UI_STABILITY_TIMEOUT_SECONDS = 20
 UI_STABILITY_MINIMUM_FRAME_COUNT = 3
 UI_SEMANTIC_MIN_UNIQUE_GRAY_VALUES = 8
 UI_SEMANTIC_MIN_NORMALIZED_STDDEV = 0.01
+COMMAND_PALETTE_EMOJI_RENDER_SETTLE_SECONDS = 2.0
+COMMAND_PALETTE_EMOJI_MIN_MEAN_SATURATION = 0.25
 PACMAN_PACKAGE_PATTERN = re.compile(
     r"^[A-Za-z0-9@._+:~-]+\.pkg\.tar\.(?:zst|xz|gz|bz2|lrz|lzo|Z)(?:\.sig)?$"
 )
@@ -4870,6 +4872,12 @@ printf '%s\n' "$match"
         # Layer mapping precedes the search field's keyboard-focus handoff by
         # a short Qt event-loop turn. Avoid racing the production window.
         time.sleep(0.3)
+        if state == "emoji-picker":
+            # Vicinae renders emoji images asynchronously after the grid has
+            # already mapped.  A pair of stable compositor frames can still
+            # contain its monochrome missing-glyph placeholders, so give the
+            # bounded rendering pool time to publish the real color glyphs.
+            time.sleep(COMMAND_PALETTE_EMOJI_RENDER_SETTLE_SECONDS)
         query = {
             "search": "resources",
             "empty-results": "zzzzzzzz",
@@ -5800,6 +5808,75 @@ printf '%s\n' "$match"
         return str(cls._ui_review_semantic_metrics(image, surface, scale)["sha256"])
 
     @staticmethod
+    def _command_palette_emoji_mean_saturation(image: Path, scale: float) -> float:
+        # The first Vicinae emoji row occupies a stable logical rectangle in
+        # the supported 770x480 launcher geometry.  Missing glyphs are black
+        # bars on the muted tile background; Noto Color Emoji produces a
+        # substantially saturated row without depending on specific glyphs.
+        x = int(294 * scale + 0.5)
+        y = int(278 * scale + 0.5)
+        width = int(694 * scale + 0.5)
+        height = int(58 * scale + 0.5)
+        result = subprocess.run(
+            [
+                "magick",
+                str(image),
+                "-crop",
+                f"{width}x{height}+{x}+{y}",
+                "+repage",
+                "-colorspace",
+                "HSL",
+                "-channel",
+                "G",
+                "-separate",
+                "-format",
+                "%[fx:mean]",
+                "info:",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "failed to measure command palette emoji saturation",
+                {
+                    "image": str(image),
+                    "stderr": result.stderr.strip()[:2000],
+                },
+            )
+        try:
+            return float(result.stdout.strip())
+        except ValueError as error:
+            raise VMError(
+                FailureCategory.HARNESS_ERROR,
+                "invalid command palette emoji saturation metric",
+                {"image": str(image), "metric": result.stdout.strip()[:200]},
+            ) from error
+
+    @classmethod
+    def _assert_command_palette_emoji_rendered(
+        cls,
+        image: Path,
+        scale: float,
+    ) -> float:
+        mean_saturation = cls._command_palette_emoji_mean_saturation(image, scale)
+        if mean_saturation < COMMAND_PALETTE_EMOJI_MIN_MEAN_SATURATION:
+            raise VMError(
+                FailureCategory.VISUAL_ASSERTION_FAILED,
+                "command palette emoji picker rendered missing-glyph placeholders",
+                {
+                    "image": str(image),
+                    "mean_saturation": round(mean_saturation, 8),
+                    "minimum_mean_saturation": (
+                        COMMAND_PALETTE_EMOJI_MIN_MEAN_SATURATION
+                    ),
+                },
+            )
+        return mean_saturation
+
+    @staticmethod
     def _ui_review_identical_required_pairs(
         captures: list[dict[str, object]],
     ) -> list[dict[str, object]]:
@@ -6270,6 +6347,11 @@ printf '%s\n' "$match"
                 )
                 fixture_ack = self._wait_for_ui_fixture_ready(record, sequence)
             capture = self._capture_stable_ui(record, case.artifact_name, output)
+            if case.surface == "command-palette" and case.state == "emoji-picker":
+                self._assert_command_palette_emoji_rendered(
+                    Path(str(capture["path"])),
+                    case.scale,
+                )
             if case.surface == "system-titlebar":
                 self.backend.pointer_button(
                     record["domain"],

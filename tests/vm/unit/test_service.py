@@ -22,6 +22,7 @@ from enoshima_vm.errors import FailureCategory, VMError
 from enoshima_vm.libvirt_backend import DomainSpec
 from enoshima_vm.process import CommandResult
 from enoshima_vm.service import (
+    COMMAND_PALETTE_EMOJI_MIN_MEAN_SATURATION,
     UI_SEMANTIC_MIN_NORMALIZED_STDDEV,
     UI_SEMANTIC_MIN_UNIQUE_GRAY_VALUES,
     VMService,
@@ -2163,6 +2164,72 @@ def test_command_palette_semantic_hash_ignores_search_caret_only(
         VMService._ui_review_semantic_sha256(changed_result, "command-palette", 1.0)
         != baseline_hash
     )
+
+
+def test_command_palette_emoji_review_rejects_missing_glyph_placeholders(
+    tmp_path: Path,
+) -> None:
+    placeholder = tmp_path / "placeholder.png"
+    rendered = tmp_path / "rendered.png"
+    crop = "694x58+294+278"
+
+    subprocess.run(
+        [
+            "magick",
+            "-size",
+            "1280x800",
+            "xc:#1c1d28",
+            "-fill",
+            "#3b3c50",
+            "-draw",
+            "rectangle 294,278 987,335",
+            "-fill",
+            "black",
+            *[
+                value
+                for index in range(8)
+                for value in (
+                    "-draw",
+                    f"rectangle {304 + 92 * index},290 {333 + 92 * index},294",
+                    "-draw",
+                    f"rectangle {304 + 92 * index},302 {333 + 92 * index},306",
+                    "-draw",
+                    f"rectangle {304 + 92 * index},314 {333 + 92 * index},318",
+                )
+            ],
+            str(placeholder),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "magick",
+            str(placeholder),
+            "-region",
+            crop,
+            "-fill",
+            "#ffcc22",
+            "-colorize",
+            "70%",
+            "+region",
+            str(rendered),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    placeholder_saturation = VMService._command_palette_emoji_mean_saturation(
+        placeholder, 1.0
+    )
+    rendered_saturation = VMService._assert_command_palette_emoji_rendered(
+        rendered, 1.0
+    )
+
+    assert placeholder_saturation < COMMAND_PALETTE_EMOJI_MIN_MEAN_SATURATION
+    assert rendered_saturation >= COMMAND_PALETTE_EMOJI_MIN_MEAN_SATURATION
+    with pytest.raises(VMError, match="missing-glyph placeholders"):
+        VMService._assert_command_palette_emoji_rendered(placeholder, 1.0)
 
 
 def test_overview_multi_monitor_pair_compares_the_common_primary_output() -> None:

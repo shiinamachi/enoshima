@@ -71,7 +71,7 @@ if grep -Fq -- '--appimage-extract' "$vicinae_package_dir/PKGBUILD"; then
   echo 'Vicinae packaging must not retain an AppImage extraction path.' >&2
   exit 1
 fi
-grep -Fq 'Environment=VICINAE_NODE_BIN=/usr/bin/node HOME=%h XDG_CONFIG_HOME=%h/.config XDG_DATA_HOME=%h/.local/share XDG_STATE_HOME=%h/.local/state XDG_CACHE_HOME=%h/.cache' \
+grep -Fq 'Environment=VICINAE_NODE_BIN=/usr/bin/node HOME=%h XDG_CONFIG_HOME=%h/.config XDG_DATA_HOME=%h/.local/share XDG_STATE_HOME=%h/.local/state XDG_CACHE_HOME=%h/.cache "EMOJI_FONT=Noto Color Emoji"' \
   home/dot_config/systemd/user/vicinae.service.d/60-enoshima-keyring.conf
 grep -Fq 'UnsetEnvironment=QT_NO_GLIB LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT' \
   home/dot_config/systemd/user/vicinae.service.d/60-enoshima-keyring.conf
@@ -523,7 +523,7 @@ StartLimitIntervalUSec=5min
 StartLimitBurst=2
 ExecStart={ path=/usr/bin/vicinae ; argv[]=/usr/bin/vicinae server --replace ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
 ExecStartPost={ path=$server_helper ; argv[]=$server_helper ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
-Environment=VICINAE_NODE_BIN=/usr/bin/node HOME=/home/test XDG_CONFIG_HOME=/home/test/.config XDG_DATA_HOME=/home/test/.local/share XDG_STATE_HOME=/home/test/.local/state XDG_CACHE_HOME=/home/test/.cache
+Environment=VICINAE_NODE_BIN=/usr/bin/node HOME=/home/test XDG_CONFIG_HOME=/home/test/.config XDG_DATA_HOME=/home/test/.local/share XDG_STATE_HOME=/home/test/.local/state XDG_CACHE_HOME=/home/test/.cache "EMOJI_FONT=Noto Color Emoji"
 UnsetEnvironment=QT_NO_GLIB LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT QT_PLUGIN_PATH QML_IMPORT_PATH QML2_IMPORT_PATH QT_QPA_PLATFORM_PLUGIN_PATH VICINAE_OVERRIDES
 ExecCondition={ path=/usr/libexec/vicinae/vicinae-build-compatible ; argv[]=/usr/libexec/vicinae/vicinae-build-compatible ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
 ExecCondition={ path=$keyring_helper ; argv[]=$keyring_helper ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
@@ -556,6 +556,12 @@ EOF
     "${properties/UnsetEnvironment=QT_NO_GLIB LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT QT_PLUGIN_PATH QML_IMPORT_PATH QML2_IMPORT_PATH QT_QPA_PLATFORM_PLUGIN_PATH VICINAE_OVERRIDES/UnsetEnvironment=LD_PRELOAD}" \
     "$keyring_helper" "$server_helper"; then
     echo 'Vicinae policy parser accepted an unsafe UnsetEnvironment.' >&2
+    return 1
+  fi
+  if vicinae_effective_service_policy_valid \
+    "${properties/ \"EMOJI_FONT=Noto Color Emoji\"/}" \
+    "$keyring_helper" "$server_helper"; then
+    echo 'Vicinae policy parser accepted an unset deterministic emoji font.' >&2
     return 1
   fi
   if vicinae_effective_service_policy_valid \

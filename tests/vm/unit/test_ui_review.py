@@ -80,6 +80,21 @@ def test_ui_review_mode_selects_representative_or_affected_full_matrix() -> None
     assert len(full) == 516
 
 
+def test_command_palette_representative_covers_async_emoji_rendering() -> None:
+    matrix = load_ui_review_matrix(RuntimePaths.discover().repository)
+
+    representative = select_ui_review_cases(
+        matrix,
+        surfaces={"command-palette"},
+        matrix_mode="representative",
+        locales={"en_US.UTF-8"},
+        scales={1.0},
+    )
+
+    assert len(representative) == 1
+    assert representative[0].state == "emoji-picker"
+
+
 def test_surface_identity_matches_the_current_registry() -> None:
     repository = RuntimePaths.discover().repository
     identity = load_ui_review_identities(repository, {"power-menu"})["power-menu"]

@@ -9,6 +9,13 @@ import yaml
 
 from .errors import FailureCategory, VMError
 
+REPRESENTATIVE_STATE_BY_SURFACE = {
+    # The default launcher only exercises text rows.  The emoji picker is the
+    # smallest state that also covers Vicinae's asynchronous image renderer
+    # and the system color-emoji font integration.
+    "command-palette": "emoji-picker",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class UiReviewCase:
@@ -109,6 +116,9 @@ def select_ui_review_cases(
         selected_scales = scales or {1.0}
         representatives: list[UiReviewCase] = []
         for surface in sorted(surfaces):
+            representative_state = REPRESENTATIVE_STATE_BY_SURFACE.get(
+                surface, "default"
+            )
             for locale in sorted(selected_locales):
                 for scale in sorted(selected_scales):
                     candidates = [
@@ -134,7 +144,10 @@ def select_ui_review_cases(
                     representatives.append(
                         min(
                             candidates,
-                            key=lambda case: (case.state != "default", case.state),
+                            key=lambda case: (
+                                case.state != representative_state,
+                                case.state,
+                            ),
                         )
                     )
         selected = representatives
