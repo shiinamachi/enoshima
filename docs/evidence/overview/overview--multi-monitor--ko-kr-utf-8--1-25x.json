@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "surface_id": "overview",
+  "state": "multi-monitor",
+  "locale": "ko_KR.UTF-8",
+  "scale": 1.25,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    1600,
+    1000
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/overview/overview--multi-monitor--ko-kr-utf-8--1-25x.webp",
+  "image_sha256": "611b34144599a8f61904d5cb3197daf45ddab0d379c438d22aad59dd82a97d16",
+  "semantic_sha256": "257fbe262c8b859ba837a9630839dc67eb88684fc62cb184757af96658c44095",
+  "semantic_outputs": {
+    "HEADLESS-UI": "6b549dd0cb27ace5ba831376f28f42edfbfc9cd4a91a34e2481b7657e24adbbe",
+    "HEADLESS-AUX": "a9db7e3256b17ee191b2077c7a23f9a44820821e7588345beadf746f47e7e4d2"
+  },
+  "auxiliary_outputs": [
+    {
+      "output": "HEADLESS-AUX",
+      "image": "docs/evidence/overview/overview--multi-monitor--ko-kr-utf-8--1-25x--aux-1-headless-aux.webp",
+      "image_sha256": "2a1e4a6ed8d548c1c4b984247503c641932bd25031f6b36000a358416ad8c5a5",
+      "source_image_sha256": "17cb6a927093c6c53f4a39a9008fa059b1573704bcb87ddfa51cd225853bb7cf",
+      "pixel_size": [
+        2560,
+        1600
+      ],
+      "stability_changed_pixel_ratio": 0.0,
+      "expected_workspaces": [
+        1,
+        2,
+        4
+      ],
+      "semantic_content": {
+        "sha256": "a9db7e3256b17ee191b2077c7a23f9a44820821e7588345beadf746f47e7e4d2",
+        "unique_gray_values": 249,
+        "normalized_standard_deviation": 0.1100956
+      },
+      "logical_size": [
+        1280,
+        800
+      ],
+      "scale": 2.0,
+      "encoding": {
+        "format": "webp",
+        "quality": 92,
+        "source_format": "png"
+      }
+    }
+  ],
+  "run_id": "run-3207c6a56b40",
+  "source_commit": "52418efc010dbb013fabab885841acbd2463a771",
+  "worktree_hash": "sha256:ca6733b8569f136580a57a9b0df30a458072aa08836ec1ed98cc65241d548266",
+  "implementation_digest": "ac681b1b397fef9415f408787a19d16305d5665fe4c9c3baf7cdbb51b8300b57",
+  "concept_sha256": "7d7cf771bfe7a48e00e45ba8238d878f49f86bfa7e5581a85e532d5f147ef7b0",
+  "concept_spec_sha256": "f7dbc9adcb0825f308cc2ab18c458a5211e87d7ed6e4010fe7fb51d50ab1a46e",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": false,
+    "reason": "production Hyprshell over real Hyprland clients and virtual outputs"
+  },
+  "source_image_sha256": "79c4eeb4376262cc106c0092c4448aba3344feba51fc0f55c970bb63520fba3e",
+  "source_sidecar_sha256": "3af4944d532940a823e1526a9bbf54fc90a4b465a0f3d62b639124c0e5d2fee2",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "manual-contact-sheet-review",
+    "reviewer": "Codex visual review",
+    "review_artifact": "docs/evidence/overview/manual-overflow-review.webp",
+    "review_artifact_sha256": "2e19ebfc43b4a847104a0ae97883e89e21f21d4229739aa844d6b7b2602a0d47",
+    "source_review_artifact_sha256": "28e5be773f2b13a70dbaf4e98c6a415153b09e3a5d1e27c5500e41bbcb31e8c5",
+    "report_sha256": "3bcfb529bb4d8c20ec4d893c246b593ff4937d20c6cb69297ec9d063a44f928d",
+    "coverage": "docs/evidence/overview/manual-overflow-coverage.json",
+    "coverage_sha256": "17a57e6d1754f92395b0d1998578d46dbfebf623b3c5d8905497403ec0c183ba",
+    "reviewed_capture_count": 42,
+    "reviewed_image_count": 48
+  },
+  "imported_at": "2026-08-16T20:49:33+00:00"
+}

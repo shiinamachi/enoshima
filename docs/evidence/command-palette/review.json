@@ -1,0 +1,22 @@
+{
+  "schema": 3,
+  "surface_id": "command-palette",
+  "reviewer": "Codex visual review",
+  "reviewed_at": "2026-08-17",
+  "implementation_digest": "049160ab34b8ac2e12d6345c1a0a51b34e76189dbacacd31172900ec58171f4e",
+  "concept_sha256": "69a36a0574d5580c4a6c0774b59a3bb6a45e17a24f0d7a70001f4dcba80a83f7",
+  "concept_spec_sha256": "46c9f82b7b44d4a010bead0e5f08cb12246137887d90a1cb1ab068fdfc95f7fb",
+  "automated_report": "docs/evidence/command-palette/automated.json",
+  "automated_report_sha256": "95c8504c35fdd61ca6c5ad615f55fe853c14927ba41a0cfe02c2b43d92572f4f",
+  "scores": {
+    "geometry": 99.36,
+    "color_tokens": 91.4,
+    "text_overflow": 100.0,
+    "perceptual": 86.15,
+    "hierarchy": 94.0,
+    "interaction": 95.0,
+    "state_meaning": 95.0,
+    "accessibility_localization": 91.0
+  },
+  "total": 94.58
+}

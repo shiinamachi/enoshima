@@ -1,0 +1,367 @@
+{
+  "schema": 1,
+  "surface_id": "command-palette",
+  "run_id": "run-c26e7bc93dc0",
+  "reviewed_captures": [
+    {
+      "sidecar": "command-palette--clipboard-history--en-us-utf-8--1x.json",
+      "sidecar_sha256": "0162a15efbc7dc4b313ccc7cbc33c4130c6b29336a81eb2bce772c50555bdccc",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "e3db71b5fd2798b0a82dd759743de06b015950eb8e55c75826ce202fe52d5a4a"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--clipboard-history--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "8ba220d7c0b56b3b43e5c718d7ee97ee4478d609749ef22be66dc1c3c126a211",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "8893fb3f0e4e570e5aff181c4734c1e1c5e8569e96032e922124cde9a275e95e"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--clipboard-history--en-us-utf-8--2x.json",
+      "sidecar_sha256": "497186343679155cca617bb1a7c3e803dd21e185d69585e149afb877278788ec",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "95ef288de1cd3efb856d7749aa19fd9f6cfc83b2d34031cba3a0dc3977ecff17"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--clipboard-history--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "9a66dd1d02fadecb35e022c3d2d78a4174041d721673201287c28ac3bd9fc7e0",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "8064527569ae0c8b023c80c45ff08867a17ea7ff60a2832d5ec8be5923f98663"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--clipboard-history--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "b51853424ecd38cf1abe7972822ddc8c8fc9573c049254683f4c6acedfcfb137",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "7393baa722fa3310db37d5709d236542b3fa9cc7438f05e37615c027e1e0839c"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--clipboard-history--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "a16e3bc4bb4f4ccab2e6b5f01e565a54060ce8be879a53d83518794658d0a9f5",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "3f0fc8c9e3b5dd86875f233f8df6e3d9c976c0b47cfb0fac98e29f75a87ba1c9"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--default--en-us-utf-8--1x.json",
+      "sidecar_sha256": "70c18f3d281a6704d4bdaaa1ba6ad0c4743378205b0acd6aaec1ae5b4de6e77b",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "b35a5f786ac7fda39434eb3f5b78bafb59d1ddc4377d661cd33f10971c939c84"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--default--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "fd247b87d8efd16e58466e1e4c1782203811325ebd568ac1a998bfe6020ea5d2",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "10c5257e11e2fb320ba3ddac5199cf1a34ff33960db59e7067b760c0800ebb87"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--default--en-us-utf-8--2x.json",
+      "sidecar_sha256": "1c29170cf9bda20f720e74c72fa3c8ba5c39d0514fcce55e8ff776ad53c8e415",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "e39fb797d40245b48ed81b32663bada9b101ca07563031a1472aaba21fd48941"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--default--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "34310ec49876fbc67df4d2ddb4b851c231d8d5e41c5621ae8c2f030aff0a73c9",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "22fc77edc94e6062bf28c12d861eb37bf44fa7912430b04b905348681e69ffd5"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--default--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "7e2b5032aaf4ad9abdf8693e125d265574f1ba8c49d6e5025d3ce78a287f1e71",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "1dfe6e8950d07a428f8f4b1b305be01824c6f328e92ed6f8e84f457079423614"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--default--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "d1e6dc1e604f56b816441d4ffb74d1f9f497afb91e0a0b3702366c392d6b03fe",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "861ed9765bffec309ef9c27110b680e4a8213eb79b0ee285f3ba88fe763fab1b"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--emoji-picker--en-us-utf-8--1x.json",
+      "sidecar_sha256": "c585138676c7d5e29ea9511f1f73048cfb64dee0fd7a1da62fe225fcc2d37bc7",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "5d16bf1c0fe80202c30c106f795956b66d9ed51b208449f00658c0f9261acfc4"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--emoji-picker--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "5bf9fa55fb24065c493133cda950a0027b0f11672f897df360b407304e61ab21",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "63dea214ca3f3b7001fc709ceab8232872be88e82e7c561a09829d01c12e673c"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--emoji-picker--en-us-utf-8--2x.json",
+      "sidecar_sha256": "78a535d6f43b4902be65bba53816146edf552f048c5be464941d2c3772ce38e7",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "dcc89fccb21cc3ed42f7259fd37f404bd6cb35b98322dbe15f1c31ea94e4a41a"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--emoji-picker--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "8fbb7a59d66fbae6f13f3a375f364b11aad724c61cfe0c103d88f4cc23b26802",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "79612af536e95e832182ba00cdb937d19f589412676b38e4430d8c25e5fbf2c5"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--emoji-picker--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "d838b386a5b4e2900af9f064674d93cf91aea1e79695bbcc2f29854385ebc67d",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "85ae4f8165c5747172423333ce872bd4b99ff163b703d525dab5d3d9d10d0876"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--emoji-picker--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "6c23ebb01cc091bc4fa9db43736c6bcadd0643ab87ac2c564c081e6251ddea81",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "4b0fb6b3ca00c8a783b0a2c2b6dee7bae479dca284ab4a1370edb383a166355c"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--empty-results--en-us-utf-8--1x.json",
+      "sidecar_sha256": "670fb837d939a397d0934e8023d3008a25616d3306dd8085ade86582d8ccc1d6",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "fc3c66bdab46a2a9831e894c96e8a81ca6baaf231f9947b74c08bc1e7f630554"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--empty-results--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "c6f9cdd0f3cea956b725ef8d51ab6024403a355065f7da72847a44157d7b64cc",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "f92ecfebe718feac40d73e6e2144268858af5714eff2e61ea2cf88f2943931f3"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--empty-results--en-us-utf-8--2x.json",
+      "sidecar_sha256": "60c82237666332efbac82b2c476a4a742c1dc36a3b371b6085eff67ff2a16d15",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "1d8b6ab2548ed474f357e3db086346c99e25c72bcd96c6f77f438bc2722d45c9"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--empty-results--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "950fb8ed2b02cec7c1836d38f785e5925aafcdcb812043df9c0ae2c5d5c26b69",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "445992ac4e4c30c4ab378a98846abc37cae2ebf3a8de57fb17e9acadef3a9021"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--empty-results--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "eefbfe631af5a40a73e1bfac21fe9144269f543140d5ddb3a54414de28d2106e",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "a44f678c105107172e5b18d2dc64da3a6ac5aca68dd7f00e02f384e7e5b9eab9"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--empty-results--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "3192a9facd1a5f36f812579a3a7a9f74b1a19a5499e938c05fd78ce6ec04b33d",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "2e0a51036c7e562c5c01411306cffd44dbb29755e8ad1bc682b2479678f21c69"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--long-title--en-us-utf-8--1x.json",
+      "sidecar_sha256": "c9b92bbf59527196f66bcbd404a5bae29a24a2ed80feb3e8210fc4833f2115f1",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "81761c0d9614a76fb416a05e377a404e779bb4c4d4e2df269b468700ddce3086"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--long-title--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "2f402e5617aea156a6b156e915ce29514afc0222656955eb4e4f230ff3cf1dd0",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "3d7456fbc60fb85607c32d970c4f80b83b774fef7893491f7d1b6d06c7c6b623"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--long-title--en-us-utf-8--2x.json",
+      "sidecar_sha256": "27f9051c26d1e946ef6b22ee522736be9e08d596f55d738854f9c216e27df200",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "53174b3e7176c549d5b41afc875562dbe7ede36d96bdec800929472458a20680"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--long-title--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "6ac703508d7f0d77260d0557fc5292072244b9acdc83c85643befb24afc56eb4",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "919bb62a4e3badecf30e60907989c00c81a47204d672b6dcb4aa42f98271385d"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--long-title--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "c96c619d39fbb2948146613ddc460b439b96014d2c1ad05d71f1d0bce403b5df",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "7bdeeb6009267f20c4f8187d6069173b9bd75818a7b4f90b5f518c550c4f4ed8"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--long-title--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "414e90c93832dc7707cd37281fead283dc948ff86da745629e02724f10704002",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "ef803a23262c7e776e6850d46d35e162e0f23731f1e0449d3bcadfd7f6f62c6c"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--search--en-us-utf-8--1x.json",
+      "sidecar_sha256": "a819438de1187ca2ff6d7321c730bb0642828379354f779b8826b1c301351bdc",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "200c2f63625e5c2399e93d5880ec958110d97a098de557b3ce8c0ac8f524351f"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--search--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "c1bc07370e3675ab6e193fac874183c6e40a3d95ab0becc4a703161525e55d9d",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "c7f81bdd6a16a60dab8da0fa6444f60e5b007efd6754b69b0d8f7cba7847a0d9"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--search--en-us-utf-8--2x.json",
+      "sidecar_sha256": "07da75e26b0a6d25033dce35177089dfd7819f15856ccdd7111f5d6c90fff54e",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "7d2845a0043af43f8093f26fe66f10f3c5196a78293aa618346be771e5e83d48"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--search--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "e755047e26a8825c334afa27c5bd8501661ba7d71b38a2ec268bdffa09aef4bb",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "dfc4633e56b160917e80f28d30663282a5236fcb34abe0b0f97848857b8b92d2"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--search--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "1b91f0ee7fec44e94c5a1eca2916b876430b71608c29df0e98115bd8d721b10c",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "4e7bec58e7112d484bab4fc94d42fcd0f348d7f156adfaa777417799a4c52f57"
+        }
+      ]
+    },
+    {
+      "sidecar": "command-palette--search--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "1c92410df35cec683785380190280beb02ea5eed530bf45fbe21d9004e2c88cb",
+      "images": [
+        {
+          "output": "HEADLESS-UI",
+          "image_sha256": "45a9cd3b170a3ef21b695959a77d6feec910acd06bdea69150d04ab6e17f46ec"
+        }
+      ]
+    }
+  ]
+}

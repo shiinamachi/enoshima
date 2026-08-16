@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "surface_id": "desktop-shell",
+  "state": "default",
+  "locale": "en_US.UTF-8",
+  "scale": 2.0,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    2560,
+    1600
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--2x.webp",
+  "image_sha256": "36125e70b18cfa848f32ab079111dd919709eee3f7f2cef20040cb53fbd86222",
+  "semantic_sha256": "705e795b585a8395edc72391fbc50954a3959caf5c0918282c3faa61ed05ee5e",
+  "semantic_outputs": {
+    "HEADLESS-UI": "9de8ab8cd591d6c9f16d3f53a3c87cdbfd326dc27c16bf02525f9d5a22dba74e"
+  },
+  "auxiliary_outputs": [],
+  "run_id": "run-3207c6a56b40",
+  "source_commit": "52418efc010dbb013fabab885841acbd2463a771",
+  "worktree_hash": "sha256:ca6733b8569f136580a57a9b0df30a458072aa08836ec1ed98cc65241d548266",
+  "implementation_digest": "6722eea540a47ef8a7169120c1d56b6195da64f2b4e8108eab079d2237e6df33",
+  "concept_sha256": "730866f47d759bf66de23bf19db6fc1caf0a6272ec131a5debcf79e4458b6767",
+  "concept_spec_sha256": "0f20d21659c42a025efa48ff0c6680a3105c201eb15de933a621ae26a56b9742",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": true,
+    "reason": "deterministic production-model state injection"
+  },
+  "source_image_sha256": "34cdcc83de0a52c56fb3c30fbeaf2f3f529ae2587f7f8c5a0a829e8bf6764115",
+  "source_sidecar_sha256": "6e892247d768d48f679344a96110469beda378091851137c02c2df654daaf807",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "production-component-layout-probe",
+    "source": "desktop-shell--default--en-us-utf-8--2x.json"
+  },
+  "imported_at": "2026-08-16T20:49:06+00:00"
+}

@@ -1,0 +1,22 @@
+{
+  "schema": 3,
+  "surface_id": "overview",
+  "reviewer": "Codex visual review",
+  "reviewed_at": "2026-08-17",
+  "implementation_digest": "ac681b1b397fef9415f408787a19d16305d5665fe4c9c3baf7cdbb51b8300b57",
+  "concept_sha256": "7d7cf771bfe7a48e00e45ba8238d878f49f86bfa7e5581a85e532d5f147ef7b0",
+  "concept_spec_sha256": "f7dbc9adcb0825f308cc2ab18c458a5211e87d7ed6e4010fe7fb51d50ab1a46e",
+  "automated_report": "docs/evidence/overview/automated.json",
+  "automated_report_sha256": "955704de17aa01a06c73805b8c422438c3ba52934ab24a817de8f2f7a165d499",
+  "scores": {
+    "geometry": 98.0,
+    "color_tokens": 88.22,
+    "text_overflow": 100.0,
+    "perceptual": 85.42,
+    "hierarchy": 94.0,
+    "interaction": 93.0,
+    "state_meaning": 92.0,
+    "accessibility_localization": 91.0
+  },
+  "total": 93.31
+}

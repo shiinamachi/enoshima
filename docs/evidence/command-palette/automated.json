@@ -1,0 +1,595 @@
+{
+  "schema": 2,
+  "surface_id": "command-palette",
+  "implementation_digest": "049160ab34b8ac2e12d6345c1a0a51b34e76189dbacacd31172900ec58171f4e",
+  "concept_sha256": "69a36a0574d5580c4a6c0774b59a3bb6a45e17a24f0d7a70001f4dcba80a83f7",
+  "concept_spec_sha256": "46c9f82b7b44d4a010bead0e5f08cb12246137887d90a1cb1ab068fdfc95f7fb",
+  "mapping": "docs/evidence/command-palette/mapping.json",
+  "mapping_sha256": "0b558cfdab65c9d9c521c62b826350a3e1e3362275c30c47e93318839e92d529",
+  "generated_at": "2026-08-16T20:52:27+00:00",
+  "scores": {
+    "geometry": 99.36,
+    "color_tokens": 91.4,
+    "text_overflow": 100.0,
+    "perceptual": 86.15
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "db7461b5991d7a0afe69993aaf82c92aff3df7cd4483176be41262c956d509dd",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        441,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--en-us-utf-8--1x.json",
+      "sidecar_sha256": "cff964c01923143a8fd662e56fc05354377d82f7829bf96bcffb4557d279ef9e",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        353,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--en-us-utf-8--2x.json",
+      "sidecar_sha256": "c2fae6513100ca1ae649e6f2e3c7e6a4da9119a65b6fc4927852d26e36c33496",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        706,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "9a71056f87aed6f54f9c9b983318b71d7783b889c27523d4a2bc364aa72a1322",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        441,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "e934b53d8f4a01d862a3686e4fbe3b29f0871d00d057825afbea23c740f5685c",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        353,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "ed1fbc03aa9bc1a411a5c862644076b3c879dc0c862c6f6d90dbc9426694c262",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        706,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "220ad88fc8fd469689de09ef8c7edc7c8bc083f6e8c176d167ef38ddb122d0ce",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        625,
+        270,
+        401,
+        468
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--en-us-utf-8--1x.json",
+      "sidecar_sha256": "76e8019629f503d0545a1b4669c6201b623eeab4570730819874c5b60a9a68b2",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        500,
+        216,
+        321,
+        374
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--en-us-utf-8--2x.json",
+      "sidecar_sha256": "20cff5c3309e56eb37c4d60ce2604bfc270951927cdbde2f58a31f16dc75326c",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        1000,
+        432,
+        642,
+        748
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "41903b1f28b3f60e045de96d3c32a21495480436d70cc6f584c2677d69ed720a",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        625,
+        270,
+        401,
+        468
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "4c844fd3244d4fec9b2aa3835181268587a45a1b833454d13760fb30ce555724",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        500,
+        216,
+        321,
+        374
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "e5b94445508716d096768c335c8517ad91e85d45220c364500fc70d9e18c4b51",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        1000,
+        432,
+        642,
+        748
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "153c9b7e9ed90e178cba48d07ae61eca3f40fd38f56a7685cad56cc7ba5c6fe7",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        558,
+        78
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--en-us-utf-8--1x.json",
+      "sidecar_sha256": "d5b7493827acf6cf75c30c80f70c0e118dd9403a0c4c3d3e9935c3453a96e601",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        446,
+        62
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--en-us-utf-8--2x.json",
+      "sidecar_sha256": "8ebe5c6e49552c734aae7fbbabd5d1bc1fbd40e12f3a88092a27a51be6d71bef",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        892,
+        124
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "197f6e4cbc74f80c4a9509b05b244136e6a4a0b8cc561019ae4f53d762aeb3a0",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        558,
+        78
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "0e6058ef7d2876be6928cd1b445fee04534832ba082c22b4c1b54fed6ff57cbc",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        446,
+        62
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "343d62b8e0747af90544e68600b182a380b75d89acfaf8628412493d22243117",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        892,
+        124
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "cd7f2be7984d6b716cda220dc25cc6a3226ca603200e5f9578f75719a949e952",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        535,
+        193,
+        530,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--en-us-utf-8--1x.json",
+      "sidecar_sha256": "ee1655571bef60f6e3e30ad0b6518620ccd369dd060b1adc1d7172ee73af99d2",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        428,
+        154,
+        424,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--en-us-utf-8--2x.json",
+      "sidecar_sha256": "b3bce6a34323773bac69459d32d2441f76ee3cd8ab5c1462b375a1adea76e865",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        856,
+        308,
+        848,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "ba9c9a3ad079168de0f040b89498270162ac8d9bb010979fff02f77b6af2f480",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        535,
+        193,
+        530,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "4bfae076cd2c853bd61927ce88401a8ee33362a28c319d3492ce56f0c19d1dd0",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        428,
+        154,
+        424,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "a5199587d39506b5ab027483e4326d620a0b38951cf8d442de8fd4de9f807cf3",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        856,
+        308,
+        848,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "c3a2ac6705395deeb6fd34e7e0a74436035981d9c51f091c7bec8f78c125154f",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        441,
+        193,
+        716,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--en-us-utf-8--1x.json",
+      "sidecar_sha256": "0dcda9a442ecbc7991c152c541d6be1461324f36dc6f6d4b60a8da95f387729a",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        353,
+        154,
+        573,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--en-us-utf-8--2x.json",
+      "sidecar_sha256": "8204ee216ed65114ef51b2a0d3ef3ca125f74642fd1d98468210da56f094ee5a",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        706,
+        308,
+        1146,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "ff87ddc633f278f9a54b143c1c91753e6b930f2bdf4b645983e967fa06082b01",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        441,
+        193,
+        716,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "3cc246e68c747fa11fbf3b1cfba14e658f0d425cc468c8a2dfd0191a75ef7dd9",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        353,
+        154,
+        573,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "ca23b98b8afe16acbe0828527e9a29a7ea121b242f49b64ee69575c90e4fa01a",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        706,
+        308,
+        1146,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "bb72d76f5d962b3a6b394de7ab1ea11720a543cd023aedc1e1daedec2f29718b",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        570,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--en-us-utf-8--1x.json",
+      "sidecar_sha256": "79e4e0e64009320f0d0251bc4539ed733c839996f05b171146dd91a93fe260f4",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        456,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--en-us-utf-8--2x.json",
+      "sidecar_sha256": "040880d464b3bd79228bfc5383588e1a5475717a84b33bfe4dc139041c4e8db2",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        912,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "6296c2cee379a503e8979532957efd6d3ebf54283b770dea97cf6a7b66ca6f31",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        570,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "6a7753a12584fd143bf32ccdc503045256bcd9085e18448dce69ad29522134a0",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        456,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "f6a04f3686a7243074cd292f1f50da6e8473ae530608813f4bd46c87375022b1",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        912,
+        960
+      ]
+    }
+  ]
+}

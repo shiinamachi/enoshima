@@ -1,0 +1,595 @@
+{
+  "schema": 2,
+  "surface_id": "desktop-shell",
+  "implementation_digest": "6722eea540a47ef8a7169120c1d56b6195da64f2b4e8108eab079d2237e6df33",
+  "concept_sha256": "730866f47d759bf66de23bf19db6fc1caf0a6272ec131a5debcf79e4458b6767",
+  "concept_spec_sha256": "0f20d21659c42a025efa48ff0c6680a3105c201eb15de933a621ae26a56b9742",
+  "mapping": "docs/evidence/desktop-shell/mapping.json",
+  "mapping_sha256": "82a9be7f7980c7a5061f3595e35a9361029a770e27811be09dc29e092e4cdb74",
+  "generated_at": "2026-08-16T20:52:24+00:00",
+  "scores": {
+    "geometry": 99.12,
+    "color_tokens": 91.51,
+    "text_overflow": 100.0,
+    "perceptual": 86.5
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "a34669cc09b2656e14eb36a185777deb387ee559df853e8496f62c3b1c3460be",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--en-us-utf-8--1x.json",
+      "sidecar_sha256": "3ea21485f35b7c58822ccd94c374edd510828477f4209e14f09d2b57346556bf",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--en-us-utf-8--2x.json",
+      "sidecar_sha256": "80c8af6555b44437a47c54bd19983cad147e3ee503078003ccbbef156142ae14",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "a2783dd7324ed5ba006cf3fdff8e56a0ea1a1f0d42f2b159a9b9817cb6afa36e",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "3ccf1009955354d14f9dc5e09927fecc86ff0f43d20aa0371a39f904fba3970e",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "8441f6329df9fb0f6fde7359d6fc4acde0cc211607ff2df0696d1ae26d933fc5",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "5b016d7668f5a65d2da410b4d272343a50d6ba5b61ea3915430ccd8427702cc1",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--1x.json",
+      "sidecar_sha256": "5fb7de07e0fc9c60129132a7dd62b599cd2e7cc98f32c6656e9b8ee0cde29726",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--2x.json",
+      "sidecar_sha256": "0896eab06dfca4feee201af88b73ffd383e38374e91c54d0b17602713ce9ccdf",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "69a1928b38454a782622acbf81764a274b4972407403d20688c4ba163c3dd926",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "051d93885b57a77199a232519ccaaa60ae7f7bc59be8b2f5e171a1d93c43977d",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "09c7342f3a7ac3e4633903a30b44e2bbfe4e59524249b6dd270207de437094a0",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "e3dbfbcccd81d74aef1e8352401ae24a1dbf3c0f2cfd7539c1773802b7bd377f",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1x.json",
+      "sidecar_sha256": "a2a53467bc985ed03807d4db7983437f65baebaa82b514ddb936172d3cbcb517",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--2x.json",
+      "sidecar_sha256": "cb3c1997c086944c8b007d8f437e443509dc1dfa2b93a2d4127fb238fec235fa",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "db3b54857080513ffb9bd08b4319ce405627c62d776ba6d94efff1d594c9d61c",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "25fba2ecedce92bd903ae6ad869141637f0c5b3fd62bcd0937299d37d9ba54fe",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "17c5a62edec333c259c31516d6beb77db79e4cdb30acfb6ff81118507a4192e9",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "f93d787c3e3b351406e88186cc287cfe1e341c663bbc56354cd7fcc37d17880a",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--1x.json",
+      "sidecar_sha256": "a620cab7b7603846c6be7325fef012a95ec30da0f588a0a2a34126d8f5e8ace8",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--2x.json",
+      "sidecar_sha256": "de10b4223d79fb6a9f002dde51a5412414bda47ab00e24dd386a3b7bf4efe2c5",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "7cf76c11ad28b961df23d38e45061587b9dc2c52057254701aed1a7b8279c9de",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "20f40a0518f284bd7364430f74224c3ac8843932cd3c28d27e68cecd31465c2a",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "1d7244ae6e8e2bfd9e21e0e251eef74b886ebbe401c5570e156be55b9767d5a0",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "da27c79f498e8cc2f873e4cb269cf12fb4571a903ff669cc3f6589490d38c491",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--1x.json",
+      "sidecar_sha256": "b4b04e3c64c3d5ae8bbb4568044014dccc03167d489993332a6707b81d533a19",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--2x.json",
+      "sidecar_sha256": "2f5e1a80016df9624307d178026a06b8f5bf488e22aea057701466d5ca456b94",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "2eb60e1fb713948e91f260402ce55eee9a6fded5589a9e9c43adea994fa695b7",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "9dd699a61cf4e673dd31251ebb9e7b49294d66676ed94cc8fad5baee26a5442b",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "cfe42fca121ba9e75c0763672370c7a577e78427d3d213eb4d8f0321ebd2c9cd",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "0e8cc24cc88d60bae7ac48226d28a0d869198d516a5c418dff88855ad0fb4329",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--1x.json",
+      "sidecar_sha256": "971e26db67e0945c7108b4a74f870e8e5c22801589dfd5f667a67bda7eb66d05",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--2x.json",
+      "sidecar_sha256": "b39dabe6e81f719fb7ae794d94e2c1598c1b367a988f8132294e0c50394ac6a8",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "387fb66f417e2ad499f3b97e880bb3cfc631900f74e8d1b034a3a0d46be3016b",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "f01f376498edb37bacdca8a6be6f8b110a873e2da4cabc2baf1dfde9b10de59d",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "0f6b9e4dd824d1e74302e636ce4b7b8328f8d1a814945b037991a18953e1f3f8",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    }
+  ]
+}

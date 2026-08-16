@@ -1,0 +1,546 @@
+{
+  "schema": 1,
+  "surface_id": "desktop-shell",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--en-us-utf-8--1x.json",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--en-us-utf-8--2x.json",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--accessible--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        130,
+        219,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--1x.json",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--en-us-utf-8--2x.json",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--active-window--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        100,
+        300,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--1x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--en-us-utf-8--2x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--default--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--1x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--en-us-utf-8--2x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--external-display--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--1x.json",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--en-us-utf-8--2x.json",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--inactive-window--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        110,
+        522,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--1x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--en-us-utf-8--2x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        438,
+        25,
+        113,
+        38
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        350,
+        20,
+        90,
+        30
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/desktop-shell/desktop-shell--internal-display--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        100,
+        140,
+        30,
+        10
+      ],
+      "implementation_crop": [
+        700,
+        40,
+        180,
+        60
+      ]
+    }
+  ]
+}

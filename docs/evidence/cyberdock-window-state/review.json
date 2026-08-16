@@ -1,0 +1,22 @@
+{
+  "schema": 3,
+  "surface_id": "cyberdock-window-state",
+  "reviewer": "Codex visual review",
+  "reviewed_at": "2026-08-17",
+  "implementation_digest": "e9e9dee4fa0db4e491f7c95dfb6aefa82481b07e25cd1e54078d0c7fbfdbdeba",
+  "concept_sha256": "a35f5066f228bb79e5c3f0782400f2edfa1af9a90cf2e04a8b62ddd2b482cc4d",
+  "concept_spec_sha256": "d7cc99840416bbc6670557551b84c89b514a24417d32f4bc0c7f3985fc6a26d7",
+  "automated_report": "docs/evidence/cyberdock-window-state/automated.json",
+  "automated_report_sha256": "da0f9104d34a20de63492afa0cb8b0c6aa632db0c462adb039fc20d4ea3fb1ab",
+  "scores": {
+    "geometry": 100.0,
+    "color_tokens": 86.4,
+    "text_overflow": 100.0,
+    "perceptual": 91.24,
+    "hierarchy": 92.0,
+    "interaction": 90.0,
+    "state_meaning": 87.0,
+    "accessibility_localization": 91.0
+  },
+  "total": 92.86
+}

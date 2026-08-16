@@ -1,0 +1,883 @@
+{
+  "schema": 2,
+  "surface_id": "cyberdock-window-state",
+  "implementation_digest": "e9e9dee4fa0db4e491f7c95dfb6aefa82481b07e25cd1e54078d0c7fbfdbdeba",
+  "concept_sha256": "a35f5066f228bb79e5c3f0782400f2edfa1af9a90cf2e04a8b62ddd2b482cc4d",
+  "concept_spec_sha256": "d7cc99840416bbc6670557551b84c89b514a24417d32f4bc0c7f3985fc6a26d7",
+  "mapping": "docs/evidence/cyberdock-window-state/mapping.json",
+  "mapping_sha256": "8b3338f44758d3eb92c787ad4557fbdbfe6cae1c17c44297610982d89fb04ba4",
+  "generated_at": "2026-08-16T21:01:42+00:00",
+  "scores": {
+    "geometry": 100.0,
+    "color_tokens": 86.4,
+    "text_overflow": 100.0,
+    "perceptual": 91.24
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "7af5d3a42332f199f8a3dd64c35d89bc4be6878186af6aa9ebde903f1bf1924b",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        783,
+        970,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1x.json",
+      "sidecar_sha256": "9aea626b8f9e1235b1bdb7237e4dafa6f24c22c414381cffc23810fcdd191dee",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        627,
+        776,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--2x.json",
+      "sidecar_sha256": "31e5fc6641f97db368b845d9a617933a63ce2ce93bf16fe3b3e10a3078bfcce5",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1255,
+        1551,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "b71b985e5714eeb5b3da635a3ed57b04ec88656e09ec82e0605492ca23ba68a8",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        783,
+        970,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "391d98239a7c59d826f188b957ce440398d7cf4ba638dc8979c47513b2137b14",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        627,
+        776,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "d265c7944e4340cf62dab0dbd14b65208fabd2842062e71187e0d4f27eae39a1",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1255,
+        1551,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "fb9ce0faaa952fc46035008283e2b0601ae002b21d09f62fb8a1446a76f5f88d",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--1x.json",
+      "sidecar_sha256": "784722dd0dcc74e23d8fae0ddcdfe4168274d324056e535313cdeecb2a15698c",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--2x.json",
+      "sidecar_sha256": "54d75383c0c75b41d37149625ee0ba018cff405079777a1ebef544cb4dc4fc6a",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "8b1a2018a9e7adb09b9439a3fd56dbbd41deb64191f9788211614382b887d867",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "26dfcd9b396343f1b22958b26599d97398a32496e3c53138bdf46eb7d908c1fa",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "fe58b8a7f4d22032ae5d71b4c782ffd9b344c3c4f592fe8d20020bdadf6c1450",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "a4df6ab3467f7148f05dea9b62afcb7fee5f3dd453bdabb06b30a7246c08bf29",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        731,
+        980,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--1x.json",
+      "sidecar_sha256": "d10ac97579e8052ec406e7cc038c68a08b43fc296fe52b0ea9c80c608a48629d",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        585,
+        784,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--2x.json",
+      "sidecar_sha256": "73daad7ed66700c7dbad16e1df530c00d82744cd748fa08431866ea253118ce6",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1170,
+        1568,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "5cbb9daabd5e59cdb8cbe81fd5eb56871a98349450b403905704c8d18046c02d",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        731,
+        980,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "83b135093c3c833f1bf8dd225d0c1894549d6f0674641f40306cd20f26c4ec9b",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        585,
+        784,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "1276fe0ddf21eba53db6f7e09b48602762b4ce4ab505faee1e419e0269b1a800",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1170,
+        1568,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "12338a746c8b653aa17df22e8c9a400586a3b058b09dbf5163bd43a9a71f4fb2",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        775,
+        929,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--1x.json",
+      "sidecar_sha256": "a5a4d352689c3579865441712b582cca9853578b79f15438943eb55bbb56fb9c",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        620,
+        743,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--2x.json",
+      "sidecar_sha256": "1a6af109638aa2d93c3d12d2e2a9930d8cd0e0a98412204cc94547b2ab003089",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1240,
+        1486,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "aef383820ea13587cd04ca16cc154d4e5e82fea1cf6931ba8acb3691209cd560",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        775,
+        929,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "deeb170340e87320287a7f8b0a3a0621a9f85bb227cf76498087817d2396b4ee",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        620,
+        743,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "2861624c438b5eb649f87d6f61461d1999013bee1fba19494a209ffc41c8976b",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1240,
+        1486,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "46b0cbf0487a2a19900473b0f766335ee8f9382196ba238a868dc2d855008531",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--1x.json",
+      "sidecar_sha256": "4d7e44c6069a1c4f2d64d54a835cbe71265424cb313fdc41cadb5f19d8827c84",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--2x.json",
+      "sidecar_sha256": "5fdbe75f449536f5528f2096e6604e5779df5cac75997b89e1b89d2e80a63ad1",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "d5ffc3e033dd9ec1e111708ef95f891c363c0e536f27259f503d6e509d53da21",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "235b82ad07af14d7a5f98d9aaeeb7c3fa25481e49cc948691963746701be1480",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "22ed10c7cfe18703e9e793070c4fc8278449aa81f1fc920cbee1b41fb256f80f",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "d44fddaffa0bbee495a9b1da32f5801c17b7f39e68cfaa05c841016b43218b23",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        731,
+        980,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--1x.json",
+      "sidecar_sha256": "8e836a8f316e0f8af4d97e205646e50f8c5f1d9550b92a11257bc265a956774b",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        585,
+        784,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--2x.json",
+      "sidecar_sha256": "71a2abe68abb629b2820b0e9da626b9096a05eda7e2863c1aeea2e4ac1892f64",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1170,
+        1568,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "9093ce0e770aac0f863a42bf3ae0edb1880367a35f1de211337c6823c6f64b49",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        731,
+        980,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "0a9bb7431162df7095df744afb12a9000a6ad2b4eda5c7eaff9ee609cbbbef07",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        585,
+        784,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "5c6a5b8ee740d62d9e840bb28729f66946e55b73156b02421646a463287958a1",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1170,
+        1568,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "71ef139aa6767ecb3dc74bb96a0d6c2af9c76538949aac3070f628f2d5d388ae",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--1x.json",
+      "sidecar_sha256": "9417f1b00dcc8ff6b6e1953ccf48c95ce6403e47274d9c1496aa9337f66cd816",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--2x.json",
+      "sidecar_sha256": "13e434795f082c32e2f72d3ea0be4528b8d882ca96e5a6dd95d27c45210a8d3c",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "af443d26b545e2b57671ec3b59a488ffc33da3193df3ae7fbb24b7bbce3b66ad",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "1c4776ced6fe683dd19a9b323662c6ff23e8655b68973cd84e5fa426862e0333",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "064410b2e9f90c721034083240242c8219601e8f5cf2dd46fed02c91e60cbedb",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "ea350df52a21f52c28f4872612c1761c31669f46b15b28cd161c5d7cfe77a32e",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        750,
+        951,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--1x.json",
+      "sidecar_sha256": "64d8fcd451262a17e515fc380d49e3d7442aa443c0f0ce25c35f83753d17f882",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        600,
+        761,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--2x.json",
+      "sidecar_sha256": "d3591bc5f5d9f21ecf6b99b59298c809c2a1eac5c7c50560953388ba5299b129",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1200,
+        1522,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "600d31ba2ee26f1830aa3454ee676eee9c7ff2c8f83108772488b115dd2f2790",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        750,
+        951,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "17a7c16e006785643f722d405216b31b59eddd35ab00207ec1b16d439a315c88",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        600,
+        761,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "ce9bb4bd409fdf023163d0a7930349344e3a8f2e3e6c2f4733fbb0fb714fc6a6",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1200,
+        1522,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "7404f08852e5f72c747b77b258965300c71b2df219faa30c03f10c4e98bb8ba5",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        738,
+        928,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--1x.json",
+      "sidecar_sha256": "f18ed6f7554c95de5b7280396719ce84ccf178529c0a59a798612729594e7d30",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        581,
+        749,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--2x.json",
+      "sidecar_sha256": "6ef991e0c3cf9e0bcf0628843a5f6efe53693d44b72b6b65c389102dc593b360",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1180,
+        1484,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "39466ae45f3211212608ee6800b7d0f60237e53cbeaa0f14914975b412918d1f",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        738,
+        928,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "85460724a3d61873b7683a30ea0063540b326ffbe7cedf65ad74ff1be0587512",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        581,
+        749,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "b74aac933b7d48bb3f4bfe2eb0ed92bb01b4a9306c53acbfd2f02a08ae0dcbd4",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1180,
+        1484,
+        1,
+        1
+      ]
+    }
+  ]
+}

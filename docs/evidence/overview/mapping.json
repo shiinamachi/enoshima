@@ -1,0 +1,636 @@
+{
+  "schema": 1,
+  "surface_id": "overview",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--en-us-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--en-us-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--en-us-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--en-us-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        613,
+        163,
+        375,
+        15
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--en-us-utf-8--1x.json",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        490,
+        130,
+        300,
+        12
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--en-us-utf-8--2x.json",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        980,
+        260,
+        600,
+        24
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        613,
+        163,
+        375,
+        15
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        490,
+        130,
+        300,
+        12
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        980,
+        260,
+        600,
+        24
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--en-us-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--en-us-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--en-us-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--en-us-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--en-us-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--en-us-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--en-us-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--en-us-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    }
+  ]
+}

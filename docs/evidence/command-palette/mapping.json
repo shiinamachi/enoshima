@@ -1,0 +1,546 @@
+{
+  "schema": 1,
+  "surface_id": "command-palette",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        441,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--en-us-utf-8--1x.json",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        353,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--en-us-utf-8--2x.json",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        706,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        441,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        353,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--clipboard-history--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        327,
+        626,
+        120,
+        163
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        706,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        625,
+        270,
+        401,
+        468
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--en-us-utf-8--1x.json",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        500,
+        216,
+        321,
+        374
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--en-us-utf-8--2x.json",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        1000,
+        432,
+        642,
+        748
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        625,
+        270,
+        401,
+        468
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        500,
+        216,
+        321,
+        374
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--default--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        28,
+        640,
+        128,
+        149
+      ],
+      "implementation_crop": [
+        1000,
+        432,
+        642,
+        748
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        558,
+        78
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--en-us-utf-8--1x.json",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        446,
+        62
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--en-us-utf-8--2x.json",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        892,
+        124
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        558,
+        78
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        446,
+        62
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--emoji-picker--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        567,
+        626,
+        144,
+        20
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        892,
+        124
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        535,
+        193,
+        530,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--en-us-utf-8--1x.json",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        428,
+        154,
+        424,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--en-us-utf-8--2x.json",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        856,
+        308,
+        848,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        535,
+        193,
+        530,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        428,
+        154,
+        424,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--empty-results--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        718,
+        626,
+        144,
+        163
+      ],
+      "implementation_crop": [
+        856,
+        308,
+        848,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        441,
+        193,
+        716,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--en-us-utf-8--1x.json",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        353,
+        154,
+        573,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--en-us-utf-8--2x.json",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        706,
+        308,
+        1146,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        441,
+        193,
+        716,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        353,
+        154,
+        573,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--long-title--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        869,
+        626,
+        194,
+        163
+      ],
+      "implementation_crop": [
+        706,
+        308,
+        1146,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        570,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--en-us-utf-8--1x.json",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        456,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--en-us-utf-8--2x.json",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        912,
+        960
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        319,
+        193,
+        570,
+        600
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        255,
+        154,
+        456,
+        480
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/command-palette/command-palette--search--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        164,
+        626,
+        155,
+        163
+      ],
+      "implementation_crop": [
+        510,
+        308,
+        912,
+        960
+      ]
+    }
+  ]
+}

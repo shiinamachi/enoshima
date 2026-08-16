@@ -1,0 +1,691 @@
+{
+  "schema": 2,
+  "surface_id": "overview",
+  "implementation_digest": "ac681b1b397fef9415f408787a19d16305d5665fe4c9c3baf7cdbb51b8300b57",
+  "concept_sha256": "7d7cf771bfe7a48e00e45ba8238d878f49f86bfa7e5581a85e532d5f147ef7b0",
+  "concept_spec_sha256": "f7dbc9adcb0825f308cc2ab18c458a5211e87d7ed6e4010fe7fb51d50ab1a46e",
+  "mapping": "docs/evidence/overview/mapping.json",
+  "mapping_sha256": "292b9a68a1c6e811344e03bc28b213b9f4cb2aa8678f0a4af8a925004d994144",
+  "generated_at": "2026-08-16T20:52:30+00:00",
+  "scores": {
+    "geometry": 98.0,
+    "color_tokens": 88.22,
+    "text_overflow": 100.0,
+    "perceptual": 85.42
+  },
+  "text_overflow_failures": [],
+  "sources": [
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "5bb8854aa905825d48d86179b40bf0847f94231e06f3daeb3e4cb3cfb0e47eb6",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--en-us-utf-8--1x.json",
+      "sidecar_sha256": "17c5876ae9316bc510b366dc896c870feb47830812ad1901ef3ff3a23ffd927f",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--en-us-utf-8--2x.json",
+      "sidecar_sha256": "23dbc3802d4c79eaa552a320350312dbd72ab141cb10ba0fe21e190883842883",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "bf29eeb349a455a91131fdc21549d0bff852923960dc6ba333f701a74b993469",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "ed0ecee034d4e9556dc556d587a1089938ca460ce7b0eb9e5f0a2c7623811f16",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--all-workspaces--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "82dfacc6f4e45a64ba2efc28c5d03f736eb8d9fa135d82495e2702c74cb3f77d",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "6f7af3979d9c322eac731cc990bad57ea6e4f719e1e8ca2dfe943a6e2920452b",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--en-us-utf-8--1x.json",
+      "sidecar_sha256": "8a9adef86bea8b1e2de871959e4168eb3e2fc1b8a18a36c5e94b00c25d1009e5",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--en-us-utf-8--2x.json",
+      "sidecar_sha256": "380324c243d3c747669b2d7d67113d2f4eb6fa8c7a9ba001d56d469f609d920f",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "d94058bc555a75f2bc8a2719c13f0ed028950619faab82e0e61668a53f3d1849",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "58c4d77deb31dce53a7e91909fc5266e3dac4fc3bf3a2b52492525950372557b",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--multi-monitor--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "f2cbd7e263d4a8c951d28be2a11d9b09321165cbc9990ad9e92d6305379de87d",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "71c1a19b46bb4df1787655b6ebf56f021996a8e8844e2ec0e9567692b78f4150",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        613,
+        163,
+        375,
+        15
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--en-us-utf-8--1x.json",
+      "sidecar_sha256": "e52a298b5cd387a9080d8816434f5b7d4ebe809082fd727de83d13bbbb631ac6",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        490,
+        130,
+        300,
+        12
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--en-us-utf-8--2x.json",
+      "sidecar_sha256": "131786369f763c8f266d7536cec6ffc07af3bc7543dda3df96117f2372f655db",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        980,
+        260,
+        600,
+        24
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "fb068dd195cc3cb5d7c5838f4138b98383bfc130d34e226c0d4b1ee2a8c13eb4",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        613,
+        163,
+        375,
+        15
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "63cac049f4d197e88d076fedeec4c2375dec8da86db4e412aa9703e84c949271",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        490,
+        130,
+        300,
+        12
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--no-windows--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "45b75025795cdba4e6d78df0a77f0fbdc1f3c21994e88fb014eb4df261a6e6e9",
+      "reference_crop": [
+        1052,
+        704,
+        100,
+        4
+      ],
+      "implementation_crop": [
+        980,
+        260,
+        600,
+        24
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "6a961317995bc0a0b061db9f3ee26e1ff49b77577190af9e16e40c9b0f7c3341",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--en-us-utf-8--1x.json",
+      "sidecar_sha256": "dcffec267aebf404f7fc80f17223834e2f5269f7aa3b63be4c272b1de646958a",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--en-us-utf-8--2x.json",
+      "sidecar_sha256": "f7ea71963c9385e0b329b6fbaec7ea4d803dfc661689d9d6fd94731f19398fca",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "003663d7e1c429cd7dea1e04bbab43c4e276c5041fb3edbc9332a72975bdef4a",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "b74141110497d4084abbd93e422d6ebdd4b766840fa28cc25beb29954c9ffe86",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-motion--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "fffbdd025e10972d907fd159559a5c67456e7b574dea36ae298592aec99824fa",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "3bf33f8fa381cb213f1e3da3835ea5cc2672843f1fd075d098d296e39a00d643",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--en-us-utf-8--1x.json",
+      "sidecar_sha256": "541a68e813e1f13e796307622006118e87a223df2d6e4c1ab631d13ec6249796",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--en-us-utf-8--2x.json",
+      "sidecar_sha256": "85fece4635028d10f9c5c58d1abed01498969d51e84140c0d2770c4c52bb369b",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "2618cece9fb91ef871db6489af4a9fbe5fa668157361f2da4450945e318a8756",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "d26de6cb0860d7684702cd2ac48e12ea6e8dc420505c1f34dad4521ec4ae46c6",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--reduced-transparency--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "461189f632849724ea5dabbf5f599152c841c1602d63c7b8e7a8a129cf264fe2",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "f2e6adfc355482aee9da53d2b7f354555aa6777edc664fb7eb3f82d4a1806356",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--en-us-utf-8--1x.json",
+      "sidecar_sha256": "36a3aedad61c8dffd0782d2f53f1a2b509ed7066707052b9263743ae7a84ca9e",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--en-us-utf-8--2x.json",
+      "sidecar_sha256": "a957acd5cb39d7c519017b9078b9110a2ad8af34fcf24ed57c7203142043a249",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "9eccc075fa227d12cd5be38c60d5d7d61836e5f2cc9ae02846f30fba521d847f",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "b1f82c1a514d993e39e1312c2d29f381b45bf81204db24093733a2ba3e783114",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-window--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "e3aad75f30c7e1468163684c00abfd92b3f92f3d5ce892e011452b06efac6c8c",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--en-us-utf-8--1-25x.json",
+      "sidecar_sha256": "bb18e0b9a736c4b1b9360002f07c87b2eec8aee8235ced3e2316b855e5f1a00c",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--en-us-utf-8--1x.json",
+      "sidecar_sha256": "18956b4ab19777690c7ce8c1f3806400bfc781d2a46fec304a66842159c4729b",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--en-us-utf-8--2x.json",
+      "sidecar_sha256": "61b0ae8966d807156f0506603d3008f5b299d8b08b029265eed3806dd7def9b7",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--ko-kr-utf-8--1-25x.json",
+      "sidecar_sha256": "92d736a462fc81d7f0ba1ddec952bcbe780d7ff2b005c6b64b5dbd96a055cc8c",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        18,
+        96,
+        1565,
+        794
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--ko-kr-utf-8--1x.json",
+      "sidecar_sha256": "3a885d0c1deaef8a5ae7975d33b6e3595d9574abc8f5eb71934196eb75679520",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        14,
+        77,
+        1252,
+        635
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/overview/overview--selected-workspace--ko-kr-utf-8--2x.json",
+      "sidecar_sha256": "87ea6e71453262b668d6c3a112ca25a2321b1bdd5de37c053b75828cd92ebc48",
+      "reference_crop": [
+        186,
+        148,
+        933,
+        464
+      ],
+      "implementation_crop": [
+        28,
+        154,
+        2504,
+        1270
+      ]
+    }
+  ]
+}

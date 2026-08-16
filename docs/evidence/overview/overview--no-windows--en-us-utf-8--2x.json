@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "surface_id": "overview",
+  "state": "no-windows",
+  "locale": "en_US.UTF-8",
+  "scale": 2.0,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    2560,
+    1600
+  ],
+  "stability_changed_pixel_ratio": 0.0,
+  "stability": {
+    "accepted_by": "pixel-hash",
+    "changed_pixel_ratio": 0.0,
+    "normalized_rmse": null,
+    "ssim_error": null
+  },
+  "image": "docs/evidence/overview/overview--no-windows--en-us-utf-8--2x.webp",
+  "image_sha256": "55313d84166cd2df71d3ce1552e78a0f56096db90f592b2579a2cda1be58b392",
+  "semantic_sha256": "812c5ab02099b76000b540fd72535399752f2fe51fcb4a39fd097f64286b225d",
+  "semantic_outputs": {
+    "HEADLESS-UI": "dad9094c8abbff482941882fa5d9e03ea900aed9a5f1e5001feba801a2560a72"
+  },
+  "auxiliary_outputs": [],
+  "run_id": "run-3207c6a56b40",
+  "source_commit": "52418efc010dbb013fabab885841acbd2463a771",
+  "worktree_hash": "sha256:ca6733b8569f136580a57a9b0df30a458072aa08836ec1ed98cc65241d548266",
+  "implementation_digest": "ac681b1b397fef9415f408787a19d16305d5665fe4c9c3baf7cdbb51b8300b57",
+  "concept_sha256": "7d7cf771bfe7a48e00e45ba8238d878f49f86bfa7e5581a85e532d5f147ef7b0",
+  "concept_spec_sha256": "f7dbc9adcb0825f308cc2ab18c458a5211e87d7ed6e4010fe7fb51d50ab1a46e",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": false,
+    "reason": "production Hyprshell over real Hyprland clients and virtual outputs"
+  },
+  "source_image_sha256": "71b4a94e530afaf4ee47171986edada205596fa7260f6689dbeab1da104d5355",
+  "source_sidecar_sha256": "e7b4c55296a5ca0aa9aa0081458cffa5bfcbaaa156474140d1397501e70395ec",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "manual-contact-sheet-review",
+    "reviewer": "Codex visual review",
+    "review_artifact": "docs/evidence/overview/manual-overflow-review.webp",
+    "review_artifact_sha256": "2e19ebfc43b4a847104a0ae97883e89e21f21d4229739aa844d6b7b2602a0d47",
+    "source_review_artifact_sha256": "28e5be773f2b13a70dbaf4e98c6a415153b09e3a5d1e27c5500e41bbcb31e8c5",
+    "report_sha256": "3bcfb529bb4d8c20ec4d893c246b593ff4937d20c6cb69297ec9d063a44f928d",
+    "coverage": "docs/evidence/overview/manual-overflow-coverage.json",
+    "coverage_sha256": "17a57e6d1754f92395b0d1998578d46dbfebf623b3c5d8905497403ec0c183ba",
+    "reviewed_capture_count": 42,
+    "reviewed_image_count": 48
+  },
+  "imported_at": "2026-08-16T20:49:34+00:00"
+}

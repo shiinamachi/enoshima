@@ -1,0 +1,22 @@
+{
+  "schema": 3,
+  "surface_id": "desktop-shell",
+  "reviewer": "Codex visual review",
+  "reviewed_at": "2026-08-17",
+  "implementation_digest": "6722eea540a47ef8a7169120c1d56b6195da64f2b4e8108eab079d2237e6df33",
+  "concept_sha256": "730866f47d759bf66de23bf19db6fc1caf0a6272ec131a5debcf79e4458b6767",
+  "concept_spec_sha256": "0f20d21659c42a025efa48ff0c6680a3105c201eb15de933a621ae26a56b9742",
+  "automated_report": "docs/evidence/desktop-shell/automated.json",
+  "automated_report_sha256": "bb52ad8d6ae71cc99e44ceea44d2871fa4e95ccb5cb0771db2265c5d8484757f",
+  "scores": {
+    "geometry": 99.12,
+    "color_tokens": 91.51,
+    "text_overflow": 100.0,
+    "perceptual": 86.5,
+    "hierarchy": 93.5,
+    "interaction": 93.0,
+    "state_meaning": 93.0,
+    "accessibility_localization": 91.0
+  },
+  "total": 94.0
+}

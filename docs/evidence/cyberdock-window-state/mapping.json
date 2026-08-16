@@ -1,0 +1,816 @@
+{
+  "schema": 1,
+  "surface_id": "cyberdock-window-state",
+  "comparisons": [
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        783,
+        970,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--1x.json",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        627,
+        776,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--en-us-utf-8--2x.json",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1255,
+        1551,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        783,
+        970,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        627,
+        776,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--focused--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        401,
+        367,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1255,
+        1551,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--1x.json",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--en-us-utf-8--2x.json",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimized--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        625,
+        435,
+        6,
+        1
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        6,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        731,
+        980,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--1x.json",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        585,
+        784,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--en-us-utf-8--2x.json",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1170,
+        1568,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        731,
+        980,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        585,
+        784,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--minimizing--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        771,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1170,
+        1568,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        775,
+        929,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--1x.json",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        620,
+        743,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--en-us-utf-8--2x.json",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1240,
+        1486,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        775,
+        929,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        620,
+        743,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--multi-window--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        1111,
+        381,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1240,
+        1486,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--1x.json",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--en-us-utf-8--2x.json",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--pinned--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        66,
+        434,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        731,
+        980,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--1x.json",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        585,
+        784,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--en-us-utf-8--2x.json",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1170,
+        1568,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        731,
+        980,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        585,
+        784,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--restoring--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        908,
+        431,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1170,
+        1568,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--1x.json",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--en-us-utf-8--2x.json",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        726,
+        980,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        581,
+        784,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--running--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        239,
+        436,
+        56,
+        4
+      ],
+      "implementation_crop": [
+        1162,
+        1568,
+        14,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        750,
+        951,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--1x.json",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        600,
+        761,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--en-us-utf-8--2x.json",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1200,
+        1522,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        750,
+        951,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        600,
+        761,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--unavailable--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        1597,
+        415,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1200,
+        1522,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--1-25x.json",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        738,
+        928,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--1x.json",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        581,
+        749,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--en-us-utf-8--2x.json",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1180,
+        1484,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--1-25x.json",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        738,
+        928,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--1x.json",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        581,
+        749,
+        1,
+        1
+      ]
+    },
+    {
+      "sidecar": "docs/evidence/cyberdock-window-state/cyberdock-window-state--urgent--ko-kr-utf-8--2x.json",
+      "reference_crop": [
+        1417,
+        437,
+        1,
+        1
+      ],
+      "implementation_crop": [
+        1180,
+        1484,
+        1,
+        1
+      ]
+    }
+  ]
+}

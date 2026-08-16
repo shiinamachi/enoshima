@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "surface_id": "command-palette",
+  "state": "clipboard-history",
+  "locale": "en_US.UTF-8",
+  "scale": 1.25,
+  "output": "HEADLESS-UI",
+  "logical_size": [
+    1280,
+    800
+  ],
+  "pixel_size": [
+    1600,
+    1000
+  ],
+  "stability_changed_pixel_ratio": 1.0,
+  "stability": {
+    "accepted_by": "normalized-rmse",
+    "changed_pixel_ratio": 1.0,
+    "normalized_rmse": 0.00247154,
+    "ssim_error": 7.066e-05
+  },
+  "image": "docs/evidence/command-palette/command-palette--clipboard-history--en-us-utf-8--1-25x.webp",
+  "image_sha256": "221c5e32decfe38c65b5be474caf9353019356f7453be6250344c3de7f54022d",
+  "semantic_sha256": "93e03254a07d7bc6a21430f73efafb793a713464296788f821f1a262382356a2",
+  "semantic_outputs": {
+    "HEADLESS-UI": "56f2cf951f409584359f27c738fef4bbb0206333b1d944e6520458c90bd00f5e"
+  },
+  "auxiliary_outputs": [],
+  "run_id": "run-c26e7bc93dc0",
+  "source_commit": "f5deb5fb9ddc4db16cb79f83d3a561b12f62ffa1",
+  "worktree_hash": "sha256:a84f9d070e4f4f217b33dc6625137f0460ec9a26db370c47b9c88ed2208f4e2d",
+  "implementation_digest": "049160ab34b8ac2e12d6345c1a0a51b34e76189dbacacd31172900ec58171f4e",
+  "concept_sha256": "69a36a0574d5580c4a6c0774b59a3bb6a45e17a24f0d7a70001f4dcba80a83f7",
+  "concept_spec_sha256": "46c9f82b7b44d4a010bead0e5f08cb12246137887d90a1cb1ab068fdfc95f7fb",
+  "text_overflow_count": 0,
+  "fixture": {
+    "used": false,
+    "reason": "production Vicinae over its packaged user service"
+  },
+  "source_image_sha256": "8893fb3f0e4e570e5aff181c4734c1e1c5e8569e96032e922124cde9a275e95e",
+  "source_sidecar_sha256": "8ba220d7c0b56b3b43e5c718d7ee97ee4478d609749ef22be66dc1c3c126a211",
+  "encoding": {
+    "format": "webp",
+    "quality": 92,
+    "source_format": "png"
+  },
+  "text_overflow_measurement": {
+    "method": "manual-contact-sheet-review",
+    "reviewer": "Codex visual review",
+    "review_artifact": "docs/evidence/command-palette/manual-overflow-review.webp",
+    "review_artifact_sha256": "50539bf352d21db48a2327a3281f762b58f5779380fa3e308c2ecc002d3464e4",
+    "source_review_artifact_sha256": "e8618120b09faeae2f6e5f949f643f5cdbbc54059699fa8135b4e0833f82b7d6",
+    "report_sha256": "4362e80fab534c19c9678c177288a087e8a19bbda5813eca7d56472994bef248",
+    "coverage": "docs/evidence/command-palette/manual-overflow-coverage.json",
+    "coverage_sha256": "1399f86bd73c7b11f2bc5972b3e77d588057d55facdee319b27d756fc5eeaaf3",
+    "reviewed_capture_count": 36,
+    "reviewed_image_count": 36
+  },
+  "imported_at": "2026-08-16T20:50:15+00:00"
+}
